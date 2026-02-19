@@ -8,6 +8,9 @@ import { ProjectsPage } from '@/features/projects/ProjectsPage';
 import { ProjectDetailPage } from '@/features/projects/ProjectDetailPage';
 import { IssueListPage } from '@/features/issues/IssueListPage';
 import { IssueDetailPage } from '@/features/issues/IssueDetailPage';
+import { KanbanBoard } from '@/features/boards/KanbanBoard';
+import { SprintBoard } from '@/features/boards/SprintBoard';
+import { WorkflowEditor } from '@/features/workflows/WorkflowEditor';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -33,6 +36,9 @@ export function App() {
               <Route path="/projects/:projectKey" element={<ProjectDetailPage />} />
               <Route path="/projects/:projectKey/issues" element={<IssueListPage />} />
               <Route path="/issues/:issueKey" element={<IssueDetailPage />} />
+              <Route path="/projects/:projectKey/board" element={<KanbanBoard />} />
+              <Route path="/projects/:projectKey/sprints" element={<SprintBoard />} />
+              <Route path="/workflows/:workflowId" element={<WorkflowEditor />} />
             </Route>
           </Route>
 

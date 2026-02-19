@@ -11,3 +11,20 @@ export {
   useCreateIssue,
   useUpdateIssue,
 } from './hooks';
+export {
+  useWorkflows,
+  useWorkflow,
+  useCreateWorkflow,
+  useWorkflowTransitions,
+  useBoards,
+  useBoard,
+  useCreateBoard,
+  useSprints,
+  useCreateSprint,
+  useStartSprint,
+  useCompleteSprint,
+  useComments,
+  useCreateComment,
+  useActivity,
+  useIssueTypes,
+} from './hooks-phase2';

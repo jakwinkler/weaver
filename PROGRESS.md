@@ -1,6 +1,6 @@
 # Weaver - Development Progress
 
-> **Overall: 27 / 125 tasks complete (22%)**
+> **Overall: 38 / 125 tasks complete (30%)**
 
 ---
 
@@ -39,19 +39,19 @@
 
 ---
 
-## Phase 2: Workflows & Boards (0/18)
+## Phase 2: Workflows & Boards (11/18)
 
-- [ ] P2.01 - Implement workflow module (CRUD for workflows, statuses, transitions)
-- [ ] P2.02 - Implement workflow engine (transition validation, status changes)
-- [ ] P2.03 - Implement ConditionEvaluatorRegistry (pluggable condition checks)
-- [ ] P2.04 - Implement PostFunctionRegistry (pluggable side effects)
-- [ ] P2.05 - Implement issue types module (CRUD, subtask flag, project association)
-- [ ] P2.06 - Implement issue linking (link types: blocks, relates to, duplicates)
-- [ ] P2.07 - Implement boards module - Kanban (CRUD, column config, issue ordering)
-- [ ] P2.08 - Implement boards module - Scrum (backlog, sprint board)
-- [ ] P2.09 - Implement sprints module (CRUD, start, complete, move issues)
-- [ ] P2.10 - Implement comments module (rich text JSONB, CRUD)
-- [ ] P2.11 - Implement activity log (event-driven changelog for issue changes)
+- [x] P2.01 - Implement workflow module (CRUD for workflows, statuses, transitions)
+- [x] P2.02 - Implement workflow engine (transition validation, status changes)
+- [x] P2.03 - Implement ConditionEvaluatorRegistry (pluggable condition checks)
+- [x] P2.04 - Implement PostFunctionRegistry (pluggable side effects)
+- [x] P2.05 - Implement issue types module (CRUD, subtask flag, project association)
+- [x] P2.06 - Implement issue linking (link types: blocks, relates to, duplicates)
+- [x] P2.07 - Implement boards module - Kanban (CRUD, column config, issue ordering)
+- [x] P2.08 - Implement boards module - Scrum (backlog, sprint board)
+- [x] P2.09 - Implement sprints module (CRUD, start, complete, move issues)
+- [x] P2.10 - Implement comments module (rich text JSONB, CRUD)
+- [x] P2.11 - Implement activity log (event-driven changelog for issue changes)
 - [ ] P2.12 - Build workflow visual editor (React Flow, custom status/transition nodes)
 - [ ] P2.13 - Build Kanban board view (dnd-kit drag-and-drop, column rendering)
 - [ ] P2.14 - Build Scrum board view (sprint selector, backlog panel)
