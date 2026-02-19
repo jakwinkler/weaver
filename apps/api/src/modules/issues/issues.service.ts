@@ -77,9 +77,9 @@ export class IssuesService {
     const repo = em.getRepository(IssueEntity);
 
     // Handle nullable fields explicitly
-    if (dto.assigneeId !== undefined) issue.assigneeId = dto.assigneeId ?? undefined;
-    if (dto.parentId !== undefined) issue.parentId = dto.parentId ?? undefined;
-    if (dto.epicId !== undefined) issue.epicId = dto.epicId ?? undefined;
+    if (dto.assigneeId !== undefined) issue.assigneeId = dto.assigneeId ?? null;
+    if (dto.parentId !== undefined) issue.parentId = dto.parentId ?? null;
+    if (dto.epicId !== undefined) issue.epicId = dto.epicId ?? null;
     if (dto.summary !== undefined) issue.summary = dto.summary;
     if (dto.description !== undefined) issue.description = dto.description;
     if (dto.priority !== undefined) issue.priority = dto.priority;

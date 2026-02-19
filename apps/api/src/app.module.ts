@@ -6,6 +6,13 @@ import { AuthModule } from './core/auth';
 import { UsersModule } from './modules/users';
 import { ProjectsModule } from './modules/projects';
 import { IssuesModule } from './modules/issues';
+import { WorkflowsModule } from './modules/workflows';
+import { IssueTypesModule } from './modules/issue-types';
+import { IssueLinksModule } from './modules/issue-links';
+import { BoardsModule } from './modules/boards';
+import { SprintsModule } from './modules/sprints';
+import { CommentsModule } from './modules/comments';
+import { ActivityLogModule } from './modules/activity-log';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -20,6 +27,13 @@ import { HealthController } from './health.controller';
     UsersModule,
     ProjectsModule,
     IssuesModule,
+    WorkflowsModule,
+    IssueTypesModule,
+    IssueLinksModule,
+    BoardsModule,
+    SprintsModule,
+    CommentsModule,
+    ActivityLogModule,
   ],
   controllers: [HealthController],
 })

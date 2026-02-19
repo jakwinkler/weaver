@@ -1,6 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { paginationSchema, PaginatedResponse } from '@weaver/shared';
-import { SelectQueryBuilder } from 'typeorm';
+import { ObjectLiteral, SelectQueryBuilder } from 'typeorm';
 
 export interface PaginationParams {
   page: number;
@@ -16,7 +16,7 @@ export function parsePagination(query: Record<string, any>): PaginationParams {
   return result.data;
 }
 
-export async function paginate<T>(
+export async function paginate<T extends ObjectLiteral>(
   qb: SelectQueryBuilder<T>,
   params: PaginationParams,
   allowedSortFields: string[] = [],
