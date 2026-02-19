@@ -65,3 +65,7 @@ export {
   useTeams,
   useCreateTeam,
 } from './hooks-phase5';
+export {
+  useBulkUpdateIssues,
+  useBulkDeleteIssues,
+} from './hooks-phase6';

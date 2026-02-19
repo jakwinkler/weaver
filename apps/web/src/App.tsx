@@ -15,6 +15,9 @@ import { CustomFieldsPage } from '@/features/settings/CustomFieldsPage';
 import { SearchPage } from '@/features/search/SearchPage';
 import { PluginsPage } from '@/features/settings/PluginsPage';
 import { WebhooksPage } from '@/features/settings/WebhooksPage';
+import { ImportExportPage } from '@/features/settings/ImportExportPage';
+import { GanttChart } from '@/features/boards/GanttChart';
+import { KeyboardShortcuts } from '@/features/shortcuts/KeyboardShortcuts';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -30,6 +33,7 @@ export function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
+        <KeyboardShortcuts />
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
@@ -47,6 +51,8 @@ export function App() {
               <Route path="/search" element={<SearchPage />} />
               <Route path="/settings/plugins" element={<PluginsPage />} />
               <Route path="/settings/webhooks" element={<WebhooksPage />} />
+              <Route path="/settings/import-export" element={<ImportExportPage />} />
+              <Route path="/projects/:projectKey/gantt" element={<GanttChart />} />
             </Route>
           </Route>
 

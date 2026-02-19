@@ -1,0 +1,53 @@
+replicaCount:
+  api: 2
+  web: 2
+  worker: 1
+
+image:
+  api:
+    repository: weaver-api
+    tag: latest
+    pullPolicy: IfNotPresent
+  web:
+    repository: weaver-web
+    tag: latest
+    pullPolicy: IfNotPresent
+  worker:
+    repository: weaver-worker
+    tag: latest
+    pullPolicy: IfNotPresent
+
+service:
+  api:
+    port: 3000
+  web:
+    port: 80
+
+ingress:
+  enabled: true
+  className: nginx
+  host: weaver.example.com
+  tls: false
+
+postgresql:
+  enabled: true
+  auth:
+    database: weaver
+    username: weaver
+    password: weaver_dev
+  primary:
+    persistence:
+      size: 10Gi
+
+redis:
+  enabled: true
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilization: 70
+
+env:
+  JWT_SECRET: change-me-in-production
+  NODE_ENV: production

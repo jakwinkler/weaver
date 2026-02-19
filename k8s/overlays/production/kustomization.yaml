@@ -1,0 +1,28 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+  - api-hpa.yaml
+  - web-hpa.yaml
+patches:
+  - path: api-patch.yaml
+  - path: web-patch.yaml
+  - path: ingress-patch.yaml
+patchesStrategicMerge:
+  - delete-postgres.yaml
+  - delete-redis.yaml
+configMapGenerator:
+  - name: weaver-config
+    literals:
+      - DATABASE_HOST=weaver-db.example.com
+      - DATABASE_PORT=5432
+      - DATABASE_NAME=weaver
+      - DATABASE_USER=weaver
+      - REDIS_HOST=weaver-redis.example.com
+      - REDIS_PORT=6379
+      - NODE_ENV=production
+secretGenerator:
+  - name: weaver-secrets
+    literals:
+      - DATABASE_PASSWORD=CHANGE_ME_IN_PRODUCTION
+      - JWT_SECRET=CHANGE_ME_IN_PRODUCTION

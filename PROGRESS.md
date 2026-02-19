@@ -1,6 +1,6 @@
 # Weaver - Development Progress
 
-> **Overall: 93 / 125 tasks complete (74%)**
+> **Overall: 125 / 125 tasks complete (100%)**
 
 ---
 
@@ -125,37 +125,37 @@
 
 ---
 
-## Phase 6: Polish & Launch (0/32)
+## Phase 6: Polish & Launch (32/32)
 
-- [ ] P6.01 - Implement Google OAuth (free tier auth provider)
-- [ ] P6.02 - Implement SSO/SAML/OIDC (paid tier, feature-flagged)
-- [ ] P6.03 - Build Gantt chart view (timeline bars, dependencies, drag to reschedule)
-- [ ] P6.04 - Implement keyboard shortcuts (global + context-specific, shortcut help modal)
-- [ ] P6.05 - Implement bulk operations (multi-select issues, bulk status change, bulk assign)
-- [ ] P6.06 - Implement CSV import/export
-- [ ] P6.07 - Implement JSON import/export
-- [ ] P6.08 - Implement JIRA import (project, issues, workflows, attachments)
-- [ ] P6.09 - Build onboarding flow (first-time setup wizard, sample project)
-- [ ] P6.10 - Performance: API query optimization (N+1, eager loading, indexes)
-- [ ] P6.11 - Performance: frontend bundle optimization (code splitting, lazy routes)
-- [ ] P6.12 - Performance: Redis caching layer (project/workflow/user lookups)
-- [ ] P6.13 - Security audit (OWASP top 10, dependency scan, CSP headers)
-- [ ] P6.14 - Create Kubernetes base manifests (Kustomize)
-- [ ] P6.15 - Create Kubernetes dev overlay
-- [ ] P6.16 - Create Kubernetes production overlay (HPA, ingress, secrets)
-- [ ] P6.17 - Create Helm chart
-- [ ] P6.18 - Write Playwright E2E test: auth flow (register, login, logout)
-- [ ] P6.19 - Write Playwright E2E test: project CRUD
-- [ ] P6.20 - Write Playwright E2E test: issue lifecycle through workflow
-- [ ] P6.21 - Write Playwright E2E test: Kanban board drag-and-drop
-- [ ] P6.22 - Write Playwright E2E test: workflow editor
-- [ ] P6.23 - Write Playwright E2E test: search with WQL
-- [ ] P6.24 - Write Playwright E2E test: plugin installation
-- [ ] P6.25 - Build documentation site (Docusaurus/Starlight)
-- [ ] P6.26 - Write user guide documentation
-- [ ] P6.27 - Write admin/deployment documentation
-- [ ] P6.28 - Write plugin developer guide
-- [ ] P6.29 - Build landing page
-- [ ] P6.30 - Add LICENSE file (MIT or Apache 2.0)
-- [ ] P6.31 - Final CI/CD pipeline (GitHub Actions: lint, test, build, Docker push)
-- [ ] P6.32 - Release v1.0.0 (tag, changelog, Docker images, docs deploy)
+- [x] P6.01 - Implement Google OAuth (free tier auth provider)
+- [x] P6.02 - Implement SSO/SAML/OIDC (paid tier, feature-flagged)
+- [x] P6.03 - Build Gantt chart view (timeline bars, dependencies, drag to reschedule)
+- [x] P6.04 - Implement keyboard shortcuts (global + context-specific, shortcut help modal)
+- [x] P6.05 - Implement bulk operations (multi-select issues, bulk status change, bulk assign)
+- [x] P6.06 - Implement CSV import/export
+- [x] P6.07 - Implement JSON import/export
+- [x] P6.08 - Implement JIRA import (project, issues, workflows, attachments)
+- [x] P6.09 - Build onboarding flow (first-time setup wizard, sample project)
+- [x] P6.10 - Performance: API query optimization (N+1, eager loading, indexes)
+- [x] P6.11 - Performance: frontend bundle optimization (code splitting, lazy routes)
+- [x] P6.12 - Performance: Redis caching layer (project/workflow/user lookups)
+- [x] P6.13 - Security audit (OWASP top 10, dependency scan, CSP headers)
+- [x] P6.14 - Create Kubernetes base manifests (Kustomize)
+- [x] P6.15 - Create Kubernetes dev overlay
+- [x] P6.16 - Create Kubernetes production overlay (HPA, ingress, secrets)
+- [x] P6.17 - Create Helm chart
+- [x] P6.18 - Write Playwright E2E test: auth flow (register, login, logout)
+- [x] P6.19 - Write Playwright E2E test: project CRUD
+- [x] P6.20 - Write Playwright E2E test: issue lifecycle through workflow
+- [x] P6.21 - Write Playwright E2E test: Kanban board drag-and-drop
+- [x] P6.22 - Write Playwright E2E test: workflow editor
+- [x] P6.23 - Write Playwright E2E test: search with WQL
+- [x] P6.24 - Write Playwright E2E test: plugin installation
+- [x] P6.25 - Build documentation site (Docusaurus/Starlight)
+- [x] P6.26 - Write user guide documentation
+- [x] P6.27 - Write admin/deployment documentation
+- [x] P6.28 - Write plugin developer guide
+- [x] P6.29 - Build landing page
+- [x] P6.30 - Add LICENSE file (MIT or Apache 2.0)
+- [x] P6.31 - Final CI/CD pipeline (GitHub Actions: lint, test, build, Docker push)
+- [x] P6.32 - Release v1.0.0 (tag, changelog, Docker images, docs deploy)
