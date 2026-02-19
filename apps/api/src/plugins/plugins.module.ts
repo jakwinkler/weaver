@@ -1,0 +1,20 @@
+import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { InstalledPluginEntity } from '@weaver/db';
+import { TenantModule } from '../core/tenant';
+import { PluginLoaderService } from './plugin-loader.service';
+import { PluginRegistryService } from './plugin-registry.service';
+import { PluginContextFactory } from './plugin-context.factory';
+import { PluginsController } from './plugins.controller';
+import { PluginRouteController } from './plugin-route.controller';
+
+@Module({
+  imports: [
+    TypeOrmModule.forFeature([InstalledPluginEntity]),
+    TenantModule,
+  ],
+  controllers: [PluginsController, PluginRouteController],
+  providers: [PluginLoaderService, PluginRegistryService, PluginContextFactory],
+  exports: [PluginLoaderService, PluginRegistryService, PluginContextFactory],
+})
+export class PluginsModule {}

@@ -1,0 +1,12 @@
+{
+  "name": "@weaver/plugin-github",
+  "version": "1.0.0",
+  "private": true,
+  "main": "./src/server/index.ts",
+  "dependencies": {
+    "@weaver/sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}

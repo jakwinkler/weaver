@@ -40,3 +40,12 @@ export {
   useCreateTimeEntry,
   useSearch,
 } from './hooks-phase3';
+export {
+  useAvailablePlugins,
+  useInstalledPlugins,
+  useInstallPlugin,
+  useUninstallPlugin,
+  useEnablePlugin,
+  useDisablePlugin,
+  useUpdatePluginSettings,
+} from './hooks-phase4';

@@ -1,6 +1,6 @@
 # Weaver - Development Progress
 
-> **Overall: 61 / 125 tasks complete (49%)**
+> **Overall: 77 / 125 tasks complete (62%)**
 
 ---
 
@@ -83,24 +83,24 @@
 
 ---
 
-## Phase 4: Plugin System & SCM (0/16)
+## Phase 4: Plugin System & SCM (16/16)
 
-- [ ] P4.01 - Create packages/sdk plugin SDK (@weaver/sdk, WeaverPlugin interface)
-- [ ] P4.02 - Implement plugin manifest loader (parse weaver-plugin.json, validate)
-- [ ] P4.03 - Implement PluginRegistryService (register/unregister, lifecycle management)
-- [ ] P4.04 - Implement PluginContext (db, http, events, settings, api, logger)
-- [ ] P4.05 - Implement plugin route registration (mount under /api/v1/plugins/:pluginId/*)
-- [ ] P4.06 - Implement plugin event subscription (domain events routed to plugins)
-- [ ] P4.07 - Implement plugin DB access (tenant-scoped raw SQL, plugin migrations)
-- [ ] P4.08 - Implement plugin UI slot system (frontend slot registry, dynamic component loading)
-- [ ] P4.09 - Build plugin management page (install, enable, disable, settings)
-- [ ] P4.10 - Implement GitHub plugin (webhook receiver, commit/PR linking)
-- [ ] P4.11 - Implement GitHub plugin (branch creation, status sync)
-- [ ] P4.12 - Implement GitLab plugin (webhook receiver, MR linking, status sync)
-- [ ] P4.13 - Implement Bitbucket plugin (webhook receiver, PR linking, status sync)
-- [ ] P4.14 - Build SCM integration UI (linked PRs/commits panel on issue detail)
-- [ ] P4.15 - Write plugin developer documentation
-- [ ] P4.16 - Phase 4 end-to-end integration test (plugin lifecycle, event routing, SCM webhooks)
+- [x] P4.01 - Create packages/sdk plugin SDK (@weaver/sdk, WeaverPlugin interface)
+- [x] P4.02 - Implement plugin manifest loader (parse weaver-plugin.json, validate)
+- [x] P4.03 - Implement PluginRegistryService (register/unregister, lifecycle management)
+- [x] P4.04 - Implement PluginContext (db, http, events, settings, api, logger)
+- [x] P4.05 - Implement plugin route registration (mount under /api/v1/plugins/:pluginId/*)
+- [x] P4.06 - Implement plugin event subscription (domain events routed to plugins)
+- [x] P4.07 - Implement plugin DB access (tenant-scoped raw SQL, plugin migrations)
+- [x] P4.08 - Implement plugin UI slot system (frontend slot registry, dynamic component loading)
+- [x] P4.09 - Build plugin management page (install, enable, disable, settings)
+- [x] P4.10 - Implement GitHub plugin (webhook receiver, commit/PR linking)
+- [x] P4.11 - Implement GitHub plugin (branch creation, status sync)
+- [x] P4.12 - Implement GitLab plugin (webhook receiver, MR linking, status sync)
+- [x] P4.13 - Implement Bitbucket plugin (webhook receiver, PR linking, status sync)
+- [x] P4.14 - Build SCM integration UI (linked PRs/commits panel on issue detail)
+- [x] P4.15 - Write plugin developer documentation
+- [x] P4.16 - Phase 4 end-to-end integration test (plugin lifecycle, event routing, SCM webhooks)
 
 ---
 

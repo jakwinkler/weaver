@@ -13,6 +13,7 @@ import { SprintBoard } from '@/features/boards/SprintBoard';
 import { WorkflowEditor } from '@/features/workflows/WorkflowEditor';
 import { CustomFieldsPage } from '@/features/settings/CustomFieldsPage';
 import { SearchPage } from '@/features/search/SearchPage';
+import { PluginsPage } from '@/features/settings/PluginsPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -43,6 +44,7 @@ export function App() {
               <Route path="/workflows/:workflowId" element={<WorkflowEditor />} />
               <Route path="/settings/custom-fields" element={<CustomFieldsPage />} />
               <Route path="/search" element={<SearchPage />} />
+              <Route path="/settings/plugins" element={<PluginsPage />} />
             </Route>
           </Route>
 

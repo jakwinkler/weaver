@@ -1,0 +1,32 @@
+{
+  "id": "@weaver/plugin-gitlab",
+  "name": "GitLab Integration",
+  "version": "1.0.0",
+  "description": "Link GitLab commits, merge requests, and branches to Weaver issues",
+  "author": "Weaver Team",
+  "entrypoints": {
+    "server": "./src/server/index.ts",
+    "client": "./src/client/index.ts"
+  },
+  "permissions": ["issues:read", "issues:write", "webhooks:manage"],
+  "settings": {
+    "schema": {
+      "webhookSecret": { "type": "string", "required": true, "description": "GitLab webhook secret token for verification" },
+      "gitlabToken": { "type": "string", "required": false, "description": "GitLab personal access token (optional, for API access)" }
+    }
+  },
+  "events": {
+    "subscribes": ["issue.created", "issue.status_changed"],
+    "emits": ["gitlab.push_received", "gitlab.mr_opened", "gitlab.mr_merged"]
+  },
+  "ui": {
+    "slots": [
+      { "slot": "issue-detail-panel", "component": "GitLabPanel" }
+    ]
+  },
+  "routes": [
+    { "method": "POST", "path": "/webhook", "handler": "handleWebhook" },
+    { "method": "GET", "path": "/links/:issueKey", "handler": "getLinks" }
+  ],
+  "migrations": ["./migrations/001_create_gitlab_links.sql"]
+}

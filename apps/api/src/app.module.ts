@@ -18,6 +18,7 @@ import { SavedFiltersModule } from './modules/saved-filters';
 import { AttachmentsModule } from './modules/attachments';
 import { TimeTrackingModule } from './modules/time-tracking';
 import { SearchModule } from './modules/search';
+import { PluginsModule } from './plugins';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -44,6 +45,7 @@ import { HealthController } from './health.controller';
     AttachmentsModule,
     TimeTrackingModule,
     SearchModule,
+    PluginsModule,
   ],
   controllers: [HealthController],
 })

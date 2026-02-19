@@ -1,0 +1,31 @@
+{
+  "id": "@weaver/plugin-bitbucket",
+  "name": "Bitbucket Integration",
+  "version": "1.0.0",
+  "description": "Link Bitbucket commits, pull requests, and branches to Weaver issues",
+  "author": "Weaver Team",
+  "entrypoints": {
+    "server": "./src/server/index.ts",
+    "client": "./src/client/index.ts"
+  },
+  "permissions": ["issues:read", "issues:write", "webhooks:manage"],
+  "settings": {
+    "schema": {
+      "webhookSecret": { "type": "string", "required": true, "description": "Bitbucket webhook secret for HMAC verification" }
+    }
+  },
+  "events": {
+    "subscribes": ["issue.created", "issue.status_changed"],
+    "emits": ["bitbucket.push_received", "bitbucket.pr_opened", "bitbucket.pr_merged"]
+  },
+  "ui": {
+    "slots": [
+      { "slot": "issue-detail-panel", "component": "BitbucketPanel" }
+    ]
+  },
+  "routes": [
+    { "method": "POST", "path": "/webhook", "handler": "handleWebhook" },
+    { "method": "GET", "path": "/links/:issueKey", "handler": "getLinks" }
+  ],
+  "migrations": ["./migrations/001_create_bitbucket_links.sql"]
+}
