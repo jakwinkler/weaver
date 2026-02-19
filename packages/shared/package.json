@@ -1,0 +1,23 @@
+{
+  "name": "@weaver/shared",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Shared types, DTOs, schemas, and constants",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "test": "jest --passWithNoTests"
+  },
+  "dependencies": {
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@weaver/config": "workspace:*",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.5",
+    "typescript": "^5.7.2",
+    "@types/jest": "^29.5.14"
+  }
+}
