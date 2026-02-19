@@ -4,10 +4,10 @@
   "private": true,
   "description": "Weaver API server",
   "scripts": {
-    "build": "nest build",
-    "dev": "nest start --watch",
+    "build": "nest build --builder swc",
+    "dev": "nest start --watch --builder swc",
     "start": "node dist/main.js",
-    "start:debug": "nest start --debug --watch",
+    "start:debug": "nest start --debug --watch --builder swc",
     "test": "jest --passWithNoTests",
     "test:watch": "jest --watch",
     "test:e2e": "jest --config ./test/jest-e2e.config.js --passWithNoTests"
@@ -19,9 +19,9 @@
     "@nestjs/jwt": "^10.2.0",
     "@nestjs/passport": "^10.0.3",
     "@nestjs/platform-express": "^10.4.15",
-    "@nestjs/platform-socket.io": "^11.1.14",
+    "@nestjs/platform-socket.io": "^10.4.22",
     "@nestjs/typeorm": "^10.0.2",
-    "@nestjs/websockets": "^11.1.14",
+    "@nestjs/websockets": "^10.4.22",
     "@types/multer": "^2.0.0",
     "@weaver/db": "workspace:*",
     "@weaver/sdk": "workspace:^",
@@ -45,6 +45,8 @@
     "@nestjs/cli": "^10.4.9",
     "@nestjs/schematics": "^10.2.3",
     "@nestjs/testing": "^10.4.15",
+    "@swc/cli": "^0.8.0",
+    "@swc/core": "^1.15.11",
     "@types/bcrypt": "^5.0.2",
     "@types/express": "^5.0.0",
     "@types/jest": "^29.5.14",
@@ -58,6 +60,7 @@
     "supertest": "^7.0.0",
     "ts-jest": "^29.2.5",
     "ts-loader": "^9.5.1",
+    "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   }
 }

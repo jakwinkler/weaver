@@ -8,4 +8,12 @@ module.exports = {
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/../src/$1',
   },
+  transform: {
+    '^.+\\.ts$': [
+      'ts-jest',
+      {
+        tsconfig: '<rootDir>/../tsconfig.json',
+      },
+    ],
+  },
 };

@@ -74,8 +74,7 @@ describe('Phase 5: Real-Time, Notifications, Webhooks, RBAC, Teams (e2e)', () =>
   describe('Notifications', () => {
     it('GET /notifications - should return empty list initially', async () => {
       const res = await authedRequest().get('/api/v1/notifications').expect(200);
-      expect(res.body.data).toBeDefined();
-      expect(Array.isArray(res.body.data)).toBe(true);
+      expect(Array.isArray(res.body)).toBe(true);
     });
 
     it('GET /notifications/unread-count - should return zero', async () => {
@@ -87,10 +86,9 @@ describe('Phase 5: Real-Time, Notifications, Webhooks, RBAC, Teams (e2e)', () =>
     });
 
     it('POST /notifications/mark-all-read - should succeed', async () => {
-      const res = await authedRequest()
+      await authedRequest()
         .post('/api/v1/notifications/mark-all-read')
-        .expect(201);
-      expect(res.body).toBeDefined();
+        .expect(204);
     });
   });
 

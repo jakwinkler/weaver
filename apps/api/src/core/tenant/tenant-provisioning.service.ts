@@ -41,10 +41,45 @@ export class TenantProvisioningService {
       `CREATE INDEX IF NOT EXISTS "IDX_issue_custom_fields" ON "${schemaName}"."issues" USING GIN ("custom_fields")`,
     );
 
+    // Create raw SQL tables not managed by TypeORM entities
+    await this.createRawTables(schemaName);
+
     // Seed default data
     await this.seedDefaults(schemaName);
 
     this.logger.log(`Schema provisioned: ${schemaName}`);
+  }
+
+  private async createRawTables(schemaName: string): Promise<void> {
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS "${schemaName}"."teams" (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        name VARCHAR(255) NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS "${schemaName}"."team_members" (
+        team_id UUID NOT NULL REFERENCES "${schemaName}"."teams"(id) ON DELETE CASCADE,
+        user_id UUID NOT NULL,
+        joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (team_id, user_id)
+      )
+    `);
+
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS "${schemaName}"."webhook_deliveries" (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        webhook_id UUID NOT NULL REFERENCES "${schemaName}"."webhooks"(id) ON DELETE CASCADE,
+        event VARCHAR(255) NOT NULL,
+        payload JSONB NOT NULL DEFAULT '{}',
+        response_status INTEGER,
+        response_body TEXT,
+        success BOOLEAN NOT NULL DEFAULT false,
+        delivered_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
   }
 
   private async seedDefaults(schemaName: string): Promise<void> {
