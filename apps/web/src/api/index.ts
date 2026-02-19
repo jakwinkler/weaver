@@ -49,3 +49,19 @@ export {
   useDisablePlugin,
   useUpdatePluginSettings,
 } from './hooks-phase4';
+export {
+  useNotifications,
+  useUnreadCount,
+  useMarkNotificationRead,
+  useMarkAllRead,
+  useWebhooks,
+  useCreateWebhook,
+  useDeleteWebhook,
+  useWebhookDeliveries,
+  useTestWebhook,
+  useRoles,
+  useCreateRole,
+  useDeleteRole,
+  useTeams,
+  useCreateTeam,
+} from './hooks-phase5';

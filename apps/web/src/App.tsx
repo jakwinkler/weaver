@@ -14,6 +14,7 @@ import { WorkflowEditor } from '@/features/workflows/WorkflowEditor';
 import { CustomFieldsPage } from '@/features/settings/CustomFieldsPage';
 import { SearchPage } from '@/features/search/SearchPage';
 import { PluginsPage } from '@/features/settings/PluginsPage';
+import { WebhooksPage } from '@/features/settings/WebhooksPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -45,6 +46,7 @@ export function App() {
               <Route path="/settings/custom-fields" element={<CustomFieldsPage />} />
               <Route path="/search" element={<SearchPage />} />
               <Route path="/settings/plugins" element={<PluginsPage />} />
+              <Route path="/settings/webhooks" element={<WebhooksPage />} />
             </Route>
           </Route>
 

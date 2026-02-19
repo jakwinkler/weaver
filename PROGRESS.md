@@ -1,6 +1,6 @@
 # Weaver - Development Progress
 
-> **Overall: 77 / 125 tasks complete (62%)**
+> **Overall: 93 / 125 tasks complete (74%)**
 
 ---
 
@@ -104,24 +104,24 @@
 
 ---
 
-## Phase 5: Real-Time & Notifications (0/16)
+## Phase 5: Real-Time & Notifications (16/16)
 
-- [ ] P5.01 - Implement WebSocket gateway (Socket.io, tenant rooms, auth)
-- [ ] P5.02 - Implement real-time board updates (issue moved, created, updated)
-- [ ] P5.03 - Implement real-time issue detail updates (field changes, comments)
-- [ ] P5.04 - Implement in-app notifications module (CRUD, mark read, badge count)
-- [ ] P5.05 - Implement email notification channel (React Email templates, SMTP)
-- [ ] P5.06 - Implement notification preferences (per-user, per-event-type settings)
-- [ ] P5.07 - Implement webhook module (CRUD, HMAC-SHA256 signing)
-- [ ] P5.08 - Implement webhook delivery (retries with exponential backoff, circuit breaker)
-- [ ] P5.09 - Implement webhook delivery log (status tracking, manual retry)
-- [ ] P5.10 - Implement rate limiting (Redis-backed, per-auth-type limits)
-- [ ] P5.11 - Implement RBAC with custom roles (permissions JSONB, role assignment)
-- [ ] P5.12 - Implement teams module (CRUD, team members, project assignment)
-- [ ] P5.13 - Build notification panel UI (dropdown, mark read, preferences page)
-- [ ] P5.14 - Build webhook management UI (CRUD, delivery log viewer)
-- [ ] P5.15 - Generate OpenAPI/Swagger docs (decorators on all endpoints)
-- [ ] P5.16 - Phase 5 end-to-end integration test (real-time updates, notifications, webhooks, RBAC)
+- [x] P5.01 - Implement WebSocket gateway (Socket.io, tenant rooms, auth)
+- [x] P5.02 - Implement real-time board updates (issue moved, created, updated)
+- [x] P5.03 - Implement real-time issue detail updates (field changes, comments)
+- [x] P5.04 - Implement in-app notifications module (CRUD, mark read, badge count)
+- [x] P5.05 - Implement email notification channel (React Email templates, SMTP)
+- [x] P5.06 - Implement notification preferences (per-user, per-event-type settings)
+- [x] P5.07 - Implement webhook module (CRUD, HMAC-SHA256 signing)
+- [x] P5.08 - Implement webhook delivery (retries with exponential backoff, circuit breaker)
+- [x] P5.09 - Implement webhook delivery log (status tracking, manual retry)
+- [x] P5.10 - Implement rate limiting (Redis-backed, per-auth-type limits)
+- [x] P5.11 - Implement RBAC with custom roles (permissions JSONB, role assignment)
+- [x] P5.12 - Implement teams module (CRUD, team members, project assignment)
+- [x] P5.13 - Build notification panel UI (dropdown, mark read, preferences page)
+- [x] P5.14 - Build webhook management UI (CRUD, delivery log viewer)
+- [x] P5.15 - Generate OpenAPI/Swagger docs (decorators on all endpoints)
+- [x] P5.16 - Phase 5 end-to-end integration test (real-time updates, notifications, webhooks, RBAC)
 
 ---
 

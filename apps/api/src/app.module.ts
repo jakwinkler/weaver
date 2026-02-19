@@ -19,6 +19,12 @@ import { AttachmentsModule } from './modules/attachments';
 import { TimeTrackingModule } from './modules/time-tracking';
 import { SearchModule } from './modules/search';
 import { PluginsModule } from './plugins';
+import { WebSocketModule } from './core/websocket';
+import { RateLimitingModule } from './core/rate-limiting';
+import { NotificationsModule } from './modules/notifications';
+import { WebhooksModule } from './modules/webhooks';
+import { RolesModule } from './modules/roles';
+import { TeamsModule } from './modules/teams';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -46,6 +52,12 @@ import { HealthController } from './health.controller';
     TimeTrackingModule,
     SearchModule,
     PluginsModule,
+    WebSocketModule,
+    RateLimitingModule,
+    NotificationsModule,
+    WebhooksModule,
+    RolesModule,
+    TeamsModule,
   ],
   controllers: [HealthController],
 })
