@@ -1,6 +1,6 @@
 # Weaver - Development Progress
 
-> **Overall: 45 / 125 tasks complete (36%)**
+> **Overall: 61 / 125 tasks complete (49%)**
 
 ---
 
@@ -62,24 +62,24 @@
 
 ---
 
-## Phase 3: Custom Fields & Search (0/16)
+## Phase 3: Custom Fields & Search (16/16)
 
-- [ ] P3.01 - Implement custom field definitions module (CRUD, field types: text, number, select, date, user, checkbox)
-- [ ] P3.02 - Implement JSONB validation engine (validate custom_fields against definitions)
-- [ ] P3.03 - Apply custom fields to issue CRUD (store/retrieve/update JSONB)
-- [ ] P3.04 - Implement WQL parser (PEG.js grammar: field operators, AND/OR/NOT, parentheses)
-- [ ] P3.05 - Implement WQL-to-SQL translator (safe parameterized query generation)
-- [ ] P3.06 - Implement search endpoint (POST /search with WQL, pagination, sorting)
-- [ ] P3.07 - Implement saved filters (CRUD, per-user, shared filters)
-- [ ] P3.08 - Implement quick filters on boards (status, assignee, label filter chips)
-- [ ] P3.09 - Implement attachments module (upload, download, S3/local storage adapter)
-- [ ] P3.10 - Implement time tracking module (time entries CRUD, issue summary)
-- [ ] P3.11 - Build custom field definition management UI (settings page)
-- [ ] P3.12 - Build dynamic custom field renderer (form inputs based on field type)
-- [ ] P3.13 - Build WQL search input with autocomplete (field names, operators, values)
-- [ ] P3.14 - Build saved filters UI (save, load, manage)
-- [ ] P3.15 - Build calendar view (issues by due date, month/week toggle)
-- [ ] P3.16 - Phase 3 end-to-end integration test (custom fields, WQL queries, attachments)
+- [x] P3.01 - Implement custom field definitions module (CRUD, field types: text, number, select, date, user, checkbox)
+- [x] P3.02 - Implement JSONB validation engine (validate custom_fields against definitions)
+- [x] P3.03 - Apply custom fields to issue CRUD (store/retrieve/update JSONB)
+- [x] P3.04 - Implement WQL parser (PEG.js grammar: field operators, AND/OR/NOT, parentheses)
+- [x] P3.05 - Implement WQL-to-SQL translator (safe parameterized query generation)
+- [x] P3.06 - Implement search endpoint (POST /search with WQL, pagination, sorting)
+- [x] P3.07 - Implement saved filters (CRUD, per-user, shared filters)
+- [x] P3.08 - Implement quick filters on boards (status, assignee, label filter chips)
+- [x] P3.09 - Implement attachments module (upload, download, S3/local storage adapter)
+- [x] P3.10 - Implement time tracking module (time entries CRUD, issue summary)
+- [x] P3.11 - Build custom field definition management UI (settings page)
+- [x] P3.12 - Build dynamic custom field renderer (form inputs based on field type)
+- [x] P3.13 - Build WQL search input with autocomplete (field names, operators, values)
+- [x] P3.14 - Build saved filters UI (save, load, manage)
+- [x] P3.15 - Build calendar view (issues by due date, month/week toggle)
+- [x] P3.16 - Phase 3 end-to-end integration test (custom fields, WQL queries, attachments)
 
 ---
 

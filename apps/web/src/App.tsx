@@ -11,6 +11,8 @@ import { IssueDetailPage } from '@/features/issues/IssueDetailPage';
 import { KanbanBoard } from '@/features/boards/KanbanBoard';
 import { SprintBoard } from '@/features/boards/SprintBoard';
 import { WorkflowEditor } from '@/features/workflows/WorkflowEditor';
+import { CustomFieldsPage } from '@/features/settings/CustomFieldsPage';
+import { SearchPage } from '@/features/search/SearchPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -39,6 +41,8 @@ export function App() {
               <Route path="/projects/:projectKey/board" element={<KanbanBoard />} />
               <Route path="/projects/:projectKey/sprints" element={<SprintBoard />} />
               <Route path="/workflows/:workflowId" element={<WorkflowEditor />} />
+              <Route path="/settings/custom-fields" element={<CustomFieldsPage />} />
+              <Route path="/search" element={<SearchPage />} />
             </Route>
           </Route>
 
