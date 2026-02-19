@@ -19,7 +19,7 @@ export class TimeEntryEntity {
   @Column({ type: 'int' })
   minutes!: number;
 
-  @Column({ length: 500, nullable: true })
+  @Column({ type: 'varchar', length: 500, nullable: true })
   description!: string | null;
 
   @Column({ name: 'logged_at', type: 'timestamptz' })

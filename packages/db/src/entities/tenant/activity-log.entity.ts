@@ -21,7 +21,7 @@ export class ActivityLogEntity {
   @Column({ length: 50 })
   action!: string;
 
-  @Column({ name: 'field_name', length: 100, nullable: true })
+  @Column({ name: 'field_name', type: 'varchar', length: 100, nullable: true })
   fieldName!: string | null;
 
   @Column({ name: 'old_value', type: 'text', nullable: true })

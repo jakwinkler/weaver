@@ -16,7 +16,7 @@ export class IssueTypeEntity {
   @Column({ length: 100, unique: true })
   slug!: string;
 
-  @Column({ length: 50, nullable: true })
+  @Column({ type: 'varchar', length: 50, nullable: true })
   icon!: string | null;
 
   @Column({ name: 'is_subtask', type: 'boolean', default: false })
