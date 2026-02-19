@@ -21,13 +21,13 @@ export class UserEntity {
   @Column({ name: 'display_name', length: 255 })
   displayName!: string;
 
-  @Column({ name: 'password_hash', nullable: true })
+  @Column({ name: 'password_hash', type: 'varchar', nullable: true })
   passwordHash!: string | null;
 
   @Column({ name: 'auth_provider', length: 20, default: 'local' })
   authProvider!: string;
 
-  @Column({ name: 'avatar_url', nullable: true })
+  @Column({ name: 'avatar_url', type: 'varchar', nullable: true })
   avatarUrl!: string | null;
 
   @CreateDateColumn({ name: 'created_at' })
