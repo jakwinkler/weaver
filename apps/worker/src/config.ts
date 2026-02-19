@@ -1,0 +1,14 @@
+export const config = {
+  redis: {
+    host: process.env.REDIS_HOST || 'localhost',
+    port: parseInt(process.env.REDIS_PORT || '6380', 10),
+    password: process.env.REDIS_PASSWORD || undefined,
+  },
+  queues: {
+    events: { name: 'events', concurrency: 10 },
+    webhooks: { name: 'webhooks', concurrency: 5 },
+    notifications: { name: 'notifications', concurrency: 10 },
+    scmSync: { name: 'scm-sync', concurrency: 3 },
+    tenantOps: { name: 'tenant-ops', concurrency: 1 },
+  },
+};

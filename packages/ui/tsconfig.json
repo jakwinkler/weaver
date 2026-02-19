@@ -1,0 +1,9 @@
+{
+  "extends": "@weaver/config/tsconfig.react.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src"
+  },
+  "include": ["src"],
+  "exclude": ["node_modules", "dist"]
+}

@@ -1,0 +1,24 @@
+{
+  "name": "@weaver/ui",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Shared React component library",
+  "main": "./src/index.ts",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "clsx": "^2.1.1"
+  },
+  "devDependencies": {
+    "@weaver/config": "workspace:*",
+    "@types/react": "^19.0.0",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8",
+    "@testing-library/react": "^16.1.0",
+    "@testing-library/jest-dom": "^6.6.3",
+    "jsdom": "^25.0.1"
+  }
+}
