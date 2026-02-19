@@ -13,6 +13,11 @@ import { BoardsModule } from './modules/boards';
 import { SprintsModule } from './modules/sprints';
 import { CommentsModule } from './modules/comments';
 import { ActivityLogModule } from './modules/activity-log';
+import { CustomFieldsModule } from './modules/custom-fields';
+import { SavedFiltersModule } from './modules/saved-filters';
+import { AttachmentsModule } from './modules/attachments';
+import { TimeTrackingModule } from './modules/time-tracking';
+import { SearchModule } from './modules/search';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -34,6 +39,11 @@ import { HealthController } from './health.controller';
     SprintsModule,
     CommentsModule,
     ActivityLogModule,
+    CustomFieldsModule,
+    SavedFiltersModule,
+    AttachmentsModule,
+    TimeTrackingModule,
+    SearchModule,
   ],
   controllers: [HealthController],
 })
