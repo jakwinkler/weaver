@@ -1,0 +1,161 @@
+# Weaver - Development Progress
+
+> **Overall: 0 / 125 tasks complete (0%)**
+
+---
+
+## Phase 1: Foundation (0/20)
+
+- [ ] P1.01 - Initialize monorepo root (pnpm, Turborepo, git, .nvmrc)
+- [ ] P1.02 - Create packages/config (shared ESLint + TSConfig)
+- [ ] P1.03 - Create packages/shared (core types, zod schemas, constants)
+- [ ] P1.04 - Create packages/db public schema entities (Tenant, User, TenantMembership, ApiKey, InstalledPlugin)
+- [ ] P1.05 - Create packages/db tenant schema entities (Project, Issue, Workflow, Board, Sprint, etc.)
+- [ ] P1.06 - Set up Docker Compose dev environment (Postgres 16, Redis 7)
+- [ ] P1.07 - Scaffold NestJS API app (bootstrap, health check, Jest config)
+- [ ] P1.08 - Implement database module (public schema connection + migrations)
+- [ ] P1.09 - Implement tenant context (AsyncLocalStorage, middleware, TenantService)
+- [ ] P1.10 - Implement tenant schema provisioning (create schema, run migrations, seed defaults)
+- [ ] P1.11 - Implement tenant-scoped database connections (per-tenant EntityManager)
+- [ ] P1.12 - Implement auth module (register + login with bcrypt + JWT)
+- [ ] P1.13 - Implement JWT guards, token refresh, CurrentUser decorator
+- [ ] P1.14 - Implement user management endpoints (me, update profile, list members)
+- [ ] P1.15 - Implement projects module (CRUD with key validation)
+- [ ] P1.16 - Implement issues module (CRUD with sequential key generation WEB-1234)
+- [ ] P1.17 - Implement pagination, sorting, and standardized error handling
+- [ ] P1.18 - Scaffold React web app (Vite + Tailwind + Router + Vitest)
+- [ ] P1.19 - Set up React Query + Zustand + Axios client with JWT interceptor
+- [ ] P1.20 - Build auth pages (Login, Register, protected route wrapper)
+
+## Phase 1b: Frontend + Infra (0/7)
+
+- [ ] P1.21 - Build app layout (sidebar, topbar, responsive navigation)
+- [ ] P1.22 - Build projects list and create project pages
+- [ ] P1.23 - Build issue list and issue detail pages
+- [ ] P1.24 - Create packages/ui shared component library (Button, Input, Modal, Table, etc.)
+- [ ] P1.25 - Create production Docker Compose + Dockerfiles (api, web, worker)
+- [ ] P1.26 - Scaffold worker app with BullMQ (tenant-ops queue)
+- [ ] P1.27 - End-to-end integration test (full register->project->issue lifecycle)
+
+---
+
+## Phase 2: Workflows & Boards (0/18)
+
+- [ ] P2.01 - Implement workflow module (CRUD for workflows, statuses, transitions)
+- [ ] P2.02 - Implement workflow engine (transition validation, status changes)
+- [ ] P2.03 - Implement ConditionEvaluatorRegistry (pluggable condition checks)
+- [ ] P2.04 - Implement PostFunctionRegistry (pluggable side effects)
+- [ ] P2.05 - Implement issue types module (CRUD, subtask flag, project association)
+- [ ] P2.06 - Implement issue linking (link types: blocks, relates to, duplicates)
+- [ ] P2.07 - Implement boards module - Kanban (CRUD, column config, issue ordering)
+- [ ] P2.08 - Implement boards module - Scrum (backlog, sprint board)
+- [ ] P2.09 - Implement sprints module (CRUD, start, complete, move issues)
+- [ ] P2.10 - Implement comments module (rich text JSONB, CRUD)
+- [ ] P2.11 - Implement activity log (event-driven changelog for issue changes)
+- [ ] P2.12 - Build workflow visual editor (React Flow, custom status/transition nodes)
+- [ ] P2.13 - Build Kanban board view (dnd-kit drag-and-drop, column rendering)
+- [ ] P2.14 - Build Scrum board view (sprint selector, backlog panel)
+- [ ] P2.15 - Build issue list view (sortable table, inline status change)
+- [ ] P2.16 - Build comments UI (TipTap rich text editor, comment thread)
+- [ ] P2.17 - Build activity log UI (timeline of changes on issue detail)
+- [ ] P2.18 - Phase 2 end-to-end integration test (workflow transitions, board ops, sprint lifecycle)
+
+---
+
+## Phase 3: Custom Fields & Search (0/16)
+
+- [ ] P3.01 - Implement custom field definitions module (CRUD, field types: text, number, select, date, user, checkbox)
+- [ ] P3.02 - Implement JSONB validation engine (validate custom_fields against definitions)
+- [ ] P3.03 - Apply custom fields to issue CRUD (store/retrieve/update JSONB)
+- [ ] P3.04 - Implement WQL parser (PEG.js grammar: field operators, AND/OR/NOT, parentheses)
+- [ ] P3.05 - Implement WQL-to-SQL translator (safe parameterized query generation)
+- [ ] P3.06 - Implement search endpoint (POST /search with WQL, pagination, sorting)
+- [ ] P3.07 - Implement saved filters (CRUD, per-user, shared filters)
+- [ ] P3.08 - Implement quick filters on boards (status, assignee, label filter chips)
+- [ ] P3.09 - Implement attachments module (upload, download, S3/local storage adapter)
+- [ ] P3.10 - Implement time tracking module (time entries CRUD, issue summary)
+- [ ] P3.11 - Build custom field definition management UI (settings page)
+- [ ] P3.12 - Build dynamic custom field renderer (form inputs based on field type)
+- [ ] P3.13 - Build WQL search input with autocomplete (field names, operators, values)
+- [ ] P3.14 - Build saved filters UI (save, load, manage)
+- [ ] P3.15 - Build calendar view (issues by due date, month/week toggle)
+- [ ] P3.16 - Phase 3 end-to-end integration test (custom fields, WQL queries, attachments)
+
+---
+
+## Phase 4: Plugin System & SCM (0/16)
+
+- [ ] P4.01 - Create packages/sdk plugin SDK (@weaver/sdk, WeaverPlugin interface)
+- [ ] P4.02 - Implement plugin manifest loader (parse weaver-plugin.json, validate)
+- [ ] P4.03 - Implement PluginRegistryService (register/unregister, lifecycle management)
+- [ ] P4.04 - Implement PluginContext (db, http, events, settings, api, logger)
+- [ ] P4.05 - Implement plugin route registration (mount under /api/v1/plugins/:pluginId/*)
+- [ ] P4.06 - Implement plugin event subscription (domain events routed to plugins)
+- [ ] P4.07 - Implement plugin DB access (tenant-scoped raw SQL, plugin migrations)
+- [ ] P4.08 - Implement plugin UI slot system (frontend slot registry, dynamic component loading)
+- [ ] P4.09 - Build plugin management page (install, enable, disable, settings)
+- [ ] P4.10 - Implement GitHub plugin (webhook receiver, commit/PR linking)
+- [ ] P4.11 - Implement GitHub plugin (branch creation, status sync)
+- [ ] P4.12 - Implement GitLab plugin (webhook receiver, MR linking, status sync)
+- [ ] P4.13 - Implement Bitbucket plugin (webhook receiver, PR linking, status sync)
+- [ ] P4.14 - Build SCM integration UI (linked PRs/commits panel on issue detail)
+- [ ] P4.15 - Write plugin developer documentation
+- [ ] P4.16 - Phase 4 end-to-end integration test (plugin lifecycle, event routing, SCM webhooks)
+
+---
+
+## Phase 5: Real-Time & Notifications (0/16)
+
+- [ ] P5.01 - Implement WebSocket gateway (Socket.io, tenant rooms, auth)
+- [ ] P5.02 - Implement real-time board updates (issue moved, created, updated)
+- [ ] P5.03 - Implement real-time issue detail updates (field changes, comments)
+- [ ] P5.04 - Implement in-app notifications module (CRUD, mark read, badge count)
+- [ ] P5.05 - Implement email notification channel (React Email templates, SMTP)
+- [ ] P5.06 - Implement notification preferences (per-user, per-event-type settings)
+- [ ] P5.07 - Implement webhook module (CRUD, HMAC-SHA256 signing)
+- [ ] P5.08 - Implement webhook delivery (retries with exponential backoff, circuit breaker)
+- [ ] P5.09 - Implement webhook delivery log (status tracking, manual retry)
+- [ ] P5.10 - Implement rate limiting (Redis-backed, per-auth-type limits)
+- [ ] P5.11 - Implement RBAC with custom roles (permissions JSONB, role assignment)
+- [ ] P5.12 - Implement teams module (CRUD, team members, project assignment)
+- [ ] P5.13 - Build notification panel UI (dropdown, mark read, preferences page)
+- [ ] P5.14 - Build webhook management UI (CRUD, delivery log viewer)
+- [ ] P5.15 - Generate OpenAPI/Swagger docs (decorators on all endpoints)
+- [ ] P5.16 - Phase 5 end-to-end integration test (real-time updates, notifications, webhooks, RBAC)
+
+---
+
+## Phase 6: Polish & Launch (0/32)
+
+- [ ] P6.01 - Implement Google OAuth (free tier auth provider)
+- [ ] P6.02 - Implement SSO/SAML/OIDC (paid tier, feature-flagged)
+- [ ] P6.03 - Build Gantt chart view (timeline bars, dependencies, drag to reschedule)
+- [ ] P6.04 - Implement keyboard shortcuts (global + context-specific, shortcut help modal)
+- [ ] P6.05 - Implement bulk operations (multi-select issues, bulk status change, bulk assign)
+- [ ] P6.06 - Implement CSV import/export
+- [ ] P6.07 - Implement JSON import/export
+- [ ] P6.08 - Implement JIRA import (project, issues, workflows, attachments)
+- [ ] P6.09 - Build onboarding flow (first-time setup wizard, sample project)
+- [ ] P6.10 - Performance: API query optimization (N+1, eager loading, indexes)
+- [ ] P6.11 - Performance: frontend bundle optimization (code splitting, lazy routes)
+- [ ] P6.12 - Performance: Redis caching layer (project/workflow/user lookups)
+- [ ] P6.13 - Security audit (OWASP top 10, dependency scan, CSP headers)
+- [ ] P6.14 - Create Kubernetes base manifests (Kustomize)
+- [ ] P6.15 - Create Kubernetes dev overlay
+- [ ] P6.16 - Create Kubernetes production overlay (HPA, ingress, secrets)
+- [ ] P6.17 - Create Helm chart
+- [ ] P6.18 - Write Playwright E2E test: auth flow (register, login, logout)
+- [ ] P6.19 - Write Playwright E2E test: project CRUD
+- [ ] P6.20 - Write Playwright E2E test: issue lifecycle through workflow
+- [ ] P6.21 - Write Playwright E2E test: Kanban board drag-and-drop
+- [ ] P6.22 - Write Playwright E2E test: workflow editor
+- [ ] P6.23 - Write Playwright E2E test: search with WQL
+- [ ] P6.24 - Write Playwright E2E test: plugin installation
+- [ ] P6.25 - Build documentation site (Docusaurus/Starlight)
+- [ ] P6.26 - Write user guide documentation
+- [ ] P6.27 - Write admin/deployment documentation
+- [ ] P6.28 - Write plugin developer guide
+- [ ] P6.29 - Build landing page
+- [ ] P6.30 - Add LICENSE file (MIT or Apache 2.0)
+- [ ] P6.31 - Final CI/CD pipeline (GitHub Actions: lint, test, build, Docker push)
+- [ ] P6.32 - Release v1.0.0 (tag, changelog, Docker images, docs deploy)
