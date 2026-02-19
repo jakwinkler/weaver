@@ -1,41 +1,41 @@
 # Weaver - Development Progress
 
-> **Overall: 0 / 125 tasks complete (0%)**
+> **Overall: 27 / 125 tasks complete (22%)**
 
 ---
 
-## Phase 1: Foundation (0/20)
+## Phase 1: Foundation (20/20)
 
-- [ ] P1.01 - Initialize monorepo root (pnpm, Turborepo, git, .nvmrc)
-- [ ] P1.02 - Create packages/config (shared ESLint + TSConfig)
-- [ ] P1.03 - Create packages/shared (core types, zod schemas, constants)
-- [ ] P1.04 - Create packages/db public schema entities (Tenant, User, TenantMembership, ApiKey, InstalledPlugin)
-- [ ] P1.05 - Create packages/db tenant schema entities (Project, Issue, Workflow, Board, Sprint, etc.)
-- [ ] P1.06 - Set up Docker Compose dev environment (Postgres 16, Redis 7)
-- [ ] P1.07 - Scaffold NestJS API app (bootstrap, health check, Jest config)
-- [ ] P1.08 - Implement database module (public schema connection + migrations)
-- [ ] P1.09 - Implement tenant context (AsyncLocalStorage, middleware, TenantService)
-- [ ] P1.10 - Implement tenant schema provisioning (create schema, run migrations, seed defaults)
-- [ ] P1.11 - Implement tenant-scoped database connections (per-tenant EntityManager)
-- [ ] P1.12 - Implement auth module (register + login with bcrypt + JWT)
-- [ ] P1.13 - Implement JWT guards, token refresh, CurrentUser decorator
-- [ ] P1.14 - Implement user management endpoints (me, update profile, list members)
-- [ ] P1.15 - Implement projects module (CRUD with key validation)
-- [ ] P1.16 - Implement issues module (CRUD with sequential key generation WEB-1234)
-- [ ] P1.17 - Implement pagination, sorting, and standardized error handling
-- [ ] P1.18 - Scaffold React web app (Vite + Tailwind + Router + Vitest)
-- [ ] P1.19 - Set up React Query + Zustand + Axios client with JWT interceptor
-- [ ] P1.20 - Build auth pages (Login, Register, protected route wrapper)
+- [x] P1.01 - Initialize monorepo root (pnpm, Turborepo, git, .nvmrc)
+- [x] P1.02 - Create packages/config (shared ESLint + TSConfig)
+- [x] P1.03 - Create packages/shared (core types, zod schemas, constants)
+- [x] P1.04 - Create packages/db public schema entities (Tenant, User, TenantMembership, ApiKey, InstalledPlugin)
+- [x] P1.05 - Create packages/db tenant schema entities (Project, Issue, Workflow, Board, Sprint, etc.)
+- [x] P1.06 - Set up Docker Compose dev environment (Postgres 16, Redis 7)
+- [x] P1.07 - Scaffold NestJS API app (bootstrap, health check, Jest config)
+- [x] P1.08 - Implement database module (public schema connection + migrations)
+- [x] P1.09 - Implement tenant context (AsyncLocalStorage, middleware, TenantService)
+- [x] P1.10 - Implement tenant schema provisioning (create schema, run migrations, seed defaults)
+- [x] P1.11 - Implement tenant-scoped database connections (per-tenant EntityManager)
+- [x] P1.12 - Implement auth module (register + login with bcrypt + JWT)
+- [x] P1.13 - Implement JWT guards, token refresh, CurrentUser decorator
+- [x] P1.14 - Implement user management endpoints (me, update profile, list members)
+- [x] P1.15 - Implement projects module (CRUD with key validation)
+- [x] P1.16 - Implement issues module (CRUD with sequential key generation WEB-1234)
+- [x] P1.17 - Implement pagination, sorting, and standardized error handling
+- [x] P1.18 - Scaffold React web app (Vite + Tailwind + Router + Vitest)
+- [x] P1.19 - Set up React Query + Zustand + Axios client with JWT interceptor
+- [x] P1.20 - Build auth pages (Login, Register, protected route wrapper)
 
-## Phase 1b: Frontend + Infra (0/7)
+## Phase 1b: Frontend + Infra (7/7)
 
-- [ ] P1.21 - Build app layout (sidebar, topbar, responsive navigation)
-- [ ] P1.22 - Build projects list and create project pages
-- [ ] P1.23 - Build issue list and issue detail pages
-- [ ] P1.24 - Create packages/ui shared component library (Button, Input, Modal, Table, etc.)
-- [ ] P1.25 - Create production Docker Compose + Dockerfiles (api, web, worker)
-- [ ] P1.26 - Scaffold worker app with BullMQ (tenant-ops queue)
-- [ ] P1.27 - End-to-end integration test (full register->project->issue lifecycle)
+- [x] P1.21 - Build app layout (sidebar, topbar, responsive navigation)
+- [x] P1.22 - Build projects list and create project pages
+- [x] P1.23 - Build issue list and issue detail pages
+- [x] P1.24 - Create packages/ui shared component library (Button, Input, Modal, Table, etc.)
+- [x] P1.25 - Create production Docker Compose + Dockerfiles (api, web, worker)
+- [x] P1.26 - Scaffold worker app with BullMQ (tenant-ops queue)
+- [x] P1.27 - End-to-end integration test (full register->project->issue lifecycle)
 
 ---
 
