@@ -1,6 +1,6 @@
 # Weaver - Development Progress
 
-> **Overall: 38 / 125 tasks complete (30%)**
+> **Overall: 45 / 125 tasks complete (36%)**
 
 ---
 
@@ -39,7 +39,7 @@
 
 ---
 
-## Phase 2: Workflows & Boards (11/18)
+## Phase 2: Workflows & Boards (18/18)
 
 - [x] P2.01 - Implement workflow module (CRUD for workflows, statuses, transitions)
 - [x] P2.02 - Implement workflow engine (transition validation, status changes)
@@ -52,13 +52,13 @@
 - [x] P2.09 - Implement sprints module (CRUD, start, complete, move issues)
 - [x] P2.10 - Implement comments module (rich text JSONB, CRUD)
 - [x] P2.11 - Implement activity log (event-driven changelog for issue changes)
-- [ ] P2.12 - Build workflow visual editor (React Flow, custom status/transition nodes)
-- [ ] P2.13 - Build Kanban board view (dnd-kit drag-and-drop, column rendering)
-- [ ] P2.14 - Build Scrum board view (sprint selector, backlog panel)
-- [ ] P2.15 - Build issue list view (sortable table, inline status change)
-- [ ] P2.16 - Build comments UI (TipTap rich text editor, comment thread)
-- [ ] P2.17 - Build activity log UI (timeline of changes on issue detail)
-- [ ] P2.18 - Phase 2 end-to-end integration test (workflow transitions, board ops, sprint lifecycle)
+- [x] P2.12 - Build workflow visual editor (React Flow, custom status/transition nodes)
+- [x] P2.13 - Build Kanban board view (dnd-kit drag-and-drop, column rendering)
+- [x] P2.14 - Build Scrum board view (sprint selector, backlog panel)
+- [x] P2.15 - Build issue list view (sortable table, inline status change)
+- [x] P2.16 - Build comments UI (TipTap rich text editor, comment thread)
+- [x] P2.17 - Build activity log UI (timeline of changes on issue detail)
+- [x] P2.18 - Phase 2 end-to-end integration test (workflow transitions, board ops, sprint lifecycle)
 
 ---
 
