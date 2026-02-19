@@ -11,13 +11,6 @@ describe('Database Module (e2e)', () => {
   let dataSource: DataSource;
 
   beforeAll(async () => {
-    process.env.NODE_ENV = 'development';
-    process.env.DATABASE_HOST = 'localhost';
-    process.env.DATABASE_PORT = '5432';
-    process.env.DATABASE_USER = 'weaver';
-    process.env.DATABASE_PASSWORD = 'weaver_dev';
-    process.env.DATABASE_NAME = 'weaver';
-
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
