@@ -69,3 +69,23 @@ export {
   useBulkUpdateIssues,
   useBulkDeleteIssues,
 } from './hooks-phase6';
+export {
+  useUsers,
+  useUpdateUserRole,
+  useCreateIssueType,
+  useUpdateIssueType,
+  useDeleteIssueType,
+  useUpdateRole,
+  useDeleteWorkflow,
+  useAddWorkflowStatus,
+  useDeleteWorkflowStatus,
+  useAddWorkflowTransition,
+  useDeleteWorkflowTransition,
+  useTeamMembers,
+  useAddTeamMember,
+  useRemoveTeamMember,
+  useTransitionIssue,
+  useUpdateCustomField,
+  useDeleteTeam,
+} from './hooks-admin';
+export type { TenantUser, TeamMember } from './hooks-admin';

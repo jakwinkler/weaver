@@ -1,18 +1,21 @@
-import React from 'react';
+import * as React from 'react';
+import { cn } from '../lib/utils';
 
 export interface EmptyStateProps {
   title: string;
   description?: string;
   action?: React.ReactNode;
+  className?: string;
 }
 
 export const EmptyState: React.FC<EmptyStateProps> = ({
   title,
   description,
   action,
+  className,
 }) => {
   return (
-    <div className="flex flex-col items-center justify-center py-12 text-center">
+    <div className={cn('flex flex-col items-center justify-center py-12 text-center', className)}>
       <svg
         className="mb-4 h-12 w-12 text-gray-400"
         xmlns="http://www.w3.org/2000/svg"

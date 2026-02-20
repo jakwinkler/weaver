@@ -1,8 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { UserEntity, TenantMembershipEntity } from '@weaver/db';
 import { UpdateUserDto } from '@weaver/shared';
+
+const VALID_ROLES = ['owner', 'admin', 'member', 'viewer'];
 
 @Injectable()
 export class UsersService {
@@ -43,6 +45,7 @@ export class UsersService {
     });
 
     return memberships.map((m) => ({
+      id: m.userId,
       userId: m.userId,
       role: m.role,
       displayName: m.user.displayName,
@@ -50,5 +53,20 @@ export class UsersService {
       avatarUrl: m.user.avatarUrl,
       createdAt: m.createdAt,
     }));
+  }
+
+  async updateMemberRole(tenantId: string, userId: string, role: string): Promise<{ success: boolean }> {
+    if (!VALID_ROLES.includes(role)) {
+      throw new BadRequestException(`Invalid role "${role}". Must be one of: ${VALID_ROLES.join(', ')}`);
+    }
+
+    const membership = await this.membershipRepo.findOneBy({ tenantId, userId });
+    if (!membership) {
+      throw new NotFoundException('User is not a member of this tenant');
+    }
+
+    membership.role = role;
+    await this.membershipRepo.save(membership);
+    return { success: true };
   }
 }

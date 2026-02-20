@@ -5,6 +5,8 @@ import { Request, Response, NextFunction } from 'express';
 import { TenantEntity } from '@weaver/db';
 import { tenantStorage } from './tenant.context';
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 @Injectable()
 export class TenantMiddleware implements NestMiddleware {
   constructor(
@@ -34,7 +36,7 @@ export class TenantMiddleware implements NestMiddleware {
   private resolveTenantId(req: Request): string | undefined {
     // Priority: JWT claim > X-Tenant-ID header > subdomain
     const fromHeader = req.headers['x-tenant-id'] as string | undefined;
-    if (fromHeader) return fromHeader;
+    if (fromHeader && UUID_RE.test(fromHeader)) return fromHeader;
 
     // JWT-based tenant will be set later by auth guard
     const user = (req as any).user;

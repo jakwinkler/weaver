@@ -1,13 +1,15 @@
 import { useState, type FormEvent } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { useProject, useProjectIssues } from '@/api';
+import { useProject, useProjectIssues, useWorkflow } from '@/api';
 import { useBoards, useCreateBoard } from '@/api/hooks-phase2';
 import type { Issue } from '@weaver/shared';
 
 interface StatusColumn {
   statusId: string;
   name: string;
+  color: string;
   issues: Issue[];
+  position: number;
 }
 
 function PriorityBadge({ priority }: { priority: string }) {
@@ -118,6 +120,7 @@ export function KanbanBoard() {
   const { data: boards, isLoading: boardsLoading, refetch: refetchBoards } = useBoards(
     project?.id || '',
   );
+  const { data: workflow } = useWorkflow(project?.workflowId || '');
 
   const isLoading = projectLoading || issuesLoading || boardsLoading;
 
@@ -155,30 +158,45 @@ export function KanbanBoard() {
   }
 
   const issues = issuesData?.data || [];
+  const statuses = workflow?.statuses || [];
 
   // Group issues by statusId
-  const columnMap = new Map<string, Issue[]>();
+  const issuesByStatus = new Map<string, Issue[]>();
   for (const issue of issues) {
-    const existing = columnMap.get(issue.statusId) || [];
+    const existing = issuesByStatus.get(issue.statusId) || [];
     existing.push(issue);
-    columnMap.set(issue.statusId, existing);
+    issuesByStatus.set(issue.statusId, existing);
   }
 
-  const columns: StatusColumn[] = Array.from(columnMap.entries()).map(
-    ([statusId, columnIssues]) => ({
-      statusId,
-      name: statusId,
-      issues: columnIssues,
-    }),
-  );
+  // Build columns from workflow statuses (ordered by category: to_do, in_progress, done)
+  const categoryOrder: Record<string, number> = { to_do: 0, in_progress: 1, done: 2 };
+  let columns: StatusColumn[];
 
-  // If no issues at all, show an empty state
-  if (columns.length === 0) {
-    columns.push(
-      { statusId: 'todo', name: 'To Do', issues: [] },
-      { statusId: 'in_progress', name: 'In Progress', issues: [] },
-      { statusId: 'done', name: 'Done', issues: [] },
-    );
+  if (statuses.length > 0) {
+    columns = statuses
+      .map((status) => ({
+        statusId: status.id,
+        name: status.name,
+        color: status.color || '#6b7280',
+        issues: issuesByStatus.get(status.id) || [],
+        position: categoryOrder[status.category] ?? 1,
+      }))
+      .sort((a, b) => a.position - b.position);
+  } else if (issues.length > 0) {
+    // Fallback: create columns from issue statusIds
+    columns = Array.from(issuesByStatus.entries()).map(([statusId, columnIssues]) => ({
+      statusId,
+      name: statusId.slice(0, 8),
+      color: '#6b7280',
+      issues: columnIssues,
+      position: 0,
+    }));
+  } else {
+    columns = [
+      { statusId: 'todo', name: 'To Do', color: '#6b7280', issues: [], position: 0 },
+      { statusId: 'in_progress', name: 'In Progress', color: '#3b82f6', issues: [], position: 1 },
+      { statusId: 'done', name: 'Done', color: '#22c55e', issues: [], position: 2 },
+    ];
   }
 
   return (
@@ -207,7 +225,13 @@ export function KanbanBoard() {
             className="flex w-72 flex-shrink-0 flex-col rounded-lg bg-gray-50 p-3"
           >
             <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-gray-700">{column.name}</h3>
+              <div className="flex items-center gap-2">
+                <div
+                  className="h-3 w-3 rounded-full"
+                  style={{ backgroundColor: column.color }}
+                />
+                <h3 className="text-sm font-semibold text-gray-700">{column.name}</h3>
+              </div>
               <span className="inline-flex items-center rounded-full bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-600">
                 {column.issues.length}
               </span>

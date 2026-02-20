@@ -1,12 +1,35 @@
 import { useState, useEffect, type FormEvent } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { useIssue, useUpdateIssue } from '@/api';
+import {
+  useIssue,
+  useUpdateIssue,
+  useProject,
+  useWorkflow,
+  useWorkflowTransitions,
+  useTransitionIssue,
+  useUsers,
+} from '@/api';
 import type { IssuePriority } from '@weaver/shared';
+import { CommentsSection } from './CommentsSection';
+import { ActivityLog } from './ActivityLog';
+import { TimeTrackingSection } from './TimeTrackingSection';
+import { ArrowRight } from 'lucide-react';
 
 export function IssueDetailPage() {
   const { issueKey } = useParams<{ issueKey: string }>();
   const { data: issue, isLoading } = useIssue(issueKey!);
   const updateIssue = useUpdateIssue(issueKey!);
+  const transitionIssue = useTransitionIssue(issueKey!);
+
+  const projectKey = issueKey?.split('-')[0] || '';
+  const { data: project } = useProject(projectKey);
+  const workflowId = project?.workflowId || '';
+  const { data: workflow } = useWorkflow(workflowId);
+  const { data: availableTransitions } = useWorkflowTransitions(
+    workflowId,
+    issue?.statusId || '',
+  );
+  const { data: users } = useUsers();
 
   const [isEditing, setIsEditing] = useState(false);
   const [summary, setSummary] = useState('');
@@ -34,6 +57,27 @@ export function IssueDetailPage() {
     setIsEditing(false);
   };
 
+  const handleTransition = async (transitionId: string) => {
+    await transitionIssue.mutateAsync(transitionId);
+  };
+
+  // Helpers
+  const getUserName = (userId: string | null | undefined) => {
+    if (!userId) return null;
+    const user = users?.find((u) => u.id === userId);
+    return user?.displayName || user?.email || userId.slice(0, 8);
+  };
+
+  const getStatusName = (statusId: string) => {
+    const status = workflow?.statuses?.find((s) => s.id === statusId);
+    return status?.name || statusId.slice(0, 8);
+  };
+
+  const getStatusColor = (statusId: string) => {
+    const status = workflow?.statuses?.find((s) => s.id === statusId);
+    return status?.color || '#6b7280';
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -50,10 +94,9 @@ export function IssueDetailPage() {
     );
   }
 
-  const projectKey = issue.key.split('-')[0];
-
   return (
     <div>
+      {/* Breadcrumb */}
       <div className="mb-6 flex items-center gap-2 text-sm text-gray-500">
         <Link to={`/projects/${projectKey}`} className="hover:text-indigo-600">
           {projectKey}
@@ -68,7 +111,8 @@ export function IssueDetailPage() {
 
       <div className="grid grid-cols-3 gap-6">
         {/* Main content */}
-        <div className="col-span-2">
+        <div className="col-span-2 space-y-6">
+          {/* Issue header + edit form */}
           <div className="rounded-lg border border-gray-200 bg-white p-6">
             <div className="mb-4 flex items-center justify-between">
               <h1 className="text-xl font-bold text-gray-900">
@@ -158,10 +202,52 @@ export function IssueDetailPage() {
               </div>
             )}
           </div>
+
+          {/* Comments */}
+          <CommentsSection issueKey={issueKey!} />
+
+          {/* Activity Log */}
+          <ActivityLog issueKey={issueKey!} />
+
+          {/* Time Tracking */}
+          <TimeTrackingSection issueKey={issueKey!} />
         </div>
 
-        {/* Sidebar details */}
+        {/* Sidebar */}
         <div className="space-y-4">
+          {/* Status transition bar */}
+          <div className="rounded-lg border border-gray-200 bg-white p-4">
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">Status</h3>
+            <div className="mb-3">
+              <span
+                className="inline-flex items-center rounded-full px-3 py-1 text-sm font-medium text-white"
+                style={{ backgroundColor: getStatusColor(issue.statusId) }}
+              >
+                {getStatusName(issue.statusId)}
+              </span>
+            </div>
+
+            {availableTransitions && availableTransitions.length > 0 && (
+              <div>
+                <h4 className="mb-2 text-xs text-gray-500">Transitions</h4>
+                <div className="flex flex-wrap gap-2">
+                  {availableTransitions.map((t) => (
+                    <button
+                      key={t.id}
+                      onClick={() => handleTransition(t.id)}
+                      disabled={transitionIssue.isPending}
+                      className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      <ArrowRight className="h-3 w-3" />
+                      {t.name || (t as any).toStatus?.name || 'Transition'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Details */}
           <div className="rounded-lg border border-gray-200 bg-white p-4">
             <h3 className="mb-3 text-sm font-semibold text-gray-900">Details</h3>
             <dl className="space-y-3">
@@ -172,17 +258,13 @@ export function IssueDetailPage() {
                 </dd>
               </div>
               <div>
-                <dt className="text-xs text-gray-500">Status ID</dt>
-                <dd className="mt-0.5 text-sm text-gray-900">{issue.statusId}</dd>
-              </div>
-              <div>
                 <dt className="text-xs text-gray-500">Reporter</dt>
-                <dd className="mt-0.5 text-sm text-gray-900">{issue.reporterId}</dd>
+                <dd className="mt-0.5 text-sm text-gray-900">{getUserName(issue.reporterId)}</dd>
               </div>
               {issue.assigneeId && (
                 <div>
                   <dt className="text-xs text-gray-500">Assignee</dt>
-                  <dd className="mt-0.5 text-sm text-gray-900">{issue.assigneeId}</dd>
+                  <dd className="mt-0.5 text-sm text-gray-900">{getUserName(issue.assigneeId)}</dd>
                 </div>
               )}
               <div>

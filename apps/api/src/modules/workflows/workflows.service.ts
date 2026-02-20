@@ -175,6 +175,21 @@ export class WorkflowsService {
     return repo.save(transition);
   }
 
+  async updateTransition(
+    workflowId: string,
+    transitionId: string,
+    dto: Partial<CreateWorkflowTransitionDto>,
+  ): Promise<WorkflowTransitionEntity> {
+    const em = await this.tenantConnections.getEntityManager();
+    const repo = em.getRepository(WorkflowTransitionEntity);
+    const transition = await repo.findOneBy({ id: transitionId, workflowId });
+    if (!transition) {
+      throw new NotFoundException(`Transition "${transitionId}" not found`);
+    }
+    Object.assign(transition, dto);
+    return repo.save(transition);
+  }
+
   async deleteTransition(workflowId: string, transitionId: string): Promise<void> {
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(WorkflowTransitionEntity);

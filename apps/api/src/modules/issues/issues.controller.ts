@@ -52,6 +52,15 @@ export class IssuesController {
     return this.issuesService.update(issueKey, dto);
   }
 
+  @Post('issues/:issueKey/transition')
+  async transition(
+    @Param('issueKey') issueKey: string,
+    @Body() body: { transitionId: string },
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.issuesService.transition(issueKey, body.transitionId, user.userId);
+  }
+
   @Delete('issues/:issueKey')
   @HttpCode(HttpStatus.NO_CONTENT)
   async delete(@Param('issueKey') issueKey: string) {

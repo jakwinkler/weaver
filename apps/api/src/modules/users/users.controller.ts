@@ -3,10 +3,11 @@ import {
   Get,
   Patch,
   Body,
+  Param,
   UseGuards,
 } from '@nestjs/common';
 import { updateUserSchema } from '@weaver/shared';
-import { JwtAuthGuard, CurrentUser, RequestUser } from '../../core/auth';
+import { JwtAuthGuard, AdminGuard, CurrentUser, RequestUser } from '../../core/auth';
 import { ZodValidationPipe } from '../../common';
 import { UsersService } from './users.service';
 
@@ -31,5 +32,15 @@ export class UsersController {
   @Get()
   async listMembers(@CurrentUser() user: RequestUser) {
     return this.usersService.findTenantMembers(user.tenantId);
+  }
+
+  @Patch(':userId/role')
+  @UseGuards(AdminGuard)
+  async updateRole(
+    @Param('userId') userId: string,
+    @Body() body: { role: string },
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.usersService.updateMemberRole(user.tenantId, userId, body.role);
   }
 }

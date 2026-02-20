@@ -115,6 +115,7 @@ export class AuthService {
       accessToken,
       refreshToken,
       user: this.sanitizeUser(user),
+      tenantId: membership.tenantId,
     };
   }
 

@@ -1,8 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { IssueEntity, WorkflowStatusEntity } from '@weaver/db';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { IssueEntity, WorkflowStatusEntity, ActivityLogEntity } from '@weaver/db';
 import { CreateIssueDto, UpdateIssueDto, PaginatedResponse } from '@weaver/shared';
 import { TenantConnectionProvider } from '../../core/tenant';
 import { ProjectsService } from '../projects';
+import { WorkflowsService } from '../workflows';
 import { PaginationParams, paginate } from '../../common';
 
 @Injectable()
@@ -10,6 +11,7 @@ export class IssuesService {
   constructor(
     private readonly tenantConnections: TenantConnectionProvider,
     private readonly projectsService: ProjectsService,
+    private readonly workflowsService: WorkflowsService,
   ) {}
 
   async create(projectKey: string, dto: CreateIssueDto, reporterId: string): Promise<IssueEntity> {
@@ -88,6 +90,50 @@ export class IssuesService {
     if (dto.sortOrder !== undefined) issue.sortOrder = dto.sortOrder;
 
     return repo.save(issue);
+  }
+
+  async transition(issueKey: string, transitionId: string, userId: string): Promise<IssueEntity> {
+    const issue = await this.findByKey(issueKey);
+    const em = await this.tenantConnections.getEntityManager();
+
+    // Look up the transition
+    const { WorkflowTransitionEntity } = await import('@weaver/db');
+    const transitionRepo = em.getRepository(WorkflowTransitionEntity);
+    const transition = await transitionRepo.findOne({
+      where: { id: transitionId },
+      relations: ['toStatus'],
+    });
+
+    if (!transition) {
+      throw new BadRequestException(`Transition "${transitionId}" not found`);
+    }
+
+    // Validate the transition starts from the current status
+    if (transition.fromStatusId !== issue.statusId) {
+      throw new BadRequestException(
+        `Transition is not valid from the current status`,
+      );
+    }
+
+    const oldStatusId = issue.statusId;
+    issue.statusId = transition.toStatusId;
+
+    const issueRepo = em.getRepository(IssueEntity);
+    const saved = await issueRepo.save(issue);
+
+    // Log activity
+    const activityRepo = em.getRepository(ActivityLogEntity);
+    const activity = activityRepo.create({
+      issueId: issue.id,
+      userId,
+      action: 'transitioned',
+      fieldName: 'status',
+      oldValue: oldStatusId,
+      newValue: transition.toStatusId,
+    });
+    await activityRepo.save(activity);
+
+    return saved;
   }
 
   async delete(issueKey: string): Promise<void> {

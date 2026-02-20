@@ -91,6 +91,15 @@ export class WorkflowsController {
     return this.workflowsService.addTransition(id, dto);
   }
 
+  @Patch(':id/transitions/:transitionId')
+  async updateTransition(
+    @Param('id') id: string,
+    @Param('transitionId') transitionId: string,
+    @Body(new ZodValidationPipe(createWorkflowTransitionSchema.partial())) dto: any,
+  ) {
+    return this.workflowsService.updateTransition(id, transitionId, dto);
+  }
+
   @Delete(':id/transitions/:transitionId')
   @HttpCode(HttpStatus.NO_CONTENT)
   async deleteTransition(

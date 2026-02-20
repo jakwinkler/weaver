@@ -3,8 +3,10 @@ import {
   useCustomFields,
   useCreateCustomField,
   useDeleteCustomField,
-} from '@/api/hooks-phase3';
+  useUpdateCustomField,
+} from '@/api';
 import type { CustomFieldType } from '@weaver/shared';
+import { Pencil, Trash2, Settings } from 'lucide-react';
 
 const FIELD_TYPES: CustomFieldType[] = [
   'text',
@@ -24,20 +26,54 @@ function slugify(name: string): string {
     .replace(/^_|_$/g, '');
 }
 
+const fieldTypeColors: Record<string, string> = {
+  text: 'bg-blue-100 text-blue-700',
+  number: 'bg-green-100 text-green-700',
+  select: 'bg-purple-100 text-purple-700',
+  multi_select: 'bg-purple-100 text-purple-700',
+  date: 'bg-orange-100 text-orange-700',
+  user: 'bg-indigo-100 text-indigo-700',
+  checkbox: 'bg-yellow-100 text-yellow-700',
+  url: 'bg-cyan-100 text-cyan-700',
+};
+
 export function CustomFieldsPage() {
   const { data: fields, isLoading } = useCustomFields();
   const createField = useCreateCustomField();
   const deleteField = useDeleteCustomField();
+  const updateField = useUpdateCustomField();
 
+  const [showForm, setShowForm] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
   const [fieldType, setFieldType] = useState<CustomFieldType>('text');
   const [required, setRequired] = useState(false);
   const [choices, setChoices] = useState('');
 
+  const resetForm = () => {
+    setName('');
+    setSlug('');
+    setFieldType('text');
+    setRequired(false);
+    setChoices('');
+    setEditId(null);
+    setShowForm(false);
+  };
+
   const handleNameChange = (value: string) => {
     setName(value);
-    setSlug(slugify(value));
+    if (!editId) setSlug(slugify(value));
+  };
+
+  const handleEdit = (field: any) => {
+    setEditId(field.id);
+    setName(field.name);
+    setSlug(field.slug);
+    setFieldType(field.fieldType);
+    setRequired(field.required);
+    setChoices(field.options?.choices?.join(', ') || '');
+    setShowForm(true);
   };
 
   const handleSubmit = async (e: FormEvent) => {
@@ -46,102 +82,94 @@ export function CustomFieldsPage() {
 
     const options: Record<string, unknown> = {};
     if ((fieldType === 'select' || fieldType === 'multi_select') && choices.trim()) {
-      options.choices = choices
-        .split(',')
-        .map((c) => c.trim())
-        .filter(Boolean);
+      options.choices = choices.split(',').map((c) => c.trim()).filter(Boolean);
     }
 
-    await createField.mutateAsync({
-      name: name.trim(),
-      slug: slug.trim(),
-      fieldType,
-      required,
-      options: Object.keys(options).length > 0 ? options : undefined,
-    });
+    if (editId) {
+      await updateField.mutateAsync({
+        id: editId,
+        name: name.trim(),
+        required,
+        options: Object.keys(options).length > 0 ? options : undefined,
+      });
+    } else {
+      await createField.mutateAsync({
+        name: name.trim(),
+        slug: slug.trim(),
+        fieldType,
+        required,
+        options: Object.keys(options).length > 0 ? options : undefined,
+      });
+    }
 
-    setName('');
-    setSlug('');
-    setFieldType('text');
-    setRequired(false);
-    setChoices('');
+    resetForm();
   };
 
   const handleDelete = async (id: string) => {
+    if (!confirm('Delete this custom field?')) return;
     await deleteField.mutateAsync(id);
   };
 
   if (isLoading) {
     return (
-      <div className="mx-auto max-w-4xl px-4 py-8">
-        <p className="text-sm text-gray-500">Loading custom fields...</p>
-      </div>
+      <div className="flex items-center justify-center py-12 text-gray-500">Loading custom fields...</div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-8">
-      <h1 className="mb-6 text-2xl font-bold text-gray-900">Custom Fields</h1>
+    <div className="mx-auto max-w-4xl">
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Custom Fields</h1>
+          <p className="mt-1 text-sm text-gray-500">
+            Define custom fields to capture additional data on issues.
+          </p>
+        </div>
+        <button
+          onClick={() => { resetForm(); setShowForm(true); }}
+          className="inline-flex items-center gap-2 rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+        >
+          New Field
+        </button>
+      </div>
 
-      {/* Create form */}
-      <div className="mb-8 rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-        <h2 className="mb-4 text-lg font-semibold text-gray-900">
-          Create Custom Field
-        </h2>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      {showForm && (
+        <form onSubmit={handleSubmit} className="mb-6 rounded-lg border border-gray-200 bg-white p-4">
+          <h3 className="mb-3 text-sm font-medium text-gray-900">
+            {editId ? 'Edit Field' : 'Create Field'}
+          </h3>
+          <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label
-                htmlFor="fieldName"
-                className="block text-sm font-medium text-gray-700"
-              >
-                Name
-              </label>
+              <label className="mb-1 block text-sm font-medium text-gray-700">Name</label>
               <input
-                id="fieldName"
-                type="text"
                 value={name}
                 onChange={(e) => handleNameChange(e.target.value)}
+                required
                 placeholder="e.g. Story Points"
-                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
               />
             </div>
             <div>
-              <label
-                htmlFor="fieldSlug"
-                className="block text-sm font-medium text-gray-700"
-              >
-                Slug
-              </label>
+              <label className="mb-1 block text-sm font-medium text-gray-700">Slug</label>
               <input
-                id="fieldSlug"
-                type="text"
                 value={slug}
                 onChange={(e) => setSlug(e.target.value)}
-                placeholder="Auto-generated from name"
-                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                required
+                disabled={!!editId}
+                placeholder="Auto-generated"
+                className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:bg-gray-50 disabled:text-gray-500"
               />
             </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <label
-                htmlFor="fieldType"
-                className="block text-sm font-medium text-gray-700"
-              >
-                Field Type
-              </label>
+              <label className="mb-1 block text-sm font-medium text-gray-700">Type</label>
               <select
-                id="fieldType"
                 value={fieldType}
                 onChange={(e) => setFieldType(e.target.value as CustomFieldType)}
-                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                disabled={!!editId}
+                className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:bg-gray-50"
               >
                 {FIELD_TYPES.map((ft) => (
-                  <option key={ft} value={ft}>
-                    {ft.replace('_', ' ')}
-                  </option>
+                  <option key={ft} value={ft}>{ft.replace('_', ' ')}</option>
                 ))}
               </select>
             </div>
@@ -151,108 +179,104 @@ export function CustomFieldsPage() {
                   type="checkbox"
                   checked={required}
                   onChange={(e) => setRequired(e.target.checked)}
-                  className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                  className="h-4 w-4 rounded border-gray-300 text-indigo-600"
                 />
-                <span className="text-sm font-medium text-gray-700">Required</span>
+                <span className="text-sm text-gray-700">Required</span>
               </label>
             </div>
           </div>
 
           {(fieldType === 'select' || fieldType === 'multi_select') && (
-            <div>
-              <label
-                htmlFor="fieldChoices"
-                className="block text-sm font-medium text-gray-700"
-              >
-                Choices (comma-separated)
-              </label>
+            <div className="mt-4">
+              <label className="mb-1 block text-sm font-medium text-gray-700">Choices (comma-separated)</label>
               <input
-                id="fieldChoices"
-                type="text"
                 value={choices}
                 onChange={(e) => setChoices(e.target.value)}
-                placeholder="e.g. Option A, Option B, Option C"
-                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                placeholder="Option A, Option B, Option C"
+                className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
               />
             </div>
           )}
 
-          {createField.isError && (
-            <p className="text-sm text-red-600">Failed to create custom field.</p>
+          {(createField.isError || updateField.isError) && (
+            <p className="mt-2 text-sm text-red-600">Failed to save field.</p>
           )}
 
-          <div className="flex justify-end">
+          <div className="mt-4 flex gap-2">
             <button
               type="submit"
-              disabled={createField.isPending || !name.trim()}
+              disabled={createField.isPending || updateField.isPending}
               className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
             >
-              {createField.isPending ? 'Creating...' : 'Create Field'}
+              {editId ? 'Update' : 'Create'}
+            </button>
+            <button type="button" onClick={resetForm} className="rounded-md bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200">
+              Cancel
             </button>
           </div>
         </form>
-      </div>
+      )}
 
-      {/* Fields list */}
-      <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
-        <div className="border-b border-gray-200 px-6 py-4">
-          <h2 className="text-lg font-semibold text-gray-900">Existing Fields</h2>
+      {!fields || fields.length === 0 ? (
+        <div className="rounded-lg border border-gray-200 bg-white py-12 text-center">
+          <Settings className="mx-auto h-10 w-10 text-gray-400" />
+          <p className="mt-2 text-sm font-medium text-gray-900">No custom fields</p>
+          <p className="mt-1 text-sm text-gray-500">Create your first custom field.</p>
         </div>
-
-        {(!fields || fields.length === 0) ? (
-          <div className="px-6 py-8 text-center">
-            <p className="text-sm text-gray-400">No custom fields defined yet.</p>
-          </div>
-        ) : (
-          <div className="divide-y divide-gray-100">
-            {fields.map((field) => (
-              <div
-                key={field.id}
-                className="flex items-center justify-between px-6 py-4"
-              >
-                <div className="flex items-center gap-4">
-                  <div>
-                    <h3 className="text-sm font-medium text-gray-900">
-                      {field.name}
-                    </h3>
-                    <p className="text-xs text-gray-500">
-                      {field.slug}
-                    </p>
-                  </div>
-                  <span className="inline-flex rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-700">
-                    {field.fieldType.replace('_', ' ')}
-                  </span>
-                  {field.required && (
-                    <span className="inline-flex rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-700">
-                      Required
+      ) : (
+        <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Name</th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Slug</th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Type</th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Required</th>
+                <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200">
+              {fields.map((field) => (
+                <tr key={field.id} className="hover:bg-gray-50">
+                  <td className="px-4 py-3 text-sm font-medium text-gray-900">{field.name}</td>
+                  <td className="px-4 py-3 text-sm text-gray-500">{field.slug}</td>
+                  <td className="px-4 py-3">
+                    <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${fieldTypeColors[field.fieldType] || 'bg-gray-100 text-gray-700'}`}>
+                      {field.fieldType.replace('_', ' ')}
                     </span>
-                  )}
-                </div>
-                <button
-                  onClick={() => handleDelete(field.id)}
-                  disabled={deleteField.isPending}
-                  className="rounded p-1 text-gray-400 hover:bg-red-100 hover:text-red-600"
-                  title="Delete field"
-                >
-                  <svg
-                    className="h-4 w-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                    />
-                  </svg>
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    {field.required && (
+                      <span className="inline-flex rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-700">
+                        Required
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      <button
+                        onClick={() => handleEdit(field)}
+                        className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                        title="Edit field"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(field.id)}
+                        disabled={deleteField.isPending}
+                        className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600"
+                        title="Delete field"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
