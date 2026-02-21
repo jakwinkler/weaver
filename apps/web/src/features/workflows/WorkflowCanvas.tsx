@@ -11,6 +11,7 @@ import {
   type Connection,
   type NodeMouseHandler,
   type Node,
+  type Edge,
   BackgroundVariant,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
@@ -58,6 +59,9 @@ export function WorkflowCanvas({
   const [edgeWaypoints, setEdgeWaypoints] = useState<Record<string, { x: number; y: number }>>(
     () => positions.getEdgeWaypoints(),
   );
+  const [edgeHandles, setEdgeHandles] = useState<Record<string, { sourceHandle: string; targetHandle: string }>>(
+    () => positions.getEdgeHandles(),
+  );
 
   const handleDeleteTransition = useCallback(
     (transitionId: string) => {
@@ -67,8 +71,17 @@ export function WorkflowCanvas({
     [workflowId],
   );
 
+  // Ref flag to skip edge sync effect during waypoint drag
+  const waypointDragRef = useRef(false);
+  // Ref to hold setEdges so handleWaypointChange can access it without a dep cycle
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const setEdgesRef = useRef<(updater: any) => void>();
+
   const handleWaypointChange = useCallback(
     (edgeId: string, position: { x: number; y: number } | null) => {
+      waypointDragRef.current = true;
+
+      // Update state (for future derivations when transitions change)
       if (position === null) {
         setEdgeWaypoints((prev) => {
           const next = { ...prev };
@@ -78,16 +91,35 @@ export function WorkflowCanvas({
       } else {
         setEdgeWaypoints((prev) => ({ ...prev, [edgeId]: position }));
       }
+
+      // Persist to localStorage
       positions.updateEdgeWaypoint(edgeId, position);
+
+      // Update ReactFlow edges directly (bypasses the sync effect)
+      setEdgesRef.current?.((currentEdges: Edge[]) =>
+        currentEdges.map((e: Edge) =>
+          e.id === edgeId
+            ? { ...e, data: { ...e.data, waypoint: position } }
+            : e,
+        ),
+      );
+
+      // Allow sync effect to run again after this render cycle
+      requestAnimationFrame(() => {
+        waypointDragRef.current = false;
+      });
     },
     [positions],
   );
 
   const derivedNodes = useWorkflowNodes(statuses, savedPositions);
-  const derivedEdges = useWorkflowEdges(transitions, handleDeleteTransition, edgeWaypoints, handleWaypointChange);
+  const derivedEdges = useWorkflowEdges(transitions, handleDeleteTransition, edgeWaypoints, handleWaypointChange, edgeHandles);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(derivedNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(derivedEdges);
+
+  // Keep the ref in sync
+  setEdgesRef.current = setEdges;
 
   // Sync derived nodes into RF state, preserving current dragged positions
   useEffect(() => {
@@ -103,6 +135,8 @@ export function WorkflowCanvas({
   }, [derivedNodes, setNodes]);
 
   useEffect(() => {
+    // Skip during waypoint drag — edges are updated directly in handleWaypointChange
+    if (waypointDragRef.current) return;
     setEdges(derivedEdges);
   }, [derivedEdges, setEdges]);
 
@@ -154,15 +188,31 @@ export function WorkflowCanvas({
   const handleConnectionConfirm = useCallback(
     (name: string) => {
       if (!pendingConnection?.source || !pendingConnection?.target) return;
-      addTransition.mutate({
-        workflowId,
-        name,
-        fromStatusId: pendingConnection.source,
-        toStatusId: pendingConnection.target,
-      });
+      const sourceHandle = pendingConnection.sourceHandle;
+      const targetHandle = pendingConnection.targetHandle;
+      addTransition.mutate(
+        {
+          workflowId,
+          name,
+          fromStatusId: pendingConnection.source,
+          toStatusId: pendingConnection.target,
+        },
+        {
+          onSuccess: (data: { id: string }) => {
+            // Save the handles the user chose for this connection
+            if (sourceHandle && targetHandle && data?.id) {
+              positions.saveEdgeHandle(data.id, sourceHandle, targetHandle);
+              setEdgeHandles((prev) => ({
+                ...prev,
+                [data.id]: { sourceHandle, targetHandle },
+              }));
+            }
+          },
+        },
+      );
       setPendingConnection(null);
     },
-    [pendingConnection, workflowId, addTransition],
+    [pendingConnection, workflowId, addTransition, positions],
   );
 
   const handleConnectionCancel = useCallback(() => {
@@ -288,22 +338,6 @@ export function WorkflowCanvas({
           style={{ border: '1px solid #e2e8f0', borderRadius: 8 }}
         />
 
-        {/* Arrow marker definition */}
-        <svg style={{ position: 'absolute', width: 0, height: 0 }}>
-          <defs>
-            <marker
-              id="arrow"
-              viewBox="0 0 10 10"
-              refX="10"
-              refY="5"
-              markerWidth="8"
-              markerHeight="8"
-              orient="auto-start-reverse"
-            >
-              <path d="M 0 0 L 10 5 L 0 10 z" fill="#94a3b8" />
-            </marker>
-          </defs>
-        </svg>
       </ReactFlow>
 
       {/* Connection dialog */}

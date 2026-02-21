@@ -41,7 +41,7 @@ export const StatusNode: React.NamedExoticComponent<
       }}
       className="rounded-lg border-2 px-4 py-3"
     >
-      {/* 4 handles — all type="source" for floating edges with ConnectionMode.Loose */}
+      {/* All handles type="source" for ConnectionMode.Loose */}
       <Handle type="source" position={Position.Top} id="top" style={handleStyle} />
       <Handle type="source" position={Position.Right} id="right" style={handleStyle} />
       <Handle type="source" position={Position.Bottom} id="bottom" style={handleStyle} />

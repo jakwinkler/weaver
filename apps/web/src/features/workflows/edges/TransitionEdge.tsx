@@ -1,6 +1,5 @@
 import { memo, useCallback, useRef } from 'react';
 import {
-  BaseEdge,
   EdgeLabelRenderer,
   getSmoothStepPath,
   useInternalNode,
@@ -10,28 +9,20 @@ import {
 import type { TransitionEdgeData } from '../hooks/useWorkflowEdges';
 import { getEdgeParams } from '../utils/floatingEdge';
 
-/**
- * Build a smooth path through a waypoint using two cubic bezier segments.
- * The path passes exactly through the waypoint.
- */
-function buildPathThroughWaypoint(
-  sx: number, sy: number,
-  tx: number, ty: number,
-  wx: number, wy: number,
-): string {
-  return (
-    `M ${sx} ${sy} ` +
-    `C ${sx + (wx - sx) * 0.5} ${sy}, ${wx} ${sy + (wy - sy) * 0.5}, ${wx} ${wy} ` +
-    `C ${wx} ${wy + (ty - wy) * 0.5}, ${tx + (wx - tx) * 0.5} ${ty}, ${tx} ${ty}`
-  );
-}
-
 export const TransitionEdge: React.NamedExoticComponent<
   EdgeProps & { data: TransitionEdgeData }
 > = memo(function TransitionEdge({
   id,
   source,
   target,
+  sourceX,
+  sourceY,
+  targetX,
+  targetY,
+  sourcePosition,
+  targetPosition,
+  sourceHandleId,
+  targetHandleId,
   data,
   selected,
 }: EdgeProps & { data: TransitionEdgeData }) {
@@ -43,7 +34,27 @@ export const TransitionEdge: React.NamedExoticComponent<
     return null;
   }
 
-  const { sx, sy, tx, ty, sourcePos, targetPos } = getEdgeParams(sourceNode, targetNode);
+  // If the edge has specific handles assigned, use ReactFlow's provided positions.
+  // Otherwise, calculate floating positions (closest handle).
+  let sx: number, sy: number, tx: number, ty: number;
+  let sPos = sourcePosition;
+  let tPos = targetPosition;
+
+  if (sourceHandleId && targetHandleId) {
+    sx = sourceX;
+    sy = sourceY;
+    tx = targetX;
+    ty = targetY;
+  } else {
+    const params = getEdgeParams(sourceNode, targetNode);
+    sx = params.sx;
+    sy = params.sy;
+    tx = params.tx;
+    ty = params.ty;
+    sPos = params.sourcePos;
+    tPos = params.targetPos;
+  }
+
   const waypoint = data?.waypoint;
 
   let edgePath: string;
@@ -51,28 +62,50 @@ export const TransitionEdge: React.NamedExoticComponent<
   let handleY: number;
 
   if (waypoint) {
-    edgePath = buildPathThroughWaypoint(sx, sy, tx, ty, waypoint.x, waypoint.y);
+    const [path1] = getSmoothStepPath({
+      sourceX: sx,
+      sourceY: sy,
+      targetX: waypoint.x,
+      targetY: waypoint.y,
+      sourcePosition: sPos,
+      targetPosition: tPos,
+      borderRadius: 8,
+      offset: 16,
+    });
+    const [path2] = getSmoothStepPath({
+      sourceX: waypoint.x,
+      sourceY: waypoint.y,
+      targetX: tx,
+      targetY: ty,
+      sourcePosition: sPos,
+      targetPosition: tPos,
+      borderRadius: 8,
+      offset: 16,
+    });
+    edgePath = path1 + ' ' + path2.replace(/^M/, 'L');
     handleX = waypoint.x;
     handleY = waypoint.y;
   } else {
-    const [path, labelX, labelY] = getSmoothStepPath({
+    const [path, lx, ly] = getSmoothStepPath({
       sourceX: sx,
       sourceY: sy,
       targetX: tx,
       targetY: ty,
-      sourcePosition: sourcePos,
-      targetPosition: targetPos,
+      sourcePosition: sPos,
+      targetPosition: tPos,
       borderRadius: 8,
       offset: 20,
     });
     edgePath = path;
-    handleX = labelX;
-    handleY = labelY;
+    handleX = lx;
+    handleY = ly;
   }
 
-  // Label position: always at path midpoint for consistency
-  const labelX = waypoint ? waypoint.x : handleX;
-  const labelY = waypoint ? waypoint.y - 18 : handleY - 18;
+  const labelX = handleX;
+  const labelY = handleY - 18;
+
+  const strokeColor = selected ? '#6366f1' : '#94a3b8';
+  const markerId = `arrow-${id}`;
 
   // Drag state refs
   const isDragging = useRef(false);
@@ -113,7 +146,6 @@ export const TransitionEdge: React.NamedExoticComponent<
   const onHandleDoubleClick = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
-      // Double-click resets the waypoint
       data?.onWaypointChange?.(id, null);
     },
     [id, data],
@@ -121,15 +153,31 @@ export const TransitionEdge: React.NamedExoticComponent<
 
   return (
     <>
-      <BaseEdge
+      {/* Per-edge arrow marker — orient="auto" follows the path direction */}
+      <defs>
+        <marker
+          id={markerId}
+          viewBox="0 0 10 10"
+          refX="10"
+          refY="5"
+          markerWidth="8"
+          markerHeight="8"
+          orient="auto"
+        >
+          <path d="M 0 0 L 10 5 L 0 10 z" fill={strokeColor} />
+        </marker>
+      </defs>
+
+      <path
         id={id}
-        path={edgePath}
-        style={{
-          stroke: selected ? '#6366f1' : '#94a3b8',
-          strokeWidth: selected ? 2.5 : 1.5,
-        }}
-        markerEnd="url(#arrow)"
+        d={edgePath}
+        fill="none"
+        stroke={strokeColor}
+        strokeWidth={selected ? 2.5 : 1.5}
+        markerEnd={`url(#${markerId})`}
+        className="react-flow__edge-path"
       />
+
       <EdgeLabelRenderer>
         {/* Transition name label */}
         <div
