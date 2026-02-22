@@ -59,6 +59,17 @@ export interface PluginCoreApi {
     get(id: string): Promise<unknown>;
     list(): Promise<unknown[]>;
   };
+  customFields: {
+    register(definition: {
+      name: string;
+      slug: string;
+      fieldType: string;
+      entityType: string;
+      options?: Record<string, unknown>;
+      required?: boolean;
+    }): Promise<unknown>;
+    unregisterAll(): Promise<void>;
+  };
 }
 
 export interface PluginLogger {

@@ -1,4 +1,6 @@
 export { ProjectEntity } from './project.entity';
+export { ProjectMemberEntity } from './project-member.entity';
+export { ProjectIssueTypeEntity } from './project-issue-type.entity';
 export { IssueEntity } from './issue.entity';
 export { IssueTypeEntity } from './issue-type.entity';
 export { IssueLinkEntity } from './issue-link.entity';

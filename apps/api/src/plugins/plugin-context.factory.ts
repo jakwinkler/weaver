@@ -103,6 +103,45 @@ export class PluginContextFactory {
           },
           list: async () => [],
         },
+        customFields: {
+          register: async (definition: {
+            name: string;
+            slug: string;
+            fieldType: string;
+            entityType: string;
+            options?: Record<string, unknown>;
+            required?: boolean;
+          }) => {
+            const existing = await em.query(
+              `SELECT id FROM custom_field_definitions WHERE slug = $1 AND entity_type = $2`,
+              [definition.slug, definition.entityType],
+            );
+            if (existing.length > 0) {
+              return existing[0];
+            }
+            const result = await em.query(
+              `INSERT INTO custom_field_definitions (name, slug, field_type, entity_type, plugin_id, options, required)
+               VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)
+               RETURNING *`,
+              [
+                definition.name,
+                definition.slug,
+                definition.fieldType,
+                definition.entityType,
+                pluginId,
+                definition.options ? JSON.stringify(definition.options) : null,
+                definition.required || false,
+              ],
+            );
+            return result[0];
+          },
+          unregisterAll: async () => {
+            await em.query(
+              `DELETE FROM custom_field_definitions WHERE plugin_id = $1`,
+              [pluginId],
+            );
+          },
+        },
       },
       logger: {
         info: (msg: string, meta?: Record<string, unknown>) =>

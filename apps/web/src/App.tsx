@@ -7,6 +7,7 @@ import { LoginPage } from '@/features/auth/LoginPage';
 import { RegisterPage } from '@/features/auth/RegisterPage';
 import { ProjectsPage } from '@/features/projects/ProjectsPage';
 import { ProjectDetailPage } from '@/features/projects/ProjectDetailPage';
+import { ProjectSettingsPage } from '@/features/projects/ProjectSettingsPage';
 import { IssueListPage } from '@/features/issues/IssueListPage';
 import { IssueDetailPage } from '@/features/issues/IssueDetailPage';
 import { KanbanBoard } from '@/features/boards/KanbanBoard';
@@ -48,6 +49,7 @@ export function App() {
             <Route element={<AppLayout />}>
               <Route path="/projects" element={<ProjectsPage />} />
               <Route path="/projects/:projectKey" element={<ProjectDetailPage />} />
+              <Route path="/projects/:projectKey/settings" element={<ProjectSettingsPage />} />
               <Route path="/projects/:projectKey/issues" element={<IssueListPage />} />
               <Route path="/issues/:issueKey" element={<IssueDetailPage />} />
               <Route path="/projects/:projectKey/board" element={<KanbanBoard />} />

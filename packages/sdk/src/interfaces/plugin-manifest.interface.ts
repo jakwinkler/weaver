@@ -9,6 +9,7 @@ export interface PluginManifest {
     client?: string;
   };
   permissions: string[];
+  declaredPermissions?: PluginDeclaredPermission[];
   settings?: {
     schema: Record<string, PluginSettingDefinition>;
   };
@@ -21,6 +22,12 @@ export interface PluginManifest {
   };
   routes?: PluginRouteDefinition[];
   migrations?: string[];
+}
+
+export interface PluginDeclaredPermission {
+  key: string;
+  label: string;
+  description?: string;
 }
 
 export interface PluginSettingDefinition {

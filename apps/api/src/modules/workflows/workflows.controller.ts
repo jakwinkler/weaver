@@ -15,31 +15,39 @@ import {
   createWorkflowStatusSchema,
   createWorkflowTransitionSchema,
 } from '@weaver/shared';
-import { JwtAuthGuard } from '../../core/auth';
+import {
+  JwtAuthGuard,
+  PermissionGuard,
+  RequirePermission,
+} from '../../core/auth';
 import { ZodValidationPipe } from '../../common';
 import { WorkflowsService } from './workflows.service';
 
 @Controller('workflows')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionGuard)
 export class WorkflowsController {
   constructor(private readonly workflowsService: WorkflowsService) {}
 
   @Post()
+  @RequirePermission('workflows', 'create')
   async create(@Body(new ZodValidationPipe(createWorkflowSchema)) dto: any) {
     return this.workflowsService.create(dto);
   }
 
   @Get()
+  @RequirePermission('workflows', 'read')
   async findAll() {
     return this.workflowsService.findAll();
   }
 
   @Get(':id')
+  @RequirePermission('workflows', 'read')
   async findById(@Param('id') id: string) {
     return this.workflowsService.findById(id);
   }
 
   @Patch(':id')
+  @RequirePermission('workflows', 'update')
   async update(
     @Param('id') id: string,
     @Body(new ZodValidationPipe(createWorkflowSchema.partial())) dto: any,
@@ -48,6 +56,7 @@ export class WorkflowsController {
   }
 
   @Delete(':id')
+  @RequirePermission('workflows', 'delete')
   @HttpCode(HttpStatus.NO_CONTENT)
   async delete(@Param('id') id: string) {
     await this.workflowsService.delete(id);
@@ -56,6 +65,7 @@ export class WorkflowsController {
   // ── Statuses ──
 
   @Post(':id/statuses')
+  @RequirePermission('workflows', 'update')
   async addStatus(
     @Param('id') id: string,
     @Body(new ZodValidationPipe(createWorkflowStatusSchema)) dto: any,
@@ -64,6 +74,7 @@ export class WorkflowsController {
   }
 
   @Patch(':id/statuses/:statusId')
+  @RequirePermission('workflows', 'update')
   async updateStatus(
     @Param('id') id: string,
     @Param('statusId') statusId: string,
@@ -73,6 +84,7 @@ export class WorkflowsController {
   }
 
   @Delete(':id/statuses/:statusId')
+  @RequirePermission('workflows', 'delete')
   @HttpCode(HttpStatus.NO_CONTENT)
   async deleteStatus(
     @Param('id') id: string,
@@ -84,6 +96,7 @@ export class WorkflowsController {
   // ── Transitions ──
 
   @Post(':id/transitions')
+  @RequirePermission('workflows', 'update')
   async addTransition(
     @Param('id') id: string,
     @Body(new ZodValidationPipe(createWorkflowTransitionSchema)) dto: any,
@@ -92,6 +105,7 @@ export class WorkflowsController {
   }
 
   @Patch(':id/transitions/:transitionId')
+  @RequirePermission('workflows', 'update')
   async updateTransition(
     @Param('id') id: string,
     @Param('transitionId') transitionId: string,
@@ -101,6 +115,7 @@ export class WorkflowsController {
   }
 
   @Delete(':id/transitions/:transitionId')
+  @RequirePermission('workflows', 'delete')
   @HttpCode(HttpStatus.NO_CONTENT)
   async deleteTransition(
     @Param('id') id: string,
@@ -112,6 +127,7 @@ export class WorkflowsController {
   // ── Engine ──
 
   @Get(':id/transitions/available/:statusId')
+  @RequirePermission('workflows', 'read')
   async getAvailableTransitions(
     @Param('id') id: string,
     @Param('statusId') statusId: string,

@@ -10,11 +10,15 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { JwtAuthGuard } from '../../core/auth';
+import {
+  JwtAuthGuard,
+  PermissionGuard,
+  RequirePermission,
+} from '../../core/auth';
 import { RolesService } from './roles.service';
 
 @Controller('roles')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionGuard)
 export class RolesController {
   constructor(private readonly rolesService: RolesService) {}
 
@@ -29,6 +33,7 @@ export class RolesController {
   }
 
   @Post()
+  @RequirePermission('admin', 'manage_roles')
   async create(
     @Body() dto: { name: string; permissions: Record<string, unknown> },
   ) {
@@ -36,6 +41,7 @@ export class RolesController {
   }
 
   @Patch(':id')
+  @RequirePermission('admin', 'manage_roles')
   async update(
     @Param('id') id: string,
     @Body() dto: Partial<{ name: string; permissions: Record<string, unknown> }>,
@@ -44,12 +50,14 @@ export class RolesController {
   }
 
   @Delete(':id')
+  @RequirePermission('admin', 'manage_roles')
   @HttpCode(HttpStatus.NO_CONTENT)
   async delete(@Param('id') id: string) {
     await this.rolesService.delete(id);
   }
 
   @Post('seed')
+  @RequirePermission('admin', 'manage_roles')
   async seedDefaults() {
     await this.rolesService.seedDefaults();
     return { message: 'Default roles seeded' };

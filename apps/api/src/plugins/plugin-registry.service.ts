@@ -9,6 +9,8 @@ import { Repository } from 'typeorm';
 import { InstalledPluginEntity } from '@weaver/db';
 import { PluginLoaderService } from './plugin-loader.service';
 import { requireTenantContext } from '../core/tenant';
+import { TenantConnectionProvider } from '../core/tenant';
+import { CustomFieldDefinitionEntity } from '@weaver/db';
 
 @Injectable()
 export class PluginRegistryService {
@@ -18,6 +20,7 @@ export class PluginRegistryService {
     @InjectRepository(InstalledPluginEntity)
     private readonly repo: Repository<InstalledPluginEntity>,
     private readonly loader: PluginLoaderService,
+    private readonly tenantConnections: TenantConnectionProvider,
   ) {}
 
   async install(pluginId: string): Promise<InstalledPluginEntity> {
@@ -46,6 +49,17 @@ export class PluginRegistryService {
 
   async uninstall(pluginId: string): Promise<void> {
     const tenant = requireTenantContext();
+
+    // Clean up plugin-owned custom fields
+    try {
+      const em = await this.tenantConnections.getEntityManager();
+      const cfRepo = em.getRepository(CustomFieldDefinitionEntity);
+      await cfRepo.delete({ pluginId });
+      this.logger.log(`Cleaned up custom fields for plugin: ${pluginId}`);
+    } catch (err) {
+      this.logger.warn(`Failed to clean up custom fields for plugin ${pluginId}: ${err}`);
+    }
+
     const result = await this.repo.delete({
       tenantId: tenant.tenantId,
       pluginId,

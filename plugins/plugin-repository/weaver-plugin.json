@@ -1,0 +1,43 @@
+{
+  "id": "@weaver/plugin-repository",
+  "name": "Repository Integration",
+  "version": "1.0.0",
+  "description": "Link repositories and branches to projects and issues",
+  "author": "Weaver",
+  "entrypoints": {
+    "server": "src/server/index.ts"
+  },
+  "permissions": ["repository.read", "repository.manage"],
+  "declaredPermissions": [
+    {
+      "key": "repository.read",
+      "label": "View repositories",
+      "description": "View repository links on projects and issues"
+    },
+    {
+      "key": "repository.manage",
+      "label": "Manage repositories",
+      "description": "Add, update, and remove repository links"
+    }
+  ],
+  "settings": {
+    "schema": {
+      "defaultProvider": {
+        "type": "select",
+        "description": "Default Git provider",
+        "options": ["github", "gitlab", "bitbucket"],
+        "default": "github"
+      }
+    }
+  },
+  "events": {
+    "subscribes": ["issue.created", "project.created"]
+  },
+  "routes": [
+    { "method": "GET", "path": "/projects/:projectKey/repositories", "handler": "listRepositories" },
+    { "method": "POST", "path": "/projects/:projectKey/repositories", "handler": "addRepository" },
+    { "method": "DELETE", "path": "/projects/:projectKey/repositories/:repoId", "handler": "removeRepository" },
+    { "method": "GET", "path": "/issues/:issueKey/repository-links", "handler": "listIssueLinks" }
+  ],
+  "migrations": ["migrations/001_create_repository_tables.sql"]
+}

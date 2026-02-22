@@ -3,6 +3,8 @@ import { DataSource, EntityManager } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import {
   ProjectEntity,
+  ProjectMemberEntity,
+  ProjectIssueTypeEntity,
   IssueEntity,
   IssueTypeEntity,
   IssueLinkEntity,
@@ -25,6 +27,8 @@ import { requireTenantContext } from './tenant.context';
 
 export const TENANT_ENTITIES = [
   ProjectEntity,
+  ProjectMemberEntity,
+  ProjectIssueTypeEntity,
   IssueEntity,
   IssueTypeEntity,
   IssueLinkEntity,

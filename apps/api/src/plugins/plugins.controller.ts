@@ -27,6 +27,23 @@ export class PluginsController {
     return this.loader.getAllManifests();
   }
 
+  @Get('permissions')
+  async getPluginPermissions() {
+    const manifests = this.loader.getAllManifests();
+    const result: Record<string, { pluginName: string; permissions: Array<{ key: string; label: string; description?: string }> }> = {};
+
+    for (const manifest of manifests) {
+      if (manifest.declaredPermissions && manifest.declaredPermissions.length > 0) {
+        result[manifest.id] = {
+          pluginName: manifest.name,
+          permissions: manifest.declaredPermissions,
+        };
+      }
+    }
+
+    return result;
+  }
+
   @Get()
   async listInstalled() {
     return this.registry.getInstalled();

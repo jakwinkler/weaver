@@ -6,7 +6,7 @@ import {
   useUpdateCustomField,
 } from '@/api';
 import type { CustomFieldType } from '@weaver/shared';
-import { Pencil, Trash2, Settings } from 'lucide-react';
+import { Pencil, Trash2, Settings, Puzzle } from 'lucide-react';
 
 const FIELD_TYPES: CustomFieldType[] = [
   'text',
@@ -18,6 +18,16 @@ const FIELD_TYPES: CustomFieldType[] = [
   'checkbox',
   'url',
 ];
+
+const ENTITY_TYPES = ['issue', 'project', 'user', 'team'] as const;
+type EntityType = typeof ENTITY_TYPES[number];
+
+const ENTITY_TYPE_LABELS: Record<EntityType, string> = {
+  issue: 'Issue',
+  project: 'Project',
+  user: 'User',
+  team: 'Team',
+};
 
 function slugify(name: string): string {
   return name
@@ -38,6 +48,7 @@ const fieldTypeColors: Record<string, string> = {
 };
 
 export function CustomFieldsPage() {
+  const [activeTab, setActiveTab] = useState<EntityType>('issue');
   const { data: fields, isLoading } = useCustomFields();
   const createField = useCreateCustomField();
   const deleteField = useDeleteCustomField();
@@ -48,13 +59,17 @@ export function CustomFieldsPage() {
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
   const [fieldType, setFieldType] = useState<CustomFieldType>('text');
+  const [entityType, setEntityType] = useState<EntityType>('issue');
   const [required, setRequired] = useState(false);
   const [choices, setChoices] = useState('');
+
+  const filteredFields = fields?.filter((f: any) => (f.entityType || 'issue') === activeTab) || [];
 
   const resetForm = () => {
     setName('');
     setSlug('');
     setFieldType('text');
+    setEntityType(activeTab);
     setRequired(false);
     setChoices('');
     setEditId(null);
@@ -71,6 +86,7 @@ export function CustomFieldsPage() {
     setName(field.name);
     setSlug(field.slug);
     setFieldType(field.fieldType);
+    setEntityType(field.entityType || 'issue');
     setRequired(field.required);
     setChoices(field.options?.choices?.join(', ') || '');
     setShowForm(true);
@@ -97,9 +113,10 @@ export function CustomFieldsPage() {
         name: name.trim(),
         slug: slug.trim(),
         fieldType,
+        entityType,
         required,
         options: Object.keys(options).length > 0 ? options : undefined,
-      });
+      } as any);
     }
 
     resetForm();
@@ -108,6 +125,11 @@ export function CustomFieldsPage() {
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this custom field?')) return;
     await deleteField.mutateAsync(id);
+  };
+
+  const handleTabChange = (tab: EntityType) => {
+    setActiveTab(tab);
+    resetForm();
   };
 
   if (isLoading) {
@@ -122,15 +144,32 @@ export function CustomFieldsPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Custom Fields</h1>
           <p className="mt-1 text-sm text-gray-500">
-            Define custom fields to capture additional data on issues.
+            Define custom fields to capture additional data.
           </p>
         </div>
         <button
-          onClick={() => { resetForm(); setShowForm(true); }}
+          onClick={() => { resetForm(); setEntityType(activeTab); setShowForm(true); }}
           className="inline-flex items-center gap-2 rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
         >
           New Field
         </button>
+      </div>
+
+      {/* Entity Type Tabs */}
+      <div className="mb-4 flex gap-1 rounded-lg bg-gray-100 p-1">
+        {ENTITY_TYPES.map((et) => (
+          <button
+            key={et}
+            onClick={() => handleTabChange(et)}
+            className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+              activeTab === et
+                ? 'bg-white text-gray-900 shadow-sm'
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            {ENTITY_TYPE_LABELS[et]}
+          </button>
+        ))}
       </div>
 
       {showForm && (
@@ -170,6 +209,19 @@ export function CustomFieldsPage() {
               >
                 {FIELD_TYPES.map((ft) => (
                   <option key={ft} value={ft}>{ft.replace('_', ' ')}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">Entity Type</label>
+              <select
+                value={entityType}
+                onChange={(e) => setEntityType(e.target.value as EntityType)}
+                disabled={!!editId}
+                className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:bg-gray-50"
+              >
+                {ENTITY_TYPES.map((et) => (
+                  <option key={et} value={et}>{ENTITY_TYPE_LABELS[et]}</option>
                 ))}
               </select>
             </div>
@@ -217,11 +269,13 @@ export function CustomFieldsPage() {
         </form>
       )}
 
-      {!fields || fields.length === 0 ? (
+      {filteredFields.length === 0 ? (
         <div className="rounded-lg border border-gray-200 bg-white py-12 text-center">
           <Settings className="mx-auto h-10 w-10 text-gray-400" />
           <p className="mt-2 text-sm font-medium text-gray-900">No custom fields</p>
-          <p className="mt-1 text-sm text-gray-500">Create your first custom field.</p>
+          <p className="mt-1 text-sm text-gray-500">
+            No {ENTITY_TYPE_LABELS[activeTab].toLowerCase()} custom fields yet.
+          </p>
         </div>
       ) : (
         <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
@@ -232,11 +286,12 @@ export function CustomFieldsPage() {
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Slug</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Type</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Required</th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Source</th>
                 <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {fields.map((field) => (
+              {filteredFields.map((field: any) => (
                 <tr key={field.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3 text-sm font-medium text-gray-900">{field.name}</td>
                   <td className="px-4 py-3 text-sm text-gray-500">{field.slug}</td>
@@ -252,23 +307,35 @@ export function CustomFieldsPage() {
                       </span>
                     )}
                   </td>
+                  <td className="px-4 py-3">
+                    {field.pluginId && (
+                      <span className="inline-flex items-center gap-1 rounded bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700">
+                        <Puzzle className="h-3 w-3" />
+                        {field.pluginId}
+                      </span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">
-                      <button
-                        onClick={() => handleEdit(field)}
-                        className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-                        title="Edit field"
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(field.id)}
-                        disabled={deleteField.isPending}
-                        className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600"
-                        title="Delete field"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
+                      {!field.pluginId && (
+                        <>
+                          <button
+                            onClick={() => handleEdit(field)}
+                            className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                            title="Edit field"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(field.id)}
+                            disabled={deleteField.isPending}
+                            className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600"
+                            title="Delete field"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>

@@ -73,6 +73,7 @@ export interface Project {
   workflowId?: string;
   leadUserId?: string;
   issueCounter: number;
+  customFields: Record<string, unknown>;
   createdAt: Date;
   updatedAt: Date;
 }

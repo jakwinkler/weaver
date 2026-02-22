@@ -1,6 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { CustomFieldDefinitionEntity } from '@weaver/db';
-import { CUSTOM_FIELD_TYPES } from '@weaver/shared';
 import { TenantConnectionProvider } from '../../core/tenant';
 import { z } from 'zod';
 
@@ -8,11 +7,16 @@ import { z } from 'zod';
 export class CustomFieldsService {
   constructor(private readonly tenantConnections: TenantConnectionProvider) {}
 
-  async findAll(): Promise<CustomFieldDefinitionEntity[]> {
+  async findAll(entityType?: string): Promise<CustomFieldDefinitionEntity[]> {
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(CustomFieldDefinitionEntity);
 
-    return repo.find({ order: { name: 'ASC' } });
+    const where: Record<string, unknown> = {};
+    if (entityType) {
+      where.entityType = entityType;
+    }
+
+    return repo.find({ where, order: { name: 'ASC' } });
   }
 
   async findById(id: string): Promise<CustomFieldDefinitionEntity> {
@@ -29,6 +33,8 @@ export class CustomFieldsService {
     name: string;
     slug: string;
     fieldType: string;
+    entityType?: string;
+    pluginId?: string;
     options: Record<string, unknown> | null;
     validation: Record<string, unknown> | null;
     required: boolean;
@@ -40,6 +46,8 @@ export class CustomFieldsService {
       name: dto.name,
       slug: dto.slug,
       fieldType: dto.fieldType,
+      entityType: dto.entityType || 'issue',
+      pluginId: dto.pluginId || null,
       options: dto.options,
       validation: dto.validation,
       required: dto.required,
@@ -74,8 +82,14 @@ export class CustomFieldsService {
     await repo.remove(definition);
   }
 
-  async validateCustomFields(data: Record<string, unknown>): Promise<void> {
-    const definitions = await this.findAll();
+  async deleteByPluginId(pluginId: string): Promise<void> {
+    const em = await this.tenantConnections.getEntityManager();
+    const repo = em.getRepository(CustomFieldDefinitionEntity);
+    await repo.delete({ pluginId });
+  }
+
+  async validateCustomFields(data: Record<string, unknown>, entityType = 'issue'): Promise<void> {
+    const definitions = await this.findAll(entityType);
     const defMap = new Map(definitions.map((d) => [d.slug, d]));
 
     for (const [slug, value] of Object.entries(data)) {

@@ -93,6 +93,20 @@ export function useCreateProject() {
   });
 }
 
+export function useUpdateProject() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ key, ...data }: { key: string } & Record<string, unknown>) => {
+      const res = await apiClient.patch<Project>(`/projects/${key}`, data);
+      return res.data;
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      queryClient.invalidateQueries({ queryKey: ['project', variables.key] });
+    },
+  });
+}
+
 // ── Issues ──
 
 interface UseProjectIssuesParams {

@@ -3,7 +3,7 @@ import {
   NotFoundException,
   ConflictException,
 } from '@nestjs/common';
-import { TenantConnectionProvider } from '../../core/tenant';
+import { TenantConnectionProvider, requireTenantContext } from '../../core/tenant';
 
 export interface Team {
   id: string;
@@ -21,11 +21,16 @@ export interface TeamMember {
 export class TeamsService {
   constructor(private readonly tenantConnections: TenantConnectionProvider) {}
 
+  private schema(): string {
+    return requireTenantContext().schemaName;
+  }
+
   async create(name: string): Promise<Team> {
     const em = await this.tenantConnections.getEntityManager();
+    const s = this.schema();
 
     const rows = await em.query(
-      `INSERT INTO teams (name) VALUES ($1) RETURNING id, name, created_at`,
+      `INSERT INTO "${s}"."teams" (name) VALUES ($1) RETURNING id, name, created_at`,
       [name],
     );
 
@@ -34,15 +39,17 @@ export class TeamsService {
 
   async findAll(): Promise<Team[]> {
     const em = await this.tenantConnections.getEntityManager();
+    const s = this.schema();
 
-    return em.query(`SELECT id, name, created_at FROM teams ORDER BY name ASC`);
+    return em.query(`SELECT id, name, created_at FROM "${s}"."teams" ORDER BY name ASC`);
   }
 
   async findById(id: string): Promise<Team> {
     const em = await this.tenantConnections.getEntityManager();
+    const s = this.schema();
 
     const rows = await em.query(
-      `SELECT id, name, created_at FROM teams WHERE id = $1`,
+      `SELECT id, name, created_at FROM "${s}"."teams" WHERE id = $1`,
       [id],
     );
 
@@ -57,10 +64,11 @@ export class TeamsService {
     await this.findById(teamId);
 
     const em = await this.tenantConnections.getEntityManager();
+    const s = this.schema();
 
     try {
       const rows = await em.query(
-        `INSERT INTO team_members (team_id, user_id) VALUES ($1, $2) RETURNING team_id, user_id, joined_at`,
+        `INSERT INTO "${s}"."team_members" (team_id, user_id) VALUES ($1, $2) RETURNING team_id, user_id, joined_at`,
         [teamId, userId],
       );
       return rows[0];
@@ -74,9 +82,10 @@ export class TeamsService {
 
   async removeMember(teamId: string, userId: string): Promise<void> {
     const em = await this.tenantConnections.getEntityManager();
+    const s = this.schema();
 
     const result = await em.query(
-      `DELETE FROM team_members WHERE team_id = $1 AND user_id = $2`,
+      `DELETE FROM "${s}"."team_members" WHERE team_id = $1 AND user_id = $2`,
       [teamId, userId],
     );
 
@@ -89,9 +98,10 @@ export class TeamsService {
     await this.findById(teamId);
 
     const em = await this.tenantConnections.getEntityManager();
+    const s = this.schema();
 
     return em.query(
-      `SELECT team_id, user_id, joined_at FROM team_members WHERE team_id = $1 ORDER BY joined_at ASC`,
+      `SELECT team_id, user_id, joined_at FROM "${s}"."team_members" WHERE team_id = $1 ORDER BY joined_at ASC`,
       [teamId],
     );
   }

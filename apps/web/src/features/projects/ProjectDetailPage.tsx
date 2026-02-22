@@ -1,5 +1,6 @@
 import { useParams, Link } from 'react-router-dom';
 import { useProject, useProjectIssues } from '@/api';
+import { Settings as SettingsIcon } from 'lucide-react';
 
 export function ProjectDetailPage() {
   const { projectKey } = useParams<{ projectKey: string }>();
@@ -27,11 +28,20 @@ export function ProjectDetailPage() {
   return (
     <div>
       <div className="mb-6">
-        <div className="flex items-center gap-3">
-          <span className="rounded bg-indigo-100 px-2 py-1 text-sm font-semibold text-indigo-700">
-            {project.key}
-          </span>
-          <h1 className="text-2xl font-bold text-gray-900">{project.name}</h1>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="rounded bg-indigo-100 px-2 py-1 text-sm font-semibold text-indigo-700">
+              {project.key}
+            </span>
+            <h1 className="text-2xl font-bold text-gray-900">{project.name}</h1>
+          </div>
+          <Link
+            to={`/projects/${project.key}/settings`}
+            className="inline-flex items-center gap-1.5 rounded-md bg-gray-100 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-200"
+          >
+            <SettingsIcon className="h-4 w-4" />
+            Settings
+          </Link>
         </div>
         {project.description && (
           <p className="mt-2 text-gray-600">{project.description}</p>

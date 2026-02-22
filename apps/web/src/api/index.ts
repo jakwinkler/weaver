@@ -6,6 +6,7 @@ export {
   useProjects,
   useProject,
   useCreateProject,
+  useUpdateProject,
   useProjectIssues,
   useIssue,
   useCreateIssue,
@@ -89,3 +90,13 @@ export {
   useDeleteTeam,
 } from './hooks-admin';
 export type { TenantUser, TeamMember } from './hooks-admin';
+export {
+  usePluginPermissions,
+  useProjectMembers,
+  useAddProjectMember,
+  useUpdateProjectMemberRole,
+  useRemoveProjectMember,
+  useProjectIssueTypes,
+  useSetProjectIssueTypes,
+} from './hooks-permissions';
+export type { PluginPermission, PluginPermissionsMap, ProjectMember } from './hooks-permissions';

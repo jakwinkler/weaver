@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
-import { ProjectEntity } from '@weaver/db';
+import { ProjectEntity, ProjectMemberEntity } from '@weaver/db';
 import { CreateProjectDto, UpdateProjectDto, PaginatedResponse } from '@weaver/shared';
 import { TenantConnectionProvider } from '../../core/tenant';
 import { PaginationParams, paginate } from '../../common';
@@ -25,7 +25,18 @@ export class ProjectsService {
       issueCounter: 0,
     });
 
-    return repo.save(project);
+    const saved = await repo.save(project);
+
+    // Auto-add creator as project lead member
+    const memberRepo = em.getRepository(ProjectMemberEntity);
+    const member = memberRepo.create({
+      projectId: saved.id,
+      userId,
+      role: 'lead',
+    });
+    await memberRepo.save(member);
+
+    return saved;
   }
 
   async findAll(params: PaginationParams): Promise<PaginatedResponse<ProjectEntity>> {
@@ -46,7 +57,7 @@ export class ProjectsService {
     return project;
   }
 
-  async update(key: string, dto: UpdateProjectDto): Promise<ProjectEntity> {
+  async update(key: string, dto: UpdateProjectDto & { customFields?: Record<string, unknown> }): Promise<ProjectEntity> {
     const project = await this.findByKey(key);
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(ProjectEntity);

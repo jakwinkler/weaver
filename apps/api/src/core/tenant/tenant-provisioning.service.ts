@@ -146,11 +146,28 @@ export class TenantProvisioningService {
       );
     }
 
-    // Seed default roles
+    // Seed default roles (dot-notation permission format)
     const roles = [
-      { name: 'Admin', permissions: { '*': true }, isSystem: true },
-      { name: 'Member', permissions: { 'issues:read': true, 'issues:write': true, 'projects:read': true, 'comments:write': true }, isSystem: true },
-      { name: 'Viewer', permissions: { 'issues:read': true, 'projects:read': true, 'comments:read': true }, isSystem: true },
+      { name: 'admin', permissions: { '*': true }, isSystem: true },
+      {
+        name: 'member',
+        permissions: {
+          'projects.read': true,
+          'issues.create': true, 'issues.read': true, 'issues.update': true,
+          'issues.transition': true, 'issues.assign': true,
+          'comments.create': true, 'comments.read': true, 'comments.update': true,
+          'sprints.read': true, 'custom_fields.read': true,
+        },
+        isSystem: true,
+      },
+      {
+        name: 'viewer',
+        permissions: {
+          'projects.read': true, 'issues.read': true,
+          'comments.read': true, 'sprints.read': true,
+        },
+        isSystem: true,
+      },
     ];
 
     for (const r of roles) {

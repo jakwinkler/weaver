@@ -9,15 +9,20 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { JwtAuthGuard } from '../../core/auth';
+import {
+  JwtAuthGuard,
+  PermissionGuard,
+  RequirePermission,
+} from '../../core/auth';
 import { TeamsService } from './teams.service';
 
 @Controller('teams')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionGuard)
 export class TeamsController {
   constructor(private readonly teamsService: TeamsService) {}
 
   @Post()
+  @RequirePermission('admin', 'manage_users')
   async create(@Body() dto: { name: string }) {
     return this.teamsService.create(dto.name);
   }
@@ -33,6 +38,7 @@ export class TeamsController {
   }
 
   @Post(':id/members')
+  @RequirePermission('admin', 'manage_users')
   async addMember(
     @Param('id') id: string,
     @Body() dto: { userId: string },
@@ -41,6 +47,7 @@ export class TeamsController {
   }
 
   @Delete(':id/members/:userId')
+  @RequirePermission('admin', 'manage_users')
   @HttpCode(HttpStatus.NO_CONTENT)
   async removeMember(
     @Param('id') id: string,

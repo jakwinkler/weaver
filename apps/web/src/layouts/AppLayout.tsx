@@ -73,7 +73,7 @@ export function AppLayout() {
           </h3>
           <ul className="space-y-1">
             {projectsData?.data.map((project) => (
-              <li key={project.id}>
+              <li key={project.id} className="group relative">
                 <Link
                   to={`/projects/${project.key}`}
                   className={`flex items-center rounded-md px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-100 ${
@@ -84,6 +84,13 @@ export function AppLayout() {
                     {project.key.slice(0, 2)}
                   </span>
                   {project.name}
+                </Link>
+                <Link
+                  to={`/projects/${project.key}/settings`}
+                  className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-1 text-gray-400 opacity-0 hover:bg-gray-200 hover:text-gray-600 group-hover:opacity-100"
+                  title="Project settings"
+                >
+                  <Settings className="h-3.5 w-3.5" />
                 </Link>
               </li>
             ))}
