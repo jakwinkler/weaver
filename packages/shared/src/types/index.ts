@@ -72,6 +72,7 @@ export interface Project {
   description?: string;
   workflowId?: string;
   leadUserId?: string;
+  iconAttachmentId?: string | null;
   issueCounter: number;
   customFields: Record<string, unknown>;
   createdAt: Date;

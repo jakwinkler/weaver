@@ -63,6 +63,7 @@ export const updateProjectSchema = z.object({
   description: z.string().max(5000).optional(),
   leadUserId: z.string().uuid().optional(),
   workflowId: z.string().uuid().optional(),
+  iconAttachmentId: z.string().uuid().nullable().optional(),
   customFields: z.record(z.unknown()).optional(),
 });
 export type UpdateProjectDto = z.infer<typeof updateProjectSchema>;

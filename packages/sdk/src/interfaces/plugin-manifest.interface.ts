@@ -4,6 +4,7 @@ export interface PluginManifest {
   version: string;
   description?: string;
   author?: string;
+  icon?: string;
   entrypoints: {
     server?: string;
     client?: string;

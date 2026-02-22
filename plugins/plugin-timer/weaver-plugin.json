@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "description": "Track time spent on issues with a start/pause/stop timer that auto-logs time entries",
   "author": "Weaver",
+  "icon": "timer",
   "permissions": ["timer.allow"],
   "declaredPermissions": [
     {

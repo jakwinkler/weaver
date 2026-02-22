@@ -1,4 +1,4 @@
-import { useState, useCallback, type FormEvent } from 'react';
+import { useState, useCallback, useRef, type FormEvent } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   useProject,
@@ -12,10 +12,44 @@ import {
   useRemoveProjectMember,
   useProjectIssueTypes,
   useSetProjectIssueTypes,
+  useGenericUploadAttachment,
+  getAttachmentUrl,
 } from '@/api';
 import type { TenantUser } from '@/api';
-import { Settings, Users, Tag, FileText, Plus, Trash2, X } from 'lucide-react';
+import { Settings, Users, Tag, FileText, Plus, Trash2, X, Upload } from 'lucide-react';
 import { RichTextEditor, normalizeCommentBody, serializeDoc } from '@/components/RichTextEditor';
+
+export function ProjectIcon({
+  iconAttachmentId,
+  projectKey,
+  size = 'md',
+}: {
+  iconAttachmentId?: string | null;
+  projectKey: string;
+  size?: 'sm' | 'md' | 'lg';
+}) {
+  const sizeClasses = { sm: 'h-6 w-6 text-xs', md: 'h-8 w-8 text-sm', lg: 'h-12 w-12 text-lg' };
+  const cls = sizeClasses[size];
+
+  if (iconAttachmentId) {
+    return (
+      <img
+        src={getAttachmentUrl(iconAttachmentId)}
+        alt={projectKey}
+        className={`${cls} rounded-md object-cover`}
+      />
+    );
+  }
+
+  const initials = projectKey.slice(0, 2);
+  return (
+    <span
+      className={`${cls} inline-flex items-center justify-center rounded-md bg-indigo-100 font-semibold text-indigo-700`}
+    >
+      {initials}
+    </span>
+  );
+}
 
 type Tab = 'general' | 'members' | 'issue-types' | 'custom-fields';
 
@@ -71,6 +105,8 @@ function GeneralTab({ projectKey }: { projectKey: string }) {
   const { data: workflows } = useWorkflows();
   const { data: users } = useUsers();
   const updateProject = useUpdateProject();
+  const uploadAttachment = useGenericUploadAttachment();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [name, setName] = useState('');
   const [descriptionJson, setDescriptionJson] = useState<Record<string, unknown> | null>(null);
@@ -91,6 +127,18 @@ function GeneralTab({ projectKey }: { projectKey: string }) {
     setWorkflowId(project.workflowId || '');
     setInitialized(true);
   }
+
+  const handleIconUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const result = await uploadAttachment.mutateAsync(file);
+    await updateProject.mutateAsync({ key: projectKey, iconAttachmentId: result.id });
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleRemoveIcon = async () => {
+    await updateProject.mutateAsync({ key: projectKey, iconAttachmentId: null });
+  };
 
   if (isLoading || !project) {
     return <div className="py-8 text-center text-gray-500">Loading...</div>;
@@ -115,6 +163,40 @@ function GeneralTab({ projectKey }: { projectKey: string }) {
   return (
     <form onSubmit={handleSubmit} className="rounded-lg border border-gray-200 bg-white p-6">
       <div className="space-y-4">
+        <div>
+          <label className="mb-1 block text-sm font-medium text-gray-700">Project Icon</label>
+          <div className="flex items-center gap-4">
+            <ProjectIcon iconAttachmentId={project.iconAttachmentId} projectKey={project.key} size="lg" />
+            <div className="flex gap-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleIconUpload}
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploadAttachment.isPending}
+                className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              >
+                <Upload className="h-3.5 w-3.5" />
+                {uploadAttachment.isPending ? 'Uploading...' : 'Change Icon'}
+              </button>
+              {project.iconAttachmentId && (
+                <button
+                  type="button"
+                  onClick={handleRemoveIcon}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Remove
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
         <div>
           <label className="mb-1 block text-sm font-medium text-gray-700">Key</label>
           <p className="rounded-md bg-gray-50 px-3 py-2 text-sm text-gray-500">{project.key}</p>

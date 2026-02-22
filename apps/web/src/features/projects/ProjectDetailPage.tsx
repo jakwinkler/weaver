@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { useProject, useProjectIssues, useUpdateProject, useMyPermissions } from '@/api';
 import { Settings as SettingsIcon, Pencil, X, Check } from 'lucide-react';
 import { RichTextEditor, normalizeCommentBody, serializeDoc } from '@/components/RichTextEditor';
+import { ProjectIcon } from './ProjectSettingsPage';
 
 export function ProjectDetailPage() {
   const { projectKey } = useParams<{ projectKey: string }>();
@@ -61,6 +62,7 @@ export function ProjectDetailPage() {
       <div className="mb-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
+            <ProjectIcon iconAttachmentId={project.iconAttachmentId} projectKey={project.key} size="md" />
             <span className="rounded bg-indigo-100 px-2 py-1 text-sm font-semibold text-indigo-700">
               {project.key}
             </span>

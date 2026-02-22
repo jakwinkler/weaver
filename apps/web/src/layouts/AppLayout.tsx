@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '@/stores';
 import { useProjects, useUnreadCount } from '@/api';
+import { ProjectIcon } from '@/features/projects/ProjectSettingsPage';
 import {
   Search,
   Bell,
@@ -80,8 +81,8 @@ export function AppLayout() {
                     location.pathname.includes(`/projects/${project.key}`) ? 'bg-gray-100 font-medium' : ''
                   }`}
                 >
-                  <span className="mr-2 flex h-6 w-6 items-center justify-center rounded bg-indigo-100 text-xs font-medium text-indigo-600">
-                    {project.key.slice(0, 2)}
+                  <span className="mr-2">
+                    <ProjectIcon iconAttachmentId={project.iconAttachmentId} projectKey={project.key} size="sm" />
                   </span>
                   {project.name}
                 </Link>

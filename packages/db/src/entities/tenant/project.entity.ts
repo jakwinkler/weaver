@@ -33,6 +33,9 @@ export class ProjectEntity {
   @Column({ name: 'issue_counter', type: 'int', default: 0 })
   issueCounter!: number;
 
+  @Column({ name: 'icon_attachment_id', type: 'uuid', nullable: true })
+  iconAttachmentId!: string | null;
+
   @Column({ name: 'custom_fields', type: 'jsonb', default: '{}' })
   customFields!: Record<string, unknown>;
 

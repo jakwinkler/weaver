@@ -2,6 +2,7 @@ import { useState, useCallback, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useProjects, useCreateProject } from '@/api';
 import { RichTextEditor, serializeDoc } from '@/components/RichTextEditor';
+import { ProjectIcon } from './ProjectSettingsPage';
 
 export function ProjectsPage() {
   const { data, isLoading } = useProjects();
@@ -112,10 +113,7 @@ export function ProjectsPage() {
           <thead className="bg-gray-50">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                Key
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                Name
+                Project
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                 Description
@@ -128,11 +126,14 @@ export function ProjectsPage() {
           <tbody className="divide-y divide-gray-200">
             {data?.data.map((project) => (
               <tr key={project.id} className="hover:bg-gray-50">
-                <td className="whitespace-nowrap px-6 py-4 text-sm font-medium text-indigo-600">
-                  <Link to={`/projects/${project.key}`}>{project.key}</Link>
-                </td>
-                <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
-                  <Link to={`/projects/${project.key}`}>{project.name}</Link>
+                <td className="whitespace-nowrap px-6 py-4">
+                  <Link to={`/projects/${project.key}`} className="flex items-center gap-3">
+                    <ProjectIcon iconAttachmentId={project.iconAttachmentId} projectKey={project.key} size="sm" />
+                    <div>
+                      <span className="text-sm font-medium text-indigo-600">{project.key}</span>
+                      <span className="ml-2 text-sm text-gray-900">{project.name}</span>
+                    </div>
+                  </Link>
                 </td>
                 <td className="px-6 py-4 text-sm text-gray-500">
                   {project.description || '-'}
@@ -144,7 +145,7 @@ export function ProjectsPage() {
             ))}
             {data?.data.length === 0 && (
               <tr>
-                <td colSpan={4} className="px-6 py-8 text-center text-sm text-gray-500">
+                <td colSpan={3} className="px-6 py-8 text-center text-sm text-gray-500">
                   No projects yet. Create your first project to get started.
                 </td>
               </tr>

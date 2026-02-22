@@ -9,6 +9,7 @@ interface PluginManifest {
   version: string;
   description?: string;
   author?: string;
+  icon?: string;
   permissions: string[];
 }
 

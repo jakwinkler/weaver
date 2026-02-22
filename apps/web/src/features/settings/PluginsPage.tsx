@@ -7,6 +7,32 @@ import {
   useEnablePlugin,
   useDisablePlugin,
 } from '@/api/hooks-phase4';
+import {
+  Timer,
+  GitBranch,
+  Github,
+  Gitlab,
+  FolderGit2,
+  Puzzle,
+  type LucideIcon,
+} from 'lucide-react';
+
+const PLUGIN_ICONS: Record<string, LucideIcon> = {
+  timer: Timer,
+  'git-branch': GitBranch,
+  github: Github,
+  gitlab: Gitlab,
+  'folder-git-2': FolderGit2,
+};
+
+function PluginIcon({ iconName }: { iconName?: string }) {
+  const Icon = iconName ? PLUGIN_ICONS[iconName] || Puzzle : Puzzle;
+  return (
+    <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-100 text-indigo-700">
+      <Icon className="h-5 w-5" />
+    </span>
+  );
+}
 
 export function PluginsPage() {
   const { data: available, isLoading: availableLoading } = useAvailablePlugins();
@@ -96,24 +122,26 @@ export function PluginsPage() {
                   className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm"
                 >
                   <div className="flex items-start justify-between">
-                    <div>
-                      <div className="flex items-center gap-3">
-                        <h3 className="text-lg font-semibold text-gray-900">
-                          {manifest?.name || plugin.pluginId}
-                        </h3>
-                        <span className="inline-flex rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-600">
-                          v{plugin.version}
-                        </span>
-                        <span
-                          className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                            plugin.enabled
-                              ? 'bg-green-100 text-green-700'
-                              : 'bg-gray-100 text-gray-500'
-                          }`}
-                        >
-                          {plugin.enabled ? 'Enabled' : 'Disabled'}
-                        </span>
-                      </div>
+                    <div className="flex items-start gap-4">
+                      <PluginIcon iconName={manifest?.icon} />
+                      <div>
+                        <div className="flex items-center gap-3">
+                          <h3 className="text-lg font-semibold text-gray-900">
+                            {manifest?.name || plugin.pluginId}
+                          </h3>
+                          <span className="inline-flex rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-600">
+                            v{plugin.version}
+                          </span>
+                          <span
+                            className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                              plugin.enabled
+                                ? 'bg-green-100 text-green-700'
+                                : 'bg-gray-100 text-gray-500'
+                            }`}
+                          >
+                            {plugin.enabled ? 'Enabled' : 'Disabled'}
+                          </span>
+                        </div>
                       {manifest?.description && (
                         <p className="mt-1 text-sm text-gray-500">
                           {manifest.description}
@@ -131,6 +159,7 @@ export function PluginsPage() {
                           ))}
                         </div>
                       )}
+                      </div>
                     </div>
                     <div className="flex gap-2">
                       {plugin.enabled ? (
@@ -182,37 +211,40 @@ export function PluginsPage() {
                   className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm"
                 >
                   <div className="flex items-start justify-between">
-                    <div>
-                      <div className="flex items-center gap-3">
-                        <h3 className="text-lg font-semibold text-gray-900">
-                          {plugin.name}
-                        </h3>
-                        <span className="inline-flex rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-600">
-                          v{plugin.version}
-                        </span>
-                        {plugin.author && (
-                          <span className="text-xs text-gray-400">
-                            by {plugin.author}
+                    <div className="flex items-start gap-4">
+                      <PluginIcon iconName={plugin.icon} />
+                      <div>
+                        <div className="flex items-center gap-3">
+                          <h3 className="text-lg font-semibold text-gray-900">
+                            {plugin.name}
+                          </h3>
+                          <span className="inline-flex rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-600">
+                            v{plugin.version}
                           </span>
+                          {plugin.author && (
+                            <span className="text-xs text-gray-400">
+                              by {plugin.author}
+                            </span>
+                          )}
+                        </div>
+                        {plugin.description && (
+                          <p className="mt-1 text-sm text-gray-500">
+                            {plugin.description}
+                          </p>
+                        )}
+                        {plugin.permissions.length > 0 && (
+                          <div className="mt-2 flex flex-wrap gap-1">
+                            {plugin.permissions.map((perm) => (
+                              <span
+                                key={perm}
+                                className="inline-flex rounded bg-blue-50 px-2 py-0.5 text-xs text-blue-700"
+                              >
+                                {perm}
+                              </span>
+                            ))}
+                          </div>
                         )}
                       </div>
-                      {plugin.description && (
-                        <p className="mt-1 text-sm text-gray-500">
-                          {plugin.description}
-                        </p>
-                      )}
-                      {plugin.permissions.length > 0 && (
-                        <div className="mt-2 flex flex-wrap gap-1">
-                          {plugin.permissions.map((perm) => (
-                            <span
-                              key={perm}
-                              className="inline-flex rounded bg-blue-50 px-2 py-0.5 text-xs text-blue-700"
-                            >
-                              {perm}
-                            </span>
-                          ))}
-                        </div>
-                      )}
                     </div>
                     <div>
                       {alreadyInstalled ? (
