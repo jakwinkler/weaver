@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { apiClient } from './client';
+import { apiClient, API_BASE_URL } from './client';
 import type {
   CustomFieldDefinition,
   SavedFilter,
@@ -162,4 +162,75 @@ export function useSearch() {
       return res.data;
     },
   });
+}
+
+// ── Attachments ──
+
+interface Attachment {
+  id: string;
+  filename: string;
+  mimeType: string;
+  size: string;
+  createdAt: string;
+}
+
+export function useAttachments(issueKey: string) {
+  return useQuery({
+    queryKey: ['attachments', issueKey],
+    queryFn: async () => {
+      const res = await apiClient.get<Attachment[]>(`/issues/${issueKey}/attachments`);
+      return res.data;
+    },
+    enabled: !!issueKey,
+  });
+}
+
+export function useDeleteAttachment(issueKey: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      await apiClient.delete(`/issues/${issueKey}/attachments/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['attachments', issueKey] });
+    },
+  });
+}
+
+export function useUploadAttachment(issueKey: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await apiClient.post<Attachment>(
+        `/issues/${issueKey}/attachments`,
+        formData,
+        { headers: { 'Content-Type': 'multipart/form-data' } },
+      );
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['attachments', issueKey] });
+    },
+  });
+}
+
+export function useGenericUploadAttachment() {
+  return useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await apiClient.post<Attachment>(
+        '/attachments/upload',
+        formData,
+        { headers: { 'Content-Type': 'multipart/form-data' } },
+      );
+      return res.data;
+    },
+  });
+}
+
+export function getAttachmentUrl(id: string): string {
+  return `${API_BASE_URL}/attachments/${id}/download`;
 }

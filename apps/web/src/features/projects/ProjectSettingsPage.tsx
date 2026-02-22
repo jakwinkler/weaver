@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useState, useCallback, type FormEvent } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   useProject,
@@ -15,6 +15,7 @@ import {
 } from '@/api';
 import type { TenantUser } from '@/api';
 import { Settings, Users, Tag, FileText, Plus, Trash2, X } from 'lucide-react';
+import { RichTextEditor, normalizeCommentBody, serializeDoc } from '@/components/RichTextEditor';
 
 type Tab = 'general' | 'members' | 'issue-types' | 'custom-fields';
 
@@ -72,15 +73,20 @@ function GeneralTab({ projectKey }: { projectKey: string }) {
   const updateProject = useUpdateProject();
 
   const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
+  const [descriptionJson, setDescriptionJson] = useState<Record<string, unknown> | null>(null);
+  const [editingDesc, setEditingDesc] = useState(false);
   const [leadUserId, setLeadUserId] = useState('');
   const [workflowId, setWorkflowId] = useState('');
   const [initialized, setInitialized] = useState(false);
   const [saved, setSaved] = useState(false);
 
+  const handleDescriptionChange = useCallback((json: Record<string, unknown>) => {
+    setDescriptionJson(json);
+  }, []);
+
   if (project && !initialized) {
     setName(project.name);
-    setDescription(project.description || '');
+    setDescriptionJson(normalizeCommentBody(project.description || ''));
     setLeadUserId(project.leadUserId || '');
     setWorkflowId(project.workflowId || '');
     setInitialized(true);
@@ -93,13 +99,15 @@ function GeneralTab({ projectKey }: { projectKey: string }) {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setSaved(false);
+    const descStr = serializeDoc(descriptionJson);
     await updateProject.mutateAsync({
       key: projectKey,
       name: name.trim(),
-      description: description.trim() || undefined,
+      description: descStr || undefined,
       leadUserId: leadUserId || undefined,
       workflowId: workflowId || undefined,
     });
+    setEditingDesc(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -121,14 +129,48 @@ function GeneralTab({ projectKey }: { projectKey: string }) {
           />
         </div>
         <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">Description</label>
-          <textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            rows={3}
-            className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-            placeholder="Project description..."
-          />
+          <div className="mb-1 flex items-center justify-between">
+            <label className="block text-sm font-medium text-gray-700">Description</label>
+            {!editingDesc && (
+              <button
+                type="button"
+                onClick={() => setEditingDesc(true)}
+                className="text-xs font-medium text-indigo-600 hover:text-indigo-500"
+              >
+                Edit
+              </button>
+            )}
+            {editingDesc && (
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingDesc(false);
+                  setDescriptionJson(normalizeCommentBody(project.description || ''));
+                }}
+                className="text-xs font-medium text-gray-500 hover:text-gray-700"
+              >
+                Cancel
+              </button>
+            )}
+          </div>
+          {editingDesc ? (
+            <RichTextEditor
+              content={descriptionJson}
+              onChange={handleDescriptionChange}
+              placeholder="Project description..."
+            />
+          ) : (
+            <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+              {project.description ? (
+                <RichTextEditor
+                  content={normalizeCommentBody(project.description)}
+                  editable={false}
+                />
+              ) : (
+                <p className="text-sm italic text-gray-400">No description.</p>
+              )}
+            </div>
+          )}
         </div>
         <div>
           <label className="mb-1 block text-sm font-medium text-gray-700">Lead</label>

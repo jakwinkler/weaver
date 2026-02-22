@@ -1,10 +1,14 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { TimeEntryEntity, IssueEntity } from '@weaver/db';
 import { TenantConnectionProvider } from '../../core/tenant';
+import { EventDispatcherService } from '../events';
 
 @Injectable()
 export class TimeTrackingService {
-  constructor(private readonly tenantConnections: TenantConnectionProvider) {}
+  constructor(
+    private readonly tenantConnections: TenantConnectionProvider,
+    private readonly eventDispatcher: EventDispatcherService,
+  ) {}
 
   private async resolveIssueId(issueKey: string): Promise<string> {
     const em = await this.tenantConnections.getEntityManager();
@@ -32,7 +36,18 @@ export class TimeTrackingService {
       loggedAt: new Date(),
     });
 
-    return repo.save(entry);
+    const saved = await repo.save(entry);
+
+    this.eventDispatcher
+      .emit('time.logged', {
+        issueKey,
+        minutes: dto.minutes,
+        description: dto.description,
+        userId,
+      })
+      .catch(() => {});
+
+    return saved;
   }
 
   async findByIssue(issueKey: string): Promise<TimeEntryEntity[]> {

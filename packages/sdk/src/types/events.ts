@@ -12,6 +12,7 @@ export const WEAVER_EVENTS = {
   SPRINT_COMPLETED: 'sprint.completed',
   PROJECT_CREATED: 'project.created',
   PROJECT_UPDATED: 'project.updated',
+  TIME_LOGGED: 'time.logged',
 } as const;
 
 export type WeaverEventType = typeof WEAVER_EVENTS[keyof typeof WEAVER_EVENTS];
@@ -43,4 +44,11 @@ export interface CommentAddedEvent {
   issueKey: string;
   commentId: string;
   authorId: string;
+}
+
+export interface TimeLoggedEvent {
+  issueKey: string;
+  minutes: number;
+  description?: string;
+  userId: string;
 }

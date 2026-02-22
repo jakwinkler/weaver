@@ -1,4 +1,5 @@
 import { NestFactory } from '@nestjs/core';
+import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
@@ -8,7 +9,8 @@ async function bootstrap() {
   const prefix = process.env.API_PREFIX || 'api/v1';
 
   app.setGlobalPrefix(prefix);
-  app.enableCors();
+  app.use(cookieParser());
+  app.enableCors({ origin: true, credentials: true });
 
   await app.listen(port);
   console.warn(`Weaver API running on http://localhost:${port}/${prefix}`);

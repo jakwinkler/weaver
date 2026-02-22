@@ -4,7 +4,6 @@ import {
   Post,
   Patch,
   Delete,
-  Param,
   Body,
   HttpCode,
   HttpStatus,
@@ -49,31 +48,31 @@ export class PluginsController {
     return this.registry.getInstalled();
   }
 
-  @Post(':pluginId/install')
-  async install(@Param('pluginId') pluginId: string) {
+  @Post('install')
+  async install(@Body('pluginId') pluginId: string) {
     return this.registry.install(pluginId);
   }
 
-  @Delete(':pluginId/uninstall')
+  @Post('uninstall')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async uninstall(@Param('pluginId') pluginId: string) {
+  async uninstall(@Body('pluginId') pluginId: string) {
     return this.registry.uninstall(pluginId);
   }
 
-  @Post(':pluginId/enable')
-  async enable(@Param('pluginId') pluginId: string) {
+  @Post('enable')
+  async enable(@Body('pluginId') pluginId: string) {
     return this.registry.enable(pluginId);
   }
 
-  @Post(':pluginId/disable')
-  async disable(@Param('pluginId') pluginId: string) {
+  @Post('disable')
+  async disable(@Body('pluginId') pluginId: string) {
     return this.registry.disable(pluginId);
   }
 
-  @Patch(':pluginId/settings')
+  @Patch('settings')
   async updateSettings(
-    @Param('pluginId') pluginId: string,
-    @Body() settings: Record<string, unknown>,
+    @Body('pluginId') pluginId: string,
+    @Body('settings') settings: Record<string, unknown>,
   ) {
     return this.registry.updateSettings(pluginId, settings);
   }

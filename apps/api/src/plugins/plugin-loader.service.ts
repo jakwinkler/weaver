@@ -1,12 +1,17 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import type { PluginManifest } from '@weaver/sdk';
 import * as fs from 'fs';
 import * as path from 'path';
 
 @Injectable()
-export class PluginLoaderService {
+export class PluginLoaderService implements OnModuleInit {
   private readonly logger = new Logger(PluginLoaderService.name);
   private manifests = new Map<string, PluginManifest>();
+
+  async onModuleInit(): Promise<void> {
+    const pluginsDir = path.resolve(process.cwd(), '../../plugins');
+    await this.loadPlugins(pluginsDir);
+  }
 
   async loadPlugins(pluginsDir: string): Promise<void> {
     if (!fs.existsSync(pluginsDir)) {

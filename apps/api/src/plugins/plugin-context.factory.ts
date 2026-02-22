@@ -1,10 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { PluginContext, RequestOptions } from '@weaver/sdk';
 import { TenantConnectionProvider, requireTenantContext } from '../core/tenant';
+import { EventDispatcherService } from '../modules/events';
 
 @Injectable()
 export class PluginContextFactory {
-  constructor(private readonly tenantConnections: TenantConnectionProvider) {}
+  constructor(
+    private readonly tenantConnections: TenantConnectionProvider,
+    private readonly eventDispatcher: EventDispatcherService,
+  ) {}
 
   async create(
     pluginId: string,
@@ -37,11 +41,13 @@ export class PluginContextFactory {
       },
       events: {
         emit: async (event: string, data: unknown) => {
-          // Events are dispatched through the NestJS event system
-          // This will be wired up when we implement the events module
           Logger.log(
             `Plugin ${pluginId} emitted event: ${event}`,
             'PluginContext',
+          );
+          await this.eventDispatcher.emit(
+            event,
+            data as Record<string, unknown>,
           );
         },
       },

@@ -213,3 +213,30 @@ export function useCreateTeam() {
     },
   });
 }
+
+// ── Permissions Helper ──
+
+export function useMyPermissions(): string[] {
+  const { data: roles } = useRoles();
+  const role = (() => {
+    try {
+      const token = localStorage.getItem('accessToken');
+      if (!token) return null;
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      return payload.role || null;
+    } catch {
+      return null;
+    }
+  })();
+
+  if (role === 'owner') return ['*'];
+
+  if (!roles || !role) return [];
+
+  const myRole = roles.find((r) => r.name === role);
+  if (!myRole) return [];
+
+  return Object.entries(myRole.permissions)
+    .filter(([, v]) => v)
+    .map(([k]) => k);
+}

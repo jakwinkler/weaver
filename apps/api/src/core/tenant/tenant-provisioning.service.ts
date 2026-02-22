@@ -157,6 +157,7 @@ export class TenantProvisioningService {
           'issues.transition': true, 'issues.assign': true,
           'comments.create': true, 'comments.read': true, 'comments.update': true,
           'sprints.read': true, 'custom_fields.read': true,
+          'timer.allow': true,
         },
         isSystem: true,
       },

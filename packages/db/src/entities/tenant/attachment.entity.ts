@@ -10,8 +10,8 @@ export class AttachmentEntity {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  @Column({ name: 'issue_id', type: 'uuid' })
-  issueId!: string;
+  @Column({ name: 'issue_id', type: 'uuid', nullable: true })
+  issueId!: string | null;
 
   @Column({ name: 'uploader_id', type: 'uuid' })
   uploaderId!: string;

@@ -7,6 +7,22 @@ import { tenantStorage } from './tenant.context';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+function decodeTenantFromCookie(req: Request): string | undefined {
+  const token = req.cookies?.weaver_token;
+  if (!token) return undefined;
+  try {
+    const payload = JSON.parse(
+      Buffer.from(token.split('.')[1], 'base64url').toString(),
+    );
+    if (payload.tenantId && UUID_RE.test(payload.tenantId)) {
+      return payload.tenantId;
+    }
+  } catch {
+    // ignore malformed tokens
+  }
+  return undefined;
+}
+
 @Injectable()
 export class TenantMiddleware implements NestMiddleware {
   constructor(
@@ -34,9 +50,13 @@ export class TenantMiddleware implements NestMiddleware {
   }
 
   private resolveTenantId(req: Request): string | undefined {
-    // Priority: JWT claim > X-Tenant-ID header > subdomain
+    // Priority: X-Tenant-ID header > JWT cookie > subdomain
     const fromHeader = req.headers['x-tenant-id'] as string | undefined;
     if (fromHeader && UUID_RE.test(fromHeader)) return fromHeader;
+
+    // Extract tenantId from JWT cookie (for browser requests like <img src>)
+    const fromCookie = decodeTenantFromCookie(req);
+    if (fromCookie) return fromCookie;
 
     // JWT-based tenant will be set later by auth guard
     const user = (req as any).user;

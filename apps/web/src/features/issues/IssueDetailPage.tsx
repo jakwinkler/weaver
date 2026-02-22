@@ -10,9 +10,8 @@ import {
   useUsers,
 } from '@/api';
 import type { IssuePriority } from '@weaver/shared';
-import { CommentsSection } from './CommentsSection';
-import { ActivityLog } from './ActivityLog';
-import { TimeTrackingSection } from './TimeTrackingSection';
+import { IssueActivityTabs } from './IssueActivityTabs';
+import { PluginSlot } from '@/plugins';
 import { ArrowRight } from 'lucide-react';
 
 export function IssueDetailPage() {
@@ -203,14 +202,8 @@ export function IssueDetailPage() {
             )}
           </div>
 
-          {/* Comments */}
-          <CommentsSection issueKey={issueKey!} />
-
-          {/* Activity Log */}
-          <ActivityLog issueKey={issueKey!} />
-
-          {/* Time Tracking */}
-          <TimeTrackingSection issueKey={issueKey!} />
+          {/* Tabbed Activity Section */}
+          <IssueActivityTabs issueKey={issueKey!} />
         </div>
 
         {/* Sidebar */}
@@ -246,6 +239,9 @@ export function IssueDetailPage() {
               </div>
             )}
           </div>
+
+          {/* Plugin Slots */}
+          <PluginSlot name="issue-detail-sidebar" issueKey={issueKey!} />
 
           {/* Details */}
           <div className="rounded-lg border border-gray-200 bg-white p-4">

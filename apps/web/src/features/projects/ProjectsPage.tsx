@@ -1,6 +1,7 @@
-import { useState, type FormEvent } from 'react';
+import { useState, useCallback, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useProjects, useCreateProject } from '@/api';
+import { RichTextEditor, serializeDoc } from '@/components/RichTextEditor';
 
 export function ProjectsPage() {
   const { data, isLoading } = useProjects();
@@ -9,18 +10,23 @@ export function ProjectsPage() {
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState('');
   const [key, setKey] = useState('');
-  const [description, setDescription] = useState('');
+  const [descJson, setDescJson] = useState<Record<string, unknown> | null>(null);
+
+  const handleDescChange = useCallback((json: Record<string, unknown>) => {
+    setDescJson(json);
+  }, []);
 
   const handleCreate = async (e: FormEvent) => {
     e.preventDefault();
+    const descStr = serializeDoc(descJson);
     await createProject.mutateAsync({
       name,
       key,
-      description: description || undefined,
+      description: descStr || undefined,
     });
     setName('');
     setKey('');
-    setDescription('');
+    setDescJson(null);
     setShowForm(false);
   };
 
@@ -77,15 +83,12 @@ export function ProjectsPage() {
             </div>
           </div>
           <div className="mt-4">
-            <label htmlFor="projectDesc" className="block text-sm font-medium text-gray-700">
+            <label className="mb-1 block text-sm font-medium text-gray-700">
               Description
             </label>
-            <textarea
-              id="projectDesc"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={2}
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            <RichTextEditor
+              content={descJson}
+              onChange={handleDescChange}
               placeholder="Optional description"
             />
           </div>

@@ -1,4 +1,4 @@
-export { apiClient } from './client';
+export { apiClient, API_BASE_URL } from './client';
 export {
   useLogin,
   useRegister,
@@ -40,6 +40,11 @@ export {
   useTimeEntrySummary,
   useCreateTimeEntry,
   useSearch,
+  useAttachments,
+  useDeleteAttachment,
+  useUploadAttachment,
+  useGenericUploadAttachment,
+  getAttachmentUrl,
 } from './hooks-phase3';
 export {
   useAvailablePlugins,
@@ -65,6 +70,7 @@ export {
   useDeleteRole,
   useTeams,
   useCreateTeam,
+  useMyPermissions,
 } from './hooks-phase5';
 export {
   useBulkUpdateIssues,

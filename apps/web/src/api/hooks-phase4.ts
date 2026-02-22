@@ -50,7 +50,7 @@ export function useInstallPlugin() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (pluginId: string) => {
-      const res = await apiClient.post<InstalledPlugin>(`/plugins/${pluginId}/install`);
+      const res = await apiClient.post<InstalledPlugin>('/plugins/install', { pluginId });
       return res.data;
     },
     onSuccess: () => {
@@ -63,7 +63,7 @@ export function useUninstallPlugin() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (pluginId: string) => {
-      await apiClient.delete(`/plugins/${pluginId}/uninstall`);
+      await apiClient.post('/plugins/uninstall', { pluginId });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['plugins'] });
@@ -75,7 +75,7 @@ export function useEnablePlugin() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (pluginId: string) => {
-      const res = await apiClient.post<InstalledPlugin>(`/plugins/${pluginId}/enable`);
+      const res = await apiClient.post<InstalledPlugin>('/plugins/enable', { pluginId });
       return res.data;
     },
     onSuccess: () => {
@@ -88,7 +88,7 @@ export function useDisablePlugin() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (pluginId: string) => {
-      const res = await apiClient.post<InstalledPlugin>(`/plugins/${pluginId}/disable`);
+      const res = await apiClient.post<InstalledPlugin>('/plugins/disable', { pluginId });
       return res.data;
     },
     onSuccess: () => {
@@ -101,7 +101,7 @@ export function useUpdatePluginSettings() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ pluginId, settings }: { pluginId: string; settings: Record<string, unknown> }) => {
-      const res = await apiClient.patch<InstalledPlugin>(`/plugins/${pluginId}/settings`, settings);
+      const res = await apiClient.patch<InstalledPlugin>('/plugins/settings', { pluginId, settings });
       return res.data;
     },
     onSuccess: () => {

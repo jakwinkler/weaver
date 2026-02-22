@@ -1,0 +1,15 @@
+{
+  "name": "@weaver/plugin-timer",
+  "version": "1.0.0",
+  "private": true,
+  "main": "./src/client/index.ts",
+  "dependencies": {
+    "react": "^18.3.1",
+    "lucide-react": "^0.575.0"
+  },
+  "devDependencies": {
+    "@weaver/config": "workspace:*",
+    "@types/react": "^18.3.18",
+    "typescript": "^5.7.2"
+  }
+}

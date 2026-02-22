@@ -7,14 +7,14 @@ import {
   HttpStatus,
   UseGuards,
 } from '@nestjs/common';
-import { Request, Response } from 'express';
+import type { Request, Response } from 'express';
 import { JwtAuthGuard } from '../core/auth';
 import type { PluginRouteDefinition } from '@weaver/sdk';
 import { PluginRegistryService } from './plugin-registry.service';
 import { PluginLoaderService } from './plugin-loader.service';
 import { PluginContextFactory } from './plugin-context.factory';
 
-@Controller('plugins')
+@Controller('plugin-routes')
 @UseGuards(JwtAuthGuard)
 export class PluginRouteController {
   constructor(

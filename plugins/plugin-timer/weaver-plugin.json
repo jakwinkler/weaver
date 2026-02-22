@@ -1,0 +1,27 @@
+{
+  "id": "@weaver/plugin-timer",
+  "name": "Issue Timer",
+  "version": "1.0.0",
+  "description": "Track time spent on issues with a start/pause/stop timer that auto-logs time entries",
+  "author": "Weaver",
+  "permissions": ["timer.allow"],
+  "declaredPermissions": [
+    {
+      "key": "timer.allow",
+      "label": "Use issue timer",
+      "description": "Start, pause, and stop the issue timer to log time entries"
+    }
+  ],
+  "settings": {},
+  "events": {
+    "emits": ["time.logged"]
+  },
+  "ui": {
+    "slots": [
+      {
+        "slot": "issue-detail-sidebar",
+        "component": "TimerWidget"
+      }
+    ]
+  }
+}

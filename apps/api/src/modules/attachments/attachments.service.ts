@@ -50,6 +50,33 @@ export class AttachmentsService {
     return repo.save(attachment);
   }
 
+  async upload(
+    file: Express.Multer.File,
+    uploaderId: string,
+  ): Promise<AttachmentEntity> {
+    const em = await this.tenantConnections.getEntityManager();
+    const repo = em.getRepository(AttachmentEntity);
+
+    if (!fs.existsSync(UPLOAD_DIR)) {
+      fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+    }
+
+    const storageKey = `${randomUUID()}-${file.originalname}`;
+    const filePath = path.join(UPLOAD_DIR, storageKey);
+    fs.writeFileSync(filePath, file.buffer);
+
+    const attachment = repo.create({
+      issueId: null,
+      uploaderId,
+      filename: file.originalname,
+      mimeType: file.mimetype,
+      size: String(file.size),
+      storageKey,
+    });
+
+    return repo.save(attachment);
+  }
+
   async findByIssue(issueKey: string): Promise<AttachmentEntity[]> {
     const issueId = await this.resolveIssueId(issueKey);
     const em = await this.tenantConnections.getEntityManager();

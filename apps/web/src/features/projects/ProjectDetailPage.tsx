@@ -1,6 +1,8 @@
+import { useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { useProject, useProjectIssues } from '@/api';
-import { Settings as SettingsIcon } from 'lucide-react';
+import { useProject, useProjectIssues, useUpdateProject, useMyPermissions } from '@/api';
+import { Settings as SettingsIcon, Pencil, X, Check } from 'lucide-react';
+import { RichTextEditor, normalizeCommentBody, serializeDoc } from '@/components/RichTextEditor';
 
 export function ProjectDetailPage() {
   const { projectKey } = useParams<{ projectKey: string }>();
@@ -8,6 +10,35 @@ export function ProjectDetailPage() {
   const { data: issuesData, isLoading: issuesLoading } = useProjectIssues({
     projectKey: projectKey!,
   });
+  const updateProject = useUpdateProject();
+  const permissions = useMyPermissions();
+
+  const canEdit =
+    permissions.includes('*') || permissions.includes('projects.update');
+
+  const [editingDesc, setEditingDesc] = useState(false);
+  const [descJson, setDescJson] = useState<Record<string, unknown> | null>(null);
+
+  const startEditing = useCallback(() => {
+    setDescJson(normalizeCommentBody(project?.description || ''));
+    setEditingDesc(true);
+  }, [project?.description]);
+
+  const cancelEditing = useCallback(() => {
+    setEditingDesc(false);
+    setDescJson(null);
+  }, []);
+
+  const saveDescription = useCallback(async () => {
+    if (!project) return;
+    const descStr = serializeDoc(descJson);
+    await updateProject.mutateAsync({
+      key: project.key,
+      description: descStr || undefined,
+    });
+    setEditingDesc(false);
+    setDescJson(null);
+  }, [descJson, project, updateProject]);
 
   if (projectLoading) {
     return (
@@ -43,9 +74,60 @@ export function ProjectDetailPage() {
             Settings
           </Link>
         </div>
-        {project.description && (
-          <p className="mt-2 text-gray-600">{project.description}</p>
-        )}
+
+        {/* Description */}
+        <div className="mt-3">
+          {editingDesc ? (
+            <div className="space-y-2">
+              <RichTextEditor
+                content={descJson}
+                onChange={setDescJson}
+                placeholder="Add a project description..."
+              />
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={saveDescription}
+                  disabled={updateProject.isPending}
+                  className="inline-flex items-center gap-1 rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                >
+                  <Check className="h-3.5 w-3.5" />
+                  {updateProject.isPending ? 'Saving...' : 'Save'}
+                </button>
+                <button
+                  onClick={cancelEditing}
+                  className="inline-flex items-center gap-1 rounded-md bg-gray-100 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-200"
+                >
+                  <X className="h-3.5 w-3.5" />
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="group relative">
+              {project.description ? (
+                <div className="rounded-md">
+                  <RichTextEditor
+                    content={normalizeCommentBody(project.description)}
+                    editable={false}
+                  />
+                </div>
+              ) : (
+                <p className="text-sm italic text-gray-400">
+                  {canEdit ? 'Click the edit icon to add a description.' : 'No description.'}
+                </p>
+              )}
+              {canEdit && (
+                <button
+                  onClick={startEditing}
+                  className="absolute top-0 right-0 rounded-md bg-white p-1.5 text-gray-400 opacity-0 shadow-sm ring-1 ring-gray-200 transition-opacity hover:text-indigo-600 group-hover:opacity-100"
+                  title="Edit description"
+                >
+                  <Pencil className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="mb-6 grid grid-cols-3 gap-4">

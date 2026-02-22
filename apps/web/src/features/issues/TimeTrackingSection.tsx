@@ -6,15 +6,66 @@ import {
 } from '@/api/hooks-phase3';
 import { apiClient } from '@/api/client';
 import { useQueryClient } from '@tanstack/react-query';
+import { Trash2, Clock } from 'lucide-react';
 
 interface TimeTrackingSectionProps {
   issueKey: string;
 }
 
-function formatTime(totalMinutes: number): string {
+export function formatTime(totalMinutes: number): string {
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
   return `${hours}h ${minutes}m`;
+}
+
+interface TimeEntryData {
+  id: string;
+  minutes: number;
+  description?: string;
+  loggedAt: string | Date;
+}
+
+export function TimeEntryRow({
+  entry,
+  onDelete,
+}: {
+  entry: TimeEntryData;
+  onDelete?: (id: string) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between rounded-lg border border-gray-100 bg-gray-50 px-4 py-3">
+      <div className="flex items-center gap-4">
+        <span className="inline-flex rounded-md bg-indigo-100 px-2.5 py-1 text-sm font-semibold text-indigo-700">
+          {formatTime(entry.minutes)}
+        </span>
+        <div>
+          {entry.description && (
+            <p className="text-sm text-gray-700">{entry.description}</p>
+          )}
+          <p className="text-xs text-gray-400">
+            {new Date(entry.loggedAt).toLocaleDateString()}
+          </p>
+        </div>
+      </div>
+      {onDelete && (
+        <button
+          onClick={() => onDelete(entry.id)}
+          className="rounded p-1 text-gray-400 hover:bg-red-100 hover:text-red-600"
+          title="Delete entry"
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+export function TimeEntryIcon() {
+  return (
+    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+      <Clock className="h-4 w-4" />
+    </div>
+  );
 }
 
 export function TimeTrackingSection({ issueKey }: TimeTrackingSectionProps) {
@@ -45,7 +96,7 @@ export function TimeTrackingSection({ issueKey }: TimeTrackingSectionProps) {
       queryClient.invalidateQueries({ queryKey: ['timeEntries', issueKey] });
       queryClient.invalidateQueries({ queryKey: ['timeEntrySummary', issueKey] });
     } catch {
-      // Error handling could be improved with a toast notification
+      // ignore
     }
   };
 
@@ -58,9 +109,9 @@ export function TimeTrackingSection({ issueKey }: TimeTrackingSectionProps) {
   }
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-6">
+    <div>
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-gray-900">Time Tracking</h2>
+        <h3 className="text-sm font-semibold text-gray-900">Time Tracking</h3>
         {summary && (
           <div className="rounded-md bg-indigo-50 px-3 py-1">
             <span className="text-sm font-medium text-indigo-700">
@@ -72,12 +123,10 @@ export function TimeTrackingSection({ issueKey }: TimeTrackingSectionProps) {
 
       {/* Log time form */}
       <form onSubmit={handleSubmit} className="mb-6 rounded-lg bg-gray-50 p-4">
-        <h3 className="mb-3 text-sm font-medium text-gray-700">Log Time</h3>
+        <h4 className="mb-3 text-sm font-medium text-gray-700">Log Time</h4>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
           <div>
-            <label htmlFor="timeMinutes" className="sr-only">
-              Minutes
-            </label>
+            <label htmlFor="timeMinutes" className="sr-only">Minutes</label>
             <input
               id="timeMinutes"
               type="number"
@@ -89,9 +138,7 @@ export function TimeTrackingSection({ issueKey }: TimeTrackingSectionProps) {
             />
           </div>
           <div className="sm:col-span-2">
-            <label htmlFor="timeDescription" className="sr-only">
-              Description
-            </label>
+            <label htmlFor="timeDescription" className="sr-only">Description</label>
             <textarea
               id="timeDescription"
               rows={1}
@@ -123,45 +170,8 @@ export function TimeTrackingSection({ issueKey }: TimeTrackingSectionProps) {
             No time entries logged yet.
           </p>
         )}
-
         {entries?.map((entry) => (
-          <div
-            key={entry.id}
-            className="flex items-center justify-between rounded-lg border border-gray-100 bg-gray-50 px-4 py-3"
-          >
-            <div className="flex items-center gap-4">
-              <span className="inline-flex rounded-md bg-indigo-100 px-2.5 py-1 text-sm font-semibold text-indigo-700">
-                {formatTime(entry.minutes)}
-              </span>
-              <div>
-                {entry.description && (
-                  <p className="text-sm text-gray-700">{entry.description}</p>
-                )}
-                <p className="text-xs text-gray-400">
-                  {new Date(entry.loggedAt).toLocaleDateString()}
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={() => handleDelete(entry.id)}
-              className="rounded p-1 text-gray-400 hover:bg-red-100 hover:text-red-600"
-              title="Delete entry"
-            >
-              <svg
-                className="h-4 w-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                />
-              </svg>
-            </button>
-          </div>
+          <TimeEntryRow key={entry.id} entry={entry} onDelete={handleDelete} />
         ))}
       </div>
     </div>
