@@ -2,6 +2,7 @@
   "extends": "@weaver/config/tsconfig.react.json",
   "compilerOptions": {
     "baseUrl": ".",
+    "skipLibCheck": true,
     "paths": {
       "@/*": ["./src/*"]
     }
