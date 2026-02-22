@@ -6,7 +6,7 @@ import { TenantConnectionProvider } from '../../core/tenant';
 export class IssueTypesService {
   constructor(private readonly tenantConnections: TenantConnectionProvider) {}
 
-  async create(dto: { name: string; slug: string; icon?: string | null; isSubtask?: boolean }): Promise<IssueTypeEntity> {
+  async create(dto: { name: string; slug: string; icon?: string | null; iconColor?: string | null; iconAttachmentId?: string | null; isSubtask?: boolean }): Promise<IssueTypeEntity> {
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(IssueTypeEntity);
 
@@ -19,6 +19,8 @@ export class IssueTypesService {
       name: dto.name,
       slug: dto.slug,
       icon: dto.icon ?? null,
+      iconColor: dto.iconColor ?? null,
+      iconAttachmentId: dto.iconAttachmentId ?? null,
       isSubtask: dto.isSubtask ?? false,
     });
 
@@ -41,7 +43,7 @@ export class IssueTypesService {
     return issueType;
   }
 
-  async update(id: string, dto: { name?: string; slug?: string; icon?: string | null; isSubtask?: boolean }): Promise<IssueTypeEntity> {
+  async update(id: string, dto: { name?: string; slug?: string; icon?: string | null; iconColor?: string | null; iconAttachmentId?: string | null; isSubtask?: boolean }): Promise<IssueTypeEntity> {
     const issueType = await this.findById(id);
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(IssueTypeEntity);

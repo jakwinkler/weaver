@@ -19,6 +19,12 @@ export class IssueTypeEntity {
   @Column({ type: 'varchar', length: 50, nullable: true })
   icon!: string | null;
 
+  @Column({ name: 'icon_color', type: 'varchar', length: 7, nullable: true })
+  iconColor!: string | null;
+
+  @Column({ name: 'icon_attachment_id', type: 'uuid', nullable: true })
+  iconAttachmentId!: string | null;
+
   @Column({ name: 'is_subtask', type: 'boolean', default: false })
   isSubtask!: boolean;
 

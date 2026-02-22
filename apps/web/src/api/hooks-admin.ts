@@ -46,7 +46,7 @@ export function useUpdateUserRole() {
 export function useCreateIssueType() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (data: { name: string; slug: string; icon?: string; isSubtask?: boolean }) => {
+    mutationFn: async (data: { name: string; slug: string; icon?: string; iconColor?: string | null; iconAttachmentId?: string | null; isSubtask?: boolean }) => {
       const res = await apiClient.post<IssueType>('/issue-types', data);
       return res.data;
     },
@@ -59,7 +59,7 @@ export function useCreateIssueType() {
 export function useUpdateIssueType() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, ...data }: { id: string; name?: string; slug?: string; icon?: string; isSubtask?: boolean }) => {
+    mutationFn: async ({ id, ...data }: { id: string; name?: string; slug?: string; icon?: string; iconColor?: string | null; iconAttachmentId?: string | null; isSubtask?: boolean }) => {
       const res = await apiClient.patch<IssueType>(`/issue-types/${id}`, data);
       return res.data;
     },

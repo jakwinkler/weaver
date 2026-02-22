@@ -19,6 +19,8 @@ const createIssueTypeSchema = z.object({
   name: z.string().min(1).max(100),
   slug: z.string().min(1).max(50),
   icon: z.string().max(50).optional(),
+  iconColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().optional(),
+  iconAttachmentId: z.string().uuid().nullable().optional(),
   isSubtask: z.boolean().default(false),
 });
 
@@ -26,6 +28,8 @@ const updateIssueTypeSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   slug: z.string().min(1).max(50).optional(),
   icon: z.string().max(50).nullable().optional(),
+  iconColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().optional(),
+  iconAttachmentId: z.string().uuid().nullable().optional(),
   isSubtask: z.boolean().optional(),
 });
 

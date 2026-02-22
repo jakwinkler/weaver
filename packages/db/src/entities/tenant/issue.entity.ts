@@ -11,6 +11,7 @@ import {
 } from 'typeorm';
 import { ProjectEntity } from './project.entity';
 import { CommentEntity } from './comment.entity';
+import { IssueTypeEntity } from './issue-type.entity';
 
 @Index(['projectId'])
 @Index(['statusId'])
@@ -64,6 +65,15 @@ export class IssueEntity {
   @Column({ name: 'sort_order', type: 'int', default: 0 })
   sortOrder!: number;
 
+  @Column({ name: 'start_date', type: 'date', nullable: true })
+  startDate!: string | null;
+
+  @Column({ name: 'due_date', type: 'date', nullable: true })
+  dueDate!: string | null;
+
+  @Column({ name: 'percent_done', type: 'int', default: 0 })
+  percentDone!: number;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;
 
@@ -73,6 +83,10 @@ export class IssueEntity {
   @ManyToOne(() => ProjectEntity, (project) => project.issues)
   @JoinColumn({ name: 'project_id' })
   project!: ProjectEntity;
+
+  @ManyToOne(() => IssueTypeEntity, { nullable: true })
+  @JoinColumn({ name: 'issue_type_id' })
+  issueType!: IssueTypeEntity | null;
 
   @ManyToOne(() => IssueEntity, { nullable: true })
   @JoinColumn({ name: 'parent_id' })

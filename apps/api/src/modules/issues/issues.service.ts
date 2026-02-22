@@ -6,6 +6,16 @@ import { ProjectsService } from '../projects';
 import { WorkflowsService } from '../workflows';
 import { PaginationParams, paginate } from '../../common';
 
+export interface IssueFilters {
+  statusId?: string;
+  assigneeId?: string;
+  priority?: string;
+  startDateFrom?: string;
+  startDateTo?: string;
+  dueDateFrom?: string;
+  dueDateTo?: string;
+}
+
 @Injectable()
 export class IssuesService {
   constructor(
@@ -46,6 +56,9 @@ export class IssuesService {
       epicId: dto.epicId,
       labels: dto.labels || [],
       sortOrder: 0,
+      startDate: dto.startDate ?? null,
+      dueDate: dto.dueDate ?? null,
+      percentDone: dto.percentDone ?? 0,
     });
 
     return repo.save(issue);
@@ -61,16 +74,31 @@ export class IssuesService {
     return issue;
   }
 
-  async findByProject(projectKey: string, params: PaginationParams): Promise<PaginatedResponse<IssueEntity>> {
+  async findByProject(
+    projectKey: string,
+    params: PaginationParams,
+    filters?: IssueFilters,
+  ): Promise<PaginatedResponse<IssueEntity>> {
     const project = await this.projectsService.findByKey(projectKey);
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(IssueEntity);
 
     const qb = repo
       .createQueryBuilder('issue')
+      .leftJoinAndSelect('issue.issueType', 'issueType')
       .where('issue.projectId = :projectId', { projectId: project.id });
 
-    return paginate(qb, params, ['summary', 'priority', 'createdAt', 'updatedAt', 'key', 'sortOrder']);
+    if (filters) {
+      if (filters.statusId) qb.andWhere('issue.statusId = :statusId', { statusId: filters.statusId });
+      if (filters.assigneeId) qb.andWhere('issue.assigneeId = :assigneeId', { assigneeId: filters.assigneeId });
+      if (filters.priority) qb.andWhere('issue.priority = :priority', { priority: filters.priority });
+      if (filters.startDateFrom) qb.andWhere('issue.startDate >= :startDateFrom', { startDateFrom: filters.startDateFrom });
+      if (filters.startDateTo) qb.andWhere('issue.startDate <= :startDateTo', { startDateTo: filters.startDateTo });
+      if (filters.dueDateFrom) qb.andWhere('issue.dueDate >= :dueDateFrom', { dueDateFrom: filters.dueDateFrom });
+      if (filters.dueDateTo) qb.andWhere('issue.dueDate <= :dueDateTo', { dueDateTo: filters.dueDateTo });
+    }
+
+    return paginate(qb, params, ['summary', 'priority', 'createdAt', 'updatedAt', 'key', 'sortOrder', 'startDate', 'dueDate', 'percentDone']);
   }
 
   async update(issueKey: string, dto: UpdateIssueDto): Promise<IssueEntity> {
@@ -88,6 +116,9 @@ export class IssuesService {
     if (dto.labels !== undefined) issue.labels = dto.labels;
     if (dto.customFields !== undefined) issue.customFields = dto.customFields;
     if (dto.sortOrder !== undefined) issue.sortOrder = dto.sortOrder;
+    if (dto.startDate !== undefined) issue.startDate = dto.startDate ?? null;
+    if (dto.dueDate !== undefined) issue.dueDate = dto.dueDate ?? null;
+    if (dto.percentDone !== undefined) issue.percentDone = dto.percentDone;
 
     return repo.save(issue);
   }

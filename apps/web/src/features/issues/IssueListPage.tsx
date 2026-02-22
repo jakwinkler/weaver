@@ -1,23 +1,40 @@
 import { useState, type FormEvent } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { useProjectIssues, useCreateIssue, useProject } from '@/api';
+import { useProjectIssues, useCreateIssue, useProject, useIssueTypes } from '@/api';
 import type { IssuePriority } from '@weaver/shared';
+import { IssueTypeIcon } from '@/components/IconPicker';
 
 export function IssueListPage() {
   const { projectKey } = useParams<{ projectKey: string }>();
   const { data: project } = useProject(projectKey!);
   const { data, isLoading } = useProjectIssues({ projectKey: projectKey! });
   const createIssue = useCreateIssue(projectKey!);
+  const { data: issueTypes } = useIssueTypes();
 
   const [showForm, setShowForm] = useState(false);
   const [summary, setSummary] = useState('');
+  const [issueTypeId, setIssueTypeId] = useState('');
   const [priority, setPriority] = useState<IssuePriority>('medium');
+  const [startDate, setStartDate] = useState('');
+  const [dueDate, setDueDate] = useState('');
 
   const handleCreate = async (e: FormEvent) => {
     e.preventDefault();
-    await createIssue.mutateAsync({ summary, priority, labels: [], customFields: {} });
+    await createIssue.mutateAsync({
+      summary,
+      priority,
+      labels: [],
+      customFields: {},
+      percentDone: 0,
+      ...(issueTypeId ? { issueTypeId } : {}),
+      ...(startDate ? { startDate } : {}),
+      ...(dueDate ? { dueDate } : {}),
+    });
     setSummary('');
+    setIssueTypeId('');
     setPriority('medium');
+    setStartDate('');
+    setDueDate('');
     setShowForm(false);
   };
 
@@ -52,7 +69,7 @@ export function IssueListPage() {
 
       {showForm && (
         <form onSubmit={handleCreate} className="mb-6 rounded-lg border border-gray-200 bg-white p-5">
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-4 gap-4">
             <div className="col-span-2">
               <label htmlFor="issueSummary" className="block text-sm font-medium text-gray-700">
                 Summary
@@ -66,6 +83,22 @@ export function IssueListPage() {
                 className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                 placeholder="Issue summary"
               />
+            </div>
+            <div>
+              <label htmlFor="issueType" className="block text-sm font-medium text-gray-700">
+                Type
+              </label>
+              <select
+                id="issueType"
+                value={issueTypeId}
+                onChange={(e) => setIssueTypeId(e.target.value)}
+                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              >
+                <option value="">None</option>
+                {issueTypes?.map((t) => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
             </div>
             <div>
               <label htmlFor="issuePriority" className="block text-sm font-medium text-gray-700">
@@ -83,6 +116,32 @@ export function IssueListPage() {
                 <option value="high">High</option>
                 <option value="highest">Highest</option>
               </select>
+            </div>
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-4">
+            <div>
+              <label htmlFor="issueStartDate" className="block text-sm font-medium text-gray-700">
+                Start Date
+              </label>
+              <input
+                id="issueStartDate"
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              />
+            </div>
+            <div>
+              <label htmlFor="issueDueDate" className="block text-sm font-medium text-gray-700">
+                Due Date
+              </label>
+              <input
+                id="issueDueDate"
+                type="date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              />
             </div>
           </div>
           {createIssue.isError && (
@@ -105,6 +164,9 @@ export function IssueListPage() {
           <thead className="bg-gray-50">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                Type
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                 Key
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
@@ -116,11 +178,29 @@ export function IssueListPage() {
               <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                 Status
               </th>
+              <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                Due Date
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                % Done
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
             {data?.data.map((issue) => (
               <tr key={issue.id} className="hover:bg-gray-50">
+                <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+                  {issue.issueType ? (
+                    <span className="inline-flex items-center gap-1.5" title={issue.issueType.name}>
+                      <IssueTypeIcon
+                        icon={issue.issueType.icon}
+                        iconColor={issue.issueType.iconColor}
+                        iconAttachmentId={issue.issueType.iconAttachmentId}
+                      />
+                      <span className="text-xs">{issue.issueType.name}</span>
+                    </span>
+                  ) : '—'}
+                </td>
                 <td className="whitespace-nowrap px-6 py-4 text-sm font-medium text-indigo-600">
                   <Link to={`/issues/${issue.key}`}>{issue.key}</Link>
                 </td>
@@ -133,11 +213,25 @@ export function IssueListPage() {
                 <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
                   {issue.statusId}
                 </td>
+                <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+                  {issue.dueDate || '-'}
+                </td>
+                <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+                  <div className="flex items-center gap-2">
+                    <div className="h-1.5 w-16 rounded-full bg-gray-200">
+                      <div
+                        className="h-1.5 rounded-full bg-indigo-500"
+                        style={{ width: `${issue.percentDone ?? 0}%` }}
+                      />
+                    </div>
+                    <span className="text-xs">{issue.percentDone ?? 0}%</span>
+                  </div>
+                </td>
               </tr>
             ))}
             {data?.data.length === 0 && (
               <tr>
-                <td colSpan={4} className="px-6 py-8 text-center text-sm text-gray-500">
+                <td colSpan={7} className="px-6 py-8 text-center text-sm text-gray-500">
                   No issues yet. Create your first issue to get started.
                 </td>
               </tr>

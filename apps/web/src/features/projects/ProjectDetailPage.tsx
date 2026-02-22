@@ -1,9 +1,10 @@
 import { useState, useCallback } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useLocation } from 'react-router-dom';
 import { useProject, useProjectIssues, useUpdateProject, useMyPermissions } from '@/api';
 import { Settings as SettingsIcon, Pencil, X, Check } from 'lucide-react';
 import { RichTextEditor, normalizeCommentBody, serializeDoc } from '@/components/RichTextEditor';
 import { ProjectIcon } from './ProjectSettingsPage';
+import { IssueTypeIcon } from '@/components/IconPicker';
 
 export function ProjectDetailPage() {
   const { projectKey } = useParams<{ projectKey: string }>();
@@ -13,6 +14,7 @@ export function ProjectDetailPage() {
   });
   const updateProject = useUpdateProject();
   const permissions = useMyPermissions();
+  const location = useLocation();
 
   const canEdit =
     permissions.includes('*') || permissions.includes('projects.update');
@@ -132,6 +134,9 @@ export function ProjectDetailPage() {
         </div>
       </div>
 
+      {/* View navigation */}
+      <ProjectViewNav projectKey={project.key} currentPath={location.pathname} />
+
       <div className="mb-6 grid grid-cols-3 gap-4">
         <div className="rounded-lg border border-gray-200 bg-white p-4">
           <p className="text-sm text-gray-500">Total Issues</p>
@@ -169,6 +174,9 @@ export function ProjectDetailPage() {
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                  Type
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                   Key
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
@@ -182,6 +190,17 @@ export function ProjectDetailPage() {
             <tbody className="divide-y divide-gray-200">
               {issuesData?.data.slice(0, 10).map((issue) => (
                 <tr key={issue.id} className="hover:bg-gray-50">
+                  <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+                    {issue.issueType ? (
+                      <span className="inline-flex items-center gap-1.5" title={issue.issueType.name}>
+                        <IssueTypeIcon
+                          icon={issue.issueType.icon}
+                          iconColor={issue.issueType.iconColor}
+                          iconAttachmentId={issue.issueType.iconAttachmentId}
+                        />
+                      </span>
+                    ) : '—'}
+                  </td>
                   <td className="whitespace-nowrap px-6 py-4 text-sm font-medium text-indigo-600">
                     <Link to={`/issues/${issue.key}`}>{issue.key}</Link>
                   </td>
@@ -195,7 +214,7 @@ export function ProjectDetailPage() {
               ))}
               {issuesData?.data.length === 0 && (
                 <tr>
-                  <td colSpan={3} className="px-6 py-8 text-center text-sm text-gray-500">
+                  <td colSpan={4} className="px-6 py-8 text-center text-sm text-gray-500">
                     No issues yet.
                   </td>
                 </tr>
@@ -205,6 +224,38 @@ export function ProjectDetailPage() {
         </div>
       )}
     </div>
+  );
+}
+
+const VIEW_LINKS = [
+  { label: 'Issues', path: 'issues' },
+  { label: 'Board', path: 'board' },
+  { label: 'Sprints', path: 'sprints' },
+  { label: 'Gantt', path: 'gantt' },
+  { label: 'Calendar', path: 'calendar' },
+];
+
+function ProjectViewNav({ projectKey, currentPath }: { projectKey: string; currentPath: string }) {
+  return (
+    <nav className="mb-6 flex gap-1 rounded-lg border border-gray-200 bg-white p-1">
+      {VIEW_LINKS.map(({ label, path }) => {
+        const href = `/projects/${projectKey}/${path}`;
+        const isActive = currentPath === href;
+        return (
+          <Link
+            key={path}
+            to={href}
+            className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+              isActive
+                ? 'bg-indigo-100 text-indigo-700'
+                : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+            }`}
+          >
+            {label}
+          </Link>
+        );
+      })}
+    </nav>
   );
 }
 

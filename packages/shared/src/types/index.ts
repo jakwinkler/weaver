@@ -96,8 +96,12 @@ export interface Issue {
   epicId?: string;
   labels: string[];
   sortOrder: number;
+  startDate?: string;
+  dueDate?: string;
+  percentDone: number;
   createdAt: Date;
   updatedAt: Date;
+  issueType?: IssueType | null;
 }
 
 export interface IssueType {
@@ -105,6 +109,8 @@ export interface IssueType {
   name: string;
   slug: string;
   icon?: string;
+  iconColor?: string | null;
+  iconAttachmentId?: string | null;
   isSubtask: boolean;
   createdAt: Date;
 }
