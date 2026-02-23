@@ -12,7 +12,19 @@ import {
 import type { IssuePriority } from '@weaver/shared';
 import { IssueActivityTabs } from './IssueActivityTabs';
 import { PluginSlot } from '@/plugins';
-import { ArrowRight } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { cn } from '@/lib/utils';
 
 export function IssueDetailPage() {
   const { issueKey } = useParams<{ issueKey: string }>();
@@ -67,6 +79,13 @@ export function IssueDetailPage() {
     return user?.displayName || user?.email || userId.slice(0, 8);
   };
 
+  const getUserInitials = (userId: string | null | undefined) => {
+    if (!userId) return '?';
+    const user = users?.find((u) => u.id === userId);
+    const name = user?.displayName || user?.email || '';
+    return name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2) || '?';
+  };
+
   const getStatusName = (statusId: string) => {
     const status = workflow?.statuses?.find((s) => s.id === statusId);
     return status?.name || statusId.slice(0, 8);
@@ -80,7 +99,7 @@ export function IssueDetailPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <p className="text-gray-500">Loading issue...</p>
+        <p className="text-muted-foreground">Loading issue...</p>
       </div>
     );
   }
@@ -88,7 +107,7 @@ export function IssueDetailPage() {
   if (!issue) {
     return (
       <div className="flex items-center justify-center py-12">
-        <p className="text-gray-500">Issue not found.</p>
+        <p className="text-muted-foreground">Issue not found.</p>
       </div>
     );
   }
@@ -96,111 +115,107 @@ export function IssueDetailPage() {
   return (
     <div>
       {/* Breadcrumb */}
-      <div className="mb-6 flex items-center gap-2 text-sm text-gray-500">
-        <Link to={`/projects/${projectKey}`} className="hover:text-indigo-600">
+      <div className="mb-6 flex items-center gap-2 text-sm text-muted-foreground">
+        <Link to={`/projects/${projectKey}`} className="hover:text-primary">
           {projectKey}
         </Link>
         <span>/</span>
-        <Link to={`/projects/${projectKey}/issues`} className="hover:text-indigo-600">
+        <Link to={`/projects/${projectKey}/issues`} className="hover:text-primary">
           Issues
         </Link>
         <span>/</span>
-        <span className="text-gray-900">{issue.key}</span>
+        <span className="text-foreground">{issue.key}</span>
       </div>
 
       <div className="grid grid-cols-3 gap-6">
         {/* Main content */}
         <div className="col-span-2 space-y-6">
           {/* Issue header + edit form */}
-          <div className="rounded-lg border border-gray-200 bg-white p-6">
-            <div className="mb-4 flex items-center justify-between">
-              <h1 className="text-xl font-bold text-gray-900">
-                <span className="mr-2 text-indigo-600">{issue.key}</span>
-                {isEditing ? null : issue.summary}
-              </h1>
-              <button
-                onClick={() => setIsEditing(!isEditing)}
-                className="rounded-md bg-gray-100 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-200"
-              >
-                {isEditing ? 'Cancel' : 'Edit'}
-              </button>
-            </div>
-
-            {isEditing ? (
-              <form onSubmit={handleSave} className="space-y-4">
-                <div>
-                  <label htmlFor="editSummary" className="block text-sm font-medium text-gray-700">
-                    Summary
-                  </label>
-                  <input
-                    id="editSummary"
-                    type="text"
-                    required
-                    value={summary}
-                    onChange={(e) => setSummary(e.target.value)}
-                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="editPriority" className="block text-sm font-medium text-gray-700">
-                    Priority
-                  </label>
-                  <select
-                    id="editPriority"
-                    value={priority}
-                    onChange={(e) => setPriority(e.target.value as IssuePriority)}
-                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                  >
-                    <option value="lowest">Lowest</option>
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                    <option value="highest">Highest</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label htmlFor="editLabels" className="block text-sm font-medium text-gray-700">
-                    Labels (comma-separated)
-                  </label>
-                  <input
-                    id="editLabels"
-                    type="text"
-                    value={labels}
-                    onChange={(e) => setLabels(e.target.value)}
-                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                    placeholder="bug, frontend, urgent"
-                  />
-                </div>
-
-                {updateIssue.isError && (
-                  <p className="text-sm text-red-600">Failed to update issue.</p>
-                )}
-
-                <button
-                  type="submit"
-                  disabled={updateIssue.isPending}
-                  className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+          <Card>
+            <CardContent className="p-6">
+              <div className="mb-4 flex items-center justify-between">
+                <h1 className="text-xl font-bold text-foreground">
+                  <span className="mr-2 text-primary">{issue.key}</span>
+                  {isEditing ? null : issue.summary}
+                </h1>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setIsEditing(!isEditing)}
                 >
-                  {updateIssue.isPending ? 'Saving...' : 'Save changes'}
-                </button>
-              </form>
-            ) : (
-              <div>
-                {issue.description && (
-                  <div className="prose prose-sm mt-4 text-gray-700">
-                    <pre className="whitespace-pre-wrap text-sm">
-                      {JSON.stringify(issue.description, null, 2)}
-                    </pre>
-                  </div>
-                )}
-                {!issue.description && (
-                  <p className="mt-4 text-sm italic text-gray-400">No description provided.</p>
-                )}
+                  {isEditing ? 'Cancel' : 'Edit'}
+                </Button>
               </div>
-            )}
-          </div>
+
+              {isEditing ? (
+                <form onSubmit={handleSave} className="space-y-4">
+                  <div>
+                    <Label htmlFor="editSummary">Summary</Label>
+                    <Input
+                      id="editSummary"
+                      type="text"
+                      required
+                      value={summary}
+                      onChange={(e) => setSummary(e.target.value)}
+                      className="mt-1"
+                    />
+                  </div>
+
+                  <div>
+                    <Label htmlFor="editPriority">Priority</Label>
+                    <select
+                      id="editPriority"
+                      value={priority}
+                      onChange={(e) => setPriority(e.target.value as IssuePriority)}
+                      className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
+                    >
+                      <option value="lowest">Lowest</option>
+                      <option value="low">Low</option>
+                      <option value="medium">Medium</option>
+                      <option value="high">High</option>
+                      <option value="highest">Highest</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="editLabels">Labels (comma-separated)</Label>
+                    <Input
+                      id="editLabels"
+                      type="text"
+                      value={labels}
+                      onChange={(e) => setLabels(e.target.value)}
+                      className="mt-1"
+                      placeholder="bug, frontend, urgent"
+                    />
+                  </div>
+
+                  {updateIssue.isError && (
+                    <p className="text-sm text-destructive">Failed to update issue.</p>
+                  )}
+
+                  <Button type="submit" disabled={updateIssue.isPending}>
+                    {updateIssue.isPending ? 'Saving...' : 'Save changes'}
+                  </Button>
+                </form>
+              ) : (
+                <div>
+                  {issue.description && (
+                    <div className="prose prose-sm mt-4 text-foreground">
+                      <pre className="whitespace-pre-wrap text-sm">
+                        {JSON.stringify(issue.description, null, 2)}
+                      </pre>
+                    </div>
+                  )}
+                  {!issue.description && (
+                    <p className="mt-4 text-sm italic text-muted-foreground">No description provided.</p>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Plugin content slots (e.g. checklist) */}
+          <PluginSlot name="issue-detail-content" issueKey={issueKey!} />
 
           {/* Tabbed Activity Section */}
           <IssueActivityTabs issueKey={issueKey!} />
@@ -209,93 +224,194 @@ export function IssueDetailPage() {
         {/* Sidebar */}
         <div className="space-y-4">
           {/* Status transition bar */}
-          <div className="rounded-lg border border-gray-200 bg-white p-4">
-            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">Status</h3>
-            <div className="mb-3">
-              <span
-                className="inline-flex items-center rounded-full px-3 py-1 text-sm font-medium text-white"
-                style={{ backgroundColor: getStatusColor(issue.statusId) }}
-              >
-                {getStatusName(issue.statusId)}
-              </span>
-            </div>
-
-            {availableTransitions && availableTransitions.length > 0 && (
-              <div>
-                <h4 className="mb-2 text-xs text-gray-500">Transitions</h4>
-                <div className="flex flex-wrap gap-2">
-                  {availableTransitions.map((t) => (
+          <Card>
+            <CardHeader className="pb-2 pt-4 px-4">
+              <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Status
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="px-4 pb-4 pt-0">
+              {availableTransitions && availableTransitions.length > 0 ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
                     <button
-                      key={t.id}
-                      onClick={() => handleTransition(t.id)}
-                      disabled={transitionIssue.isPending}
-                      className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
+                      className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium text-white cursor-pointer"
+                      style={{ backgroundColor: getStatusColor(issue.statusId) }}
                     >
-                      <ArrowRight className="h-3 w-3" />
-                      {t.name || (t as any).toStatus?.name || 'Transition'}
+                      {getStatusName(issue.statusId)}
+                      <ChevronDown className="h-3.5 w-3.5" />
                     </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start">
+                    {availableTransitions.map((t) => {
+                      const targetStatus = (t as any).toStatus;
+                      const targetColor = targetStatus?.color || '#6b7280';
+                      const targetName = targetStatus?.name || t.name || 'Transition';
+                      return (
+                        <DropdownMenuItem
+                          key={t.id}
+                          onClick={() => handleTransition(t.id)}
+                          disabled={transitionIssue.isPending}
+                          className="gap-2"
+                        >
+                          <span
+                            className="inline-block h-2.5 w-2.5 rounded-full shrink-0"
+                            style={{ backgroundColor: targetColor }}
+                          />
+                          {targetName}
+                        </DropdownMenuItem>
+                      );
+                    })}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : (
+                <span
+                  className="inline-flex items-center rounded-full px-3 py-1 text-sm font-medium text-white"
+                  style={{ backgroundColor: getStatusColor(issue.statusId) }}
+                >
+                  {getStatusName(issue.statusId)}
+                </span>
+              )}
+            </CardContent>
+          </Card>
 
           {/* Plugin Slots */}
           <PluginSlot name="issue-detail-sidebar" issueKey={issueKey!} />
 
           {/* Details */}
-          <div className="rounded-lg border border-gray-200 bg-white p-4">
-            <h3 className="mb-3 text-sm font-semibold text-gray-900">Details</h3>
-            <dl className="space-y-3">
-              <div>
-                <dt className="text-xs text-gray-500">Priority</dt>
-                <dd className="mt-0.5">
-                  <PriorityBadge priority={issue.priority} />
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs text-gray-500">Reporter</dt>
-                <dd className="mt-0.5 text-sm text-gray-900">{getUserName(issue.reporterId)}</dd>
-              </div>
-              {issue.assigneeId && (
+          <Card>
+            <CardHeader className="pb-2 pt-4 px-4">
+              <CardTitle className="text-sm font-semibold text-foreground">Details</CardTitle>
+            </CardHeader>
+            <CardContent className="px-4 pb-4 pt-0">
+              <dl className="space-y-3">
                 <div>
-                  <dt className="text-xs text-gray-500">Assignee</dt>
-                  <dd className="mt-0.5 text-sm text-gray-900">{getUserName(issue.assigneeId)}</dd>
+                  <dt className="text-xs text-muted-foreground">Priority</dt>
+                  <dd className="mt-0.5">
+                    <PriorityBadge priority={issue.priority} />
+                  </dd>
                 </div>
-              )}
-              <div>
-                <dt className="text-xs text-gray-500">Labels</dt>
-                <dd className="mt-0.5">
-                  {issue.labels.length > 0 ? (
-                    <div className="flex flex-wrap gap-1">
-                      {issue.labels.map((label) => (
-                        <span
-                          key={label}
-                          className="inline-flex rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-700"
+                <div>
+                  <dt className="text-xs text-muted-foreground">Reporter</dt>
+                  <dd className="mt-0.5 text-sm text-foreground">{getUserName(issue.reporterId)}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">Assignee</dt>
+                  <dd className="mt-0.5">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm hover:bg-accent cursor-pointer">
+                          {issue.assigneeId ? (
+                            <>
+                              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-[10px] font-medium text-primary">
+                                {getUserInitials(issue.assigneeId)}
+                              </span>
+                              {getUserName(issue.assigneeId)}
+                            </>
+                          ) : (
+                            <span className="text-muted-foreground">Unassigned</span>
+                          )}
+                          <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start" className="w-52">
+                        <DropdownMenuItem
+                          onClick={() => updateIssue.mutate({ assigneeId: null })}
+                          disabled={!issue.assigneeId}
+                          className="gap-2 text-muted-foreground"
                         >
-                          {label}
-                        </span>
-                      ))}
-                    </div>
-                  ) : (
-                    <span className="text-sm text-gray-400">None</span>
-                  )}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs text-gray-500">Created</dt>
-                <dd className="mt-0.5 text-sm text-gray-900">
-                  {new Date(issue.createdAt).toLocaleString()}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs text-gray-500">Updated</dt>
-                <dd className="mt-0.5 text-sm text-gray-900">
-                  {new Date(issue.updatedAt).toLocaleString()}
-                </dd>
-              </div>
-            </dl>
-          </div>
+                          Unassign
+                        </DropdownMenuItem>
+                        {users?.map((u) => (
+                          <DropdownMenuItem
+                            key={u.id}
+                            onClick={() => updateIssue.mutate({ assigneeId: u.id })}
+                            className={cn('gap-2', u.id === issue.assigneeId && 'bg-accent')}
+                          >
+                            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-[10px] font-medium text-primary shrink-0">
+                              {(u.displayName || u.email).split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)}
+                            </span>
+                            {u.displayName || u.email}
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">Labels</dt>
+                  <dd className="mt-0.5">
+                    {issue.labels.length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
+                        {issue.labels.map((label) => (
+                          <Badge key={label} variant="secondary">
+                            {label}
+                          </Badge>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-sm text-muted-foreground">None</span>
+                    )}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">Start Date</dt>
+                  <dd className="mt-0.5">
+                    <input
+                      type="date"
+                      value={issue.startDate || ''}
+                      onChange={(e) =>
+                        updateIssue.mutate({ startDate: e.target.value || null })
+                      }
+                      className="rounded-md border border-input bg-background px-2 py-1 text-sm focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
+                    />
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">Due Date</dt>
+                  <dd className="mt-0.5">
+                    <input
+                      type="date"
+                      value={issue.dueDate || ''}
+                      onChange={(e) =>
+                        updateIssue.mutate({ dueDate: e.target.value || null })
+                      }
+                      className="rounded-md border border-input bg-background px-2 py-1 text-sm focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
+                    />
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">% Done</dt>
+                  <dd className="mt-0.5 flex items-center gap-2">
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      step="5"
+                      value={issue.percentDone ?? 0}
+                      onChange={(e) =>
+                        updateIssue.mutate({ percentDone: Number(e.target.value) })
+                      }
+                      className="h-2 w-24 cursor-pointer accent-primary"
+                    />
+                    <span className="text-sm text-foreground">{issue.percentDone ?? 0}%</span>
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">Created</dt>
+                  <dd className="mt-0.5 text-sm text-foreground">
+                    {new Date(issue.createdAt).toLocaleString()}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">Updated</dt>
+                  <dd className="mt-0.5 text-sm text-foreground">
+                    {new Date(issue.updatedAt).toLocaleString()}
+                  </dd>
+                </div>
+              </dl>
+            </CardContent>
+          </Card>
         </div>
       </div>
     </div>
@@ -304,15 +420,20 @@ export function IssueDetailPage() {
 
 function PriorityBadge({ priority }: { priority: string }) {
   const colors: Record<string, string> = {
-    highest: 'bg-red-100 text-red-700',
-    high: 'bg-orange-100 text-orange-700',
-    medium: 'bg-yellow-100 text-yellow-700',
-    low: 'bg-blue-100 text-blue-700',
-    lowest: 'bg-gray-100 text-gray-700',
+    highest: 'bg-red-100 text-red-700 border-red-200',
+    high: 'bg-orange-100 text-orange-700 border-orange-200',
+    medium: 'bg-yellow-100 text-yellow-700 border-yellow-200',
+    low: 'bg-blue-100 text-blue-700 border-blue-200',
+    lowest: 'bg-muted text-muted-foreground border-border',
   };
 
   return (
-    <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${colors[priority] || 'bg-gray-100 text-gray-700'}`}>
+    <span
+      className={cn(
+        'inline-flex rounded-full px-2 py-0.5 text-xs font-medium',
+        colors[priority] ?? 'bg-muted text-muted-foreground border-border',
+      )}
+    >
       {priority}
     </span>
   );

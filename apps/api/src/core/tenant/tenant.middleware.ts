@@ -31,6 +31,12 @@ export class TenantMiddleware implements NestMiddleware {
   ) {}
 
   async use(req: Request, _res: Response, next: NextFunction) {
+    // Skip tenant resolution for auth routes (login/register/refresh)
+    if (req.originalUrl.includes('/auth/')) {
+      next();
+      return;
+    }
+
     const tenantId = this.resolveTenantId(req);
 
     if (!tenantId) {

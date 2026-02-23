@@ -3,6 +3,12 @@ import { useParams, Link } from 'react-router-dom';
 import { useProject, useProjectIssues, useWorkflow } from '@/api';
 import { useBoards, useCreateBoard } from '@/api/hooks-phase2';
 import type { Issue } from '@weaver/shared';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 
 interface StatusColumn {
   statusId: string;
@@ -13,20 +19,23 @@ interface StatusColumn {
 }
 
 function PriorityBadge({ priority }: { priority: string }) {
-  const colors: Record<string, string> = {
-    highest: 'bg-red-100 text-red-700',
-    high: 'bg-orange-100 text-orange-700',
-    medium: 'bg-yellow-100 text-yellow-700',
-    low: 'bg-blue-100 text-blue-700',
-    lowest: 'bg-gray-100 text-gray-700',
+  const variants: Record<string, string> = {
+    highest: 'bg-red-100 text-red-700 border-red-200',
+    high: 'bg-orange-100 text-orange-700 border-orange-200',
+    medium: 'bg-yellow-100 text-yellow-700 border-yellow-200',
+    low: 'bg-blue-100 text-blue-700 border-blue-200',
+    lowest: 'bg-muted text-muted-foreground border-border',
   };
 
   return (
-    <span
-      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${colors[priority] || 'bg-gray-100 text-gray-700'}`}
+    <Badge
+      className={cn(
+        'rounded-full px-2 py-0.5 text-xs font-medium',
+        variants[priority] || 'bg-muted text-muted-foreground border-border',
+      )}
     >
       {priority}
-    </span>
+    </Badge>
   );
 }
 
@@ -34,19 +43,19 @@ function IssueCard({ issue }: { issue: Issue }) {
   return (
     <Link
       to={`/issues/${issue.key}`}
-      className="block rounded-lg border border-gray-200 bg-white p-3 shadow-sm transition hover:shadow-md"
+      className="block rounded-lg border border-border bg-card p-3 shadow-sm transition hover:shadow-md"
     >
-      <p className="text-sm font-medium text-gray-900">{issue.summary}</p>
+      <p className="text-sm font-medium text-foreground">{issue.summary}</p>
       <div className="mt-2 flex items-center justify-between">
-        <span className="text-xs font-medium text-indigo-600">{issue.key}</span>
+        <span className="text-xs font-medium text-primary">{issue.key}</span>
         <PriorityBadge priority={issue.priority} />
       </div>
       {issue.assigneeId && (
         <div className="mt-2 flex items-center gap-1">
-          <div className="flex h-5 w-5 items-center justify-center rounded-full bg-indigo-100 text-xs font-medium text-indigo-700">
+          <div className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary">
             {issue.assigneeId.slice(0, 1).toUpperCase()}
           </div>
-          <span className="text-xs text-gray-500">{issue.assigneeId.slice(0, 8)}</span>
+          <span className="text-xs text-muted-foreground">{issue.assigneeId.slice(0, 8)}</span>
         </div>
       )}
     </Link>
@@ -75,38 +84,35 @@ function CreateBoardForm({
   };
 
   return (
-    <div className="mx-auto max-w-md rounded-lg border border-gray-200 bg-white p-6">
-      <h2 className="mb-4 text-lg font-semibold text-gray-900">Create a Kanban Board</h2>
-      <p className="mb-4 text-sm text-gray-500">
-        No boards exist for this project yet. Create one to start organizing issues.
-      </p>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label htmlFor="boardName" className="block text-sm font-medium text-gray-700">
-            Board Name
-          </label>
-          <input
-            id="boardName"
-            type="text"
-            required
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Development Board"
-            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-          />
-        </div>
-        {createBoard.isError && (
-          <p className="text-sm text-red-600">Failed to create board.</p>
-        )}
-        <button
-          type="submit"
-          disabled={createBoard.isPending}
-          className="w-full rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
-        >
-          {createBoard.isPending ? 'Creating...' : 'Create Board'}
-        </button>
-      </form>
-    </div>
+    <Card className="mx-auto max-w-md">
+      <CardHeader>
+        <CardTitle>Create a Kanban Board</CardTitle>
+        <CardDescription>
+          No boards exist for this project yet. Create one to start organizing issues.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="boardName">Board Name</Label>
+            <Input
+              id="boardName"
+              type="text"
+              required
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Development Board"
+            />
+          </div>
+          {createBoard.isError && (
+            <p className="text-sm text-destructive">Failed to create board.</p>
+          )}
+          <Button type="submit" disabled={createBoard.isPending} className="w-full">
+            {createBoard.isPending ? 'Creating...' : 'Create Board'}
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -127,7 +133,7 @@ export function KanbanBoard() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <p className="text-gray-500">Loading board...</p>
+        <p className="text-muted-foreground">Loading board...</p>
       </div>
     );
   }
@@ -135,7 +141,7 @@ export function KanbanBoard() {
   if (!project) {
     return (
       <div className="flex items-center justify-center py-12">
-        <p className="text-gray-500">Project not found.</p>
+        <p className="text-muted-foreground">Project not found.</p>
       </div>
     );
   }
@@ -145,12 +151,12 @@ export function KanbanBoard() {
   if (!hasBoards) {
     return (
       <div>
-        <div className="mb-6 flex items-center gap-2 text-sm text-gray-500">
-          <Link to={`/projects/${projectKey}`} className="hover:text-indigo-600">
+        <div className="mb-6 flex items-center gap-2 text-sm text-muted-foreground">
+          <Link to={`/projects/${projectKey}`} className="hover:text-primary">
             {projectKey}
           </Link>
           <span>/</span>
-          <span className="text-gray-900">Board</span>
+          <span className="text-foreground">Board</span>
         </div>
         <CreateBoardForm projectId={project.id} onCreated={() => refetchBoards()} />
       </div>
@@ -201,19 +207,19 @@ export function KanbanBoard() {
 
   return (
     <div>
-      <div className="mb-6 flex items-center gap-2 text-sm text-gray-500">
-        <Link to={`/projects/${projectKey}`} className="hover:text-indigo-600">
+      <div className="mb-6 flex items-center gap-2 text-sm text-muted-foreground">
+        <Link to={`/projects/${projectKey}`} className="hover:text-primary">
           {projectKey}
         </Link>
         <span>/</span>
-        <span className="text-gray-900">Board</span>
+        <span className="text-foreground">Board</span>
       </div>
 
       <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-xl font-bold text-gray-900">
+        <h1 className="text-xl font-bold text-foreground">
           {boards![0].name}
         </h1>
-        <span className="text-sm text-gray-500">
+        <span className="text-sm text-muted-foreground">
           {issues.length} issue{issues.length !== 1 ? 's' : ''}
         </span>
       </div>
@@ -222,7 +228,7 @@ export function KanbanBoard() {
         {columns.map((column) => (
           <div
             key={column.statusId}
-            className="flex w-72 flex-shrink-0 flex-col rounded-lg bg-gray-50 p-3"
+            className="flex w-72 flex-shrink-0 flex-col rounded-lg bg-muted/50 p-3"
           >
             <div className="mb-3 flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -230,9 +236,9 @@ export function KanbanBoard() {
                   className="h-3 w-3 rounded-full"
                   style={{ backgroundColor: column.color }}
                 />
-                <h3 className="text-sm font-semibold text-gray-700">{column.name}</h3>
+                <h3 className="text-sm font-semibold text-foreground">{column.name}</h3>
               </div>
-              <span className="inline-flex items-center rounded-full bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-600">
+              <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
                 {column.issues.length}
               </span>
             </div>
@@ -241,7 +247,7 @@ export function KanbanBoard() {
                 <IssueCard key={issue.id} issue={issue} />
               ))}
               {column.issues.length === 0 && (
-                <p className="py-4 text-center text-xs text-gray-400">No issues</p>
+                <p className="py-4 text-center text-xs text-muted-foreground">No issues</p>
               )}
             </div>
           </div>

@@ -1,0 +1,16 @@
+{
+  "name": "@weaver/plugin-time-reports",
+  "version": "1.0.0",
+  "private": true,
+  "main": "./src/client/index.ts",
+  "peerDependencies": {
+    "react": "^18.0.0 || ^19.0.0",
+    "lucide-react": "*"
+  },
+  "devDependencies": {
+    "@weaver/config": "workspace:*",
+    "@weaver/sdk": "workspace:*",
+    "@types/react": "^18.3.18",
+    "typescript": "^5.7.2"
+  }
+}

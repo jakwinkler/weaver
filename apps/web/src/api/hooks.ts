@@ -113,16 +113,27 @@ interface UseProjectIssuesParams {
   projectKey: string;
   page?: number;
   perPage?: number;
+  statusId?: string;
+  assigneeId?: string;
+  priority?: string;
+  startDateFrom?: string;
+  startDateTo?: string;
+  dueDateFrom?: string;
+  dueDateTo?: string;
 }
 
 export function useProjectIssues(params: UseProjectIssuesParams) {
-  const { projectKey, page = 1, perPage = 50 } = params;
+  const { projectKey, page = 1, perPage = 50, ...filters } = params;
+  // Strip undefined values from filters
+  const activeFilters = Object.fromEntries(
+    Object.entries(filters).filter(([, v]) => v !== undefined),
+  );
   return useQuery({
-    queryKey: ['issues', projectKey, { page, perPage }],
+    queryKey: ['issues', projectKey, { page, perPage, ...activeFilters }],
     queryFn: async () => {
       const res = await apiClient.get<PaginatedResponse<Issue>>(
         `/projects/${projectKey}/issues`,
-        { params: { page, perPage } },
+        { params: { page, perPage, ...activeFilters } },
       );
       return res.data;
     },

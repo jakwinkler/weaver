@@ -44,7 +44,15 @@ export class IssuesController {
     @Query() query: any,
   ) {
     const params = parsePagination(query);
-    return this.issuesService.findByProject(projectKey, params);
+    const filters: Record<string, string | undefined> = {};
+    if (query.statusId) filters.statusId = query.statusId;
+    if (query.assigneeId) filters.assigneeId = query.assigneeId;
+    if (query.priority) filters.priority = query.priority;
+    if (query.startDateFrom) filters.startDateFrom = query.startDateFrom;
+    if (query.startDateTo) filters.startDateTo = query.startDateTo;
+    if (query.dueDateFrom) filters.dueDateFrom = query.dueDateFrom;
+    if (query.dueDateTo) filters.dueDateTo = query.dueDateTo;
+    return this.issuesService.findByProject(projectKey, params, filters);
   }
 
   @Get('issues/:issueKey')

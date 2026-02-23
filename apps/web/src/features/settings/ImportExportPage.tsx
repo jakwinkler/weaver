@@ -1,6 +1,17 @@
 import { useState, useRef, type ChangeEvent } from 'react';
 import { useProjects } from '@/api';
 import { apiClient } from '@/api/client';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableHead,
+  TableRow,
+  TableCell,
+} from '@/components/ui/table';
 
 interface ParsedIssue {
   summary: string;
@@ -212,18 +223,16 @@ export function ImportExportPage() {
 
   return (
     <div>
-      <h1 className="mb-6 text-2xl font-bold text-gray-900">Import / Export</h1>
+      <h1 className="mb-6 text-2xl font-bold text-foreground">Import / Export</h1>
 
       {/* Project selector */}
-      <div className="mb-6">
-        <label htmlFor="projectSelect" className="block text-sm font-medium text-gray-700">
-          Select Project
-        </label>
+      <div className="mb-6 space-y-1.5">
+        <Label htmlFor="projectSelect">Select Project</Label>
         <select
           id="projectSelect"
           value={selectedProject}
           onChange={(e) => setSelectedProject(e.target.value)}
-          className="mt-1 block w-full max-w-xs rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          className="mt-1 block w-full max-w-xs rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
         >
           <option value="">-- Select a project --</option>
           {projects.map((p) => (
@@ -236,149 +245,144 @@ export function ImportExportPage() {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Export Section */}
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
-          <h2 className="mb-4 text-lg font-semibold text-gray-900">Export Issues</h2>
-          <p className="mb-4 text-sm text-gray-600">
-            Download all issues from the selected project as CSV or JSON.
-          </p>
+        <Card>
+          <CardHeader>
+            <CardTitle>Export Issues</CardTitle>
+            <CardDescription>
+              Download all issues from the selected project as CSV or JSON.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex gap-3">
+              <Button
+                onClick={handleExportCSV}
+                disabled={!selectedProject || exportLoading}
+              >
+                {exportLoading ? 'Exporting...' : 'Export CSV'}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={handleExportJSON}
+                disabled={!selectedProject || exportLoading}
+              >
+                {exportLoading ? 'Exporting...' : 'Export JSON'}
+              </Button>
+            </div>
 
-          <div className="flex gap-3">
-            <button
-              onClick={handleExportCSV}
-              disabled={!selectedProject || exportLoading}
-              className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {exportLoading ? 'Exporting...' : 'Export CSV'}
-            </button>
-            <button
-              onClick={handleExportJSON}
-              disabled={!selectedProject || exportLoading}
-              className="rounded-md border border-indigo-600 px-4 py-2 text-sm font-medium text-indigo-600 hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {exportLoading ? 'Exporting...' : 'Export JSON'}
-            </button>
-          </div>
-
-          {!selectedProject && (
-            <p className="mt-3 text-xs text-gray-400">Select a project to enable export.</p>
-          )}
-        </div>
+            {!selectedProject && (
+              <p className="mt-3 text-xs text-muted-foreground">Select a project to enable export.</p>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Import Section */}
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
-          <h2 className="mb-4 text-lg font-semibold text-gray-900">Import Issues</h2>
-          <p className="mb-4 text-sm text-gray-600">
-            Upload a CSV or JSON file to import issues into the selected project.
-          </p>
+        <Card>
+          <CardHeader>
+            <CardTitle>Import Issues</CardTitle>
+            <CardDescription>
+              Upload a CSV or JSON file to import issues into the selected project.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv,.json"
+              onChange={handleFileChange}
+              className="block w-full text-sm text-muted-foreground file:mr-4 file:rounded-md file:border-0 file:bg-primary/10 file:px-4 file:py-2 file:text-sm file:font-medium file:text-primary hover:file:bg-primary/20"
+            />
 
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".csv,.json"
-            onChange={handleFileChange}
-            className="block w-full text-sm text-gray-500 file:mr-4 file:rounded-md file:border-0 file:bg-indigo-50 file:px-4 file:py-2 file:text-sm file:font-medium file:text-indigo-600 hover:file:bg-indigo-100"
-          />
+            {parseError && (
+              <p className="mt-3 text-sm text-destructive">{parseError}</p>
+            )}
 
-          {parseError && (
-            <p className="mt-3 text-sm text-red-600">{parseError}</p>
-          )}
+            {parsedData.length > 0 && !importProgress && (
+              <div className="mt-4">
+                <h3 className="text-sm font-medium text-foreground">
+                  Preview ({parsedData.length} issues)
+                </h3>
+                <div className="mt-2 max-h-48 overflow-y-auto rounded border border-border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="px-3 py-1.5 text-xs">Summary</TableHead>
+                        <TableHead className="px-3 py-1.5 text-xs">Priority</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {parsedData.slice(0, 20).map((issue, i) => (
+                        <TableRow key={i}>
+                          <TableCell className="px-3 py-1.5 text-foreground">{issue.summary}</TableCell>
+                          <TableCell className="px-3 py-1.5 text-muted-foreground">
+                            {issue.priority || 'medium'}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      {parsedData.length > 20 && (
+                        <TableRow>
+                          <TableCell colSpan={2} className="px-3 py-1.5 text-center text-muted-foreground">
+                            ... and {parsedData.length - 20} more
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
 
-          {parsedData.length > 0 && !importProgress && (
-            <div className="mt-4">
-              <h3 className="text-sm font-medium text-gray-700">
-                Preview ({parsedData.length} issues)
-              </h3>
-              <div className="mt-2 max-h-48 overflow-y-auto rounded border border-gray-200">
-                <table className="min-w-full text-sm">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-3 py-1.5 text-left text-xs font-medium text-gray-500">
-                        Summary
-                      </th>
-                      <th className="px-3 py-1.5 text-left text-xs font-medium text-gray-500">
-                        Priority
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {parsedData.slice(0, 20).map((issue, i) => (
-                      <tr key={i}>
-                        <td className="px-3 py-1.5 text-gray-700">{issue.summary}</td>
-                        <td className="px-3 py-1.5 text-gray-500">
-                          {issue.priority || 'medium'}
-                        </td>
-                      </tr>
-                    ))}
-                    {parsedData.length > 20 && (
-                      <tr>
-                        <td colSpan={2} className="px-3 py-1.5 text-center text-gray-400">
-                          ... and {parsedData.length - 20} more
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
+                <div className="mt-3 flex gap-3">
+                  <Button
+                    onClick={handleImport}
+                    disabled={!selectedProject}
+                    className="bg-green-600 hover:bg-green-700"
+                  >
+                    Import {parsedData.length} Issues
+                  </Button>
+                  <Button variant="outline" onClick={resetImport}>
+                    Cancel
+                  </Button>
+                </div>
               </div>
+            )}
 
-              <div className="mt-3 flex gap-3">
-                <button
-                  onClick={handleImport}
-                  disabled={!selectedProject}
-                  className="rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Import {parsedData.length} Issues
-                </button>
-                <button
-                  onClick={resetImport}
-                  className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
-
-          {importProgress && (
-            <div className="mt-4">
-              <div className="mb-2 flex items-center justify-between text-sm">
-                <span className="text-gray-700">
-                  Importing... {importProgress.completed}/{importProgress.total}
-                </span>
-                {importProgress.errors > 0 && (
-                  <span className="text-red-600">
-                    {importProgress.errors} failed
+            {importProgress && (
+              <div className="mt-4">
+                <div className="mb-2 flex items-center justify-between text-sm">
+                  <span className="text-foreground">
+                    Importing... {importProgress.completed}/{importProgress.total}
                   </span>
+                  {importProgress.errors > 0 && (
+                    <span className="text-destructive">
+                      {importProgress.errors} failed
+                    </span>
+                  )}
+                </div>
+                <div className="h-2 overflow-hidden rounded-full bg-muted">
+                  <div
+                    className="h-full rounded-full bg-green-500 transition-all"
+                    style={{
+                      width: `${(importProgress.completed / importProgress.total) * 100}%`,
+                    }}
+                  />
+                </div>
+                {importProgress.completed === importProgress.total && (
+                  <div className="mt-3">
+                    <p className="text-sm text-green-600">
+                      Import complete! {importProgress.completed - importProgress.errors} issues
+                      created successfully.
+                    </p>
+                    <Button variant="outline" size="sm" className="mt-2" onClick={resetImport}>
+                      Import More
+                    </Button>
+                  </div>
                 )}
               </div>
-              <div className="h-2 overflow-hidden rounded-full bg-gray-200">
-                <div
-                  className="h-full rounded-full bg-green-500 transition-all"
-                  style={{
-                    width: `${(importProgress.completed / importProgress.total) * 100}%`,
-                  }}
-                />
-              </div>
-              {importProgress.completed === importProgress.total && (
-                <div className="mt-3">
-                  <p className="text-sm text-green-600">
-                    Import complete! {importProgress.completed - importProgress.errors} issues
-                    created successfully.
-                  </p>
-                  <button
-                    onClick={resetImport}
-                    className="mt-2 rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                  >
-                    Import More
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
+            )}
 
-          {!selectedProject && (
-            <p className="mt-3 text-xs text-gray-400">Select a project to enable import.</p>
-          )}
-        </div>
+            {!selectedProject && (
+              <p className="mt-3 text-xs text-muted-foreground">Select a project to enable import.</p>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

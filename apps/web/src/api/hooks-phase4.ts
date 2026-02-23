@@ -3,6 +3,18 @@ import { apiClient } from './client';
 
 // ── Plugin Types ──
 
+interface PluginNavigationItem {
+  label: string;
+  icon: string;
+  path: string;
+  requiredPermissions?: string[];
+}
+
+interface PluginPageDefinition {
+  path: string;
+  component: string;
+}
+
 interface PluginManifest {
   id: string;
   name: string;
@@ -11,6 +23,11 @@ interface PluginManifest {
   author?: string;
   icon?: string;
   permissions: string[];
+  ui?: {
+    slots?: { slot: string; component: string }[];
+    navigation?: PluginNavigationItem[];
+    pages?: PluginPageDefinition[];
+  };
 }
 
 interface InstalledPlugin {

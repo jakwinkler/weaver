@@ -3,6 +3,22 @@ import { useIssueTypes, useCreateIssueType, useUpdateIssueType, useDeleteIssueTy
 import { Plus, Trash2, Pencil, Tags, Upload, X } from 'lucide-react';
 import { IconPicker, IssueTypeIcon } from '@/components/IconPicker';
 import { getAttachmentUrl } from '@/api';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from '@/components/ui/dialog';
+import { cn } from '@/lib/utils';
 
 function slugify(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
@@ -23,6 +39,7 @@ export function IssueTypesPage() {
   const [iconColor, setIconColor] = useState('');
   const [iconAttachmentId, setIconAttachmentId] = useState<string | null>(null);
   const [isSubtask, setIsSubtask] = useState(false);
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const resetForm = () => {
@@ -66,8 +83,13 @@ export function IssueTypesPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Delete this issue type?')) return;
-    await deleteIssueType.mutateAsync(id);
+    setDeleteTargetId(id);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTargetId) return;
+    await deleteIssueType.mutateAsync(deleteTargetId);
+    setDeleteTargetId(null);
   };
 
   const handleIconUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -89,148 +111,162 @@ export function IssueTypesPage() {
   };
 
   if (isLoading) {
-    return <div className="flex items-center justify-center py-12 text-gray-500">Loading...</div>;
+    return (
+      <div className="flex items-center justify-center py-12 text-muted-foreground">
+        Loading...
+      </div>
+    );
   }
 
   return (
-    <div className="mx-auto max-w-4xl">
+    <div>
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Issue Types</h1>
-          <p className="mt-1 text-sm text-gray-500">
+          <h1 className="text-2xl font-bold text-foreground">Issue Types</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
             Define the types of issues that can be created in projects.
           </p>
         </div>
-        <button
-          onClick={() => { resetForm(); setShowForm(true); }}
-          className="inline-flex items-center gap-2 rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
-        >
+        <Button onClick={() => { resetForm(); setShowForm(true); }}>
           <Plus className="h-4 w-4" />
           New Issue Type
-        </button>
+        </Button>
       </div>
 
       {showForm && (
-        <form onSubmit={handleCreate} className="mb-6 rounded-lg border border-gray-200 bg-white p-4">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">Name</label>
-              <input
-                value={name}
-                onChange={(e) => {
-                  setName(e.target.value);
-                  if (!editId) setSlug(slugify(e.target.value));
-                }}
-                required
-                placeholder="e.g., Bug"
-                className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">Slug</label>
-              <input
-                value={slug}
-                onChange={(e) => setSlug(e.target.value)}
-                required
-                placeholder="e.g., bug"
-                className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">Icon</label>
-              {iconAttachmentId ? (
-                <div className="flex items-center gap-2">
-                  <img
-                    src={getAttachmentUrl(iconAttachmentId)}
-                    alt="Custom icon"
-                    className="h-8 w-8 rounded object-contain border border-gray-200"
+        <Card className="mb-6">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">
+              {editId ? 'Edit Issue Type' : 'New Issue Type'}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleCreate}>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="it-name">Name</Label>
+                  <Input
+                    id="it-name"
+                    value={name}
+                    onChange={(e) => {
+                      setName(e.target.value);
+                      if (!editId) setSlug(slugify(e.target.value));
+                    }}
+                    required
+                    placeholder="e.g., Bug"
                   />
-                  <span className="text-sm text-gray-500">Custom image</span>
-                  <button
-                    type="button"
-                    onClick={handleRemoveCustomIcon}
-                    className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-red-500"
-                    title="Remove custom icon"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
                 </div>
-              ) : (
-                <IconPicker value={icon} onChange={handleIconSelect} color={iconColor} onColorChange={setIconColor} />
-              )}
-            </div>
-            <div className="flex flex-col gap-2">
-              <label className="mb-1 block text-sm font-medium text-gray-700">Custom Image</label>
-              <div className="flex items-center gap-2">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handleIconUpload}
-                  className="hidden"
-                />
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploadAttachment.isPending}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm hover:bg-gray-50 disabled:opacity-50"
-                >
-                  <Upload className="h-4 w-4" />
-                  {uploadAttachment.isPending ? 'Uploading...' : 'Upload Image'}
-                </button>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="it-slug">Slug</Label>
+                  <Input
+                    id="it-slug"
+                    value={slug}
+                    onChange={(e) => setSlug(e.target.value)}
+                    required
+                    placeholder="e.g., bug"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label>Icon</Label>
+                  {iconAttachmentId ? (
+                    <div className="flex items-center gap-2">
+                      <img
+                        src={getAttachmentUrl(iconAttachmentId)}
+                        alt="Custom icon"
+                        className="h-8 w-8 rounded object-contain border border-border"
+                      />
+                      <span className="text-sm text-muted-foreground">Custom image</span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={handleRemoveCustomIcon}
+                        title="Remove custom icon"
+                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <IconPicker value={icon} onChange={handleIconSelect} color={iconColor} onColorChange={setIconColor} />
+                  )}
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label>Custom Image</Label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleIconUpload}
+                      className="hidden"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploadAttachment.isPending}
+                    >
+                      <Upload className="h-4 w-4" />
+                      {uploadAttachment.isPending ? 'Uploading...' : 'Upload Image'}
+                    </Button>
+                  </div>
+                </div>
+                <div className="flex items-end">
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="it-subtask"
+                      checked={isSubtask}
+                      onCheckedChange={(checked) => setIsSubtask(checked === true)}
+                    />
+                    <Label htmlFor="it-subtask" className="cursor-pointer font-normal">
+                      Is Subtask
+                    </Label>
+                  </div>
+                </div>
               </div>
-            </div>
-            <div className="flex items-end">
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={isSubtask}
-                  onChange={(e) => setIsSubtask(e.target.checked)}
-                  className="h-4 w-4 rounded border-gray-300 text-indigo-600"
-                />
-                <span className="text-sm text-gray-700">Is Subtask</span>
-              </label>
-            </div>
-          </div>
-          <div className="mt-4 flex gap-2">
-            <button
-              type="submit"
-              disabled={createIssueType.isPending || updateIssueType.isPending}
-              className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
-            >
-              {editId ? 'Update' : 'Create'}
-            </button>
-            <button type="button" onClick={resetForm} className="rounded-md bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200">
-              Cancel
-            </button>
-          </div>
-        </form>
+              <div className="mt-4 flex gap-2">
+                <Button
+                  type="submit"
+                  disabled={createIssueType.isPending || updateIssueType.isPending}
+                >
+                  {editId ? 'Update' : 'Create'}
+                </Button>
+                <Button type="button" variant="secondary" onClick={resetForm}>
+                  Cancel
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
       )}
 
       {!issueTypes || issueTypes.length === 0 ? (
-        <div className="rounded-lg border border-gray-200 bg-white py-12 text-center">
-          <Tags className="mx-auto h-10 w-10 text-gray-400" />
-          <p className="mt-2 text-sm font-medium text-gray-900">No issue types</p>
-          <p className="mt-1 text-sm text-gray-500">Create your first issue type.</p>
-        </div>
+        <Card>
+          <CardContent className="py-12 text-center">
+            <Tags className="mx-auto h-10 w-10 text-muted-foreground" />
+            <p className="mt-2 text-sm font-medium text-foreground">No issue types</p>
+            <p className="mt-1 text-sm text-muted-foreground">Create your first issue type.</p>
+          </CardContent>
+        </Card>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Name</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Slug</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Icon</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Subtask</th>
-                <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
+        <Card className="overflow-hidden">
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="uppercase tracking-wider text-xs">Name</TableHead>
+                <TableHead className="uppercase tracking-wider text-xs">Slug</TableHead>
+                <TableHead className="uppercase tracking-wider text-xs">Icon</TableHead>
+                <TableHead className="uppercase tracking-wider text-xs">Subtask</TableHead>
+                <TableHead className="uppercase tracking-wider text-xs text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {issueTypes.map((it) => (
-                <tr key={it.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 text-sm font-medium text-gray-900">{it.name}</td>
-                  <td className="px-4 py-3 text-sm text-gray-500">{it.slug}</td>
-                  <td className="px-4 py-3 text-sm text-gray-500">
+                <TableRow key={it.id}>
+                  <TableCell className="font-medium text-foreground">{it.name}</TableCell>
+                  <TableCell className="text-muted-foreground">{it.slug}</TableCell>
+                  <TableCell className="text-muted-foreground">
                     <span className="inline-flex items-center gap-1.5">
                       <IssueTypeIcon
                         icon={(it as any).icon}
@@ -238,40 +274,78 @@ export function IssueTypesPage() {
                         iconAttachmentId={(it as any).iconAttachmentId}
                       />
                       {(it as any).iconAttachmentId ? (
-                        <span className="text-xs text-gray-400">custom</span>
+                        <span className="text-xs text-muted-foreground">custom</span>
                       ) : (it as any).icon ? (
                         <>
                           <span>{(it as any).icon}</span>
                           {(it as any).iconColor && (
-                            <span className="inline-block h-3 w-3 rounded-full border border-gray-200" style={{ backgroundColor: (it as any).iconColor }} />
+                            <span
+                              className="inline-block h-3 w-3 rounded-full border border-border"
+                              style={{ backgroundColor: (it as any).iconColor }}
+                            />
                           )}
                         </>
                       ) : '—'}
                     </span>
-                  </td>
-                  <td className="px-4 py-3">
+                  </TableCell>
+                  <TableCell>
                     {(it as any).isSubtask && (
-                      <span className="inline-flex items-center rounded-full bg-purple-100 px-2.5 py-0.5 text-xs font-medium text-purple-800">
+                      <Badge variant="secondary" className="bg-purple-100 text-purple-800 border-transparent dark:bg-purple-900/30 dark:text-purple-300">
                         Subtask
-                      </span>
+                      </Badge>
                     )}
-                  </td>
-                  <td className="px-4 py-3 text-right">
+                  </TableCell>
+                  <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-1">
-                      <button onClick={() => handleEdit(it)} className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600" title="Edit">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleEdit(it)}
+                        title="Edit"
+                        className={cn('h-7 w-7 text-muted-foreground hover:text-foreground')}
+                      >
                         <Pencil className="h-4 w-4" />
-                      </button>
-                      <button onClick={() => handleDelete(it.id)} className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600" title="Delete">
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleDelete(it.id)}
+                        title="Delete"
+                        className={cn('h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10')}
+                      >
                         <Trash2 className="h-4 w-4" />
-                      </button>
+                      </Button>
                     </div>
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </TableBody>
+          </Table>
+        </Card>
       )}
+
+      <Dialog open={!!deleteTargetId} onOpenChange={(open) => { if (!open) setDeleteTargetId(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Delete Issue Type</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this issue type? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setDeleteTargetId(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmDelete}
+              disabled={deleteIssueType.isPending}
+            >
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

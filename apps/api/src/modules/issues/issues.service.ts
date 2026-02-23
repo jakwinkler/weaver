@@ -4,6 +4,7 @@ import { CreateIssueDto, UpdateIssueDto, PaginatedResponse } from '@weaver/share
 import { TenantConnectionProvider } from '../../core/tenant';
 import { ProjectsService } from '../projects';
 import { WorkflowsService } from '../workflows';
+import { EventDispatcherService } from '../events';
 import { PaginationParams, paginate } from '../../common';
 
 export interface IssueFilters {
@@ -22,18 +23,23 @@ export class IssuesService {
     private readonly tenantConnections: TenantConnectionProvider,
     private readonly projectsService: ProjectsService,
     private readonly workflowsService: WorkflowsService,
+    private readonly eventDispatcher: EventDispatcherService,
   ) {}
 
   async create(projectKey: string, dto: CreateIssueDto, reporterId: string): Promise<IssueEntity> {
     const project = await this.projectsService.findByKey(projectKey);
     const em = await this.tenantConnections.getEntityManager();
 
-    // Get initial status from default workflow
+    // Resolve workflow: project-specific or default
+    const workflowId = project.workflowId
+      || (await this.workflowsService.getDefaultWorkflow()).id;
+
     const initialStatus = await em.getRepository(WorkflowStatusEntity).findOneBy({
+      workflowId,
       isInitial: true,
     });
     if (!initialStatus) {
-      throw new NotFoundException('No initial workflow status found');
+      throw new NotFoundException('No initial status found in the project workflow');
     }
 
     // Atomically increment issue counter
@@ -61,7 +67,17 @@ export class IssuesService {
       percentDone: dto.percentDone ?? 0,
     });
 
-    return repo.save(issue);
+    const saved = await repo.save(issue);
+
+    this.eventDispatcher.emit('issue.created', {
+      issueKey: saved.key,
+      projectKey: project.key,
+      summary: saved.summary,
+      priority: saved.priority,
+      assigneeId: saved.assigneeId,
+    });
+
+    return saved;
   }
 
   async findByKey(issueKey: string): Promise<IssueEntity> {
@@ -106,6 +122,8 @@ export class IssuesService {
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(IssueEntity);
 
+    const previousAssigneeId = issue.assigneeId;
+
     // Handle nullable fields explicitly
     if (dto.assigneeId !== undefined) issue.assigneeId = dto.assigneeId ?? null;
     if (dto.parentId !== undefined) issue.parentId = dto.parentId ?? null;
@@ -120,7 +138,31 @@ export class IssuesService {
     if (dto.dueDate !== undefined) issue.dueDate = dto.dueDate ?? null;
     if (dto.percentDone !== undefined) issue.percentDone = dto.percentDone;
 
-    return repo.save(issue);
+    const saved = await repo.save(issue);
+
+    // Build changed fields for the update event
+    const changedFields: Record<string, unknown> = {};
+    for (const key of Object.keys(dto) as (keyof UpdateIssueDto)[]) {
+      if (dto[key] !== undefined) {
+        changedFields[key] = dto[key];
+      }
+    }
+
+    this.eventDispatcher.emit('issue.updated', {
+      issueKey,
+      fields: changedFields,
+    });
+
+    // Emit specific assigned event if assignee changed
+    if (dto.assigneeId !== undefined && dto.assigneeId !== previousAssigneeId) {
+      this.eventDispatcher.emit('issue.assigned', {
+        issueKey,
+        assigneeId: saved.assigneeId,
+        previousAssigneeId,
+      });
+    }
+
+    return saved;
   }
 
   async transition(issueKey: string, transitionId: string, userId: string): Promise<IssueEntity> {
@@ -164,6 +206,13 @@ export class IssuesService {
     });
     await activityRepo.save(activity);
 
+    this.eventDispatcher.emit('issue.status_changed', {
+      issueKey,
+      projectKey: issueKey.split('-')[0],
+      fromStatus: oldStatusId,
+      toStatus: transition.toStatusId,
+    });
+
     return saved;
   }
 
@@ -172,5 +221,7 @@ export class IssuesService {
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(IssueEntity);
     await repo.remove(issue);
+
+    this.eventDispatcher.emit('issue.deleted', { issueKey });
   }
 }

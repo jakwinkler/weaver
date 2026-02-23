@@ -1,6 +1,12 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Zap, Check } from 'lucide-react';
 import { useCreateProject, useCreateIssue, useProjects } from '@/api';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent } from '@/components/ui/card';
+import { cn } from '@/lib/utils';
 
 const STORAGE_KEY = 'weaver-onboarding-complete';
 const TOTAL_STEPS = 4;
@@ -60,6 +66,7 @@ export function OnboardingWizard({ orgName = 'your organization' }: OnboardingWi
         priority: 'medium',
         labels: [],
         customFields: {},
+        percentDone: 0,
       });
       setStep(4);
     } catch {
@@ -79,56 +86,39 @@ export function OnboardingWizard({ orgName = 'your organization' }: OnboardingWi
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="mx-4 w-full max-w-lg rounded-xl bg-white shadow-2xl">
+      <Card className="mx-4 w-full max-w-lg rounded-xl shadow-2xl">
         {/* Progress dots */}
         <div className="flex items-center justify-center gap-2 pt-6">
           {Array.from({ length: TOTAL_STEPS }, (_, i) => (
             <div
               key={i}
-              className={`h-2 w-2 rounded-full transition-colors ${
-                i + 1 <= step ? 'bg-indigo-600' : 'bg-gray-200'
-              }`}
+              className={cn(
+                'h-2 w-2 rounded-full transition-colors',
+                i + 1 <= step ? 'bg-primary' : 'bg-muted',
+              )}
             />
           ))}
         </div>
 
-        <div className="p-6">
+        <CardContent className="p-6">
           {/* Step 1: Welcome */}
           {step === 1 && (
             <div className="text-center">
-              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-indigo-100">
-                <svg
-                  className="h-8 w-8 text-indigo-600"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M13 10V3L4 14h7v7l9-11h-7z"
-                  />
-                </svg>
+              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
+                <Zap className="h-8 w-8 text-primary" />
               </div>
-              <h2 className="mb-2 text-xl font-bold text-gray-900">Welcome to Weaver</h2>
-              <p className="mb-6 text-gray-600">
+              <h2 className="mb-2 text-xl font-bold text-foreground">Welcome to Weaver</h2>
+              <p className="mb-6 text-muted-foreground">
                 Welcome to {orgName}! Let us help you set up your first project so you can
                 start tracking work right away.
               </p>
               <div className="flex justify-center gap-3">
-                <button
-                  onClick={handleSkip}
-                  className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                >
+                <Button variant="outline" onClick={handleSkip}>
                   Skip Setup
-                </button>
-                <button
-                  onClick={() => setStep(2)}
-                  className="rounded-md bg-indigo-600 px-6 py-2 text-sm font-medium text-white hover:bg-indigo-700"
-                >
+                </Button>
+                <Button onClick={() => setStep(2)}>
                   Get Started
-                </button>
+                </Button>
               </div>
             </div>
           )}
@@ -136,20 +126,15 @@ export function OnboardingWizard({ orgName = 'your organization' }: OnboardingWi
           {/* Step 2: Create Project */}
           {step === 2 && (
             <div>
-              <h2 className="mb-2 text-xl font-bold text-gray-900">Create Your First Project</h2>
-              <p className="mb-6 text-sm text-gray-600">
+              <h2 className="mb-2 text-xl font-bold text-foreground">Create Your First Project</h2>
+              <p className="mb-6 text-sm text-muted-foreground">
                 Projects help you organize related issues and track progress.
               </p>
 
               <form onSubmit={handleCreateProject} className="space-y-4">
                 <div>
-                  <label
-                    htmlFor="onb-project-name"
-                    className="block text-sm font-medium text-gray-700"
-                  >
-                    Project Name
-                  </label>
-                  <input
+                  <Label htmlFor="onb-project-name">Project Name</Label>
+                  <Input
                     id="onb-project-name"
                     type="text"
                     required
@@ -165,18 +150,13 @@ export function OnboardingWizard({ orgName = 'your organization' }: OnboardingWi
                       }
                     }}
                     placeholder="e.g., My First Project"
-                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    className="mt-1"
                   />
                 </div>
 
                 <div>
-                  <label
-                    htmlFor="onb-project-key"
-                    className="block text-sm font-medium text-gray-700"
-                  >
-                    Project Key
-                  </label>
-                  <input
+                  <Label htmlFor="onb-project-key">Project Key</Label>
+                  <Input
                     id="onb-project-key"
                     type="text"
                     required
@@ -186,9 +166,9 @@ export function OnboardingWizard({ orgName = 'your organization' }: OnboardingWi
                       setProjectKey(e.target.value.replace(/[^a-zA-Z]/g, '').toUpperCase())
                     }
                     placeholder="e.g., MFP"
-                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm uppercase shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    className="mt-1 uppercase"
                   />
-                  <p className="mt-1 text-xs text-gray-400">
+                  <p className="mt-1 text-xs text-muted-foreground">
                     A short unique identifier for your project (letters only).
                   </p>
                 </div>
@@ -200,20 +180,12 @@ export function OnboardingWizard({ orgName = 'your organization' }: OnboardingWi
                 )}
 
                 <div className="flex justify-between pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setStep(1)}
-                    className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                  >
+                  <Button type="button" variant="outline" onClick={() => setStep(1)}>
                     Back
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={createProject.isPending}
-                    className="rounded-md bg-indigo-600 px-6 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
-                  >
+                  </Button>
+                  <Button type="submit" disabled={createProject.isPending}>
                     {createProject.isPending ? 'Creating...' : 'Create Project'}
-                  </button>
+                  </Button>
                 </div>
               </form>
             </div>
@@ -222,28 +194,23 @@ export function OnboardingWizard({ orgName = 'your organization' }: OnboardingWi
           {/* Step 3: Create Issue */}
           {step === 3 && (
             <div>
-              <h2 className="mb-2 text-xl font-bold text-gray-900">Create Your First Issue</h2>
-              <p className="mb-6 text-sm text-gray-600">
+              <h2 className="mb-2 text-xl font-bold text-foreground">Create Your First Issue</h2>
+              <p className="mb-6 text-sm text-muted-foreground">
                 Issues are units of work. They can be tasks, bugs, stories, or anything you
                 need to track.
               </p>
 
               <form onSubmit={handleCreateIssue} className="space-y-4">
                 <div>
-                  <label
-                    htmlFor="onb-issue-summary"
-                    className="block text-sm font-medium text-gray-700"
-                  >
-                    Issue Summary
-                  </label>
-                  <input
+                  <Label htmlFor="onb-issue-summary">Issue Summary</Label>
+                  <Input
                     id="onb-issue-summary"
                     type="text"
                     required
                     value={issueSummary}
                     onChange={(e) => setIssueSummary(e.target.value)}
                     placeholder="e.g., Set up project documentation"
-                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    className="mt-1"
                   />
                 </div>
 
@@ -252,20 +219,12 @@ export function OnboardingWizard({ orgName = 'your organization' }: OnboardingWi
                 )}
 
                 <div className="flex justify-between pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setStep(2)}
-                    className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                  >
+                  <Button type="button" variant="outline" onClick={() => setStep(2)}>
                     Back
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={createIssue.isPending}
-                    className="rounded-md bg-indigo-600 px-6 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
-                  >
+                  </Button>
+                  <Button type="submit" disabled={createIssue.isPending}>
                     {createIssue.isPending ? 'Creating...' : 'Create Issue'}
-                  </button>
+                  </Button>
                 </div>
               </form>
             </div>
@@ -275,58 +234,43 @@ export function OnboardingWizard({ orgName = 'your organization' }: OnboardingWi
           {step === 4 && (
             <div className="text-center">
               <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-100">
-                <svg
-                  className="h-8 w-8 text-green-600"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M5 13l4 4L19 7"
-                  />
-                </svg>
+                <Check className="h-8 w-8 text-green-600" />
               </div>
-              <h2 className="mb-2 text-xl font-bold text-gray-900">You are All Set!</h2>
-              <p className="mb-6 text-gray-600">
+              <h2 className="mb-2 text-xl font-bold text-foreground">You are All Set!</h2>
+              <p className="mb-6 text-muted-foreground">
                 Your project <strong>{createdProjectKey}</strong> is ready. Explore the board
                 view to see your issues organized in columns by status.
               </p>
               <div className="flex justify-center gap-3">
-                <button
+                <Button
+                  variant="outline"
                   onClick={() => {
                     handleComplete();
                     navigate('/projects');
                   }}
-                  className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
                 >
                   Go to Projects
-                </button>
-                <button
-                  onClick={handleExploreBoard}
-                  className="rounded-md bg-indigo-600 px-6 py-2 text-sm font-medium text-white hover:bg-indigo-700"
-                >
+                </Button>
+                <Button onClick={handleExploreBoard}>
                   Explore Board View
-                </button>
+                </Button>
               </div>
             </div>
           )}
-        </div>
+        </CardContent>
 
         {/* Skip link at bottom */}
         {step < 4 && (
-          <div className="border-t border-gray-100 px-6 py-3 text-center">
+          <div className="border-t border-border px-6 py-3 text-center">
             <button
               onClick={handleSkip}
-              className="text-xs text-gray-400 hover:text-gray-600"
+              className="text-xs text-muted-foreground hover:text-foreground"
             >
               Skip onboarding
             </button>
           </div>
         )}
-      </div>
+      </Card>
     </div>
   );
 }

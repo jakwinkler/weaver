@@ -5,6 +5,18 @@ import { Settings as SettingsIcon, Pencil, X, Check } from 'lucide-react';
 import { RichTextEditor, normalizeCommentBody, serializeDoc } from '@/components/RichTextEditor';
 import { ProjectIcon } from './ProjectSettingsPage';
 import { IssueTypeIcon } from '@/components/IconPicker';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from '@/components/ui/table';
+import { cn } from '@/lib/utils';
 
 export function ProjectDetailPage() {
   const { projectKey } = useParams<{ projectKey: string }>();
@@ -46,7 +58,7 @@ export function ProjectDetailPage() {
   if (projectLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <p className="text-gray-500">Loading project...</p>
+        <p className="text-muted-foreground">Loading project...</p>
       </div>
     );
   }
@@ -54,7 +66,7 @@ export function ProjectDetailPage() {
   if (!project) {
     return (
       <div className="flex items-center justify-center py-12">
-        <p className="text-gray-500">Project not found.</p>
+        <p className="text-muted-foreground">Project not found.</p>
       </div>
     );
   }
@@ -65,18 +77,17 @@ export function ProjectDetailPage() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <ProjectIcon iconAttachmentId={project.iconAttachmentId} projectKey={project.key} size="md" />
-            <span className="rounded bg-indigo-100 px-2 py-1 text-sm font-semibold text-indigo-700">
+            <Badge variant="outline" className="bg-primary/10 text-primary border-transparent font-semibold">
               {project.key}
-            </span>
-            <h1 className="text-2xl font-bold text-gray-900">{project.name}</h1>
+            </Badge>
+            <h1 className="text-2xl font-bold text-foreground">{project.name}</h1>
           </div>
-          <Link
-            to={`/projects/${project.key}/settings`}
-            className="inline-flex items-center gap-1.5 rounded-md bg-gray-100 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-200"
-          >
-            <SettingsIcon className="h-4 w-4" />
-            Settings
-          </Link>
+          <Button variant="secondary" size="sm" asChild>
+            <Link to={`/projects/${project.key}/settings`}>
+              <SettingsIcon className="h-4 w-4" />
+              Settings
+            </Link>
+          </Button>
         </div>
 
         {/* Description */}
@@ -89,21 +100,22 @@ export function ProjectDetailPage() {
                 placeholder="Add a project description..."
               />
               <div className="flex items-center gap-2">
-                <button
+                <Button
+                  size="sm"
                   onClick={saveDescription}
                   disabled={updateProject.isPending}
-                  className="inline-flex items-center gap-1 rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
                 >
                   <Check className="h-3.5 w-3.5" />
                   {updateProject.isPending ? 'Saving...' : 'Save'}
-                </button>
-                <button
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
                   onClick={cancelEditing}
-                  className="inline-flex items-center gap-1 rounded-md bg-gray-100 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-200"
                 >
                   <X className="h-3.5 w-3.5" />
                   Cancel
-                </button>
+                </Button>
               </div>
             </div>
           ) : (
@@ -116,14 +128,14 @@ export function ProjectDetailPage() {
                   />
                 </div>
               ) : (
-                <p className="text-sm italic text-gray-400">
+                <p className="text-sm italic text-muted-foreground">
                   {canEdit ? 'Click the edit icon to add a description.' : 'No description.'}
                 </p>
               )}
               {canEdit && (
                 <button
                   onClick={startEditing}
-                  className="absolute top-0 right-0 rounded-md bg-white p-1.5 text-gray-400 opacity-0 shadow-sm ring-1 ring-gray-200 transition-opacity hover:text-indigo-600 group-hover:opacity-100"
+                  className="absolute top-0 right-0 rounded-md bg-card p-1.5 text-muted-foreground opacity-0 shadow-sm ring-1 ring-border transition-opacity hover:text-primary group-hover:opacity-100"
                   title="Edit description"
                 >
                   <Pencil className="h-4 w-4" />
@@ -138,59 +150,57 @@ export function ProjectDetailPage() {
       <ProjectViewNav projectKey={project.key} currentPath={location.pathname} />
 
       <div className="mb-6 grid grid-cols-3 gap-4">
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
-          <p className="text-sm text-gray-500">Total Issues</p>
-          <p className="mt-1 text-2xl font-semibold text-gray-900">{project.issueCounter}</p>
-        </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
-          <p className="text-sm text-gray-500">Created</p>
-          <p className="mt-1 text-sm font-medium text-gray-900">
-            {new Date(project.createdAt).toLocaleDateString()}
-          </p>
-        </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
-          <p className="text-sm text-gray-500">Last Updated</p>
-          <p className="mt-1 text-sm font-medium text-gray-900">
-            {new Date(project.updatedAt).toLocaleDateString()}
-          </p>
-        </div>
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-sm text-muted-foreground">Total Issues</p>
+            <p className="mt-1 text-2xl font-semibold text-foreground">{project.issueCounter}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-sm text-muted-foreground">Created</p>
+            <p className="mt-1 text-sm font-medium text-foreground">
+              {new Date(project.createdAt).toLocaleDateString()}
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-sm text-muted-foreground">Last Updated</p>
+            <p className="mt-1 text-sm font-medium text-foreground">
+              {new Date(project.updatedAt).toLocaleDateString()}
+            </p>
+          </CardContent>
+        </Card>
       </div>
 
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-gray-900">Recent Issues</h2>
+        <h2 className="text-lg font-semibold text-foreground">Recent Issues</h2>
         <Link
           to={`/projects/${project.key}/issues`}
-          className="text-sm font-medium text-indigo-600 hover:text-indigo-500"
+          className="text-sm font-medium text-primary hover:text-primary/80"
         >
           View all issues
         </Link>
       </div>
 
       {issuesLoading ? (
-        <p className="mt-4 text-gray-500">Loading issues...</p>
+        <p className="mt-4 text-muted-foreground">Loading issues...</p>
       ) : (
-        <div className="mt-4 overflow-hidden rounded-lg border border-gray-200 bg-white">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Type
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Key
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Summary
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Priority
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
+        <div className="mt-4 overflow-hidden rounded-lg border border-border bg-card">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="uppercase tracking-wider text-xs">Type</TableHead>
+                <TableHead className="uppercase tracking-wider text-xs">Key</TableHead>
+                <TableHead className="uppercase tracking-wider text-xs">Summary</TableHead>
+                <TableHead className="uppercase tracking-wider text-xs">Priority</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {issuesData?.data.slice(0, 10).map((issue) => (
-                <tr key={issue.id} className="hover:bg-gray-50">
-                  <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+                <TableRow key={issue.id}>
+                  <TableCell className="whitespace-nowrap text-muted-foreground">
                     {issue.issueType ? (
                       <span className="inline-flex items-center gap-1.5" title={issue.issueType.name}>
                         <IssueTypeIcon
@@ -200,27 +210,27 @@ export function ProjectDetailPage() {
                         />
                       </span>
                     ) : '—'}
-                  </td>
-                  <td className="whitespace-nowrap px-6 py-4 text-sm font-medium text-indigo-600">
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap font-medium text-primary">
                     <Link to={`/issues/${issue.key}`}>{issue.key}</Link>
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-900">
+                  </TableCell>
+                  <TableCell className="text-foreground">
                     <Link to={`/issues/${issue.key}`}>{issue.summary}</Link>
-                  </td>
-                  <td className="whitespace-nowrap px-6 py-4">
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap">
                     <PriorityBadge priority={issue.priority} />
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))}
               {issuesData?.data.length === 0 && (
-                <tr>
-                  <td colSpan={4} className="px-6 py-8 text-center text-sm text-gray-500">
+                <TableRow>
+                  <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
                     No issues yet.
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               )}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       )}
     </div>
@@ -237,7 +247,7 @@ const VIEW_LINKS = [
 
 function ProjectViewNav({ projectKey, currentPath }: { projectKey: string; currentPath: string }) {
   return (
-    <nav className="mb-6 flex gap-1 rounded-lg border border-gray-200 bg-white p-1">
+    <nav className="mb-6 flex gap-1 rounded-lg border border-border bg-card p-1">
       {VIEW_LINKS.map(({ label, path }) => {
         const href = `/projects/${projectKey}/${path}`;
         const isActive = currentPath === href;
@@ -245,11 +255,12 @@ function ProjectViewNav({ projectKey, currentPath }: { projectKey: string; curre
           <Link
             key={path}
             to={href}
-            className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+            className={cn(
+              'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
               isActive
-                ? 'bg-indigo-100 text-indigo-700'
-                : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-            }`}
+                ? 'bg-primary/10 text-primary'
+                : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground',
+            )}
           >
             {label}
           </Link>
@@ -269,8 +280,14 @@ function PriorityBadge({ priority }: { priority: string }) {
   };
 
   return (
-    <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${colors[priority] || 'bg-gray-100 text-gray-700'}`}>
+    <Badge
+      variant="outline"
+      className={cn(
+        'rounded-full border-transparent font-medium',
+        colors[priority] ?? 'bg-gray-100 text-gray-700',
+      )}
+    >
       {priority}
-    </span>
+    </Badge>
   );
 }

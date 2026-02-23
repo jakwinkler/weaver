@@ -2,11 +2,17 @@ import { Injectable, NotFoundException, ConflictException } from '@nestjs/common
 import { ProjectEntity, ProjectMemberEntity } from '@weaver/db';
 import { CreateProjectDto, UpdateProjectDto, PaginatedResponse } from '@weaver/shared';
 import { TenantConnectionProvider } from '../../core/tenant';
+import { WorkflowsService } from '../workflows';
+import { EventDispatcherService } from '../events';
 import { PaginationParams, paginate } from '../../common';
 
 @Injectable()
 export class ProjectsService {
-  constructor(private readonly tenantConnections: TenantConnectionProvider) {}
+  constructor(
+    private readonly tenantConnections: TenantConnectionProvider,
+    private readonly workflowsService: WorkflowsService,
+    private readonly eventDispatcher: EventDispatcherService,
+  ) {}
 
   async create(dto: CreateProjectDto, userId: string): Promise<ProjectEntity> {
     const em = await this.tenantConnections.getEntityManager();
@@ -25,6 +31,14 @@ export class ProjectsService {
       issueCounter: 0,
     });
 
+    // Auto-assign default workflow if one exists
+    try {
+      const defaultWorkflow = await this.workflowsService.getDefaultWorkflow();
+      project.workflowId = defaultWorkflow.id;
+    } catch {
+      // No default workflow yet — leave workflowId null
+    }
+
     const saved = await repo.save(project);
 
     // Auto-add creator as project lead member
@@ -35,6 +49,12 @@ export class ProjectsService {
       role: 'lead',
     });
     await memberRepo.save(member);
+
+    this.eventDispatcher.emit('project.created', {
+      projectKey: saved.key,
+      name: saved.name,
+      leadUserId: userId,
+    });
 
     return saved;
   }
@@ -63,7 +83,18 @@ export class ProjectsService {
     const repo = em.getRepository(ProjectEntity);
 
     Object.assign(project, dto);
-    return repo.save(project);
+    const saved = await repo.save(project);
+
+    const changedFields: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(dto)) {
+      if (v !== undefined) changedFields[k] = v;
+    }
+    this.eventDispatcher.emit('project.updated', {
+      projectKey: key,
+      fields: changedFields,
+    });
+
+    return saved;
   }
 
   async delete(key: string): Promise<void> {

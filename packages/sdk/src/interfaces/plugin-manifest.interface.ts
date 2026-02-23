@@ -20,6 +20,8 @@ export interface PluginManifest {
   };
   ui?: {
     slots?: PluginUISlot[];
+    navigation?: PluginNavigationItem[];
+    pages?: PluginPageDefinition[];
   };
   routes?: PluginRouteDefinition[];
   migrations?: string[];
@@ -41,6 +43,18 @@ export interface PluginSettingDefinition {
 
 export interface PluginUISlot {
   slot: string;
+  component: string;
+}
+
+export interface PluginNavigationItem {
+  label: string;
+  icon: string;
+  path: string;
+  requiredPermissions?: string[];
+}
+
+export interface PluginPageDefinition {
+  path: string;
   component: string;
 }
 

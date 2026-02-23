@@ -1,8 +1,19 @@
 import { useState } from 'react';
 import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '@/stores';
-import { useProjects, useUnreadCount } from '@/api';
+import { useProjects, useUnreadCount, useInstalledPlugins, useMyPermissions } from '@/api';
 import { ProjectIcon } from '@/features/projects/ProjectSettingsPage';
+import { Button } from '@/components/ui/button';
+import { Separator } from '@/components/ui/separator';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   Search,
   Bell,
@@ -17,7 +28,11 @@ import {
   Webhook,
   Settings,
   LogOut,
+  User,
 } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { getNavigationEntries } from '@/plugins/plugin-slot-registry';
+import { PLUGIN_ICONS, DEFAULT_PLUGIN_ICON } from '@/plugins/plugin-icons';
 
 const adminNavItems = [
   { to: '/admin/workflows', label: 'Workflows', icon: GitBranch },
@@ -38,10 +53,19 @@ export function AppLayout() {
   const logout = useAuthStore((s) => s.logout);
   const { data: projectsData } = useProjects();
   const { data: unreadCount } = useUnreadCount();
+  const { data: installedPlugins } = useInstalledPlugins();
+  const permissions = useMyPermissions();
   const [adminOpen, setAdminOpen] = useState(
     location.pathname.startsWith('/admin') || location.pathname.startsWith('/settings'),
   );
-  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [appsOpen, setAppsOpen] = useState(location.pathname.startsWith('/apps'));
+
+  const enabledPluginIds = (installedPlugins ?? [])
+    .filter((p) => p.enabled)
+    .map((p) => p.pluginId);
+  const navEntries = getNavigationEntries(enabledPluginIds).filter((entry) =>
+    permissions.includes('*') || entry.requiredPermissions.every((perm) => permissions.includes(perm)),
+  );
 
   const handleLogout = () => {
     logout();
@@ -49,27 +73,18 @@ export function AppLayout() {
   };
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex h-screen bg-muted/50">
       {/* Sidebar */}
-      <aside className="relative z-10 flex w-64 flex-col border-r border-gray-200 bg-white">
-        <div className="flex h-14 items-center border-b border-gray-200 px-5">
-          <Link to="/projects" className="text-xl font-bold text-indigo-600">
+      <aside className="relative z-10 flex w-64 flex-col bg-primary text-white">
+        <div className="flex h-14 items-center border-b border-white/10 px-5">
+          <Link to="/projects" className="text-xl font-bold text-white">
             Weaver
           </Link>
         </div>
 
         <nav className="flex-1 overflow-y-auto px-3 py-4">
-          {/* Search link */}
-          <Link
-            to="/search"
-            className="mb-3 flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-gray-600 hover:bg-gray-100"
-          >
-            <Search className="h-4 w-4" />
-            Search
-          </Link>
-
           {/* Projects section */}
-          <h3 className="mb-2 px-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
+          <h3 className="mb-2 px-2 text-xs font-semibold uppercase tracking-wider text-white/50">
             Projects
           </h3>
           <ul className="space-y-1">
@@ -77,32 +92,78 @@ export function AppLayout() {
               <li key={project.id} className="group relative">
                 <Link
                   to={`/projects/${project.key}`}
-                  className={`flex items-center rounded-md px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-100 ${
-                    location.pathname.includes(`/projects/${project.key}`) ? 'bg-gray-100 font-medium' : ''
-                  }`}
+                  className={cn(
+                    'flex items-center rounded-md px-2 py-1.5 text-sm text-white/80 hover:bg-white/10 hover:text-white',
+                    location.pathname.includes(`/projects/${project.key}`) && 'bg-white/15 text-white font-medium',
+                  )}
                 >
                   <span className="mr-2">
                     <ProjectIcon iconAttachmentId={project.iconAttachmentId} projectKey={project.key} size="sm" />
                   </span>
                   {project.name}
                 </Link>
-                <Link
-                  to={`/projects/${project.key}/settings`}
-                  className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-1 text-gray-400 opacity-0 hover:bg-gray-200 hover:text-gray-600 group-hover:opacity-100"
-                  title="Project settings"
-                >
-                  <Settings className="h-3.5 w-3.5" />
-                </Link>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Link
+                      to={`/projects/${project.key}/settings`}
+                      className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-1 text-white/50 opacity-0 hover:bg-white/10 hover:text-white group-hover:opacity-100"
+                    >
+                      <Settings className="h-3.5 w-3.5" />
+                    </Link>
+                  </TooltipTrigger>
+                  <TooltipContent>Project settings</TooltipContent>
+                </Tooltip>
               </li>
             ))}
           </ul>
+
+          {/* Apps section (visible when plugins have navigation entries) */}
+          {navEntries.length > 0 && (
+            <div className="mt-6">
+              <button
+                onClick={() => setAppsOpen(!appsOpen)}
+                className="flex w-full items-center gap-1 px-2 py-1 text-xs font-semibold uppercase tracking-wider text-white/50 hover:text-white"
+              >
+                {appsOpen ? (
+                  <ChevronDown className="h-3 w-3" />
+                ) : (
+                  <ChevronRight className="h-3 w-3" />
+                )}
+                Apps
+              </button>
+              {appsOpen && (
+                <ul className="mt-1 space-y-1">
+                  {navEntries.map((entry) => {
+                    const Icon = PLUGIN_ICONS[entry.icon] || DEFAULT_PLUGIN_ICON;
+                    const isActive = location.pathname.startsWith(entry.path);
+                    return (
+                      <li key={entry.path}>
+                        <Link
+                          to={entry.path}
+                          className={cn(
+                            'flex items-center gap-2 rounded-md px-2 py-1.5 text-sm',
+                            isActive
+                              ? 'bg-white/15 text-white font-medium'
+                              : 'text-white/70 hover:bg-white/10 hover:text-white',
+                          )}
+                        >
+                          <Icon className="h-4 w-4" />
+                          {entry.label}
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          )}
 
           {/* Administration section (admin/owner only) */}
           {isAdmin && (
             <div className="mt-6">
               <button
                 onClick={() => setAdminOpen(!adminOpen)}
-                className="flex w-full items-center gap-1 px-2 py-1 text-xs font-semibold uppercase tracking-wider text-gray-500 hover:text-gray-700"
+                className="flex w-full items-center gap-1 px-2 py-1 text-xs font-semibold uppercase tracking-wider text-white/50 hover:text-white"
               >
                 {adminOpen ? (
                   <ChevronDown className="h-3 w-3" />
@@ -120,11 +181,12 @@ export function AppLayout() {
                       <li key={item.to}>
                         <Link
                           to={item.to}
-                          className={`flex items-center gap-2 rounded-md px-2 py-1.5 text-sm ${
+                          className={cn(
+                            'flex items-center gap-2 rounded-md px-2 py-1.5 text-sm',
                             isActive
-                              ? 'bg-indigo-50 text-indigo-700 font-medium'
-                              : 'text-gray-600 hover:bg-gray-100'
-                          }`}
+                              ? 'bg-white/15 text-white font-medium'
+                              : 'text-white/70 hover:bg-white/10 hover:text-white',
+                          )}
                         >
                           <Icon className="h-4 w-4" />
                           {item.label}
@@ -142,34 +204,59 @@ export function AppLayout() {
       {/* Main area */}
       <div className="relative flex flex-1 flex-col overflow-hidden">
         {/* Top bar */}
-        <header className="flex h-14 items-center justify-end border-b border-gray-200 bg-white px-6">
+        <header className="flex h-14 items-center justify-between bg-primary px-6">
+          {/* Search bar */}
+          <div className="relative w-full max-w-md">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/50" />
+            <input
+              type="text"
+              placeholder="Search issues, projects, people..."
+              className="w-full bg-white/10 py-1.5 pl-9 pr-4 text-sm text-white placeholder-white/50 border border-white/15 focus:bg-white/15 focus:outline-none focus:ring-1 focus:ring-white/30"
+              onFocus={() => navigate('/search')}
+              readOnly
+            />
+          </div>
+
           <div className="flex items-center gap-3">
             {/* Notification bell */}
-            <button
-              onClick={() => setNotificationsOpen(!notificationsOpen)}
-              className="relative rounded-md p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
-            >
-              <Bell className="h-5 w-5" />
-              {unreadCount != null && unreadCount > 0 && (
-                <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
-                  {unreadCount > 99 ? '99+' : unreadCount}
-                </span>
-              )}
-            </button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" className="relative text-white/80 hover:text-white hover:bg-white/10" onClick={() => navigate('/search')}>
+                  <Bell className="h-5 w-5" />
+                  {unreadCount != null && unreadCount > 0 && (
+                    <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-white">
+                      {unreadCount > 99 ? '99+' : unreadCount}
+                    </span>
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Notifications</TooltipContent>
+            </Tooltip>
 
-            <span className="text-sm text-gray-600">{user?.email}</span>
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-1.5 rounded-md bg-gray-100 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-200"
-            >
-              <LogOut className="h-4 w-4" />
-              Logout
-            </button>
+            <Separator orientation="vertical" className="h-6 bg-white/20" />
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="gap-2 text-white/80 hover:text-white hover:bg-white/10">
+                  <User className="h-4 w-4" />
+                  <span className="text-sm">{user?.email}</span>
+                  <ChevronDown className="h-3 w-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuLabel>My Account</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleLogout}>
+                  <LogOut className="h-4 w-4" />
+                  Logout
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </header>
 
         {/* Content */}
-        <main className="flex-1 overflow-y-auto p-6">
+        <main className="flex-1 overflow-y-auto px-6 py-5">
           <Outlet />
         </main>
       </div>

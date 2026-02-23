@@ -1,0 +1,56 @@
+{
+  "id": "@weaver/plugin-time-reports",
+  "name": "Time Reports",
+  "version": "1.0.0",
+  "description": "Aggregated time reports across projects, users and date ranges with CSV export and saved report configs",
+  "author": "Weaver",
+  "icon": "clock",
+  "entrypoints": {
+    "server": "src/server/index.ts",
+    "client": "src/client/index.ts"
+  },
+  "permissions": ["time-reports.view", "time-reports.manage", "time-reports.export"],
+  "declaredPermissions": [
+    {
+      "key": "time-reports.view",
+      "label": "View time reports",
+      "description": "View aggregated time reports across projects and users"
+    },
+    {
+      "key": "time-reports.manage",
+      "label": "Manage saved reports",
+      "description": "Save and delete report configurations"
+    },
+    {
+      "key": "time-reports.export",
+      "label": "Export reports",
+      "description": "Export time reports as CSV"
+    }
+  ],
+  "settings": {},
+  "events": {
+    "subscribes": ["time.logged"],
+    "emits": []
+  },
+  "ui": {
+    "navigation": [
+      {
+        "label": "Time Reports",
+        "icon": "clock",
+        "path": "/apps/time-reports",
+        "requiredPermissions": ["time-reports.view"]
+      }
+    ],
+    "pages": [
+      { "path": "/apps/time-reports", "component": "TimeReportsPage" }
+    ]
+  },
+  "routes": [
+    { "method": "GET", "path": "/report", "handler": "getReport" },
+    { "method": "GET", "path": "/report/export", "handler": "exportCsv" },
+    { "method": "GET", "path": "/saved", "handler": "listSavedReports" },
+    { "method": "POST", "path": "/saved", "handler": "saveReport" },
+    { "method": "DELETE", "path": "/saved/:reportId", "handler": "deleteSavedReport" }
+  ],
+  "migrations": []
+}

@@ -1,6 +1,7 @@
 import { useMemo, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { useProjectIssues } from '@/api';
+import { cn } from '@/lib/utils';
 
 interface GanttIssue {
   key: string;
@@ -8,6 +9,7 @@ interface GanttIssue {
   priority: string;
   startDate: Date;
   endDate: Date;
+  percentDone: number;
 }
 
 const PRIORITY_COLORS: Record<string, string> = {
@@ -15,7 +17,7 @@ const PRIORITY_COLORS: Record<string, string> = {
   high: 'bg-orange-500',
   medium: 'bg-yellow-500',
   low: 'bg-blue-500',
-  lowest: 'bg-gray-400',
+  lowest: 'bg-muted-foreground',
 };
 
 const DAY_WIDTH = 32;
@@ -57,18 +59,34 @@ export function GanttChart() {
       return { issues: [], timelineStart: new Date(), totalDays: 28, weeks: [] };
     }
 
-    const ganttIssues: GanttIssue[] = data.data.map((issue) => {
-      const start = issue.createdAt ? new Date(issue.createdAt as unknown as string) : new Date();
-      const dueDate = (issue.customFields as Record<string, unknown>)?.dueDate;
-      const end = dueDate
-        ? new Date(dueDate as string)
-        : addDays(start, DEFAULT_DURATION_DAYS);
+    // Only include issues with at least one date set
+    const datedIssues = data.data.filter((issue) => issue.startDate || issue.dueDate);
+    if (datedIssues.length === 0) {
+      return { issues: [], timelineStart: new Date(), totalDays: 28, weeks: [] };
+    }
+
+    const ganttIssues: GanttIssue[] = datedIssues.map((issue) => {
+      let start: Date;
+      let end: Date;
+
+      if (issue.startDate && issue.dueDate) {
+        start = new Date(issue.startDate);
+        end = new Date(issue.dueDate);
+      } else if (issue.startDate) {
+        start = new Date(issue.startDate);
+        end = addDays(start, DEFAULT_DURATION_DAYS);
+      } else {
+        end = new Date(issue.dueDate!);
+        start = addDays(end, -DEFAULT_DURATION_DAYS);
+      }
+
       return {
         key: issue.key,
         summary: issue.summary,
         priority: issue.priority,
         startDate: start,
         endDate: end.getTime() <= start.getTime() ? addDays(start, 1) : end,
+        percentDone: issue.percentDone ?? 0,
       };
     });
 
@@ -103,7 +121,7 @@ export function GanttChart() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <p className="text-gray-500">Loading Gantt chart...</p>
+        <p className="text-muted-foreground">Loading Gantt chart...</p>
       </div>
     );
   }
@@ -111,15 +129,16 @@ export function GanttChart() {
   if (isError) {
     return (
       <div className="flex items-center justify-center py-12">
-        <p className="text-red-500">Failed to load issues for Gantt chart.</p>
+        <p className="text-destructive">Failed to load issues for Gantt chart.</p>
       </div>
     );
   }
 
   if (issues.length === 0) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <p className="text-gray-500">No issues to display. Create some issues first.</p>
+      <div className="flex flex-col items-center justify-center py-12">
+        <p className="text-muted-foreground">No issues with dates to display.</p>
+        <p className="mt-1 text-sm text-muted-foreground">Set start or due dates on issues to see them on the Gantt chart.</p>
       </div>
     );
   }
@@ -128,10 +147,10 @@ export function GanttChart() {
   const chartHeight = issues.length * ROW_HEIGHT + HEADER_HEIGHT;
 
   return (
-    <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-      <div className="border-b border-gray-200 px-4 py-3">
-        <h3 className="text-sm font-semibold text-gray-900">Gantt Chart</h3>
-        <p className="mt-0.5 text-xs text-gray-500">
+    <div className="overflow-hidden rounded-xl border border-border bg-card">
+      <div className="border-b border-border px-4 py-3">
+        <h3 className="text-sm font-semibold text-foreground">Gantt Chart</h3>
+        <p className="mt-0.5 text-xs text-muted-foreground">
           Timeline view of {issues.length} issues
         </p>
       </div>
@@ -139,28 +158,28 @@ export function GanttChart() {
       <div className="flex">
         {/* Issue labels column */}
         <div
-          className="flex-shrink-0 border-r border-gray-200"
+          className="flex-shrink-0 border-r border-border"
           style={{ width: LABEL_WIDTH }}
         >
           {/* Header spacer */}
           <div
-            className="border-b border-gray-200 bg-gray-50 px-3 py-2"
+            className="border-b border-border bg-muted/50 px-3 py-2"
             style={{ height: HEADER_HEIGHT }}
           >
-            <span className="text-xs font-medium text-gray-500">Issue</span>
+            <span className="text-xs font-medium text-muted-foreground">Issue</span>
           </div>
 
           {/* Issue labels */}
           {issues.map((issue) => (
             <div
               key={issue.key}
-              className="flex items-center border-b border-gray-100 px-3"
+              className="flex items-center border-b border-border/50 px-3"
               style={{ height: ROW_HEIGHT }}
             >
-              <span className="mr-2 text-xs font-medium text-indigo-600">
+              <span className="mr-2 text-xs font-medium text-primary">
                 {issue.key}
               </span>
-              <span className="truncate text-xs text-gray-700">{issue.summary}</span>
+              <span className="truncate text-xs text-foreground">{issue.summary}</span>
             </div>
           ))}
         </div>
@@ -170,16 +189,16 @@ export function GanttChart() {
           <div style={{ width: chartWidth, height: chartHeight }} className="relative">
             {/* Week headers */}
             <div
-              className="sticky top-0 flex border-b border-gray-200 bg-gray-50"
+              className="sticky top-0 flex border-b border-border bg-muted/50"
               style={{ height: HEADER_HEIGHT }}
             >
               {weeks.map((weekDate, i) => (
                 <div
                   key={i}
-                  className="flex-shrink-0 border-r border-gray-100 px-2 py-2"
+                  className="flex-shrink-0 border-r border-border/30 px-2 py-2"
                   style={{ width: 7 * DAY_WIDTH }}
                 >
-                  <span className="text-xs font-medium text-gray-600">
+                  <span className="text-xs font-medium text-muted-foreground">
                     {formatWeek(weekDate)}
                   </span>
                 </div>
@@ -193,13 +212,16 @@ export function GanttChart() {
               const left = Math.max(0, offsetDays * DAY_WIDTH);
               const width = Math.max(DAY_WIDTH, durationDays * DAY_WIDTH);
               const top = HEADER_HEIGHT + rowIndex * ROW_HEIGHT;
-              const barColor = PRIORITY_COLORS[issue.priority] || 'bg-gray-400';
+              const barColor = PRIORITY_COLORS[issue.priority] || 'bg-muted-foreground';
 
               return (
                 <div key={issue.key}>
                   {/* Row background */}
                   <div
-                    className={`absolute border-b border-gray-50 ${rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}
+                    className={cn(
+                      'absolute border-b border-border/30',
+                      rowIndex % 2 === 0 ? 'bg-card' : 'bg-muted/20',
+                    )}
                     style={{
                       top,
                       left: 0,
@@ -210,16 +232,24 @@ export function GanttChart() {
 
                   {/* Bar */}
                   <div
-                    className={`absolute flex items-center rounded px-2 ${barColor} cursor-default shadow-sm`}
+                    className={cn(
+                      'absolute flex items-center overflow-hidden rounded cursor-default shadow-sm',
+                      `${barColor}/40`,
+                    )}
                     style={{
                       top: top + 8,
                       left,
                       width,
                       height: ROW_HEIGHT - 16,
                     }}
-                    title={`${issue.key}: ${issue.summary}`}
+                    title={`${issue.key}: ${issue.summary} (${issue.percentDone}%)`}
                   >
-                    <span className="truncate text-[10px] font-medium text-white">
+                    {/* Progress fill */}
+                    <div
+                      className={cn('absolute inset-y-0 left-0', barColor)}
+                      style={{ width: `${issue.percentDone}%` }}
+                    />
+                    <span className="relative z-10 truncate px-2 text-[10px] font-medium text-white">
                       {issue.key}
                     </span>
                   </div>
@@ -248,17 +278,17 @@ export function GanttChart() {
       </div>
 
       {/* Legend */}
-      <div className="flex items-center gap-4 border-t border-gray-200 px-4 py-2">
-        <span className="text-xs text-gray-500">Priority:</span>
+      <div className="flex items-center gap-4 border-t border-border px-4 py-2">
+        <span className="text-xs text-muted-foreground">Priority:</span>
         {Object.entries(PRIORITY_COLORS).map(([priority, color]) => (
           <div key={priority} className="flex items-center gap-1">
-            <div className={`h-2.5 w-2.5 rounded-sm ${color}`} />
-            <span className="text-xs capitalize text-gray-600">{priority}</span>
+            <div className={cn('h-2.5 w-2.5 rounded-sm', color)} />
+            <span className="text-xs capitalize text-muted-foreground">{priority}</span>
           </div>
         ))}
         <div className="ml-4 flex items-center gap-1">
           <div className="h-3 w-px bg-red-500" />
-          <span className="text-xs text-gray-600">Today</span>
+          <span className="text-xs text-muted-foreground">Today</span>
         </div>
       </div>
     </div>

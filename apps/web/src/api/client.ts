@@ -10,14 +10,18 @@ export const apiClient = axios.create({
   withCredentials: true,
 });
 
+const AUTH_PATHS = ['/auth/login', '/auth/register'];
+
 apiClient.interceptors.request.use((config) => {
+  const isAuthRoute = AUTH_PATHS.some((p) => config.url?.includes(p));
+
   const token = localStorage.getItem('accessToken');
-  if (token) {
+  if (token && !isAuthRoute) {
     config.headers.Authorization = `Bearer ${token}`;
   }
 
   const tenantId = localStorage.getItem('tenantId');
-  if (tenantId) {
+  if (tenantId && !isAuthRoute) {
     config.headers['x-tenant-id'] = tenantId;
   }
 

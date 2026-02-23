@@ -3,6 +3,19 @@ import { Link } from 'react-router-dom';
 import { useProjects, useCreateProject } from '@/api';
 import { RichTextEditor, serializeDoc } from '@/components/RichTextEditor';
 import { ProjectIcon } from './ProjectSettingsPage';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent } from '@/components/ui/card';
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from '@/components/ui/table';
+import { cn } from '@/lib/utils';
 
 export function ProjectsPage() {
   const { data, isLoading } = useProjects();
@@ -34,7 +47,7 @@ export function ProjectsPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <p className="text-gray-500">Loading projects...</p>
+        <p className="text-muted-foreground">Loading projects...</p>
       </div>
     );
   }
@@ -42,116 +55,105 @@ export function ProjectsPage() {
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Projects</h1>
-        <button
-          onClick={() => setShowForm(!showForm)}
-          className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
-        >
+        <h1 className="text-2xl font-bold text-foreground">Projects</h1>
+        <Button onClick={() => setShowForm(!showForm)} variant={showForm ? 'outline' : 'default'}>
           {showForm ? 'Cancel' : 'Create Project'}
-        </button>
+        </Button>
       </div>
 
       {showForm && (
-        <form onSubmit={handleCreate} className="mb-6 rounded-lg border border-gray-200 bg-white p-5">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label htmlFor="projectName" className="block text-sm font-medium text-gray-700">
-                Name
-              </label>
-              <input
-                id="projectName"
-                type="text"
-                required
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                placeholder="My Project"
-              />
-            </div>
-            <div>
-              <label htmlFor="projectKey" className="block text-sm font-medium text-gray-700">
-                Key
-              </label>
-              <input
-                id="projectKey"
-                type="text"
-                required
-                value={key}
-                onChange={(e) => setKey(e.target.value.toUpperCase())}
-                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                placeholder="PROJ"
-              />
-            </div>
-          </div>
-          <div className="mt-4">
-            <label className="mb-1 block text-sm font-medium text-gray-700">
-              Description
-            </label>
-            <RichTextEditor
-              content={descJson}
-              onChange={handleDescChange}
-              placeholder="Optional description"
-            />
-          </div>
-          {createProject.isError && (
-            <p className="mt-2 text-sm text-red-600">Failed to create project.</p>
-          )}
-          <div className="mt-4">
-            <button
-              type="submit"
-              disabled={createProject.isPending}
-              className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
-            >
-              {createProject.isPending ? 'Creating...' : 'Create'}
-            </button>
-          </div>
-        </form>
+        <Card className="mb-6">
+          <CardContent className="pt-5">
+            <form onSubmit={handleCreate}>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <Label htmlFor="projectName">Name</Label>
+                  <Input
+                    id="projectName"
+                    type="text"
+                    required
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="My Project"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="projectKey">Key</Label>
+                  <Input
+                    id="projectKey"
+                    type="text"
+                    required
+                    value={key}
+                    onChange={(e) => setKey(e.target.value.toUpperCase())}
+                    placeholder="PROJ"
+                  />
+                </div>
+              </div>
+              <div className="mt-4 space-y-1">
+                <Label>Description</Label>
+                <RichTextEditor
+                  content={descJson}
+                  onChange={handleDescChange}
+                  placeholder="Optional description"
+                />
+              </div>
+              {createProject.isError && (
+                <p className="mt-2 text-sm text-destructive">Failed to create project.</p>
+              )}
+              <div className="mt-4">
+                <Button type="submit" disabled={createProject.isPending}>
+                  {createProject.isPending ? 'Creating...' : 'Create'}
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
       )}
 
-      <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+      <div className={cn('overflow-hidden rounded-lg border border-border bg-card')}>
+        <Table>
+          <TableHeader className="bg-muted/50">
+            <TableRow>
+              <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 Project
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+              </TableHead>
+              <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 Description
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+              </TableHead>
+              <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 Issues
-              </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-200">
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {data?.data.map((project) => (
-              <tr key={project.id} className="hover:bg-gray-50">
-                <td className="whitespace-nowrap px-6 py-4">
+              <TableRow key={project.id} className="hover:bg-muted/50">
+                <TableCell className="whitespace-nowrap">
                   <Link to={`/projects/${project.key}`} className="flex items-center gap-3">
                     <ProjectIcon iconAttachmentId={project.iconAttachmentId} projectKey={project.key} size="sm" />
                     <div>
-                      <span className="text-sm font-medium text-indigo-600">{project.key}</span>
-                      <span className="ml-2 text-sm text-gray-900">{project.name}</span>
+                      <span className="text-sm font-medium text-primary">{project.key}</span>
+                      <span className="ml-2 text-sm text-foreground">{project.name}</span>
                     </div>
                   </Link>
-                </td>
-                <td className="px-6 py-4 text-sm text-gray-500">
+                </TableCell>
+                <TableCell className="text-sm text-muted-foreground">
                   {project.description || '-'}
-                </td>
-                <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+                </TableCell>
+                <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
                   {project.issueCounter}
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             ))}
             {data?.data.length === 0 && (
-              <tr>
-                <td colSpan={3} className="px-6 py-8 text-center text-sm text-gray-500">
+              <TableRow>
+                <TableCell colSpan={3} className="py-8 text-center text-sm text-muted-foreground">
                   No projects yet. Create your first project to get started.
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             )}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
     </div>
   );

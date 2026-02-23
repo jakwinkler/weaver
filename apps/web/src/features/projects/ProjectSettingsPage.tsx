@@ -18,6 +18,13 @@ import {
 import type { TenantUser } from '@/api';
 import { Settings, Users, Tag, FileText, Plus, Trash2, X, Upload } from 'lucide-react';
 import { RichTextEditor, normalizeCommentBody, serializeDoc } from '@/components/RichTextEditor';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
+import { cn } from '@/lib/utils';
 
 export function ProjectIcon({
   iconAttachmentId,
@@ -62,40 +69,42 @@ export function ProjectSettingsPage() {
   if (!projectKey) return null;
 
   return (
-    <div className="mx-auto max-w-4xl">
+    <div>
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Project Settings</h1>
-        <p className="mt-1 text-sm text-gray-500">
+        <h1 className="text-2xl font-bold text-foreground">Project Settings</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
           Manage settings for {projectKey}
         </p>
       </div>
 
-      <div className="mb-6 flex gap-1 rounded-lg bg-gray-100 p-1">
-        {([
-          { key: 'general', label: 'General', icon: Settings },
-          { key: 'members', label: 'Members', icon: Users },
-          { key: 'issue-types', label: 'Issue Types', icon: Tag },
-          { key: 'custom-fields', label: 'Custom Fields', icon: FileText },
-        ] as const).map(({ key, label, icon: Icon }) => (
-          <button
-            key={key}
-            onClick={() => setActiveTab(key)}
-            className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-              activeTab === key
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            <Icon className="h-4 w-4" />
-            {label}
-          </button>
-        ))}
-      </div>
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as Tab)} className="mb-6">
+        <TabsList className="w-full">
+          {([
+            { key: 'general', label: 'General', icon: Settings },
+            { key: 'members', label: 'Members', icon: Users },
+            { key: 'issue-types', label: 'Issue Types', icon: Tag },
+            { key: 'custom-fields', label: 'Custom Fields', icon: FileText },
+          ] as const).map(({ key, label, icon: Icon }) => (
+            <TabsTrigger key={key} value={key} className="flex flex-1 items-center gap-1.5">
+              <Icon className="h-4 w-4" />
+              {label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
 
-      {activeTab === 'general' && <GeneralTab projectKey={projectKey} />}
-      {activeTab === 'members' && <MembersTab projectKey={projectKey} />}
-      {activeTab === 'issue-types' && <IssueTypesTab projectKey={projectKey} />}
-      {activeTab === 'custom-fields' && <CustomFieldsTab projectKey={projectKey} />}
+        <TabsContent value="general">
+          <GeneralTab projectKey={projectKey} />
+        </TabsContent>
+        <TabsContent value="members">
+          <MembersTab projectKey={projectKey} />
+        </TabsContent>
+        <TabsContent value="issue-types">
+          <IssueTypesTab projectKey={projectKey} />
+        </TabsContent>
+        <TabsContent value="custom-fields">
+          <CustomFieldsTab projectKey={projectKey} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
@@ -141,7 +150,7 @@ function GeneralTab({ projectKey }: { projectKey: string }) {
   };
 
   if (isLoading || !project) {
-    return <div className="py-8 text-center text-gray-500">Loading...</div>;
+    return <div className="py-8 text-center text-muted-foreground">Loading...</div>;
   }
 
   const handleSubmit = async (e: FormEvent) => {
@@ -161,145 +170,150 @@ function GeneralTab({ projectKey }: { projectKey: string }) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="rounded-lg border border-gray-200 bg-white p-6">
-      <div className="space-y-4">
-        <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">Project Icon</label>
-          <div className="flex items-center gap-4">
-            <ProjectIcon iconAttachmentId={project.iconAttachmentId} projectKey={project.key} size="lg" />
-            <div className="flex gap-2">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleIconUpload}
-                className="hidden"
-              />
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploadAttachment.isPending}
-                className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-              >
-                <Upload className="h-3.5 w-3.5" />
-                {uploadAttachment.isPending ? 'Uploading...' : 'Change Icon'}
-              </button>
-              {project.iconAttachmentId && (
+    <Card>
+      <CardContent className="pt-6">
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <Label className="mb-1 block">Project Icon</Label>
+            <div className="flex items-center gap-4">
+              <ProjectIcon iconAttachmentId={project.iconAttachmentId} projectKey={project.key} size="lg" />
+              <div className="flex gap-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleIconUpload}
+                  className="hidden"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploadAttachment.isPending}
+                >
+                  <Upload className="h-3.5 w-3.5" />
+                  {uploadAttachment.isPending ? 'Uploading...' : 'Change Icon'}
+                </Button>
+                {project.iconAttachmentId && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleRemoveIcon}
+                    className="text-destructive hover:text-destructive"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Remove
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <Label className="mb-1 block">Key</Label>
+            <p className="rounded-md bg-muted/50 px-3 py-2 text-sm text-muted-foreground">{project.key}</p>
+          </div>
+
+          <div>
+            <Label className="mb-1 block">Project Name</Label>
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+            />
+          </div>
+
+          <div>
+            <div className="mb-1 flex items-center justify-between">
+              <Label>Description</Label>
+              {!editingDesc && (
                 <button
                   type="button"
-                  onClick={handleRemoveIcon}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50"
+                  onClick={() => setEditingDesc(true)}
+                  className="text-xs font-medium text-primary hover:opacity-80"
                 >
-                  <Trash2 className="h-3.5 w-3.5" />
-                  Remove
+                  Edit
+                </button>
+              )}
+              {editingDesc && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingDesc(false);
+                    setDescriptionJson(normalizeCommentBody(project.description || ''));
+                  }}
+                  className="text-xs font-medium text-muted-foreground hover:text-foreground"
+                >
+                  Cancel
                 </button>
               )}
             </div>
-          </div>
-        </div>
-        <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">Key</label>
-          <p className="rounded-md bg-gray-50 px-3 py-2 text-sm text-gray-500">{project.key}</p>
-        </div>
-        <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">Project Name</label>
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            required
-            className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-          />
-        </div>
-        <div>
-          <div className="mb-1 flex items-center justify-between">
-            <label className="block text-sm font-medium text-gray-700">Description</label>
-            {!editingDesc && (
-              <button
-                type="button"
-                onClick={() => setEditingDesc(true)}
-                className="text-xs font-medium text-indigo-600 hover:text-indigo-500"
-              >
-                Edit
-              </button>
-            )}
-            {editingDesc && (
-              <button
-                type="button"
-                onClick={() => {
-                  setEditingDesc(false);
-                  setDescriptionJson(normalizeCommentBody(project.description || ''));
-                }}
-                className="text-xs font-medium text-gray-500 hover:text-gray-700"
-              >
-                Cancel
-              </button>
+            {editingDesc ? (
+              <RichTextEditor
+                content={descriptionJson}
+                onChange={handleDescriptionChange}
+                placeholder="Project description..."
+              />
+            ) : (
+              <div className="rounded-md border border-border bg-muted/50 px-3 py-2">
+                {project.description ? (
+                  <RichTextEditor
+                    content={normalizeCommentBody(project.description)}
+                    editable={false}
+                  />
+                ) : (
+                  <p className="text-sm italic text-muted-foreground">No description.</p>
+                )}
+              </div>
             )}
           </div>
-          {editingDesc ? (
-            <RichTextEditor
-              content={descriptionJson}
-              onChange={handleDescriptionChange}
-              placeholder="Project description..."
-            />
-          ) : (
-            <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
-              {project.description ? (
-                <RichTextEditor
-                  content={normalizeCommentBody(project.description)}
-                  editable={false}
-                />
-              ) : (
-                <p className="text-sm italic text-gray-400">No description.</p>
-              )}
-            </div>
-          )}
-        </div>
-        <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">Lead</label>
-          <select
-            value={leadUserId}
-            onChange={(e) => setLeadUserId(e.target.value)}
-            className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-          >
-            <option value="">No lead</option>
-            {users?.map((u: TenantUser) => (
-              <option key={u.id} value={u.id}>
-                {u.displayName || u.email}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">Workflow</label>
-          <select
-            value={workflowId}
-            onChange={(e) => setWorkflowId(e.target.value)}
-            className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-          >
-            <option value="">Default</option>
-            {workflows?.map((w: any) => (
-              <option key={w.id} value={w.id}>{w.name}</option>
-            ))}
-          </select>
-        </div>
-      </div>
 
-      <div className="mt-6 flex items-center gap-3">
-        <button
-          type="submit"
-          disabled={updateProject.isPending}
-          className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
-        >
-          {updateProject.isPending ? 'Saving...' : 'Save Changes'}
-        </button>
-        {saved && (
-          <span className="text-sm text-green-600">Changes saved!</span>
-        )}
-        {updateProject.isError && (
-          <span className="text-sm text-red-600">Failed to save changes.</span>
-        )}
-      </div>
-    </form>
+          <div>
+            <Label className="mb-1 block">Lead</Label>
+            <select
+              value={leadUserId}
+              onChange={(e) => setLeadUserId(e.target.value)}
+              className="block w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
+            >
+              <option value="">No lead</option>
+              {users?.map((u: TenantUser) => (
+                <option key={u.id} value={u.id}>
+                  {u.displayName || u.email}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <Label className="mb-1 block">Workflow</Label>
+            <select
+              value={workflowId}
+              onChange={(e) => setWorkflowId(e.target.value)}
+              className="block w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
+            >
+              <option value="">Default</option>
+              {workflows?.map((w: any) => (
+                <option key={w.id} value={w.id}>{w.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center gap-3 pt-2">
+            <Button type="submit" disabled={updateProject.isPending}>
+              {updateProject.isPending ? 'Saving...' : 'Save Changes'}
+            </Button>
+            {saved && (
+              <span className="text-sm text-green-600">Changes saved!</span>
+            )}
+            {updateProject.isError && (
+              <span className="text-sm text-destructive">Failed to save changes.</span>
+            )}
+          </div>
+        </form>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -336,117 +350,119 @@ function MembersTab({ projectKey }: { projectKey: string }) {
   };
 
   if (isLoading) {
-    return <div className="py-8 text-center text-gray-500">Loading...</div>;
+    return <div className="py-8 text-center text-muted-foreground">Loading...</div>;
   }
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium text-gray-700">
+        <h3 className="text-sm font-medium text-foreground">
           {members?.length || 0} member{members?.length !== 1 ? 's' : ''}
         </h3>
-        <button
-          onClick={() => setShowAdd(!showAdd)}
-          className="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700"
-        >
+        <Button size="sm" onClick={() => setShowAdd(!showAdd)}>
           <Plus className="h-3.5 w-3.5" />
           Add Member
-        </button>
+        </Button>
       </div>
 
       {showAdd && (
-        <form onSubmit={handleAdd} className="rounded-lg border border-gray-200 bg-white p-4">
-          <div className="flex items-end gap-3">
-            <div className="flex-1">
-              <label className="mb-1 block text-sm font-medium text-gray-700">User</label>
-              <select
-                value={selectedUserId}
-                onChange={(e) => setSelectedUserId(e.target.value)}
-                required
-                className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-              >
-                <option value="">Select user...</option>
-                {availableUsers.map((u: TenantUser) => (
-                  <option key={u.id} value={u.id}>
-                    {u.displayName || u.email}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">Role</label>
-              <select
-                value={selectedRole}
-                onChange={(e) => setSelectedRole(e.target.value)}
-                className="block rounded-md border border-gray-300 px-3 py-2 text-sm"
-              >
-                {MEMBER_ROLES.map((r) => (
-                  <option key={r} value={r}>{r}</option>
-                ))}
-              </select>
-            </div>
-            <button
-              type="submit"
-              disabled={addMember.isPending}
-              className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
-            >
-              Add
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowAdd(false)}
-              className="rounded-md bg-gray-100 px-3 py-2 text-sm text-gray-700 hover:bg-gray-200"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        </form>
+        <Card>
+          <CardContent className="pt-4">
+            <form onSubmit={handleAdd}>
+              <div className="flex items-end gap-3">
+                <div className="flex-1">
+                  <Label className="mb-1 block">User</Label>
+                  <select
+                    value={selectedUserId}
+                    onChange={(e) => setSelectedUserId(e.target.value)}
+                    required
+                    className="block w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  >
+                    <option value="">Select user...</option>
+                    {availableUsers.map((u: TenantUser) => (
+                      <option key={u.id} value={u.id}>
+                        {u.displayName || u.email}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <Label className="mb-1 block">Role</Label>
+                  <select
+                    value={selectedRole}
+                    onChange={(e) => setSelectedRole(e.target.value)}
+                    className="block rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  >
+                    {MEMBER_ROLES.map((r) => (
+                      <option key={r} value={r}>{r}</option>
+                    ))}
+                  </select>
+                </div>
+                <Button type="submit" disabled={addMember.isPending}>
+                  Add
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="icon"
+                  onClick={() => setShowAdd(false)}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
       )}
 
-      <div className="rounded-lg border border-gray-200 bg-white">
+      <Card>
         {!members || members.length === 0 ? (
-          <div className="py-8 text-center">
-            <Users className="mx-auto h-8 w-8 text-gray-400" />
-            <p className="mt-2 text-sm text-gray-500">No members yet</p>
-          </div>
+          <CardContent className="pt-6">
+            <div className="py-4 text-center">
+              <Users className="mx-auto h-8 w-8 text-muted-foreground" />
+              <p className="mt-2 text-sm text-muted-foreground">No members yet</p>
+            </div>
+          </CardContent>
         ) : (
-          <div className="divide-y divide-gray-200">
+          <div className="divide-y divide-border">
             {members.map((member) => {
               const user = users?.find((u: TenantUser) => u.id === member.userId);
               return (
                 <div key={member.id} className="flex items-center justify-between px-4 py-3">
                   <div>
-                    <p className="text-sm font-medium text-gray-900">
+                    <p className="text-sm font-medium text-foreground">
                       {user?.displayName || user?.email || member.userId}
                     </p>
                     {user?.email && user.displayName && (
-                      <p className="text-xs text-gray-500">{user.email}</p>
+                      <p className="text-xs text-muted-foreground">{user.email}</p>
                     )}
                   </div>
                   <div className="flex items-center gap-2">
                     <select
                       value={member.role}
                       onChange={(e) => handleRoleChange(member.userId, e.target.value)}
-                      className="rounded border border-gray-300 px-2 py-1 text-xs"
+                      className="rounded border border-input bg-background px-2 py-1 text-xs"
                     >
                       {MEMBER_ROLES.map((r) => (
                         <option key={r} value={r}>{r}</option>
                       ))}
                     </select>
-                    <button
+                    <Button
+                      variant="ghost"
+                      size="icon"
                       onClick={() => handleRemove(member.userId)}
-                      className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600"
                       title="Remove member"
+                      className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                     >
                       <Trash2 className="h-4 w-4" />
-                    </button>
+                    </Button>
                   </div>
                 </div>
               );
             })}
           </div>
         )}
-      </div>
+      </Card>
     </div>
   );
 }
@@ -490,43 +506,44 @@ function IssueTypesTab({ projectKey }: { projectKey: string }) {
   };
 
   if (isLoading) {
-    return <div className="py-8 text-center text-gray-500">Loading...</div>;
+    return <div className="py-8 text-center text-muted-foreground">Loading...</div>;
   }
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-gray-500">
+      <p className="text-sm text-muted-foreground">
         Select which issue types are available in this project. If none are selected, all types will be available.
       </p>
-      <div className="rounded-lg border border-gray-200 bg-white p-4">
-        <div className="space-y-2">
-          {allIssueTypes?.map((it: any) => (
-            <label key={it.id} className="flex items-center gap-3 rounded-md p-2 hover:bg-gray-50">
-              <input
-                type="checkbox"
-                checked={selectedIds.has(it.id)}
-                onChange={() => handleToggle(it.id)}
-                className="h-4 w-4 rounded border-gray-300 text-indigo-600"
-              />
-              <div>
-                <span className="text-sm font-medium text-gray-900">{it.name}</span>
-                {it.isSubtask && (
-                  <span className="ml-2 inline-flex rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600">
-                    Subtask
-                  </span>
+      <Card>
+        <CardContent className="pt-4">
+          <div className="space-y-2">
+            {allIssueTypes?.map((it: any) => (
+              <label
+                key={it.id}
+                className={cn(
+                  'flex cursor-pointer items-center gap-3 rounded-md p-2 hover:bg-muted/50',
                 )}
-              </div>
-            </label>
-          ))}
-        </div>
-      </div>
-      <button
-        onClick={handleSave}
-        disabled={setProjectIssueTypes.isPending}
-        className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
-      >
+              >
+                <Checkbox
+                  checked={selectedIds.has(it.id)}
+                  onCheckedChange={() => handleToggle(it.id)}
+                />
+                <div>
+                  <span className="text-sm font-medium text-foreground">{it.name}</span>
+                  {it.isSubtask && (
+                    <span className="ml-2 inline-flex rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
+                      Subtask
+                    </span>
+                  )}
+                </div>
+              </label>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+      <Button onClick={handleSave} disabled={setProjectIssueTypes.isPending}>
         Save
-      </button>
+      </Button>
     </div>
   );
 }
@@ -535,22 +552,24 @@ function CustomFieldsTab({ projectKey }: { projectKey: string }) {
   const { data: project } = useProject(projectKey);
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-6">
-      <p className="text-sm text-gray-500">
-        Project-scoped custom field values are stored here. Use the Custom Fields admin page to define project-type fields.
-      </p>
-      {project?.customFields && Object.keys(project.customFields).length > 0 ? (
-        <div className="mt-4 space-y-2">
-          {Object.entries(project.customFields).map(([key, value]) => (
-            <div key={key} className="flex items-center justify-between rounded border border-gray-100 px-3 py-2">
-              <span className="text-sm font-medium text-gray-700">{key}</span>
-              <span className="text-sm text-gray-500">{String(value)}</span>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <p className="mt-4 text-sm text-gray-400">No project custom fields set.</p>
-      )}
-    </div>
+    <Card>
+      <CardContent className="pt-6">
+        <p className="text-sm text-muted-foreground">
+          Project-scoped custom field values are stored here. Use the Custom Fields admin page to define project-type fields.
+        </p>
+        {project?.customFields && Object.keys(project.customFields).length > 0 ? (
+          <div className="mt-4 space-y-2">
+            {Object.entries(project.customFields).map(([key, value]) => (
+              <div key={key} className="flex items-center justify-between rounded border border-border px-3 py-2">
+                <span className="text-sm font-medium text-foreground">{key}</span>
+                <span className="text-sm text-muted-foreground">{String(value)}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-4 text-sm text-muted-foreground">No project custom fields set.</p>
+        )}
+      </CardContent>
+    </Card>
   );
 }

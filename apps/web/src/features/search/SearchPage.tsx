@@ -5,6 +5,20 @@ import {
   useCreateSavedFilter,
   useDeleteSavedFilter,
 } from '@/api/hooks-phase3';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableHead,
+  TableRow,
+  TableCell,
+} from '@/components/ui/table';
+import { cn } from '@/lib/utils';
 
 const WQL_EXAMPLES = [
   'priority = "high"',
@@ -51,26 +65,26 @@ export function SearchPage() {
   };
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8">
-      <h1 className="mb-6 text-2xl font-bold text-gray-900">Search</h1>
+    <div>
+      <h1 className="mb-6 text-2xl font-bold text-foreground">Search</h1>
 
       <div className="flex gap-6">
         {/* Sidebar - Saved Filters */}
         <div className="w-64 flex-shrink-0">
-          <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
-            <div className="border-b border-gray-200 px-4 py-3">
-              <h2 className="text-sm font-semibold text-gray-900">Saved Filters</h2>
-            </div>
+          <Card>
+            <CardHeader className="border-b border-border px-4 py-3">
+              <CardTitle className="text-sm">Saved Filters</CardTitle>
+            </CardHeader>
             {filtersLoading ? (
-              <div className="px-4 py-3">
-                <p className="text-xs text-gray-500">Loading...</p>
-              </div>
+              <CardContent className="px-4 py-3">
+                <p className="text-xs text-muted-foreground">Loading...</p>
+              </CardContent>
             ) : !savedFilters || savedFilters.length === 0 ? (
-              <div className="px-4 py-6 text-center">
-                <p className="text-xs text-gray-400">No saved filters.</p>
-              </div>
+              <CardContent className="px-4 py-6 text-center">
+                <p className="text-xs text-muted-foreground">No saved filters.</p>
+              </CardContent>
             ) : (
-              <div className="divide-y divide-gray-100">
+              <div className="divide-y divide-border">
                 {savedFilters.map((filter) => (
                   <div
                     key={filter.id}
@@ -78,14 +92,16 @@ export function SearchPage() {
                   >
                     <button
                       onClick={() => handleLoadFilter(filter.query)}
-                      className="truncate text-left text-sm text-indigo-600 hover:text-indigo-800"
+                      className="truncate text-left text-sm text-primary hover:underline"
                       title={filter.query}
                     >
                       {filter.name}
                     </button>
-                    <button
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       onClick={() => handleDeleteFilter(filter.id)}
-                      className="ml-2 flex-shrink-0 rounded p-1 text-gray-400 hover:bg-red-100 hover:text-red-600"
+                      className="ml-2 h-6 w-6 flex-shrink-0 p-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                       title="Delete filter"
                     >
                       <svg
@@ -101,12 +117,12 @@ export function SearchPage() {
                           d="M6 18L18 6M6 6l12 12"
                         />
                       </svg>
-                    </button>
+                    </Button>
                   </div>
                 ))}
               </div>
             )}
-          </div>
+          </Card>
         </div>
 
         {/* Main Content */}
@@ -114,82 +130,72 @@ export function SearchPage() {
           {/* Search form */}
           <form onSubmit={handleSearch} className="mb-6">
             <div className="flex gap-2">
-              <input
+              <Input
                 type="text"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder='e.g. priority = "high" AND label = "bug"'
-                className="block flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                className="flex-1"
               />
-              <button
-                type="submit"
-                disabled={search.isPending || !query.trim()}
-                className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
-              >
+              <Button type="submit" disabled={search.isPending || !query.trim()}>
                 {search.isPending ? 'Searching...' : 'Search'}
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
+                variant="outline"
                 onClick={() => setShowSaveForm(!showSaveForm)}
                 disabled={!query.trim()}
-                className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
               >
                 Save Filter
-              </button>
+              </Button>
             </div>
           </form>
 
           {/* Save filter form */}
           {showSaveForm && (
-            <form
-              onSubmit={handleSaveFilter}
-              className="mb-6 rounded-lg border border-gray-200 bg-gray-50 p-4"
-            >
-              <div className="flex items-end gap-3">
-                <div className="flex-1">
-                  <label
-                    htmlFor="filterName"
-                    className="block text-sm font-medium text-gray-700"
-                  >
-                    Filter Name
-                  </label>
-                  <input
-                    id="filterName"
-                    type="text"
-                    value={filterName}
-                    onChange={(e) => setFilterName(e.target.value)}
-                    placeholder="e.g. My high priority bugs"
-                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  disabled={createFilter.isPending || !filterName.trim()}
-                  className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
-                >
-                  {createFilter.isPending ? 'Saving...' : 'Save'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowSaveForm(false);
-                    setFilterName('');
-                  }}
-                  className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-              </div>
-              {createFilter.isError && (
-                <p className="mt-2 text-sm text-red-600">Failed to save filter.</p>
-              )}
-            </form>
+            <Card className="mb-6 bg-muted/50">
+              <CardContent className="pt-4">
+                <form onSubmit={handleSaveFilter}>
+                  <div className="flex items-end gap-3">
+                    <div className="flex-1 space-y-1.5">
+                      <Label htmlFor="filterName">Filter Name</Label>
+                      <Input
+                        id="filterName"
+                        type="text"
+                        value={filterName}
+                        onChange={(e) => setFilterName(e.target.value)}
+                        placeholder="e.g. My high priority bugs"
+                      />
+                    </div>
+                    <Button
+                      type="submit"
+                      disabled={createFilter.isPending || !filterName.trim()}
+                    >
+                      {createFilter.isPending ? 'Saving...' : 'Save'}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        setShowSaveForm(false);
+                        setFilterName('');
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                  {createFilter.isError && (
+                    <p className="mt-2 text-sm text-destructive">Failed to save filter.</p>
+                  )}
+                </form>
+              </CardContent>
+            </Card>
           )}
 
           {/* Error state */}
           {search.isError && (
-            <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4">
-              <p className="text-sm text-red-700">
+            <div className="mb-6 rounded-lg border border-destructive/30 bg-destructive/10 p-4">
+              <p className="text-sm text-destructive">
                 Search failed. Please check your query syntax and try again.
               </p>
             </div>
@@ -197,114 +203,110 @@ export function SearchPage() {
 
           {/* Results table */}
           {search.data && (
-            <div className="mb-6 rounded-lg border border-gray-200 bg-white shadow-sm">
-              <div className="border-b border-gray-200 px-6 py-3">
-                <p className="text-sm text-gray-500">
+            <Card className="mb-6">
+              <div className="border-b border-border px-6 py-3">
+                <p className="text-sm text-muted-foreground">
                   {search.data.meta.total} result{search.data.meta.total !== 1 ? 's' : ''} found
                 </p>
               </div>
               {search.data.data.length === 0 ? (
-                <div className="px-6 py-8 text-center">
-                  <p className="text-sm text-gray-400">
+                <CardContent className="py-8 text-center">
+                  <p className="text-sm text-muted-foreground">
                     No issues match your query.
                   </p>
-                </div>
+                </CardContent>
               ) : (
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-gray-200 bg-gray-50">
-                      <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                        Key
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                        Summary
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                        Priority
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                        Status
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="text-xs uppercase tracking-wider">Key</TableHead>
+                      <TableHead className="text-xs uppercase tracking-wider">Summary</TableHead>
+                      <TableHead className="text-xs uppercase tracking-wider">Priority</TableHead>
+                      <TableHead className="text-xs uppercase tracking-wider">Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
                     {search.data.data.map((issue) => (
-                      <tr key={issue.key} className="hover:bg-gray-50">
-                        <td className="whitespace-nowrap px-6 py-3 text-sm font-medium text-indigo-600">
+                      <TableRow key={issue.key}>
+                        <TableCell className="whitespace-nowrap text-sm font-medium text-primary">
                           {issue.key}
-                        </td>
-                        <td className="px-6 py-3 text-sm text-gray-900">
+                        </TableCell>
+                        <TableCell className="text-sm text-foreground">
                           {issue.summary}
-                        </td>
-                        <td className="whitespace-nowrap px-6 py-3">
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap">
                           <PriorityBadge priority={issue.priority} />
-                        </td>
-                        <td className="whitespace-nowrap px-6 py-3 text-sm text-gray-700">
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
                           {issue.status}
-                        </td>
-                      </tr>
+                        </TableCell>
+                      </TableRow>
                     ))}
-                  </tbody>
-                </table>
+                  </TableBody>
+                </Table>
               )}
-            </div>
+            </Card>
           )}
 
           {/* WQL Help */}
-          <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-            <h3 className="mb-3 text-sm font-semibold text-gray-900">
-              WQL Syntax Help
-            </h3>
-            <p className="mb-3 text-sm text-gray-600">
-              Weaver Query Language (WQL) allows you to search issues using field
-              comparisons and logical operators.
-            </p>
-            <div className="space-y-1">
-              {WQL_EXAMPLES.map((example) => (
-                <button
-                  key={example}
-                  onClick={() => setQuery(example)}
-                  className="block w-full rounded px-2 py-1 text-left font-mono text-xs text-gray-600 hover:bg-indigo-50 hover:text-indigo-700"
-                >
-                  {example}
-                </button>
-              ))}
-            </div>
-            <div className="mt-4 border-t border-gray-100 pt-3">
-              <p className="text-xs text-gray-500">
-                <strong>Operators:</strong> =, !=, &gt;, &lt;, &gt;=, &lt;=, IN, NOT
-                IN
+          <Card>
+            <CardContent className="p-6">
+              <h3 className="mb-3 text-sm font-semibold text-foreground">
+                WQL Syntax Help
+              </h3>
+              <p className="mb-3 text-sm text-muted-foreground">
+                Weaver Query Language (WQL) allows you to search issues using field
+                comparisons and logical operators.
               </p>
-              <p className="text-xs text-gray-500">
-                <strong>Logical:</strong> AND, OR
-              </p>
-              <p className="text-xs text-gray-500">
-                <strong>Fields:</strong> priority, status, label, assignee, reporter,
-                created, updated
-              </p>
-            </div>
-          </div>
+              <div className="space-y-1">
+                {WQL_EXAMPLES.map((example) => (
+                  <button
+                    key={example}
+                    onClick={() => setQuery(example)}
+                    className="block w-full rounded px-2 py-1 text-left font-mono text-xs text-muted-foreground hover:bg-primary/5 hover:text-primary"
+                  >
+                    {example}
+                  </button>
+                ))}
+              </div>
+              <div className="mt-4 border-t border-border pt-3">
+                <p className="text-xs text-muted-foreground">
+                  <strong>Operators:</strong> =, !=, &gt;, &lt;, &gt;=, &lt;=, IN, NOT
+                  IN
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  <strong>Logical:</strong> AND, OR
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  <strong>Fields:</strong> priority, status, label, assignee, reporter,
+                  created, updated
+                </p>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
     </div>
   );
 }
 
-const PRIORITY_STYLES: Record<string, string> = {
-  highest: 'bg-red-100 text-red-800',
-  high: 'bg-orange-100 text-orange-800',
-  medium: 'bg-yellow-100 text-yellow-800',
-  low: 'bg-blue-100 text-blue-800',
-  lowest: 'bg-gray-100 text-gray-800',
+const PRIORITY_VARIANTS: Record<string, string> = {
+  highest: 'bg-red-100 text-red-800 border-red-200',
+  high: 'bg-orange-100 text-orange-800 border-orange-200',
+  medium: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+  low: 'bg-blue-100 text-blue-800 border-blue-200',
+  lowest: 'bg-muted text-muted-foreground border-border',
 };
 
 function PriorityBadge({ priority }: { priority: string }) {
-  const style = PRIORITY_STYLES[priority] || 'bg-gray-100 text-gray-800';
   return (
-    <span
-      className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${style}`}
+    <Badge
+      className={cn(
+        'rounded-full px-2.5 py-0.5 text-xs font-medium',
+        PRIORITY_VARIANTS[priority] || 'bg-muted text-muted-foreground border-border',
+      )}
     >
       {priority}
-    </span>
+    </Badge>
   );
 }

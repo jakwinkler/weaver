@@ -7,6 +7,22 @@ import {
 } from '@/api';
 import type { CustomFieldType } from '@weaver/shared';
 import { Pencil, Trash2, Settings, Puzzle } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from '@/components/ui/table';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { cn } from '@/lib/utils';
 
 const FIELD_TYPES: CustomFieldType[] = [
   'text',
@@ -37,14 +53,14 @@ function slugify(name: string): string {
 }
 
 const fieldTypeColors: Record<string, string> = {
-  text: 'bg-blue-100 text-blue-700',
-  number: 'bg-green-100 text-green-700',
-  select: 'bg-purple-100 text-purple-700',
-  multi_select: 'bg-purple-100 text-purple-700',
-  date: 'bg-orange-100 text-orange-700',
-  user: 'bg-indigo-100 text-indigo-700',
-  checkbox: 'bg-yellow-100 text-yellow-700',
-  url: 'bg-cyan-100 text-cyan-700',
+  text: 'bg-blue-100 text-blue-700 border-blue-200',
+  number: 'bg-green-100 text-green-700 border-green-200',
+  select: 'bg-purple-100 text-purple-700 border-purple-200',
+  multi_select: 'bg-purple-100 text-purple-700 border-purple-200',
+  date: 'bg-orange-100 text-orange-700 border-orange-200',
+  user: 'bg-indigo-100 text-indigo-700 border-indigo-200',
+  checkbox: 'bg-yellow-100 text-yellow-700 border-yellow-200',
+  url: 'bg-cyan-100 text-cyan-700 border-cyan-200',
 };
 
 export function CustomFieldsPage() {
@@ -134,216 +150,231 @@ export function CustomFieldsPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-12 text-gray-500">Loading custom fields...</div>
+      <div className="flex items-center justify-center py-12 text-muted-foreground">Loading custom fields...</div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-4xl">
+    <div>
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Custom Fields</h1>
-          <p className="mt-1 text-sm text-gray-500">
+          <h1 className="text-2xl font-bold text-foreground">Custom Fields</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
             Define custom fields to capture additional data.
           </p>
         </div>
-        <button
+        <Button
           onClick={() => { resetForm(); setEntityType(activeTab); setShowForm(true); }}
-          className="inline-flex items-center gap-2 rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
         >
           New Field
-        </button>
+        </Button>
       </div>
 
       {/* Entity Type Tabs */}
-      <div className="mb-4 flex gap-1 rounded-lg bg-gray-100 p-1">
-        {ENTITY_TYPES.map((et) => (
-          <button
-            key={et}
-            onClick={() => handleTabChange(et)}
-            className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-              activeTab === et
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            {ENTITY_TYPE_LABELS[et]}
-          </button>
-        ))}
-      </div>
+      <Tabs
+        value={activeTab}
+        onValueChange={(val) => handleTabChange(val as EntityType)}
+        className="mb-4"
+      >
+        <TabsList className="w-full">
+          {ENTITY_TYPES.map((et) => (
+            <TabsTrigger key={et} value={et} className="flex-1">
+              {ENTITY_TYPE_LABELS[et]}
+            </TabsTrigger>
+          ))}
+        </TabsList>
 
-      {showForm && (
-        <form onSubmit={handleSubmit} className="mb-6 rounded-lg border border-gray-200 bg-white p-4">
-          <h3 className="mb-3 text-sm font-medium text-gray-900">
-            {editId ? 'Edit Field' : 'Create Field'}
-          </h3>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">Name</label>
-              <input
-                value={name}
-                onChange={(e) => handleNameChange(e.target.value)}
-                required
-                placeholder="e.g. Story Points"
-                className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">Slug</label>
-              <input
-                value={slug}
-                onChange={(e) => setSlug(e.target.value)}
-                required
-                disabled={!!editId}
-                placeholder="Auto-generated"
-                className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:bg-gray-50 disabled:text-gray-500"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">Type</label>
-              <select
-                value={fieldType}
-                onChange={(e) => setFieldType(e.target.value as CustomFieldType)}
-                disabled={!!editId}
-                className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:bg-gray-50"
-              >
-                {FIELD_TYPES.map((ft) => (
-                  <option key={ft} value={ft}>{ft.replace('_', ' ')}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">Entity Type</label>
-              <select
-                value={entityType}
-                onChange={(e) => setEntityType(e.target.value as EntityType)}
-                disabled={!!editId}
-                className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:bg-gray-50"
-              >
-                {ENTITY_TYPES.map((et) => (
-                  <option key={et} value={et}>{ENTITY_TYPE_LABELS[et]}</option>
-                ))}
-              </select>
-            </div>
-            <div className="flex items-end">
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={required}
-                  onChange={(e) => setRequired(e.target.checked)}
-                  className="h-4 w-4 rounded border-gray-300 text-indigo-600"
-                />
-                <span className="text-sm text-gray-700">Required</span>
-              </label>
-            </div>
-          </div>
-
-          {(fieldType === 'select' || fieldType === 'multi_select') && (
-            <div className="mt-4">
-              <label className="mb-1 block text-sm font-medium text-gray-700">Choices (comma-separated)</label>
-              <input
-                value={choices}
-                onChange={(e) => setChoices(e.target.value)}
-                placeholder="Option A, Option B, Option C"
-                className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-              />
-            </div>
-          )}
-
-          {(createField.isError || updateField.isError) && (
-            <p className="mt-2 text-sm text-red-600">Failed to save field.</p>
-          )}
-
-          <div className="mt-4 flex gap-2">
-            <button
-              type="submit"
-              disabled={createField.isPending || updateField.isPending}
-              className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
-            >
-              {editId ? 'Update' : 'Create'}
-            </button>
-            <button type="button" onClick={resetForm} className="rounded-md bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200">
-              Cancel
-            </button>
-          </div>
-        </form>
-      )}
-
-      {filteredFields.length === 0 ? (
-        <div className="rounded-lg border border-gray-200 bg-white py-12 text-center">
-          <Settings className="mx-auto h-10 w-10 text-gray-400" />
-          <p className="mt-2 text-sm font-medium text-gray-900">No custom fields</p>
-          <p className="mt-1 text-sm text-gray-500">
-            No {ENTITY_TYPE_LABELS[activeTab].toLowerCase()} custom fields yet.
-          </p>
-        </div>
-      ) : (
-        <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Name</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Slug</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Type</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Required</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Source</th>
-                <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {filteredFields.map((field: any) => (
-                <tr key={field.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 text-sm font-medium text-gray-900">{field.name}</td>
-                  <td className="px-4 py-3 text-sm text-gray-500">{field.slug}</td>
-                  <td className="px-4 py-3">
-                    <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${fieldTypeColors[field.fieldType] || 'bg-gray-100 text-gray-700'}`}>
-                      {field.fieldType.replace('_', ' ')}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    {field.required && (
-                      <span className="inline-flex rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-700">
-                        Required
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    {field.pluginId && (
-                      <span className="inline-flex items-center gap-1 rounded bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700">
-                        <Puzzle className="h-3 w-3" />
-                        {field.pluginId}
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      {!field.pluginId && (
-                        <>
-                          <button
-                            onClick={() => handleEdit(field)}
-                            className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-                            title="Edit field"
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={() => handleDelete(field.id)}
-                            disabled={deleteField.isPending}
-                            className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600"
-                            title="Delete field"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </>
-                      )}
+        {showForm && (
+          <Card className="mt-4 mb-6">
+            <CardContent className="pt-4">
+              <form onSubmit={handleSubmit}>
+                <h3 className="mb-3 text-sm font-medium text-foreground">
+                  {editId ? 'Edit Field' : 'Create Field'}
+                </h3>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <Label htmlFor="field-name">Name</Label>
+                    <Input
+                      id="field-name"
+                      value={name}
+                      onChange={(e) => handleNameChange(e.target.value)}
+                      required
+                      placeholder="e.g. Story Points"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="field-slug">Slug</Label>
+                    <Input
+                      id="field-slug"
+                      value={slug}
+                      onChange={(e) => setSlug(e.target.value)}
+                      required
+                      disabled={!!editId}
+                      placeholder="Auto-generated"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="field-type">Type</Label>
+                    <select
+                      id="field-type"
+                      value={fieldType}
+                      onChange={(e) => setFieldType(e.target.value as CustomFieldType)}
+                      disabled={!!editId}
+                      className="block w-full rounded-md border border-border bg-background px-3 py-2 text-sm shadow-sm focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring disabled:bg-muted/50 disabled:text-muted-foreground"
+                    >
+                      {FIELD_TYPES.map((ft) => (
+                        <option key={ft} value={ft}>{ft.replace('_', ' ')}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="entity-type">Entity Type</Label>
+                    <select
+                      id="entity-type"
+                      value={entityType}
+                      onChange={(e) => setEntityType(e.target.value as EntityType)}
+                      disabled={!!editId}
+                      className="block w-full rounded-md border border-border bg-background px-3 py-2 text-sm shadow-sm focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring disabled:bg-muted/50 disabled:text-muted-foreground"
+                    >
+                      {ENTITY_TYPES.map((et) => (
+                        <option key={et} value={et}>{ENTITY_TYPE_LABELS[et]}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex items-end">
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id="field-required"
+                        checked={required}
+                        onCheckedChange={(checked) => setRequired(Boolean(checked))}
+                      />
+                      <Label htmlFor="field-required" className="cursor-pointer">Required</Label>
                     </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+                  </div>
+                </div>
+
+                {(fieldType === 'select' || fieldType === 'multi_select') && (
+                  <div className="mt-4 space-y-1">
+                    <Label htmlFor="field-choices">Choices (comma-separated)</Label>
+                    <Input
+                      id="field-choices"
+                      value={choices}
+                      onChange={(e) => setChoices(e.target.value)}
+                      placeholder="Option A, Option B, Option C"
+                    />
+                  </div>
+                )}
+
+                {(createField.isError || updateField.isError) && (
+                  <p className="mt-2 text-sm text-destructive">Failed to save field.</p>
+                )}
+
+                <div className="mt-4 flex gap-2">
+                  <Button
+                    type="submit"
+                    disabled={createField.isPending || updateField.isPending}
+                  >
+                    {editId ? 'Update' : 'Create'}
+                  </Button>
+                  <Button type="button" variant="secondary" onClick={resetForm}>
+                    Cancel
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        )}
+
+        {ENTITY_TYPES.map((et) => (
+          <TabsContent key={et} value={et}>
+            {filteredFields.length === 0 ? (
+              <Card>
+                <CardContent className="py-12 text-center">
+                  <Settings className="mx-auto h-10 w-10 text-muted-foreground" />
+                  <p className="mt-2 text-sm font-medium text-foreground">No custom fields</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    No {ENTITY_TYPE_LABELS[activeTab].toLowerCase()} custom fields yet.
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card className="overflow-hidden">
+                <Table>
+                  <TableHeader className="bg-muted/50">
+                    <TableRow>
+                      <TableHead className="uppercase tracking-wider text-xs">Name</TableHead>
+                      <TableHead className="uppercase tracking-wider text-xs">Slug</TableHead>
+                      <TableHead className="uppercase tracking-wider text-xs">Type</TableHead>
+                      <TableHead className="uppercase tracking-wider text-xs">Required</TableHead>
+                      <TableHead className="uppercase tracking-wider text-xs">Source</TableHead>
+                      <TableHead className="text-right uppercase tracking-wider text-xs">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredFields.map((field: any) => (
+                      <TableRow key={field.id}>
+                        <TableCell className="font-medium text-foreground">{field.name}</TableCell>
+                        <TableCell className="text-muted-foreground">{field.slug}</TableCell>
+                        <TableCell>
+                          <Badge
+                            className={cn(
+                              fieldTypeColors[field.fieldType] || 'bg-muted text-muted-foreground border-border'
+                            )}
+                          >
+                            {field.fieldType.replace('_', ' ')}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {field.required && (
+                            <Badge variant="destructive">
+                              Required
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {field.pluginId && (
+                            <Badge className="bg-purple-100 text-purple-700 border-purple-200 gap-1">
+                              <Puzzle className="h-3 w-3" />
+                              {field.pluginId}
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            {!field.pluginId && (
+                              <>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleEdit(field)}
+                                  title="Edit field"
+                                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleDelete(field.id)}
+                                  disabled={deleteField.isPending}
+                                  title="Delete field"
+                                  className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </Card>
+            )}
+          </TabsContent>
+        ))}
+      </Tabs>
     </div>
   );
 }

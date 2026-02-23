@@ -74,14 +74,13 @@ interface Webhook {
 
 interface WebhookDelivery {
   id: string;
-  webhookId: string;
+  webhook_id: string;
   event: string;
-  url: string;
-  requestBody: string;
-  responseStatus: number;
-  responseBody: string;
+  payload: Record<string, unknown>;
+  response_status: number | null;
+  response_body: string | null;
   success: boolean;
-  deliveredAt: string;
+  delivered_at: string;
 }
 
 export function useWebhooks() {

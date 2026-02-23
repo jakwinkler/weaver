@@ -8,20 +8,24 @@ import {
   useCompleteSprint,
 } from '@/api/hooks-phase2';
 import type { Sprint, SprintStatus } from '@weaver/shared';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 
 function SprintStatusBadge({ status }: { status: SprintStatus }) {
-  const colors: Record<SprintStatus, string> = {
-    planned: 'bg-blue-100 text-blue-700',
-    active: 'bg-green-100 text-green-700',
-    completed: 'bg-gray-100 text-gray-600',
+  const variants: Record<SprintStatus, string> = {
+    planned: 'bg-blue-100 text-blue-700 border-blue-200',
+    active: 'bg-green-100 text-green-700 border-green-200',
+    completed: 'bg-muted text-muted-foreground border-border',
   };
 
   return (
-    <span
-      className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${colors[status]}`}
-    >
+    <Badge className={cn('rounded-full px-2.5 py-0.5 text-xs font-medium', variants[status])}>
       {status}
-    </span>
+    </Badge>
   );
 }
 
@@ -36,25 +40,27 @@ function SprintActions({ sprint }: { sprint: Sprint }) {
 
   if (sprint.status === 'planned') {
     return (
-      <button
+      <Button
+        size="sm"
         onClick={() => startSprint.mutate()}
         disabled={startSprint.isPending}
-        className="rounded-md bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50"
+        className="bg-green-600 text-xs hover:bg-green-700"
       >
         {startSprint.isPending ? 'Starting...' : 'Start Sprint'}
-      </button>
+      </Button>
     );
   }
 
   if (sprint.status === 'active') {
     return (
-      <button
+      <Button
+        size="sm"
         onClick={() => completeSprint.mutate()}
         disabled={completeSprint.isPending}
-        className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+        className="text-xs"
       >
         {completeSprint.isPending ? 'Completing...' : 'Complete Sprint'}
-      </button>
+      </Button>
     );
   }
 
@@ -90,74 +96,62 @@ function CreateSprintForm({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="rounded-lg border border-gray-200 bg-white p-4">
-      <h3 className="mb-3 text-sm font-semibold text-gray-900">Create Sprint</h3>
-      <div className="space-y-3">
-        <div>
-          <label htmlFor="sprintName" className="block text-sm font-medium text-gray-700">
-            Name
-          </label>
-          <input
-            id="sprintName"
-            type="text"
-            required
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Sprint 1"
-            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-          />
-        </div>
-        <div>
-          <label htmlFor="sprintGoal" className="block text-sm font-medium text-gray-700">
-            Goal (optional)
-          </label>
-          <input
-            id="sprintGoal"
-            type="text"
-            value={goal}
-            onChange={(e) => setGoal(e.target.value)}
-            placeholder="What should this sprint achieve?"
-            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-          />
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label htmlFor="sprintStart" className="block text-sm font-medium text-gray-700">
-              Start Date
-            </label>
-            <input
-              id="sprintStart"
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+    <Card>
+      <CardHeader className="pb-3 pt-4 px-4">
+        <CardTitle className="text-sm">Create Sprint</CardTitle>
+      </CardHeader>
+      <CardContent className="px-4 pb-4">
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="sprintName">Name</Label>
+            <Input
+              id="sprintName"
+              type="text"
+              required
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Sprint 1"
             />
           </div>
-          <div>
-            <label htmlFor="sprintEnd" className="block text-sm font-medium text-gray-700">
-              End Date
-            </label>
-            <input
-              id="sprintEnd"
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          <div className="space-y-1.5">
+            <Label htmlFor="sprintGoal">Goal (optional)</Label>
+            <Input
+              id="sprintGoal"
+              type="text"
+              value={goal}
+              onChange={(e) => setGoal(e.target.value)}
+              placeholder="What should this sprint achieve?"
             />
           </div>
-        </div>
-        {createSprint.isError && (
-          <p className="text-sm text-red-600">Failed to create sprint.</p>
-        )}
-        <button
-          type="submit"
-          disabled={createSprint.isPending}
-          className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
-        >
-          {createSprint.isPending ? 'Creating...' : 'Create Sprint'}
-        </button>
-      </div>
-    </form>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="sprintStart">Start Date</Label>
+              <Input
+                id="sprintStart"
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="sprintEnd">End Date</Label>
+              <Input
+                id="sprintEnd"
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+              />
+            </div>
+          </div>
+          {createSprint.isError && (
+            <p className="text-sm text-destructive">Failed to create sprint.</p>
+          )}
+          <Button type="submit" disabled={createSprint.isPending}>
+            {createSprint.isPending ? 'Creating...' : 'Create Sprint'}
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -177,7 +171,7 @@ export function SprintBoard() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <p className="text-gray-500">Loading sprints...</p>
+        <p className="text-muted-foreground">Loading sprints...</p>
       </div>
     );
   }
@@ -185,7 +179,7 @@ export function SprintBoard() {
   if (!project) {
     return (
       <div className="flex items-center justify-center py-12">
-        <p className="text-gray-500">Project not found.</p>
+        <p className="text-muted-foreground">Project not found.</p>
       </div>
     );
   }
@@ -198,22 +192,19 @@ export function SprintBoard() {
 
   return (
     <div>
-      <div className="mb-6 flex items-center gap-2 text-sm text-gray-500">
-        <Link to={`/projects/${projectKey}`} className="hover:text-indigo-600">
+      <div className="mb-6 flex items-center gap-2 text-sm text-muted-foreground">
+        <Link to={`/projects/${projectKey}`} className="hover:text-primary">
           {projectKey}
         </Link>
         <span>/</span>
-        <span className="text-gray-900">Sprints</span>
+        <span className="text-foreground">Sprints</span>
       </div>
 
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-xl font-bold text-gray-900">Sprints</h1>
-        <button
-          onClick={() => setShowCreateForm(!showCreateForm)}
-          className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
-        >
+        <h1 className="text-xl font-bold text-foreground">Sprints</h1>
+        <Button onClick={() => setShowCreateForm(!showCreateForm)} variant={showCreateForm ? 'outline' : 'default'}>
           {showCreateForm ? 'Cancel' : 'New Sprint'}
-        </button>
+        </Button>
       </div>
 
       {showCreateForm && (
@@ -234,13 +225,13 @@ export function SprintBoard() {
           <div className="flex items-center justify-between">
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-lg font-semibold text-gray-900">{activeSprint.name}</h2>
+                <h2 className="text-lg font-semibold text-foreground">{activeSprint.name}</h2>
                 <SprintStatusBadge status={activeSprint.status} />
               </div>
               {activeSprint.goal && (
-                <p className="mt-1 text-sm text-gray-600">{activeSprint.goal}</p>
+                <p className="mt-1 text-sm text-muted-foreground">{activeSprint.goal}</p>
               )}
-              <div className="mt-2 flex items-center gap-4 text-xs text-gray-500">
+              <div className="mt-2 flex items-center gap-4 text-xs text-muted-foreground">
                 <span>Start: {formatDate(activeSprint.startDate)}</span>
                 <span>End: {formatDate(activeSprint.endDate)}</span>
               </div>
@@ -268,7 +259,7 @@ export function SprintBoard() {
                   }}
                 />
               </div>
-              <p className="mt-1 text-xs text-gray-500">
+              <p className="mt-1 text-xs text-muted-foreground">
                 {Math.max(
                   0,
                   Math.ceil(
@@ -286,31 +277,32 @@ export function SprintBoard() {
       {/* Sprint list */}
       <div className="space-y-3">
         {sortedSprints.length === 0 && (
-          <div className="rounded-lg border border-gray-200 bg-white p-8 text-center">
-            <p className="text-gray-500">No sprints yet. Create one to get started.</p>
-          </div>
+          <Card>
+            <CardContent className="py-8 text-center">
+              <p className="text-muted-foreground">No sprints yet. Create one to get started.</p>
+            </CardContent>
+          </Card>
         )}
 
         {sortedSprints.map((sprint) => (
-          <div
-            key={sprint.id}
-            className="flex items-center justify-between rounded-lg border border-gray-200 bg-white p-4"
-          >
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm font-semibold text-gray-900">{sprint.name}</h3>
-                <SprintStatusBadge status={sprint.status} />
+          <Card key={sprint.id}>
+            <CardContent className="flex items-center justify-between px-4 py-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-semibold text-foreground">{sprint.name}</h3>
+                  <SprintStatusBadge status={sprint.status} />
+                </div>
+                {sprint.goal && (
+                  <p className="mt-0.5 text-sm text-muted-foreground">{sprint.goal}</p>
+                )}
+                <div className="mt-1 flex items-center gap-4 text-xs text-muted-foreground">
+                  <span>Start: {formatDate(sprint.startDate)}</span>
+                  <span>End: {formatDate(sprint.endDate)}</span>
+                </div>
               </div>
-              {sprint.goal && (
-                <p className="mt-0.5 text-sm text-gray-500">{sprint.goal}</p>
-              )}
-              <div className="mt-1 flex items-center gap-4 text-xs text-gray-400">
-                <span>Start: {formatDate(sprint.startDate)}</span>
-                <span>End: {formatDate(sprint.endDate)}</span>
-              </div>
-            </div>
-            <SprintActions sprint={sprint} />
-          </div>
+              <SprintActions sprint={sprint} />
+            </CardContent>
+          </Card>
         ))}
       </div>
     </div>

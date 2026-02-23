@@ -12,6 +12,7 @@ export const WEAVER_EVENTS = {
   SPRINT_COMPLETED: 'sprint.completed',
   PROJECT_CREATED: 'project.created',
   PROJECT_UPDATED: 'project.updated',
+  PROJECT_DELETED: 'project.deleted',
   TIME_LOGGED: 'time.logged',
 } as const;
 
@@ -44,6 +45,32 @@ export interface CommentAddedEvent {
   issueKey: string;
   commentId: string;
   authorId: string;
+}
+
+export interface IssueUpdatedEvent {
+  issueKey: string;
+  fields: Record<string, unknown>;
+}
+
+export interface IssueAssignedEvent {
+  issueKey: string;
+  assigneeId: string | null;
+  previousAssigneeId: string | null;
+}
+
+export interface IssueDeletedEvent {
+  issueKey: string;
+}
+
+export interface ProjectCreatedEvent {
+  projectKey: string;
+  name: string;
+  leadUserId: string;
+}
+
+export interface ProjectUpdatedEvent {
+  projectKey: string;
+  fields: Record<string, unknown>;
 }
 
 export interface TimeLoggedEvent {

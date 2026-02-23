@@ -1,8 +1,21 @@
 import { useState, type FormEvent } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { useProjectIssues, useCreateIssue, useProject, useIssueTypes } from '@/api';
+import { useProjectIssues, useCreateIssue, useProject, useIssueTypes, useWorkflow } from '@/api';
 import type { IssuePriority } from '@weaver/shared';
 import { IssueTypeIcon } from '@/components/IconPicker';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent } from '@/components/ui/card';
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from '@/components/ui/table';
+import { cn } from '@/lib/utils';
 
 export function IssueListPage() {
   const { projectKey } = useParams<{ projectKey: string }>();
@@ -10,6 +23,12 @@ export function IssueListPage() {
   const { data, isLoading } = useProjectIssues({ projectKey: projectKey! });
   const createIssue = useCreateIssue(projectKey!);
   const { data: issueTypes } = useIssueTypes();
+  const { data: workflow } = useWorkflow(project?.workflowId || '');
+
+  const getStatusInfo = (statusId: string) => {
+    const status = workflow?.statuses?.find((s: any) => s.id === statusId);
+    return { name: status?.name || statusId.slice(0, 8), color: status?.color || '#6b7280' };
+  };
 
   const [showForm, setShowForm] = useState(false);
   const [summary, setSummary] = useState('');
@@ -41,7 +60,7 @@ export function IssueListPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <p className="text-gray-500">Loading issues...</p>
+        <p className="text-muted-foreground">Loading issues...</p>
       </div>
     );
   }
@@ -50,146 +69,139 @@ export function IssueListPage() {
     <div>
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <div className="flex items-center gap-2 text-sm text-gray-500">
-            <Link to={`/projects/${projectKey}`} className="hover:text-indigo-600">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Link to={`/projects/${projectKey}`} className="hover:text-primary">
               {project?.name || projectKey}
             </Link>
             <span>/</span>
             <span>Issues</span>
           </div>
-          <h1 className="mt-1 text-2xl font-bold text-gray-900">Issues</h1>
+          <h1 className="mt-1 text-2xl font-bold text-foreground">Issues</h1>
         </div>
-        <button
-          onClick={() => setShowForm(!showForm)}
-          className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
-        >
+        <Button onClick={() => setShowForm(!showForm)}>
           {showForm ? 'Cancel' : 'Create Issue'}
-        </button>
+        </Button>
       </div>
 
       {showForm && (
-        <form onSubmit={handleCreate} className="mb-6 rounded-lg border border-gray-200 bg-white p-5">
-          <div className="grid grid-cols-4 gap-4">
-            <div className="col-span-2">
-              <label htmlFor="issueSummary" className="block text-sm font-medium text-gray-700">
-                Summary
-              </label>
-              <input
-                id="issueSummary"
-                type="text"
-                required
-                value={summary}
-                onChange={(e) => setSummary(e.target.value)}
-                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                placeholder="Issue summary"
-              />
-            </div>
-            <div>
-              <label htmlFor="issueType" className="block text-sm font-medium text-gray-700">
-                Type
-              </label>
-              <select
-                id="issueType"
-                value={issueTypeId}
-                onChange={(e) => setIssueTypeId(e.target.value)}
-                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-              >
-                <option value="">None</option>
-                {issueTypes?.map((t) => (
-                  <option key={t.id} value={t.id}>{t.name}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label htmlFor="issuePriority" className="block text-sm font-medium text-gray-700">
-                Priority
-              </label>
-              <select
-                id="issuePriority"
-                value={priority}
-                onChange={(e) => setPriority(e.target.value as IssuePriority)}
-                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-              >
-                <option value="lowest">Lowest</option>
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-                <option value="highest">Highest</option>
-              </select>
-            </div>
-          </div>
-          <div className="mt-4 grid grid-cols-2 gap-4">
-            <div>
-              <label htmlFor="issueStartDate" className="block text-sm font-medium text-gray-700">
-                Start Date
-              </label>
-              <input
-                id="issueStartDate"
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-              />
-            </div>
-            <div>
-              <label htmlFor="issueDueDate" className="block text-sm font-medium text-gray-700">
-                Due Date
-              </label>
-              <input
-                id="issueDueDate"
-                type="date"
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-              />
-            </div>
-          </div>
-          {createIssue.isError && (
-            <p className="mt-2 text-sm text-red-600">Failed to create issue.</p>
-          )}
-          <div className="mt-4">
-            <button
-              type="submit"
-              disabled={createIssue.isPending}
-              className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
-            >
-              {createIssue.isPending ? 'Creating...' : 'Create'}
-            </button>
-          </div>
-        </form>
+        <Card className="mb-6">
+          <CardContent className="pt-5">
+            <form onSubmit={handleCreate}>
+              <div className="grid grid-cols-4 gap-4">
+                <div className="col-span-2">
+                  <Label htmlFor="issueSummary">Summary</Label>
+                  <Input
+                    id="issueSummary"
+                    type="text"
+                    required
+                    value={summary}
+                    onChange={(e) => setSummary(e.target.value)}
+                    className="mt-1"
+                    placeholder="Issue summary"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="issueType">Type</Label>
+                  <select
+                    id="issueType"
+                    value={issueTypeId}
+                    onChange={(e) => setIssueTypeId(e.target.value)}
+                    className={cn(
+                      'border-input mt-1 block w-full rounded-md border px-3 py-2 text-sm shadow-sm',
+                      'focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary',
+                    )}
+                  >
+                    <option value="">None</option>
+                    {issueTypes?.map((t) => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <Label htmlFor="issuePriority">Priority</Label>
+                  <select
+                    id="issuePriority"
+                    value={priority}
+                    onChange={(e) => setPriority(e.target.value as IssuePriority)}
+                    className={cn(
+                      'border-input mt-1 block w-full rounded-md border px-3 py-2 text-sm shadow-sm',
+                      'focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary',
+                    )}
+                  >
+                    <option value="lowest">Lowest</option>
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                    <option value="highest">Highest</option>
+                  </select>
+                </div>
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="issueStartDate">Start Date</Label>
+                  <Input
+                    id="issueStartDate"
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="issueDueDate">Due Date</Label>
+                  <Input
+                    id="issueDueDate"
+                    type="date"
+                    value={dueDate}
+                    onChange={(e) => setDueDate(e.target.value)}
+                    className="mt-1"
+                  />
+                </div>
+              </div>
+              {createIssue.isError && (
+                <p className="mt-2 text-sm text-red-600">Failed to create issue.</p>
+              )}
+              <div className="mt-4">
+                <Button type="submit" disabled={createIssue.isPending}>
+                  {createIssue.isPending ? 'Creating...' : 'Create'}
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
       )}
 
-      <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+      <div className="overflow-hidden rounded-lg border border-border bg-card">
+        <Table>
+          <TableHeader className="bg-muted/50">
+            <TableRow>
+              <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 Type
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+              </TableHead>
+              <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 Key
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+              </TableHead>
+              <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 Summary
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+              </TableHead>
+              <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 Priority
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+              </TableHead>
+              <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 Status
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+              </TableHead>
+              <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 Due Date
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+              </TableHead>
+              <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 % Done
-              </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-200">
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {data?.data.map((issue) => (
-              <tr key={issue.id} className="hover:bg-gray-50">
-                <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+              <TableRow key={issue.id} className="hover:bg-muted/50">
+                <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
                   {issue.issueType ? (
                     <span className="inline-flex items-center gap-1.5" title={issue.issueType.name}>
                       <IssueTypeIcon
@@ -200,48 +212,58 @@ export function IssueListPage() {
                       <span className="text-xs">{issue.issueType.name}</span>
                     </span>
                   ) : '—'}
-                </td>
-                <td className="whitespace-nowrap px-6 py-4 text-sm font-medium text-indigo-600">
+                </TableCell>
+                <TableCell className="whitespace-nowrap text-sm font-medium text-primary">
                   <Link to={`/issues/${issue.key}`}>{issue.key}</Link>
-                </td>
-                <td className="px-6 py-4 text-sm text-gray-900">
+                </TableCell>
+                <TableCell className="text-sm text-foreground">
                   <Link to={`/issues/${issue.key}`}>{issue.summary}</Link>
-                </td>
-                <td className="whitespace-nowrap px-6 py-4">
+                </TableCell>
+                <TableCell className="whitespace-nowrap">
                   <PriorityBadge priority={issue.priority} />
-                </td>
-                <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
-                  {issue.statusId}
-                </td>
-                <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+                </TableCell>
+                <TableCell className="whitespace-nowrap">
+                  {(() => {
+                    const statusInfo = getStatusInfo(issue.statusId);
+                    return (
+                      <span
+                        className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium text-white"
+                        style={{ backgroundColor: statusInfo.color }}
+                      >
+                        {statusInfo.name}
+                      </span>
+                    );
+                  })()}
+                </TableCell>
+                <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
                   {issue.dueDate || '-'}
-                </td>
-                <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+                </TableCell>
+                <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
                   <div className="flex items-center gap-2">
-                    <div className="h-1.5 w-16 rounded-full bg-gray-200">
+                    <div className="h-1.5 w-16 rounded-full bg-muted/50">
                       <div
-                        className="h-1.5 rounded-full bg-indigo-500"
+                        className="h-1.5 rounded-full bg-primary"
                         style={{ width: `${issue.percentDone ?? 0}%` }}
                       />
                     </div>
                     <span className="text-xs">{issue.percentDone ?? 0}%</span>
                   </div>
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             ))}
             {data?.data.length === 0 && (
-              <tr>
-                <td colSpan={7} className="px-6 py-8 text-center text-sm text-gray-500">
+              <TableRow>
+                <TableCell colSpan={7} className="px-6 py-8 text-center text-sm text-muted-foreground">
                   No issues yet. Create your first issue to get started.
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             )}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
 
       {data && data.meta.totalPages > 1 && (
-        <div className="mt-4 flex items-center justify-between text-sm text-gray-500">
+        <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground">
           <span>
             Showing {data.data.length} of {data.meta.total} issues
           </span>
@@ -264,7 +286,7 @@ function PriorityBadge({ priority }: { priority: string }) {
   };
 
   return (
-    <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${colors[priority] || 'bg-gray-100 text-gray-700'}`}>
+    <span className={cn('inline-flex rounded-full px-2 py-0.5 text-xs font-medium', colors[priority] ?? 'bg-gray-100 text-gray-700')}>
       {priority}
     </span>
   );

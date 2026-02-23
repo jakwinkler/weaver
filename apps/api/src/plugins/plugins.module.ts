@@ -6,6 +6,7 @@ import { EventsModule } from '../modules/events';
 import { PluginLoaderService } from './plugin-loader.service';
 import { PluginRegistryService } from './plugin-registry.service';
 import { PluginContextFactory } from './plugin-context.factory';
+import { PluginEventBridgeService } from './plugin-event-bridge.service';
 import { PluginsController } from './plugins.controller';
 import { PluginRouteController } from './plugin-route.controller';
 
@@ -16,7 +17,12 @@ import { PluginRouteController } from './plugin-route.controller';
     EventsModule,
   ],
   controllers: [PluginsController, PluginRouteController],
-  providers: [PluginLoaderService, PluginRegistryService, PluginContextFactory],
+  providers: [
+    PluginLoaderService,
+    PluginRegistryService,
+    PluginContextFactory,
+    PluginEventBridgeService,
+  ],
   exports: [PluginLoaderService, PluginRegistryService, PluginContextFactory],
 })
 export class PluginsModule {}

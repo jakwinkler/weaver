@@ -18,13 +18,19 @@ export class PluginContextFactory {
     const tenant = requireTenantContext();
     const em = await this.tenantConnections.getEntityManager();
 
+    // Ensure raw SQL queries run in the tenant schema
+    const runInSchema = async <T>(fn: () => Promise<T>): Promise<T> => {
+      await em.query(`SET search_path TO "${tenant.schemaName}", public`);
+      return fn();
+    };
+
     return {
       db: {
         query: async (sql: string, params?: unknown[]) => {
-          return em.query(sql, params);
+          return runInSchema(() => em.query(sql, params));
         },
         runMigration: async (sql: string) => {
-          await em.query(sql);
+          return runInSchema(() => em.query(sql));
         },
       },
       http: {
@@ -55,28 +61,27 @@ export class PluginContextFactory {
       api: {
         issues: {
           get: async (key: string) =>
-            em
-              .query(`SELECT * FROM issues WHERE key = $1`, [key])
-              .then((r) => r[0]),
+            runInSchema(() =>
+              em.query(`SELECT * FROM issues WHERE key = $1`, [key]),
+            ).then((r) => r[0]),
           update: async (key: string, data: Record<string, unknown>) => {
             const sets = Object.entries(data)
               .map(([k], i) => `"${k}" = $${i + 2}`)
               .join(', ');
-            return em
-              .query(
+            return runInSchema(() =>
+              em.query(
                 `UPDATE issues SET ${sets} WHERE key = $1 RETURNING *`,
                 [key, ...Object.values(data)],
-              )
-              .then((r) => r[0]);
+              ),
+            ).then((r) => r[0]);
           },
           addComment: async (key: string, body: string) => {
-            const issue = await em.query(
-              `SELECT id FROM issues WHERE key = $1`,
-              [key],
+            const issue = await runInSchema(() =>
+              em.query(`SELECT id FROM issues WHERE key = $1`, [key]),
             );
             if (!issue[0]) return null;
-            return em
-              .query(
+            return runInSchema(() =>
+              em.query(
                 `INSERT INTO comments (issue_id, author_id, body) VALUES ($1, $2, $3) RETURNING *`,
                 [
                   issue[0].id,
@@ -91,16 +96,16 @@ export class PluginContextFactory {
                     ],
                   }),
                 ],
-              )
-              .then((r) => r[0]);
+              ),
+            ).then((r) => r[0]);
           },
         },
         projects: {
           get: async (key: string) =>
-            em
-              .query(`SELECT * FROM projects WHERE key = $1`, [key])
-              .then((r) => r[0]),
-          list: async () => em.query(`SELECT * FROM projects`),
+            runInSchema(() =>
+              em.query(`SELECT * FROM projects WHERE key = $1`, [key]),
+            ).then((r) => r[0]),
+          list: async () => runInSchema(() => em.query(`SELECT * FROM projects`)),
         },
         users: {
           get: async (id: string) => {
@@ -118,33 +123,39 @@ export class PluginContextFactory {
             options?: Record<string, unknown>;
             required?: boolean;
           }) => {
-            const existing = await em.query(
-              `SELECT id FROM custom_field_definitions WHERE slug = $1 AND entity_type = $2`,
-              [definition.slug, definition.entityType],
+            const existing = await runInSchema(() =>
+              em.query(
+                `SELECT id FROM custom_field_definitions WHERE slug = $1 AND entity_type = $2`,
+                [definition.slug, definition.entityType],
+              ),
             );
             if (existing.length > 0) {
               return existing[0];
             }
-            const result = await em.query(
-              `INSERT INTO custom_field_definitions (name, slug, field_type, entity_type, plugin_id, options, required)
+            const result = await runInSchema(() =>
+              em.query(
+                `INSERT INTO custom_field_definitions (name, slug, field_type, entity_type, plugin_id, options, required)
                VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)
                RETURNING *`,
-              [
-                definition.name,
-                definition.slug,
-                definition.fieldType,
-                definition.entityType,
-                pluginId,
-                definition.options ? JSON.stringify(definition.options) : null,
-                definition.required || false,
-              ],
+                [
+                  definition.name,
+                  definition.slug,
+                  definition.fieldType,
+                  definition.entityType,
+                  pluginId,
+                  definition.options ? JSON.stringify(definition.options) : null,
+                  definition.required || false,
+                ],
+              ),
             );
             return result[0];
           },
           unregisterAll: async () => {
-            await em.query(
-              `DELETE FROM custom_field_definitions WHERE plugin_id = $1`,
-              [pluginId],
+            await runInSchema(() =>
+              em.query(
+                `DELETE FROM custom_field_definitions WHERE plugin_id = $1`,
+                [pluginId],
+              ),
             );
           },
         },

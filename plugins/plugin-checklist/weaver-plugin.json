@@ -1,0 +1,81 @@
+{
+  "id": "@weaver/plugin-checklist",
+  "name": "Checklist",
+  "version": "1.0.0",
+  "description": "Add checklists to issues to track sub-tasks and acceptance criteria",
+  "author": "Weaver",
+  "icon": "list-checks",
+  "entrypoints": {
+    "server": "src/server/index.ts",
+    "client": "src/client/index.ts"
+  },
+  "permissions": ["checklist.view", "checklist.add", "checklist.edit", "checklist.remove"],
+  "declaredPermissions": [
+    {
+      "key": "checklist.view",
+      "label": "View checklists",
+      "description": "View checklist items on issues"
+    },
+    {
+      "key": "checklist.add",
+      "label": "Add checklist items",
+      "description": "Add new checklist items to issues"
+    },
+    {
+      "key": "checklist.edit",
+      "label": "Edit checklist items",
+      "description": "Edit and toggle checklist items"
+    },
+    {
+      "key": "checklist.remove",
+      "label": "Remove checklist items",
+      "description": "Delete checklist items from issues"
+    }
+  ],
+  "settings": {
+    "schema": {
+      "trackActivity": {
+        "type": "boolean",
+        "description": "Log checklist changes as issue activity",
+        "default": true
+      },
+      "syncDoneRatio": {
+        "type": "boolean",
+        "description": "Automatically update issue % Done based on checklist progress",
+        "default": false
+      }
+    }
+  },
+  "events": {
+    "subscribes": [],
+    "emits": ["checklist.item_added", "checklist.item_completed", "checklist.item_removed"]
+  },
+  "ui": {
+    "slots": [
+      {
+        "slot": "issue-detail-content",
+        "component": "ChecklistPanel"
+      }
+    ],
+    "navigation": [
+      {
+        "label": "Checklists",
+        "icon": "list-checks",
+        "path": "/apps/checklist",
+        "requiredPermissions": ["checklist.view"]
+      }
+    ],
+    "pages": [
+      { "path": "/apps/checklist", "component": "ChecklistAppPage" }
+    ]
+  },
+  "routes": [
+    { "method": "GET", "path": "/checklists", "handler": "listAllItems" },
+    { "method": "GET", "path": "/issues/:issueKey/checklist", "handler": "listItems" },
+    { "method": "POST", "path": "/issues/:issueKey/checklist", "handler": "addItem" },
+    { "method": "PATCH", "path": "/issues/:issueKey/checklist/:itemId", "handler": "updateItem" },
+    { "method": "DELETE", "path": "/issues/:issueKey/checklist/:itemId", "handler": "deleteItem" },
+    { "method": "PUT", "path": "/issues/:issueKey/checklist/reorder", "handler": "reorderItems" }
+  ],
+  "migrations": ["migrations/001_create_checklist_items.sql"]
+}
