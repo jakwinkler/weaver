@@ -13,20 +13,37 @@ interface PluginNavigationItem {
 interface PluginPageDefinition {
   path: string;
   component: string;
+  requiredPermissions?: string[];
 }
 
-interface PluginManifest {
+interface PluginUISlot {
+  slot: string;
+  component: string;
+  requiredPermissions?: string[];
+}
+
+interface PluginProjectViewDefinition {
+  label: string;
+  icon: string;
+  viewPath: string;
+  requiredPermissions?: string[];
+}
+
+export interface PluginManifest {
   id: string;
   name: string;
   version: string;
   description?: string;
   author?: string;
   icon?: string;
+  type?: 'app' | 'widget' | 'feature' | 'integration';
+  scope?: 'tenant' | 'project';
   permissions: string[];
   ui?: {
-    slots?: { slot: string; component: string }[];
+    slots?: PluginUISlot[];
     navigation?: PluginNavigationItem[];
     pages?: PluginPageDefinition[];
+    projectViews?: PluginProjectViewDefinition[];
   };
 }
 

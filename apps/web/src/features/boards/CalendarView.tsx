@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { useProjectIssues } from '@/api';
+import { useProjectIssues, useProjectPlugins } from '@/api';
+import { FeatureNotEnabled } from './FeatureNotEnabled';
 import type { Issue } from '@weaver/shared';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -37,7 +38,12 @@ function formatMonth(date: Date): string {
 
 export function CalendarView() {
   const { projectKey = '' } = useParams<{ projectKey: string }>();
+  const { data: projectPlugins } = useProjectPlugins(projectKey);
   const [currentMonth, setCurrentMonth] = useState(() => startOfMonth(new Date()));
+
+  if (projectPlugins && !projectPlugins.some((p) => p.pluginId === '@weaver/plugin-calendar')) {
+    return <FeatureNotEnabled featureName="Calendar" projectKey={projectKey} />;
+  }
 
   // Calculate the 42-day grid range
   const { gridStart, gridEnd } = useMemo(() => {

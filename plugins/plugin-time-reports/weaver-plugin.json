@@ -5,6 +5,7 @@
   "description": "Aggregated time reports across projects, users and date ranges with CSV export and saved report configs",
   "author": "Weaver",
   "icon": "clock",
+  "type": "app",
   "entrypoints": {
     "server": "src/server/index.ts",
     "client": "src/client/index.ts"
@@ -42,15 +43,15 @@
       }
     ],
     "pages": [
-      { "path": "/apps/time-reports", "component": "TimeReportsPage" }
+      { "path": "/apps/time-reports", "component": "TimeReportsPageWrapper", "requiredPermissions": ["time-reports.view"] }
     ]
   },
   "routes": [
-    { "method": "GET", "path": "/report", "handler": "getReport" },
-    { "method": "GET", "path": "/report/export", "handler": "exportCsv" },
-    { "method": "GET", "path": "/saved", "handler": "listSavedReports" },
-    { "method": "POST", "path": "/saved", "handler": "saveReport" },
-    { "method": "DELETE", "path": "/saved/:reportId", "handler": "deleteSavedReport" }
+    { "method": "GET", "path": "/report", "handler": "getReport", "requiredPermissions": ["time-reports.view"] },
+    { "method": "GET", "path": "/report/export", "handler": "exportCsv", "requiredPermissions": ["time-reports.export"] },
+    { "method": "GET", "path": "/saved", "handler": "listSavedReports", "requiredPermissions": ["time-reports.view"] },
+    { "method": "POST", "path": "/saved", "handler": "saveReport", "requiredPermissions": ["time-reports.manage"] },
+    { "method": "DELETE", "path": "/saved/:reportId", "handler": "deleteSavedReport", "requiredPermissions": ["time-reports.manage"] }
   ],
   "migrations": []
 }

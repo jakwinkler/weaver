@@ -15,8 +15,8 @@ export class ActivityLogEntity {
   @Column({ name: 'issue_id', type: 'uuid' })
   issueId!: string;
 
-  @Column({ name: 'user_id', type: 'uuid' })
-  userId!: string;
+  @Column({ name: 'user_id', type: 'uuid', nullable: true })
+  userId!: string | null;
 
   @Column({ length: 50 })
   action!: string;

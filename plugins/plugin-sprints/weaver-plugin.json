@@ -1,0 +1,34 @@
+{
+  "id": "@weaver/plugin-sprints",
+  "name": "Sprints",
+  "version": "1.0.0",
+  "description": "Sprint planning and tracking for agile project management",
+  "author": "Weaver",
+  "icon": "zap",
+  "type": "feature",
+  "scope": "project",
+  "entrypoints": {},
+  "permissions": ["sprints.view", "sprints.manage"],
+  "declaredPermissions": [
+    {
+      "key": "sprints.view",
+      "label": "View sprints",
+      "description": "View sprint boards and sprint details"
+    },
+    {
+      "key": "sprints.manage",
+      "label": "Manage sprints",
+      "description": "Create, start, complete, and delete sprints"
+    }
+  ],
+  "ui": {
+    "projectViews": [
+      {
+        "label": "Sprints",
+        "icon": "zap",
+        "viewPath": "sprints",
+        "requiredPermissions": ["sprints.view"]
+      }
+    ]
+  }
+}

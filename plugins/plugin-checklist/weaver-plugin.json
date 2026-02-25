@@ -5,6 +5,7 @@
   "description": "Add checklists to issues to track sub-tasks and acceptance criteria",
   "author": "Weaver",
   "icon": "list-checks",
+  "type": "widget",
   "entrypoints": {
     "server": "src/server/index.ts",
     "client": "src/client/index.ts"
@@ -54,7 +55,8 @@
     "slots": [
       {
         "slot": "issue-detail-content",
-        "component": "ChecklistPanel"
+        "component": "ChecklistSlotWrapper",
+        "requiredPermissions": ["checklist.view"]
       }
     ],
     "navigation": [
@@ -66,16 +68,16 @@
       }
     ],
     "pages": [
-      { "path": "/apps/checklist", "component": "ChecklistAppPage" }
+      { "path": "/apps/checklist", "component": "ChecklistAppPageWrapper", "requiredPermissions": ["checklist.view"] }
     ]
   },
   "routes": [
-    { "method": "GET", "path": "/checklists", "handler": "listAllItems" },
-    { "method": "GET", "path": "/issues/:issueKey/checklist", "handler": "listItems" },
-    { "method": "POST", "path": "/issues/:issueKey/checklist", "handler": "addItem" },
-    { "method": "PATCH", "path": "/issues/:issueKey/checklist/:itemId", "handler": "updateItem" },
-    { "method": "DELETE", "path": "/issues/:issueKey/checklist/:itemId", "handler": "deleteItem" },
-    { "method": "PUT", "path": "/issues/:issueKey/checklist/reorder", "handler": "reorderItems" }
+    { "method": "GET", "path": "/checklists", "handler": "listAllItems", "requiredPermissions": ["checklist.view"] },
+    { "method": "GET", "path": "/issues/:issueKey/checklist", "handler": "listItems", "requiredPermissions": ["checklist.view"] },
+    { "method": "POST", "path": "/issues/:issueKey/checklist", "handler": "addItem", "requiredPermissions": ["checklist.add"] },
+    { "method": "PATCH", "path": "/issues/:issueKey/checklist/:itemId", "handler": "updateItem", "requiredPermissions": ["checklist.edit"] },
+    { "method": "DELETE", "path": "/issues/:issueKey/checklist/:itemId", "handler": "deleteItem", "requiredPermissions": ["checklist.remove"] },
+    { "method": "PUT", "path": "/issues/:issueKey/checklist/reorder", "handler": "reorderItems", "requiredPermissions": ["checklist.edit"] }
   ],
   "migrations": ["migrations/001_create_checklist_items.sql"]
 }

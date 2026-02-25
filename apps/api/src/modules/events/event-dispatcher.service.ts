@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { WebhookEntity } from '@weaver/db';
-import { TenantConnectionProvider } from '../../core/tenant';
+import { TenantConnectionProvider, getTenantContext } from '../../core/tenant';
+import { WeaverGateway } from '../../core/websocket';
 import { WebhooksService } from '../webhooks';
 
 export type PluginDispatcherFn = (event: string, payload: Record<string, unknown>) => Promise<void>;
@@ -13,6 +14,7 @@ export class EventDispatcherService {
   constructor(
     private readonly tenantConnections: TenantConnectionProvider,
     private readonly webhooksService: WebhooksService,
+    private readonly gateway: WeaverGateway,
   ) {}
 
   registerPluginDispatcher(fn: PluginDispatcherFn): void {
@@ -23,6 +25,20 @@ export class EventDispatcherService {
     event: string,
     payload: Record<string, unknown>,
   ): Promise<void> {
+    // Push to WebSocket for real-time updates
+    const tenantCtx = getTenantContext();
+    if (tenantCtx) {
+      const wsPayload = { event, data: payload, timestamp: new Date().toISOString() };
+      this.gateway.emitToTenant(tenantCtx.tenantId, event, wsPayload);
+
+      // Also emit to project room if projectKey is present
+      if (payload.projectKey) {
+        this.gateway.emitToProject(payload.projectKey as string, event, wsPayload);
+      }
+
+      this.logger.debug(`WS event "${event}" sent to tenant ${tenantCtx.tenantId}`);
+    }
+
     try {
       const em = await this.tenantConnections.getEntityManager();
       const repo = em.getRepository(WebhookEntity);

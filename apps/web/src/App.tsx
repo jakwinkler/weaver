@@ -28,6 +28,10 @@ import { RolesPage } from '@/features/admin/RolesPage';
 import { TeamsPage } from '@/features/admin/TeamsPage';
 import { UsersPage } from '@/features/admin/UsersPage';
 import { PluginPage } from '@/plugins/PluginPage';
+import { DashboardPage } from '@/features/dashboard/DashboardPage';
+import { ProfilePage } from '@/features/profile/ProfilePage';
+import { PublicProjectPage } from '@/features/projects/PublicProjectPage';
+import { SystemSettingsPage } from '@/features/settings/SystemSettingsPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -48,9 +52,11 @@ export function App() {
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
+            <Route path="/public/:tenantSlug/projects/:projectKey" element={<PublicProjectPage />} />
 
             <Route element={<ProtectedRoute />}>
               <Route element={<AppLayout />}>
+                <Route path="/" element={<DashboardPage />} />
                 <Route path="/projects" element={<ProjectsPage />} />
                 <Route path="/projects/:projectKey" element={<ProjectDetailPage />} />
                 <Route path="/projects/:projectKey/settings" element={<ProjectSettingsPage />} />
@@ -61,6 +67,7 @@ export function App() {
                 <Route path="/projects/:projectKey/gantt" element={<GanttChart />} />
                 <Route path="/projects/:projectKey/calendar" element={<CalendarView />} />
                 <Route path="/search" element={<SearchPage />} />
+                <Route path="/profile" element={<ProfilePage />} />
 
                 {/* Plugin app pages */}
                 <Route path="/apps/*" element={<PluginPage />} />
@@ -77,12 +84,12 @@ export function App() {
                   <Route path="/settings/plugins" element={<PluginsPage />} />
                   <Route path="/settings/webhooks" element={<WebhooksPage />} />
                   <Route path="/settings/import-export" element={<ImportExportPage />} />
+                  <Route path="/settings/general" element={<SystemSettingsPage />} />
                 </Route>
               </Route>
             </Route>
 
-            <Route path="/" element={<Navigate to="/projects" replace />} />
-            <Route path="*" element={<Navigate to="/projects" replace />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </BrowserRouter>
       </TooltipProvider>

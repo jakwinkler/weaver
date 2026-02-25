@@ -5,6 +5,10 @@
   "description": "Track time spent on issues with a start/pause/stop timer that auto-logs time entries",
   "author": "Weaver",
   "icon": "timer",
+  "type": "widget",
+  "entrypoints": {
+    "client": "src/client/index.ts"
+  },
   "permissions": ["timer.allow"],
   "declaredPermissions": [
     {
@@ -21,7 +25,8 @@
     "slots": [
       {
         "slot": "issue-detail-sidebar",
-        "component": "TimerWidget"
+        "component": "TimerWidgetWrapper",
+        "requiredPermissions": ["timer.allow"]
       }
     ]
   }

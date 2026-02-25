@@ -31,8 +31,8 @@ export class TenantMiddleware implements NestMiddleware {
   ) {}
 
   async use(req: Request, _res: Response, next: NextFunction) {
-    // Skip tenant resolution for auth routes (login/register/refresh)
-    if (req.originalUrl.includes('/auth/')) {
+    // Skip tenant resolution for auth routes and public routes (resolved by slug)
+    if (req.originalUrl.includes('/auth/') || req.originalUrl.includes('/api/v1/public/')) {
       next();
       return;
     }

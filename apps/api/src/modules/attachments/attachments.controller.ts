@@ -11,16 +11,17 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { JwtAuthGuard, CurrentUser, RequestUser } from '../../core/auth';
+import { JwtAuthGuard, CurrentUser, RequestUser, PermissionGuard, RequirePermission } from '../../core/auth';
 import { AttachmentsService } from './attachments.service';
 
 @Controller('issues/:issueKey/attachments')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionGuard)
 export class AttachmentsController {
   constructor(private readonly attachmentsService: AttachmentsService) {}
 
   @Post()
   @UseInterceptors(FileInterceptor('file'))
+  @RequirePermission('issues', 'update')
   async create(
     @Param('issueKey') issueKey: string,
     @UploadedFile() file: Express.Multer.File,
@@ -30,12 +31,14 @@ export class AttachmentsController {
   }
 
   @Get()
+  @RequirePermission('issues', 'read')
   async findByIssue(@Param('issueKey') issueKey: string) {
     return this.attachmentsService.findByIssue(issueKey);
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @RequirePermission('issues', 'update')
   async delete(@Param('id') id: string) {
     await this.attachmentsService.delete(id);
   }

@@ -1,8 +1,14 @@
-import { useState, type FormEvent } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { useProjectIssues, useCreateIssue, useProject, useIssueTypes, useWorkflow } from '@/api';
-import type { IssuePriority } from '@weaver/shared';
+import { useState, useCallback, useEffect, type FormEvent } from 'react';
+import { useParams, Link, useSearchParams, useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
+import { useProjectIssues, useCreateIssue, useProject, useIssueTypes, useWorkflow, useHasPermission, useUpdateIssueDynamic } from '@/api';
+import type { IssuePriority, Issue, PaginatedResponse } from '@weaver/shared';
 import { IssueTypeIcon } from '@/components/IconPicker';
+import { Pagination, getStoredPerPage } from '@/components/Pagination';
+import { SortableHeader, type SortDirection } from '@/components/SortableHeader';
+import { EditableCell } from '@/components/EditableCell';
+import { InlineSelect, type InlineSelectOption } from '@/components/InlineSelect';
+import { InlineDatePicker } from '@/components/InlineDatePicker';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -17,17 +23,106 @@ import {
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 
+const PRIORITY_OPTIONS: InlineSelectOption[] = [
+  { value: 'lowest', label: 'lowest' },
+  { value: 'low', label: 'low' },
+  { value: 'medium', label: 'medium' },
+  { value: 'high', label: 'high' },
+  { value: 'highest', label: 'highest' },
+];
+
+function parseSortParam(sort: string | null): { field: string | null; direction: SortDirection } {
+  if (!sort) return { field: null, direction: null };
+  const desc = sort.startsWith('-');
+  return { field: desc ? sort.slice(1) : sort, direction: desc ? 'desc' : 'asc' };
+}
+
+function buildSortParam(field: string | null, direction: SortDirection): string | undefined {
+  if (!field || !direction) return undefined;
+  return direction === 'desc' ? `-${field}` : field;
+}
+
 export function IssueListPage() {
   const { projectKey } = useParams<{ projectKey: string }>();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const page = Number(searchParams.get('page')) || 1;
+  const perPage = Number(searchParams.get('perPage')) || getStoredPerPage();
+  const sortParam = searchParams.get('sort');
+  const { field: sortField, direction: sortDirection } = parseSortParam(sortParam);
+
+  const updateParams = useCallback(
+    (updates: Record<string, string | undefined>) => {
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        for (const [k, v] of Object.entries(updates)) {
+          if (v === undefined || v === '') {
+            next.delete(k);
+          } else {
+            next.set(k, v);
+          }
+        }
+        return next;
+      });
+    },
+    [setSearchParams],
+  );
+
   const { data: project } = useProject(projectKey!);
-  const { data, isLoading } = useProjectIssues({ projectKey: projectKey! });
+  const { data, isLoading } = useProjectIssues({
+    projectKey: projectKey!,
+    page,
+    perPage,
+    sort: buildSortParam(sortField, sortDirection),
+  });
   const createIssue = useCreateIssue(projectKey!);
+  const updateIssue = useUpdateIssueDynamic();
   const { data: issueTypes } = useIssueTypes();
   const { data: workflow } = useWorkflow(project?.workflowId || '');
+  const canCreate = useHasPermission('issues.create');
+  const canEdit = useHasPermission('issues.update');
+
+  const statusOptions: InlineSelectOption[] = (workflow?.statuses || []).map((s: any) => ({
+    value: s.id,
+    label: s.name,
+    color: s.color || '#6b7280',
+  }));
 
   const getStatusInfo = (statusId: string) => {
     const status = workflow?.statuses?.find((s: any) => s.id === statusId);
     return { name: status?.name || statusId.slice(0, 8), color: status?.color || '#6b7280' };
+  };
+
+  const handleInlineUpdate = async (issueKey: string, field: string, value: unknown) => {
+    // Optimistic update
+    const queryKeyPrefix = ['issues', projectKey];
+    const previousData = queryClient.getQueriesData<PaginatedResponse<Issue>>({ queryKey: queryKeyPrefix });
+
+    queryClient.setQueriesData<PaginatedResponse<Issue>>(
+      { queryKey: queryKeyPrefix },
+      (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          data: old.data.map((issue) =>
+            issue.key === issueKey ? { ...issue, [field]: value } : issue,
+          ),
+        };
+      },
+    );
+
+    try {
+      await updateIssue.mutateAsync({ issueKey, [field]: value } as any);
+    } catch {
+      // Rollback on error
+      for (const [key, data] of previousData) {
+        if (data) {
+          queryClient.setQueryData(key, data);
+        }
+      }
+    }
   };
 
   const [showForm, setShowForm] = useState(false);
@@ -36,6 +131,44 @@ export function IssueListPage() {
   const [priority, setPriority] = useState<IssuePriority>('medium');
   const [startDate, setStartDate] = useState('');
   const [dueDate, setDueDate] = useState('');
+  const [focusedIndex, setFocusedIndex] = useState<number>(-1);
+
+  // Reset focused index when data or page changes
+  useEffect(() => {
+    setFocusedIndex(-1);
+  }, [data, page]);
+
+  // j/k/Enter keyboard navigation for issue list
+  useEffect(() => {
+    const issues = data?.data;
+    if (!issues || issues.length === 0) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const tagName = target.tagName.toLowerCase();
+      const isInput = tagName === 'input' || tagName === 'textarea' || tagName === 'select';
+      if (isInput || target.isContentEditable) return;
+
+      if (e.key === 'j') {
+        e.preventDefault();
+        setFocusedIndex((prev) => Math.min(prev + 1, issues.length - 1));
+      } else if (e.key === 'k') {
+        e.preventDefault();
+        setFocusedIndex((prev) => Math.max(prev - 1, 0));
+      } else if (e.key === 'Enter') {
+        setFocusedIndex((prev) => {
+          if (prev >= 0 && prev < issues.length) {
+            e.preventDefault();
+            navigate(`/issues/${issues[prev].key}`);
+          }
+          return prev;
+        });
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [data, navigate]);
 
   const handleCreate = async (e: FormEvent) => {
     e.preventDefault();
@@ -55,6 +188,19 @@ export function IssueListPage() {
     setStartDate('');
     setDueDate('');
     setShowForm(false);
+  };
+
+  const handlePageChange = (newPage: number) => {
+    updateParams({ page: newPage === 1 ? undefined : String(newPage) });
+  };
+
+  const handlePerPageChange = (newPerPage: number) => {
+    updateParams({ perPage: String(newPerPage), page: undefined });
+  };
+
+  const handleSort = (field: string, direction: SortDirection) => {
+    const sort = buildSortParam(field, direction);
+    updateParams({ sort, page: undefined });
   };
 
   if (isLoading) {
@@ -78,9 +224,11 @@ export function IssueListPage() {
           </div>
           <h1 className="mt-1 text-2xl font-bold text-foreground">Issues</h1>
         </div>
-        <Button onClick={() => setShowForm(!showForm)}>
-          {showForm ? 'Cancel' : 'Create Issue'}
-        </Button>
+        {canCreate && (
+          <Button onClick={() => setShowForm(!showForm)}>
+            {showForm ? 'Cancel' : 'Create Issue'}
+          </Button>
+        )}
       </div>
 
       {showForm && (
@@ -178,29 +326,58 @@ export function IssueListPage() {
               <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 Type
               </TableHead>
-              <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                Key
-              </TableHead>
-              <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                Summary
-              </TableHead>
-              <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                Priority
-              </TableHead>
+              <SortableHeader
+                label="Key"
+                field="key"
+                currentSort={sortField}
+                currentDirection={sortDirection}
+                onSort={handleSort}
+              />
+              <SortableHeader
+                label="Summary"
+                field="summary"
+                currentSort={sortField}
+                currentDirection={sortDirection}
+                onSort={handleSort}
+              />
+              <SortableHeader
+                label="Priority"
+                field="priority"
+                currentSort={sortField}
+                currentDirection={sortDirection}
+                onSort={handleSort}
+              />
               <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 Status
               </TableHead>
-              <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                Due Date
-              </TableHead>
+              <SortableHeader
+                label="Due Date"
+                field="dueDate"
+                currentSort={sortField}
+                currentDirection={sortDirection}
+                onSort={handleSort}
+              />
+              <SortableHeader
+                label="Created"
+                field="createdAt"
+                currentSort={sortField}
+                currentDirection={sortDirection}
+                onSort={handleSort}
+              />
               <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 % Done
               </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {data?.data.map((issue) => (
-              <TableRow key={issue.id} className="hover:bg-muted/50">
+            {data?.data.map((issue, index) => (
+              <TableRow
+                key={issue.id}
+                className={cn(
+                  'hover:bg-muted/50',
+                  focusedIndex === index && 'bg-accent ring-2 ring-primary/30 ring-inset',
+                )}
+              >
                 <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
                   {issue.issueType ? (
                     <span className="inline-flex items-center gap-1.5" title={issue.issueType.name}>
@@ -217,26 +394,54 @@ export function IssueListPage() {
                   <Link to={`/issues/${issue.key}`}>{issue.key}</Link>
                 </TableCell>
                 <TableCell className="text-sm text-foreground">
-                  <Link to={`/issues/${issue.key}`}>{issue.summary}</Link>
+                  {canEdit ? (
+                    <EditableCell
+                      value={issue.summary}
+                      onSave={(val) => handleInlineUpdate(issue.key, 'summary', val)}
+                    />
+                  ) : (
+                    <Link to={`/issues/${issue.key}`}>{issue.summary}</Link>
+                  )}
                 </TableCell>
                 <TableCell className="whitespace-nowrap">
-                  <PriorityBadge priority={issue.priority} />
+                  <InlineSelect
+                    value={issue.priority}
+                    options={PRIORITY_OPTIONS}
+                    onSave={(val) => handleInlineUpdate(issue.key, 'priority', val)}
+                    editable={canEdit}
+                    renderValue={(val) => <PriorityBadge priority={val} />}
+                  />
                 </TableCell>
                 <TableCell className="whitespace-nowrap">
-                  {(() => {
-                    const statusInfo = getStatusInfo(issue.statusId);
-                    return (
-                      <span
-                        className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium text-white"
-                        style={{ backgroundColor: statusInfo.color }}
-                      >
-                        {statusInfo.name}
-                      </span>
-                    );
-                  })()}
+                  <InlineSelect
+                    value={issue.statusId}
+                    options={statusOptions}
+                    onSave={(val) => handleInlineUpdate(issue.key, 'statusId', val)}
+                    editable={canEdit}
+                    renderValue={(val, opt) => {
+                      const info = opt
+                        ? { name: opt.label, color: opt.color || '#6b7280' }
+                        : getStatusInfo(val);
+                      return (
+                        <span
+                          className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium text-white"
+                          style={{ backgroundColor: info.color }}
+                        >
+                          {info.name}
+                        </span>
+                      );
+                    }}
+                  />
+                </TableCell>
+                <TableCell className="whitespace-nowrap">
+                  <InlineDatePicker
+                    value={issue.dueDate || null}
+                    onSave={(val) => handleInlineUpdate(issue.key, 'dueDate', val)}
+                    editable={canEdit}
+                  />
                 </TableCell>
                 <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
-                  {issue.dueDate || '-'}
+                  {issue.createdAt ? new Date(issue.createdAt).toLocaleDateString() : '-'}
                 </TableCell>
                 <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
                   <div className="flex items-center gap-2">
@@ -253,7 +458,7 @@ export function IssueListPage() {
             ))}
             {data?.data.length === 0 && (
               <TableRow>
-                <TableCell colSpan={7} className="px-6 py-8 text-center text-sm text-muted-foreground">
+                <TableCell colSpan={8} className="px-6 py-8 text-center text-sm text-muted-foreground">
                   No issues yet. Create your first issue to get started.
                 </TableCell>
               </TableRow>
@@ -262,15 +467,15 @@ export function IssueListPage() {
         </Table>
       </div>
 
-      {data && data.meta.totalPages > 1 && (
-        <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground">
-          <span>
-            Showing {data.data.length} of {data.meta.total} issues
-          </span>
-          <span>
-            Page {data.meta.page} of {data.meta.totalPages}
-          </span>
-        </div>
+      {data && (
+        <Pagination
+          page={data.meta.page}
+          perPage={data.meta.perPage}
+          total={data.meta.total}
+          totalPages={data.meta.totalPages}
+          onPageChange={handlePageChange}
+          onPerPageChange={handlePerPageChange}
+        />
       )}
     </div>
   );

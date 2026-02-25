@@ -11,7 +11,7 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { createIssueSchema, updateIssueSchema } from '@weaver/shared';
+import { createIssueSchema, updateIssueSchema, reorderIssuesSchema } from '@weaver/shared';
 import {
   JwtAuthGuard,
   PermissionGuard,
@@ -55,6 +55,15 @@ export class IssuesController {
     return this.issuesService.findByProject(projectKey, params, filters);
   }
 
+  @Patch('issues/reorder')
+  @RequirePermission('issues', 'update')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async reorder(
+    @Body(new ZodValidationPipe(reorderIssuesSchema)) dto: any,
+  ) {
+    await this.issuesService.reorder(dto);
+  }
+
   @Get('issues/:issueKey')
   @RequirePermission('issues', 'read')
   async findByKey(@Param('issueKey') issueKey: string) {
@@ -66,8 +75,9 @@ export class IssuesController {
   async update(
     @Param('issueKey') issueKey: string,
     @Body(new ZodValidationPipe(updateIssueSchema)) dto: any,
+    @CurrentUser() user: RequestUser,
   ) {
-    return this.issuesService.update(issueKey, dto);
+    return this.issuesService.update(issueKey, dto, user.userId);
   }
 
   @Post('issues/:issueKey/transition')

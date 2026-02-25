@@ -2,6 +2,14 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { TenantEntity } from '@weaver/db';
+import type { TenantSettings } from '@weaver/shared';
+
+const DEFAULT_SETTINGS: TenantSettings = {
+  timezone: 'UTC',
+  theme: 'system',
+  allowedDomains: [],
+  smtp: null,
+};
 
 @Injectable()
 export class TenantService {
@@ -37,5 +45,18 @@ export class TenantService {
 
   async findAll(): Promise<TenantEntity[]> {
     return this.tenantRepo.find();
+  }
+
+  async getSettings(tenantId: string): Promise<TenantSettings> {
+    const tenant = await this.tenantRepo.findOneByOrFail({ id: tenantId });
+    return { ...DEFAULT_SETTINGS, ...(tenant.settings as Partial<TenantSettings>) };
+  }
+
+  async updateSettings(tenantId: string, partial: Partial<TenantSettings>): Promise<TenantSettings> {
+    const tenant = await this.tenantRepo.findOneByOrFail({ id: tenantId });
+    const merged = { ...DEFAULT_SETTINGS, ...(tenant.settings as Partial<TenantSettings>), ...partial };
+    tenant.settings = merged as unknown as Record<string, unknown>;
+    await this.tenantRepo.save(tenant);
+    return merged;
   }
 }

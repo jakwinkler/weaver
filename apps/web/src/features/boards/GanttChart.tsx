@@ -1,6 +1,7 @@
 import { useMemo, useRef } from 'react';
 import { useParams } from 'react-router-dom';
-import { useProjectIssues } from '@/api';
+import { useProjectIssues, useProjectPlugins } from '@/api';
+import { FeatureNotEnabled } from './FeatureNotEnabled';
 import { cn } from '@/lib/utils';
 
 interface GanttIssue {
@@ -51,8 +52,13 @@ function formatWeek(date: Date): string {
 
 export function GanttChart() {
   const { projectKey = '' } = useParams<{ projectKey: string }>();
+  const { data: projectPlugins } = useProjectPlugins(projectKey);
   const { data, isLoading, isError } = useProjectIssues({ projectKey, perPage: 100 });
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  if (projectPlugins && !projectPlugins.some((p) => p.pluginId === '@weaver/plugin-gantt')) {
+    return <FeatureNotEnabled featureName="Gantt Chart" projectKey={projectKey} />;
+  }
 
   const { issues, timelineStart, totalDays, weeks } = useMemo(() => {
     if (!data?.data || data.data.length === 0) {

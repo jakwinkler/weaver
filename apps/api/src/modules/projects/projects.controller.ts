@@ -23,6 +23,7 @@ import { ZodValidationPipe, parsePagination } from '../../common';
 import { ProjectsService } from './projects.service';
 import { ProjectMembersService } from './project-members.service';
 import { ProjectIssueTypesService } from './project-issue-types.service';
+import { ProjectPluginsService } from './project-plugins.service';
 
 @Controller('projects')
 @UseGuards(JwtAuthGuard, PermissionGuard)
@@ -31,6 +32,7 @@ export class ProjectsController {
     private readonly projectsService: ProjectsService,
     private readonly projectMembersService: ProjectMembersService,
     private readonly projectIssueTypesService: ProjectIssueTypesService,
+    private readonly projectPluginsService: ProjectPluginsService,
   ) {}
 
   @Post()
@@ -132,5 +134,35 @@ export class ProjectsController {
       project.id,
       dto.issueTypeIds,
     );
+  }
+
+  // ── Project Plugins ──
+
+  @Get(':key/plugins')
+  @RequirePermission('projects', 'read')
+  async getPlugins(@Param('key') key: string) {
+    const project = await this.projectsService.findByKey(key);
+    return this.projectPluginsService.findByProject(project.id);
+  }
+
+  @Post(':key/plugins/enable')
+  @RequirePermission('projects', 'update')
+  async enablePlugin(
+    @Param('key') key: string,
+    @Body() dto: { pluginId: string },
+  ) {
+    const project = await this.projectsService.findByKey(key);
+    return this.projectPluginsService.enable(project.id, dto.pluginId);
+  }
+
+  @Post(':key/plugins/disable')
+  @RequirePermission('projects', 'update')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async disablePlugin(
+    @Param('key') key: string,
+    @Body() dto: { pluginId: string },
+  ) {
+    const project = await this.projectsService.findByKey(key);
+    await this.projectPluginsService.disable(project.id, dto.pluginId);
   }
 }

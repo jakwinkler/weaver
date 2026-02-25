@@ -1,0 +1,29 @@
+{
+  "id": "@weaver/plugin-time-tracking",
+  "name": "Time Tracking",
+  "version": "1.0.0",
+  "description": "Time tracking on issues with time entry logs and summaries",
+  "author": "Weaver",
+  "icon": "clock",
+  "type": "feature",
+  "scope": "project",
+  "entrypoints": {},
+  "permissions": ["time-tracking.view", "time-tracking.log", "time-tracking.manage"],
+  "declaredPermissions": [
+    {
+      "key": "time-tracking.view",
+      "label": "View time entries",
+      "description": "View time entries logged on issues"
+    },
+    {
+      "key": "time-tracking.log",
+      "label": "Log time",
+      "description": "Create new time entries on issues"
+    },
+    {
+      "key": "time-tracking.manage",
+      "label": "Manage time entries",
+      "description": "Edit and delete time entries"
+    }
+  ]
+}

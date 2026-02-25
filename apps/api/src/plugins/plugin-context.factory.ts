@@ -114,6 +114,34 @@ export class PluginContextFactory {
           },
           list: async () => [],
         },
+        activityLog: {
+          create: async (issueKey: string, dto: {
+            action: string;
+            fieldName?: string | null;
+            oldValue?: string | null;
+            newValue?: string | null;
+          }) => {
+            const issue = await runInSchema(() =>
+              em.query(`SELECT id FROM issues WHERE key = $1`, [issueKey]),
+            );
+            if (!issue[0]) return null;
+            const result = await runInSchema(() =>
+              em.query(
+                `INSERT INTO activity_logs (issue_id, user_id, action, field_name, old_value, new_value)
+                 VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+                [
+                  issue[0].id,
+                  user?.id || null,
+                  dto.action,
+                  dto.fieldName ?? null,
+                  dto.oldValue ?? null,
+                  dto.newValue ?? null,
+                ],
+              ),
+            );
+            return result[0];
+          },
+        },
         customFields: {
           register: async (definition: {
             name: string;

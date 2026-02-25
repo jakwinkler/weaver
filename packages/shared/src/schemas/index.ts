@@ -45,7 +45,7 @@ export type RefreshTokenDto = z.infer<typeof refreshTokenSchema>;
 
 export const updateUserSchema = z.object({
   displayName: z.string().min(1).max(255).optional(),
-  avatarUrl: z.string().url().optional(),
+  avatarUrl: z.string().min(1).optional(),
 });
 export type UpdateUserDto = z.infer<typeof updateUserSchema>;
 
@@ -65,6 +65,7 @@ export const updateProjectSchema = z.object({
   workflowId: z.string().uuid().optional(),
   iconAttachmentId: z.string().uuid().nullable().optional(),
   customFields: z.record(z.unknown()).optional(),
+  visibility: z.enum(['private', 'public']).optional(),
 });
 export type UpdateProjectDto = z.infer<typeof updateProjectSchema>;
 
@@ -92,6 +93,8 @@ export const updateIssueSchema = z.object({
   summary: z.string().min(1).max(500).optional(),
   description: z.record(z.unknown()).optional(),
   priority: z.enum(ISSUE_PRIORITIES).optional(),
+  statusId: z.string().uuid().optional(),
+  sprintId: z.string().uuid().nullable().optional(),
   assigneeId: z.string().uuid().nullable().optional(),
   labels: z.array(z.string()).optional(),
   parentId: z.string().uuid().nullable().optional(),
@@ -103,6 +106,14 @@ export const updateIssueSchema = z.object({
   percentDone: z.number().int().min(0).max(100).optional(),
 });
 export type UpdateIssueDto = z.infer<typeof updateIssueSchema>;
+
+export const reorderIssuesSchema = z.object({
+  issues: z.array(z.object({
+    id: z.string().uuid(),
+    sortOrder: z.number().int().min(0),
+  })).min(1).max(200),
+});
+export type ReorderIssuesDto = z.infer<typeof reorderIssuesSchema>;
 
 export const issueKeySchema = z.string().regex(ISSUE_KEY_REGEX, 'Invalid issue key format (e.g., WEB-123)');
 
@@ -196,3 +207,23 @@ export const createTimeEntrySchema = z.object({
   loggedAt: z.coerce.date().optional(),
 });
 export type CreateTimeEntryDto = z.infer<typeof createTimeEntrySchema>;
+
+// ── Tenant Settings Schema ──
+
+export const smtpSettingsSchema = z.object({
+  host: z.string().min(1).max(255),
+  port: z.number().int().min(1).max(65535),
+  secure: z.boolean(),
+  user: z.string().max(255),
+  pass: z.string().max(255),
+  fromName: z.string().min(1).max(255),
+  fromEmail: z.string().email(),
+});
+
+export const updateTenantSettingsSchema = z.object({
+  timezone: z.string().min(1).max(100).optional(),
+  theme: z.enum(['light', 'dark', 'system']).optional(),
+  allowedDomains: z.array(z.string().min(1).max(255)).optional(),
+  smtp: smtpSettingsSchema.nullable().optional(),
+});
+export type UpdateTenantSettingsDto = z.infer<typeof updateTenantSettingsSchema>;

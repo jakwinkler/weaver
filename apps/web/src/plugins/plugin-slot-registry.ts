@@ -1,49 +1,40 @@
 import type { ComponentType } from 'react';
-import { TimerWidgetSlot } from './components/TimerWidgetSlot';
-import { ChecklistSlot } from './components/ChecklistSlot';
-import { ChecklistAppPage } from './components/ChecklistAppPage';
+import type { PluginManifest } from '@/api';
+import { getPluginComponent } from './dynamic-loader';
+
+// ── Slot Entries ──
 
 export interface SlotEntry {
   pluginId: string;
   slotName: string;
-  component: ComponentType<any>;
+  componentName: string;
+  component: ComponentType<any> | null;
   requiredPermissions: string[];
 }
 
-/**
- * Static registry mapping plugin slots to React components.
- * Each plugin that provides UI adds entries here.
- */
-export const SLOT_REGISTRY: SlotEntry[] = [
-  {
-    pluginId: '@weaver/plugin-timer',
-    slotName: 'issue-detail-sidebar',
-    component: TimerWidgetSlot,
-    requiredPermissions: ['timer.allow'],
-  },
-  {
-    pluginId: '@weaver/plugin-checklist',
-    slotName: 'issue-detail-content',
-    component: ChecklistSlot,
-    requiredPermissions: ['checklist.view'],
-  },
-];
-
-/**
- * Get all slot components for a given slot name,
- * filtered to only include plugins that are installed.
- */
-export function getSlotComponents(
+export function getSlotEntries(
   slotName: string,
-  installedPluginIds: string[],
+  manifests: PluginManifest[],
+  enabledPluginIds: string[],
 ): SlotEntry[] {
-  return SLOT_REGISTRY.filter(
-    (entry) =>
-      entry.slotName === slotName && installedPluginIds.includes(entry.pluginId),
-  );
+  const entries: SlotEntry[] = [];
+  for (const manifest of manifests) {
+    if (!enabledPluginIds.includes(manifest.id)) continue;
+    for (const slot of manifest.ui?.slots ?? []) {
+      if (slot.slot !== slotName) continue;
+      entries.push({
+        pluginId: manifest.id,
+        slotName: slot.slot,
+        componentName: slot.component,
+        component: getPluginComponent(manifest.id, slot.component),
+        requiredPermissions: slot.requiredPermissions ?? [],
+      });
+    }
+  }
+  return entries;
 }
 
-// ── Navigation Registry ──
+// ── Navigation Entries ──
 
 export interface NavigationEntry {
   pluginId: string;
@@ -53,47 +44,84 @@ export interface NavigationEntry {
   requiredPermissions: string[];
 }
 
-/**
- * Navigation entries for the sidebar "Apps" section.
- * Plugins register here when they have an app page.
- */
-export const NAVIGATION_REGISTRY: NavigationEntry[] = [
-  {
-    pluginId: '@weaver/plugin-checklist',
-    label: 'Checklists',
-    icon: 'list-checks',
-    path: '/apps/checklist',
-    requiredPermissions: ['checklist.view'],
-  },
-];
-
-export function getNavigationEntries(installedPluginIds: string[]): NavigationEntry[] {
-  return NAVIGATION_REGISTRY.filter((e) => installedPluginIds.includes(e.pluginId));
+export function getNavigationEntries(
+  manifests: PluginManifest[],
+  enabledPluginIds: string[],
+): NavigationEntry[] {
+  const entries: NavigationEntry[] = [];
+  for (const manifest of manifests) {
+    if (!enabledPluginIds.includes(manifest.id)) continue;
+    for (const nav of manifest.ui?.navigation ?? []) {
+      entries.push({
+        pluginId: manifest.id,
+        label: nav.label,
+        icon: nav.icon,
+        path: nav.path,
+        requiredPermissions: nav.requiredPermissions ?? [],
+      });
+    }
+  }
+  return entries;
 }
 
-// ── Page Registry ──
+// ── Page Entries ──
 
 export interface PageEntry {
   pluginId: string;
   path: string;
-  component: ComponentType<any>;
+  componentName: string;
+  component: ComponentType<any> | null;
   requiredPermissions: string[];
 }
 
-/**
- * Full-page plugin components rendered at /apps/* routes.
- */
-export const PAGE_REGISTRY: PageEntry[] = [
-  {
-    pluginId: '@weaver/plugin-checklist',
-    path: '/apps/checklist',
-    component: ChecklistAppPage,
-    requiredPermissions: ['checklist.view'],
-  },
-];
+export function getPageEntry(
+  path: string,
+  manifests: PluginManifest[],
+  enabledPluginIds: string[],
+): PageEntry | undefined {
+  for (const manifest of manifests) {
+    if (!enabledPluginIds.includes(manifest.id)) continue;
+    for (const page of manifest.ui?.pages ?? []) {
+      if (path.startsWith(page.path)) {
+        return {
+          pluginId: manifest.id,
+          path: page.path,
+          componentName: page.component,
+          component: getPluginComponent(manifest.id, page.component),
+          requiredPermissions: page.requiredPermissions ?? [],
+        };
+      }
+    }
+  }
+  return undefined;
+}
 
-export function getPageComponent(path: string, installedPluginIds: string[]): PageEntry | undefined {
-  return PAGE_REGISTRY.find(
-    (e) => path.startsWith(e.path) && installedPluginIds.includes(e.pluginId),
-  );
+// ── Project View Entries ──
+
+export interface ProjectViewEntry {
+  pluginId: string;
+  label: string;
+  icon: string;
+  viewPath: string;
+  requiredPermissions?: string[];
+}
+
+export function getProjectViewEntries(
+  manifests: PluginManifest[],
+  enabledPluginIds: string[],
+): ProjectViewEntry[] {
+  const entries: ProjectViewEntry[] = [];
+  for (const manifest of manifests) {
+    if (!enabledPluginIds.includes(manifest.id)) continue;
+    for (const view of manifest.ui?.projectViews ?? []) {
+      entries.push({
+        pluginId: manifest.id,
+        label: view.label,
+        icon: view.icon,
+        viewPath: view.viewPath,
+        requiredPermissions: view.requiredPermissions,
+      });
+    }
+  }
+  return entries;
 }

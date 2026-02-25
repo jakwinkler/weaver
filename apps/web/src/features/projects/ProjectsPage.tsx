@@ -1,8 +1,10 @@
 import { useState, useCallback, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
-import { useProjects, useCreateProject } from '@/api';
+import { Link, useSearchParams } from 'react-router-dom';
+import { useProjects, useCreateProject, useHasPermission } from '@/api';
 import { RichTextEditor, serializeDoc } from '@/components/RichTextEditor';
 import { ProjectIcon } from './ProjectSettingsPage';
+import { Pagination, getStoredPerPage } from '@/components/Pagination';
+import { SortableHeader, type SortDirection } from '@/components/SortableHeader';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -17,9 +19,49 @@ import {
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 
+function parseSortParam(sort: string | null): { field: string | null; direction: SortDirection } {
+  if (!sort) return { field: null, direction: null };
+  const desc = sort.startsWith('-');
+  return { field: desc ? sort.slice(1) : sort, direction: desc ? 'desc' : 'asc' };
+}
+
+function buildSortParam(field: string | null, direction: SortDirection): string | undefined {
+  if (!field || !direction) return undefined;
+  return direction === 'desc' ? `-${field}` : field;
+}
+
 export function ProjectsPage() {
-  const { data, isLoading } = useProjects();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const page = Number(searchParams.get('page')) || 1;
+  const perPage = Number(searchParams.get('perPage')) || getStoredPerPage();
+  const sortParam = searchParams.get('sort');
+  const { field: sortField, direction: sortDirection } = parseSortParam(sortParam);
+
+  const updateParams = useCallback(
+    (updates: Record<string, string | undefined>) => {
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        for (const [k, v] of Object.entries(updates)) {
+          if (v === undefined || v === '') {
+            next.delete(k);
+          } else {
+            next.set(k, v);
+          }
+        }
+        return next;
+      });
+    },
+    [setSearchParams],
+  );
+
+  const { data, isLoading } = useProjects({
+    page,
+    perPage,
+    sort: buildSortParam(sortField, sortDirection),
+  });
   const createProject = useCreateProject();
+  const canCreate = useHasPermission('projects.create');
 
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState('');
@@ -44,6 +86,19 @@ export function ProjectsPage() {
     setShowForm(false);
   };
 
+  const handlePageChange = (newPage: number) => {
+    updateParams({ page: newPage === 1 ? undefined : String(newPage) });
+  };
+
+  const handlePerPageChange = (newPerPage: number) => {
+    updateParams({ perPage: String(newPerPage), page: undefined });
+  };
+
+  const handleSort = (field: string, direction: SortDirection) => {
+    const sort = buildSortParam(field, direction);
+    updateParams({ sort, page: undefined });
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -56,9 +111,11 @@ export function ProjectsPage() {
     <div>
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold text-foreground">Projects</h1>
-        <Button onClick={() => setShowForm(!showForm)} variant={showForm ? 'outline' : 'default'}>
-          {showForm ? 'Cancel' : 'Create Project'}
-        </Button>
+        {canCreate && (
+          <Button onClick={() => setShowForm(!showForm)} variant={showForm ? 'outline' : 'default'}>
+            {showForm ? 'Cancel' : 'Create Project'}
+          </Button>
+        )}
       </div>
 
       {showForm && (
@@ -114,15 +171,23 @@ export function ProjectsPage() {
         <Table>
           <TableHeader className="bg-muted/50">
             <TableRow>
-              <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                Project
-              </TableHead>
+              <SortableHeader
+                label="Project"
+                field="name"
+                currentSort={sortField}
+                currentDirection={sortDirection}
+                onSort={handleSort}
+              />
               <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 Description
               </TableHead>
-              <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                Issues
-              </TableHead>
+              <SortableHeader
+                label="Key"
+                field="key"
+                currentSort={sortField}
+                currentDirection={sortDirection}
+                onSort={handleSort}
+              />
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -155,6 +220,17 @@ export function ProjectsPage() {
           </TableBody>
         </Table>
       </div>
+
+      {data && (
+        <Pagination
+          page={data.meta.page}
+          perPage={data.meta.perPage}
+          total={data.meta.total}
+          totalPages={data.meta.totalPages}
+          onPageChange={handlePageChange}
+          onPerPageChange={handlePerPageChange}
+        />
+      )}
     </div>
   );
 }

@@ -75,8 +75,24 @@ export interface Project {
   iconAttachmentId?: string | null;
   issueCounter: number;
   customFields: Record<string, unknown>;
+  visibility: 'private' | 'public';
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface TenantSettings {
+  timezone: string;
+  theme: 'light' | 'dark' | 'system';
+  allowedDomains: string[];
+  smtp: {
+    host: string;
+    port: number;
+    secure: boolean;
+    user: string;
+    pass: string;
+    fromName: string;
+    fromEmail: string;
+  } | null;
 }
 
 export interface Issue {
@@ -177,6 +193,9 @@ export interface Comment {
   id: string;
   issueId: string;
   authorId: string;
+  authorDisplayName?: string;
+  authorEmail?: string;
+  authorAvatarUrl?: string | null;
   body: Record<string, unknown>;
   createdAt: Date;
   updatedAt: Date;
@@ -197,6 +216,9 @@ export interface ActivityLog {
   id: string;
   issueId: string;
   userId: string;
+  userDisplayName?: string;
+  userEmail?: string;
+  userAvatarUrl?: string | null;
   action: string;
   fieldName?: string;
   oldValue?: string;

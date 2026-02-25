@@ -11,11 +11,12 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { JwtAuthGuard } from '../../core/auth';
+import { JwtAuthGuard, PermissionGuard, RequirePermission } from '../../core/auth';
 import { WebhooksService } from './webhooks.service';
 
 @Controller('webhooks')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionGuard)
+@RequirePermission('admin', 'manage_plugins')
 export class WebhooksController {
   constructor(private readonly webhooksService: WebhooksService) {}
 

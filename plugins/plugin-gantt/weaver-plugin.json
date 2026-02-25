@@ -1,0 +1,29 @@
+{
+  "id": "@weaver/plugin-gantt",
+  "name": "Gantt Chart",
+  "version": "1.0.0",
+  "description": "Gantt chart timeline view for project scheduling and tracking",
+  "author": "Weaver",
+  "icon": "gantt-chart",
+  "type": "feature",
+  "scope": "project",
+  "entrypoints": {},
+  "permissions": ["gantt.view"],
+  "declaredPermissions": [
+    {
+      "key": "gantt.view",
+      "label": "View Gantt chart",
+      "description": "View the Gantt chart timeline of project issues"
+    }
+  ],
+  "ui": {
+    "projectViews": [
+      {
+        "label": "Gantt",
+        "icon": "gantt-chart",
+        "viewPath": "gantt",
+        "requiredPermissions": ["gantt.view"]
+      }
+    ]
+  }
+}

@@ -2,13 +2,27 @@ import { useState } from 'react';
 import { Clock, Download, Save, Trash2, FolderOpen } from 'lucide-react';
 import { useTimeReports, type TimeReportsApi, type ReportRow } from './useTimeReports';
 
+export interface ProjectOption {
+  key: string;
+  name: string;
+}
+
+export interface UserOption {
+  id: string;
+  name: string;
+}
+
 function formatHours(minutes: number): string {
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
   return m > 0 ? `${h}h ${m}m` : `${h}h`;
 }
 
-export function TimeReportsPage({ api }: { api: TimeReportsApi }) {
+export function TimeReportsPage({ api, projects = [], users = [] }: {
+  api: TimeReportsApi;
+  projects?: ProjectOption[];
+  users?: UserOption[];
+}) {
   const {
     filters,
     setFilters,
@@ -74,24 +88,30 @@ export function TimeReportsPage({ api }: { api: TimeReportsApi }) {
       <div className="mb-4 rounded-lg border border-border bg-card p-4">
         <div className="flex flex-wrap items-end gap-3">
           <div>
-            <label className="mb-1 block text-xs font-medium text-muted-foreground">Project Key</label>
-            <input
-              type="text"
-              placeholder="e.g. PROJ"
+            <label className="mb-1 block text-xs font-medium text-muted-foreground">Project</label>
+            <select
               value={filters.projectKey}
               onChange={(e) => setFilters({ ...filters, projectKey: e.target.value })}
-              className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-            />
+              className="h-9 min-w-[160px] rounded-md border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+            >
+              <option value="">All projects</option>
+              {projects.map((p) => (
+                <option key={p.key} value={p.key}>{p.key} — {p.name}</option>
+              ))}
+            </select>
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-muted-foreground">User ID</label>
-            <input
-              type="text"
-              placeholder="UUID"
+            <label className="mb-1 block text-xs font-medium text-muted-foreground">User</label>
+            <select
               value={filters.userId}
               onChange={(e) => setFilters({ ...filters, userId: e.target.value })}
-              className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-            />
+              className="h-9 min-w-[160px] rounded-md border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+            >
+              <option value="">All users</option>
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>{u.name}</option>
+              ))}
+            </select>
           </div>
           <div>
             <label className="mb-1 block text-xs font-medium text-muted-foreground">From</label>

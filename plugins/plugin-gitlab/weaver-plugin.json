@@ -5,6 +5,7 @@
   "description": "Link GitLab commits, merge requests, and branches to Weaver issues",
   "author": "Weaver Team",
   "icon": "gitlab",
+  "type": "integration",
   "entrypoints": {
     "server": "./src/server/index.ts",
     "client": "./src/client/index.ts"

@@ -1,4 +1,5 @@
 import { useActivity } from '@/api/hooks-phase2';
+import { UserAvatar } from '@/components/UserAvatar';
 
 interface ActivityLogProps {
   issueKey: string;
@@ -24,6 +25,26 @@ const iconMap: Record<string, { bg: string; path: string }> = {
   assigned: {
     bg: 'bg-purple-100 text-purple-600',
     path: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z',
+  },
+  checklist_item_added: {
+    bg: 'bg-teal-100 text-teal-600',
+    path: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4',
+  },
+  checklist_item_completed: {
+    bg: 'bg-green-100 text-green-600',
+    path: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4',
+  },
+  checklist_item_reopened: {
+    bg: 'bg-orange-100 text-orange-600',
+    path: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2',
+  },
+  checklist_item_updated: {
+    bg: 'bg-blue-100 text-blue-600',
+    path: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7v4m0 0v-1.5',
+  },
+  checklist_item_removed: {
+    bg: 'bg-red-100 text-red-600',
+    path: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9h6',
   },
 };
 
@@ -54,9 +75,24 @@ export function ActionIcon({ action }: { action: string }) {
   );
 }
 
+const actionLabels: Record<string, string> = {
+  checklist_item_added: 'added checklist item',
+  checklist_item_completed: 'completed checklist item',
+  checklist_item_reopened: 'reopened checklist item',
+  checklist_item_updated: 'renamed checklist item',
+  checklist_item_removed: 'removed checklist item',
+};
+
+function formatAction(action: string): string {
+  return actionLabels[action] || action;
+}
+
 interface ActivityEntryData {
   id: string;
   userId: string;
+  userDisplayName?: string;
+  userEmail?: string;
+  userAvatarUrl?: string | null;
   action: string;
   fieldName?: string;
   oldValue?: string;
@@ -68,14 +104,21 @@ export function ActivityEntryRow({ entry }: { entry: ActivityEntryData }) {
   return (
     <div className="relative flex gap-3 pl-0">
       <div className="relative z-10 flex-shrink-0">
-        <ActionIcon action={entry.action} />
+        <UserAvatar
+          user={{
+            displayName: entry.userDisplayName,
+            email: entry.userEmail,
+            avatarUrl: entry.userAvatarUrl ?? undefined,
+          }}
+          size="sm"
+        />
       </div>
       <div className="min-w-0 flex-1 pb-2">
         <div className="flex items-baseline justify-between">
           <p className="text-sm text-gray-900">
-            <span className="font-medium">{entry.userId.slice(0, 8)}</span>
+            <span className="font-medium">{entry.userDisplayName ?? entry.userId.slice(0, 8)}</span>
             {' '}
-            <span className="text-gray-600">{entry.action}</span>
+            <span className="text-gray-600">{formatAction(entry.action)}</span>
             {entry.fieldName && (
               <span className="text-gray-600">
                 {' '}

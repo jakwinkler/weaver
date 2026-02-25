@@ -6,13 +6,39 @@ interface ShortcutEntry {
   description: string;
 }
 
-const SHORTCUTS: ShortcutEntry[] = [
-  { keys: '?', description: 'Show keyboard shortcuts help' },
-  { keys: 'c', description: 'Create new issue' },
-  { keys: 'g p', description: 'Go to projects' },
-  { keys: 'g s', description: 'Go to search' },
-  { keys: '/', description: 'Focus search input' },
-  { keys: 'Escape', description: 'Close any open modal' },
+interface ShortcutGroup {
+  label: string;
+  shortcuts: ShortcutEntry[];
+}
+
+const SHORTCUT_GROUPS: ShortcutGroup[] = [
+  {
+    label: 'Global',
+    shortcuts: [
+      { keys: '?', description: 'Show keyboard shortcuts help' },
+      { keys: 'c', description: 'Create new issue' },
+      { keys: 'g p', description: 'Go to projects' },
+      { keys: 'g d', description: 'Go to dashboard' },
+      { keys: 'g s', description: 'Go to search' },
+      { keys: '/', description: 'Focus search input' },
+      { keys: 'Escape', description: 'Close any open modal' },
+    ],
+  },
+  {
+    label: 'Issue List',
+    shortcuts: [
+      { keys: 'j', description: 'Move focus down' },
+      { keys: 'k', description: 'Move focus up' },
+      { keys: 'Enter', description: 'Open focused issue' },
+    ],
+  },
+  {
+    label: 'Issue Detail',
+    shortcuts: [
+      { keys: 'a', description: 'Open assignee picker' },
+      { keys: 's', description: 'Open status transition menu' },
+    ],
+  },
 ];
 
 export function KeyboardShortcuts() {
@@ -51,6 +77,11 @@ export function KeyboardShortcuts() {
         if (e.key === 'p') {
           e.preventDefault();
           navigate('/projects');
+          return;
+        }
+        if (e.key === 'd') {
+          e.preventDefault();
+          navigate('/dashboard');
           return;
         }
         if (e.key === 's') {
@@ -138,30 +169,37 @@ export function KeyboardShortcuts() {
           </button>
         </div>
 
-        <div className="px-6 py-4">
-          <table className="w-full">
-            <tbody className="divide-y divide-gray-100">
-              {SHORTCUTS.map((shortcut) => (
-                <tr key={shortcut.keys}>
-                  <td className="py-2.5 pr-4">
-                    <div className="flex gap-1">
-                      {shortcut.keys.split(' ').map((key, i) => (
-                        <span key={i}>
-                          {i > 0 && (
-                            <span className="mx-1 text-xs text-gray-400">then</span>
-                          )}
-                          <kbd className="inline-flex min-w-[24px] items-center justify-center rounded border border-gray-300 bg-gray-50 px-1.5 py-0.5 font-mono text-xs text-gray-700">
-                            {key}
-                          </kbd>
-                        </span>
-                      ))}
-                    </div>
-                  </td>
-                  <td className="py-2.5 text-sm text-gray-600">{shortcut.description}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="max-h-[60vh] overflow-y-auto px-6 py-4">
+          {SHORTCUT_GROUPS.map((group) => (
+            <div key={group.label} className="mb-4 last:mb-0">
+              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400">
+                {group.label}
+              </h3>
+              <table className="w-full">
+                <tbody className="divide-y divide-gray-100">
+                  {group.shortcuts.map((shortcut) => (
+                    <tr key={shortcut.keys}>
+                      <td className="py-2 pr-4">
+                        <div className="flex gap-1">
+                          {shortcut.keys.split(' ').map((key, i) => (
+                            <span key={i}>
+                              {i > 0 && (
+                                <span className="mx-1 text-xs text-gray-400">then</span>
+                              )}
+                              <kbd className="inline-flex min-w-[24px] items-center justify-center rounded border border-gray-300 bg-gray-50 px-1.5 py-0.5 font-mono text-xs text-gray-700">
+                                {key}
+                              </kbd>
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="py-2 text-sm text-gray-600">{shortcut.description}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ))}
         </div>
 
         <div className="border-t border-gray-200 px-6 py-3">

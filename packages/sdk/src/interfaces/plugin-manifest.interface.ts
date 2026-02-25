@@ -5,6 +5,8 @@ export interface PluginManifest {
   description?: string;
   author?: string;
   icon?: string;
+  type?: 'app' | 'widget' | 'feature' | 'integration';
+  scope?: 'tenant' | 'project';
   entrypoints: {
     server?: string;
     client?: string;
@@ -22,9 +24,17 @@ export interface PluginManifest {
     slots?: PluginUISlot[];
     navigation?: PluginNavigationItem[];
     pages?: PluginPageDefinition[];
+    projectViews?: PluginProjectViewDefinition[];
   };
   routes?: PluginRouteDefinition[];
   migrations?: string[];
+}
+
+export interface PluginProjectViewDefinition {
+  label: string;
+  icon: string;
+  viewPath: string;
+  requiredPermissions?: string[];
 }
 
 export interface PluginDeclaredPermission {
@@ -44,6 +54,7 @@ export interface PluginSettingDefinition {
 export interface PluginUISlot {
   slot: string;
   component: string;
+  requiredPermissions?: string[];
 }
 
 export interface PluginNavigationItem {
@@ -56,10 +67,12 @@ export interface PluginNavigationItem {
 export interface PluginPageDefinition {
   path: string;
   component: string;
+  requiredPermissions?: string[];
 }
 
 export interface PluginRouteDefinition {
   method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   path: string;
   handler: string;
+  requiredPermissions?: string[];
 }

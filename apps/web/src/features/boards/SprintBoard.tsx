@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { useProject } from '@/api';
+import { useProject, useProjectPlugins, useHasPermission } from '@/api';
+import { FeatureNotEnabled } from './FeatureNotEnabled';
 import {
   useSprints,
   useCreateSprint,
@@ -37,6 +38,9 @@ function formatDate(date: Date | string | undefined): string {
 function SprintActions({ sprint }: { sprint: Sprint }) {
   const startSprint = useStartSprint(sprint.id);
   const completeSprint = useCompleteSprint(sprint.id);
+  const canManage = useHasPermission('sprints.manage');
+
+  if (!canManage) return null;
 
   if (sprint.status === 'planned') {
     return (
@@ -157,6 +161,7 @@ function CreateSprintForm({
 
 export function SprintBoard() {
   const { projectKey } = useParams<{ projectKey: string }>();
+  const { data: projectPlugins } = useProjectPlugins(projectKey!);
   const { data: project, isLoading: projectLoading } = useProject(projectKey!);
   const {
     data: sprints,
@@ -165,6 +170,11 @@ export function SprintBoard() {
   } = useSprints(project?.id || '');
 
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const canCreateSprint = useHasPermission('sprints.create');
+
+  if (projectPlugins && !projectPlugins.some((p) => p.pluginId === '@weaver/plugin-sprints')) {
+    return <FeatureNotEnabled featureName="Sprints" projectKey={projectKey!} />;
+  }
 
   const isLoading = projectLoading || sprintsLoading;
 
@@ -202,9 +212,11 @@ export function SprintBoard() {
 
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-xl font-bold text-foreground">Sprints</h1>
-        <Button onClick={() => setShowCreateForm(!showCreateForm)} variant={showCreateForm ? 'outline' : 'default'}>
-          {showCreateForm ? 'Cancel' : 'New Sprint'}
-        </Button>
+        {canCreateSprint && (
+          <Button onClick={() => setShowCreateForm(!showCreateForm)} variant={showCreateForm ? 'outline' : 'default'}>
+            {showCreateForm ? 'Cancel' : 'New Sprint'}
+          </Button>
+        )}
       </div>
 
       {showCreateForm && (

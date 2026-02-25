@@ -129,7 +129,7 @@ export async function exportCsv(req: PluginRequest, context: PluginContext): Pro
   };
 }
 
-export async function listSavedReports(req: PluginRequest, context: PluginContext): Promise<PluginResponse> {
+export async function listSavedReports(_req: PluginRequest, context: PluginContext): Promise<PluginResponse> {
   if (!context.user?.id) {
     return { status: 401, body: { message: 'Authentication required' } };
   }

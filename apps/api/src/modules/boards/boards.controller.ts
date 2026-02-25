@@ -13,7 +13,7 @@ import {
 } from '@nestjs/common';
 import { z } from 'zod';
 import { createBoardSchema, BOARD_TYPES } from '@weaver/shared';
-import { JwtAuthGuard } from '../../core/auth';
+import { JwtAuthGuard, PermissionGuard, RequirePermission } from '../../core/auth';
 import { ZodValidationPipe } from '../../common';
 import { BoardsService } from './boards.service';
 
@@ -24,11 +24,12 @@ const updateBoardSchema = z.object({
 });
 
 @Controller('boards')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionGuard)
 export class BoardsController {
   constructor(private readonly boardsService: BoardsService) {}
 
   @Post()
+  @RequirePermission('projects', 'update')
   async create(
     @Query('projectId') projectId: string,
     @Body(new ZodValidationPipe(createBoardSchema)) dto: any,
@@ -37,21 +38,25 @@ export class BoardsController {
   }
 
   @Get()
+  @RequirePermission('projects', 'read')
   async findAll(@Query('projectId') projectId: string) {
     return this.boardsService.findAll(projectId);
   }
 
   @Get(':id')
+  @RequirePermission('projects', 'read')
   async findById(@Param('id') id: string) {
     return this.boardsService.findById(id);
   }
 
   @Get(':id/issues')
+  @RequirePermission('projects', 'read')
   async findByIdWithIssues(@Param('id') id: string) {
     return this.boardsService.findByIdWithIssues(id);
   }
 
   @Patch(':id')
+  @RequirePermission('projects', 'update')
   async update(
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateBoardSchema)) dto: any,
@@ -61,6 +66,7 @@ export class BoardsController {
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @RequirePermission('projects', 'update')
   async delete(@Param('id') id: string) {
     await this.boardsService.delete(id);
   }

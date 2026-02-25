@@ -1,4 +1,4 @@
-import { useState, useEffect, type FormEvent } from 'react';
+import { useState, useEffect, useCallback, type FormEvent } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
   useIssue,
@@ -8,11 +8,13 @@ import {
   useWorkflowTransitions,
   useTransitionIssue,
   useUsers,
+  useHasPermission,
 } from '@/api';
 import type { IssuePriority } from '@weaver/shared';
 import { IssueActivityTabs } from './IssueActivityTabs';
 import { PluginSlot } from '@/plugins';
-import { ChevronDown } from 'lucide-react';
+import { RichTextEditor, normalizeCommentBody } from '@/components/RichTextEditor';
+import { ChevronDown, Pencil, Check, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -41,11 +43,39 @@ export function IssueDetailPage() {
     issue?.statusId || '',
   );
   const { data: users } = useUsers();
+  const canUpdate = useHasPermission('issues.update');
+  const canTransition = useHasPermission('issues.transition');
+  const canAssign = useHasPermission('issues.assign');
 
   const [isEditing, setIsEditing] = useState(false);
   const [summary, setSummary] = useState('');
   const [priority, setPriority] = useState<IssuePriority>('medium');
   const [labels, setLabels] = useState('');
+  const [editingDesc, setEditingDesc] = useState(false);
+  const [descJson, setDescJson] = useState<Record<string, unknown> | null>(null);
+
+  // Keyboard shortcuts: a = assignee picker, s = status transition menu
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const tagName = target.tagName.toLowerCase();
+      const isInput = tagName === 'input' || tagName === 'textarea' || tagName === 'select';
+      if (isInput || target.isContentEditable) return;
+
+      if (e.key === 'a') {
+        e.preventDefault();
+        const trigger = document.querySelector<HTMLButtonElement>('[data-shortcut-assignee]');
+        trigger?.click();
+      } else if (e.key === 's') {
+        e.preventDefault();
+        const trigger = document.querySelector<HTMLButtonElement>('[data-shortcut-status]');
+        trigger?.click();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   useEffect(() => {
     if (issue) {
@@ -54,6 +84,21 @@ export function IssueDetailPage() {
       setLabels(issue.labels.join(', '));
     }
   }, [issue]);
+
+  const startEditingDesc = useCallback(() => {
+    setDescJson(normalizeCommentBody(issue?.description || null));
+    setEditingDesc(true);
+  }, [issue?.description]);
+
+  const saveDescription = useCallback(async () => {
+    if (!descJson) {
+      await updateIssue.mutateAsync({ description: undefined });
+    } else {
+      await updateIssue.mutateAsync({ description: descJson });
+    }
+    setEditingDesc(false);
+    setDescJson(null);
+  }, [descJson, updateIssue]);
 
   const handleSave = async (e: FormEvent) => {
     e.preventDefault();
@@ -138,13 +183,15 @@ export function IssueDetailPage() {
                   <span className="mr-2 text-primary">{issue.key}</span>
                   {isEditing ? null : issue.summary}
                 </h1>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setIsEditing(!isEditing)}
-                >
-                  {isEditing ? 'Cancel' : 'Edit'}
-                </Button>
+                {canUpdate && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setIsEditing(!isEditing)}
+                  >
+                    {isEditing ? 'Cancel' : 'Edit'}
+                  </Button>
+                )}
               </div>
 
               {isEditing ? (
@@ -198,16 +245,57 @@ export function IssueDetailPage() {
                   </Button>
                 </form>
               ) : (
-                <div>
-                  {issue.description && (
-                    <div className="prose prose-sm mt-4 text-foreground">
-                      <pre className="whitespace-pre-wrap text-sm">
-                        {JSON.stringify(issue.description, null, 2)}
-                      </pre>
+                <div className="mt-4">
+                  {editingDesc ? (
+                    <div className="space-y-2">
+                      <RichTextEditor
+                        issueKey={issueKey}
+                        content={descJson}
+                        onChange={setDescJson}
+                        placeholder="Add a description..."
+                      />
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          onClick={saveDescription}
+                          disabled={updateIssue.isPending}
+                        >
+                          <Check className="h-3.5 w-3.5" />
+                          {updateIssue.isPending ? 'Saving...' : 'Save'}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => { setEditingDesc(false); setDescJson(null); }}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                          Cancel
+                        </Button>
+                      </div>
                     </div>
-                  )}
-                  {!issue.description && (
-                    <p className="mt-4 text-sm italic text-muted-foreground">No description provided.</p>
+                  ) : (
+                    <div className="group relative">
+                      {issue.description ? (
+                        <RichTextEditor
+                          issueKey={issueKey}
+                          content={normalizeCommentBody(issue.description)}
+                          editable={false}
+                        />
+                      ) : (
+                        <p className="text-sm italic text-muted-foreground">
+                          {canUpdate ? 'Click to add a description...' : 'No description provided.'}
+                        </p>
+                      )}
+                      {canUpdate && (
+                        <button
+                          onClick={startEditingDesc}
+                          className="absolute top-0 right-0 rounded-md bg-card p-1.5 text-muted-foreground opacity-0 shadow-sm ring-1 ring-border transition-opacity hover:text-primary group-hover:opacity-100"
+                          title="Edit description"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
               )}
@@ -231,10 +319,11 @@ export function IssueDetailPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="px-4 pb-4 pt-0">
-              {availableTransitions && availableTransitions.length > 0 ? (
+              {availableTransitions && availableTransitions.length > 0 && canTransition ? (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <button
+                      data-shortcut-status
                       className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium text-white cursor-pointer"
                       style={{ backgroundColor: getStatusColor(issue.statusId) }}
                     >
@@ -288,7 +377,29 @@ export function IssueDetailPage() {
                 <div>
                   <dt className="text-xs text-muted-foreground">Priority</dt>
                   <dd className="mt-0.5">
-                    <PriorityBadge priority={issue.priority} />
+                    {canUpdate ? (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm hover:bg-accent cursor-pointer">
+                            <PriorityBadge priority={issue.priority} />
+                            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start">
+                          {(['highest', 'high', 'medium', 'low', 'lowest'] as const).map((p) => (
+                            <DropdownMenuItem
+                              key={p}
+                              onClick={() => updateIssue.mutate({ priority: p })}
+                              className={cn('gap-2', p === issue.priority && 'bg-accent')}
+                            >
+                              <PriorityBadge priority={p} />
+                            </DropdownMenuItem>
+                          ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    ) : (
+                      <PriorityBadge priority={issue.priority} />
+                    )}
                   </dd>
                 </div>
                 <div>
@@ -298,44 +409,50 @@ export function IssueDetailPage() {
                 <div>
                   <dt className="text-xs text-muted-foreground">Assignee</dt>
                   <dd className="mt-0.5">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <button className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm hover:bg-accent cursor-pointer">
-                          {issue.assigneeId ? (
-                            <>
-                              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-[10px] font-medium text-primary">
-                                {getUserInitials(issue.assigneeId)}
-                              </span>
-                              {getUserName(issue.assigneeId)}
-                            </>
-                          ) : (
-                            <span className="text-muted-foreground">Unassigned</span>
-                          )}
-                          <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
-                        </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="start" className="w-52">
-                        <DropdownMenuItem
-                          onClick={() => updateIssue.mutate({ assigneeId: null })}
-                          disabled={!issue.assigneeId}
-                          className="gap-2 text-muted-foreground"
-                        >
-                          Unassign
-                        </DropdownMenuItem>
-                        {users?.map((u) => (
+                    {canAssign ? (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button data-shortcut-assignee className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm hover:bg-accent cursor-pointer">
+                            {issue.assigneeId ? (
+                              <>
+                                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-[10px] font-medium text-primary">
+                                  {getUserInitials(issue.assigneeId)}
+                                </span>
+                                {getUserName(issue.assigneeId)}
+                              </>
+                            ) : (
+                              <span className="text-muted-foreground">Unassigned</span>
+                            )}
+                            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start" className="w-52">
                           <DropdownMenuItem
-                            key={u.id}
-                            onClick={() => updateIssue.mutate({ assigneeId: u.id })}
-                            className={cn('gap-2', u.id === issue.assigneeId && 'bg-accent')}
+                            onClick={() => updateIssue.mutate({ assigneeId: null })}
+                            disabled={!issue.assigneeId}
+                            className="gap-2 text-muted-foreground"
                           >
-                            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-[10px] font-medium text-primary shrink-0">
-                              {(u.displayName || u.email).split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)}
-                            </span>
-                            {u.displayName || u.email}
+                            Unassign
                           </DropdownMenuItem>
-                        ))}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                          {users?.map((u) => (
+                            <DropdownMenuItem
+                              key={u.id}
+                              onClick={() => updateIssue.mutate({ assigneeId: u.id })}
+                              className={cn('gap-2', u.id === issue.assigneeId && 'bg-accent')}
+                            >
+                              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-[10px] font-medium text-primary shrink-0">
+                                {(u.displayName || u.email).split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)}
+                              </span>
+                              {u.displayName || u.email}
+                            </DropdownMenuItem>
+                          ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    ) : (
+                      <span className="text-sm text-foreground">
+                        {getUserName(issue.assigneeId) || 'Unassigned'}
+                      </span>
+                    )}
                   </dd>
                 </div>
                 <div>
@@ -357,27 +474,35 @@ export function IssueDetailPage() {
                 <div>
                   <dt className="text-xs text-muted-foreground">Start Date</dt>
                   <dd className="mt-0.5">
-                    <input
-                      type="date"
-                      value={issue.startDate || ''}
-                      onChange={(e) =>
-                        updateIssue.mutate({ startDate: e.target.value || null })
-                      }
-                      className="rounded-md border border-input bg-background px-2 py-1 text-sm focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
-                    />
+                    {canUpdate ? (
+                      <input
+                        type="date"
+                        value={issue.startDate || ''}
+                        onChange={(e) =>
+                          updateIssue.mutate({ startDate: e.target.value || null })
+                        }
+                        className="rounded-md border border-input bg-background px-2 py-1 text-sm focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
+                      />
+                    ) : (
+                      <span className="text-sm text-foreground">{issue.startDate || '-'}</span>
+                    )}
                   </dd>
                 </div>
                 <div>
                   <dt className="text-xs text-muted-foreground">Due Date</dt>
                   <dd className="mt-0.5">
-                    <input
-                      type="date"
-                      value={issue.dueDate || ''}
-                      onChange={(e) =>
-                        updateIssue.mutate({ dueDate: e.target.value || null })
-                      }
-                      className="rounded-md border border-input bg-background px-2 py-1 text-sm focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
-                    />
+                    {canUpdate ? (
+                      <input
+                        type="date"
+                        value={issue.dueDate || ''}
+                        onChange={(e) =>
+                          updateIssue.mutate({ dueDate: e.target.value || null })
+                        }
+                        className="rounded-md border border-input bg-background px-2 py-1 text-sm focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
+                      />
+                    ) : (
+                      <span className="text-sm text-foreground">{issue.dueDate || '-'}</span>
+                    )}
                   </dd>
                 </div>
                 <div>
@@ -392,7 +517,8 @@ export function IssueDetailPage() {
                       onChange={(e) =>
                         updateIssue.mutate({ percentDone: Number(e.target.value) })
                       }
-                      className="h-2 w-24 cursor-pointer accent-primary"
+                      disabled={!canUpdate}
+                      className="h-2 w-24 cursor-pointer accent-primary disabled:opacity-50 disabled:cursor-not-allowed"
                     />
                     <span className="text-sm text-foreground">{issue.percentDone ?? 0}%</span>
                   </dd>

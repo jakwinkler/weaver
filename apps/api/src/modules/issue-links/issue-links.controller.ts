@@ -11,7 +11,7 @@ import {
 } from '@nestjs/common';
 import { z } from 'zod';
 import { ISSUE_LINK_TYPES } from '@weaver/shared';
-import { JwtAuthGuard } from '../../core/auth';
+import { JwtAuthGuard, PermissionGuard, RequirePermission } from '../../core/auth';
 import { ZodValidationPipe } from '../../common';
 import { IssueLinksService } from './issue-links.service';
 
@@ -22,11 +22,12 @@ const createIssueLinkSchema = z.object({
 });
 
 @Controller('issue-links')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionGuard)
 export class IssueLinksController {
   constructor(private readonly issueLinksService: IssueLinksService) {}
 
   @Post()
+  @RequirePermission('issues', 'update')
   async create(
     @Body(new ZodValidationPipe(createIssueLinkSchema)) dto: any,
   ) {
@@ -34,12 +35,14 @@ export class IssueLinksController {
   }
 
   @Get('by-issue/:issueId')
+  @RequirePermission('issues', 'read')
   async findByIssue(@Param('issueId') issueId: string) {
     return this.issueLinksService.findByIssue(issueId);
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @RequirePermission('issues', 'update')
   async delete(@Param('id') id: string) {
     await this.issueLinksService.delete(id);
   }

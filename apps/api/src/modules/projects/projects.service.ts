@@ -4,6 +4,7 @@ import { CreateProjectDto, UpdateProjectDto, PaginatedResponse } from '@weaver/s
 import { TenantConnectionProvider } from '../../core/tenant';
 import { WorkflowsService } from '../workflows';
 import { EventDispatcherService } from '../events';
+import { ProjectPluginsService } from './project-plugins.service';
 import { PaginationParams, paginate } from '../../common';
 
 @Injectable()
@@ -12,6 +13,7 @@ export class ProjectsService {
     private readonly tenantConnections: TenantConnectionProvider,
     private readonly workflowsService: WorkflowsService,
     private readonly eventDispatcher: EventDispatcherService,
+    private readonly projectPluginsService: ProjectPluginsService,
   ) {}
 
   async create(dto: CreateProjectDto, userId: string): Promise<ProjectEntity> {
@@ -49,6 +51,9 @@ export class ProjectsService {
       role: 'lead',
     });
     await memberRepo.save(member);
+
+    // Seed default project plugins
+    await this.projectPluginsService.seedDefaults(saved.id);
 
     this.eventDispatcher.emit('project.created', {
       projectKey: saved.key,

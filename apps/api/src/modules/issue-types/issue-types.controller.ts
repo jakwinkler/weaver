@@ -11,7 +11,7 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { z } from 'zod';
-import { JwtAuthGuard } from '../../core/auth';
+import { JwtAuthGuard, PermissionGuard, RequirePermission } from '../../core/auth';
 import { ZodValidationPipe } from '../../common';
 import { IssueTypesService } from './issue-types.service';
 
@@ -34,11 +34,12 @@ const updateIssueTypeSchema = z.object({
 });
 
 @Controller('issue-types')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionGuard)
 export class IssueTypesController {
   constructor(private readonly issueTypesService: IssueTypesService) {}
 
   @Post()
+  @RequirePermission('admin', 'manage_roles')
   async create(
     @Body(new ZodValidationPipe(createIssueTypeSchema)) dto: any,
   ) {
@@ -51,6 +52,7 @@ export class IssueTypesController {
   }
 
   @Patch(':id')
+  @RequirePermission('admin', 'manage_roles')
   async update(
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateIssueTypeSchema)) dto: any,
@@ -60,6 +62,7 @@ export class IssueTypesController {
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @RequirePermission('admin', 'manage_roles')
   async delete(@Param('id') id: string) {
     await this.issueTypesService.delete(id);
   }

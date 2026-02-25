@@ -11,6 +11,8 @@ import {
 import type { Request, Response } from 'express';
 import { JwtAuthGuard } from '../core/auth';
 import type { PluginRouteDefinition, PluginResponse } from '@weaver/sdk';
+import { RoleEntity } from '@weaver/db';
+import { TenantConnectionProvider } from '../core/tenant/tenant-connection.provider';
 import { PluginRegistryService } from './plugin-registry.service';
 import { PluginLoaderService } from './plugin-loader.service';
 import { PluginContextFactory } from './plugin-context.factory';
@@ -24,6 +26,7 @@ export class PluginRouteController {
     private readonly registry: PluginRegistryService,
     private readonly loader: PluginLoaderService,
     private readonly contextFactory: PluginContextFactory,
+    private readonly tenantConnections: TenantConnectionProvider,
   ) {}
 
   @All('*')
@@ -80,6 +83,29 @@ export class PluginRouteController {
           .json({ message: `Plugin route not found: ${method} ${normalizedPath}` });
       }
 
+      // Check route-level permissions
+      if (matchedRoute.requiredPermissions?.length) {
+        const reqUser = (req as any).user;
+        if (reqUser?.role !== 'owner') {
+          const em = await this.tenantConnections.getEntityManager();
+          const role = await em.getRepository(RoleEntity).findOne({
+            where: { name: reqUser?.role },
+          });
+          const perms = (role?.permissions ?? {}) as Record<string, unknown>;
+          if (perms['*'] !== true) {
+            const missing = matchedRoute.requiredPermissions.filter(
+              (p) => perms[p] !== true,
+            );
+            if (missing.length > 0) {
+              return res.status(HttpStatus.FORBIDDEN).json({
+                message: 'Missing required permissions',
+                missing,
+              });
+            }
+          }
+        }
+      }
+
       // Load the handler
       const handler = await this.loader.getHandler(pluginId, matchedRoute.handler);
       if (!handler) {
@@ -94,7 +120,7 @@ export class PluginRouteController {
         installed.settings,
         reqUser
           ? {
-              id: reqUser.id,
+              id: reqUser.userId || reqUser.id,
               email: reqUser.email,
               displayName: reqUser.displayName || '',
             }

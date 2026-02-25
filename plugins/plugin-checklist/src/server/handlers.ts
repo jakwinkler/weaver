@@ -5,6 +5,11 @@ async function getIssueId(context: PluginContext, issueKey: string): Promise<str
   return issue ? (issue as any).id : null;
 }
 
+function shouldTrackActivity(context: PluginContext): boolean {
+  // Default to true if setting is not explicitly set (manifest default is true)
+  return context.settings.trackActivity !== false;
+}
+
 async function syncDoneRatio(context: PluginContext, issueId: string, issueKey: string): Promise<void> {
   if (!context.settings.syncDoneRatio) return;
 
@@ -77,6 +82,20 @@ export async function addItem(req: PluginRequest, context: PluginContext): Promi
     subject: subject.trim(),
   });
 
+  if (shouldTrackActivity(context)) {
+    try {
+      context.logger.info('Logging checklist activity: item_added', { issueKey, subject: subject.trim() });
+      await context.api.activityLog.create(issueKey, {
+        action: 'checklist_item_added',
+        fieldName: 'checklist',
+        newValue: subject.trim(),
+      });
+      context.logger.info('Activity logged successfully');
+    } catch (err: any) {
+      context.logger.error('Failed to log checklist activity', { error: err.message });
+    }
+  }
+
   await syncDoneRatio(context, issueId, issueKey);
 
   return { status: 201, body: (rows as any[])[0] };
@@ -88,6 +107,13 @@ export async function updateItem(req: PluginRequest, context: PluginContext): Pr
 
   const issueId = await getIssueId(context, issueKey);
   if (!issueId) return { status: 404, body: { message: 'Issue not found' } };
+
+  // Fetch existing item for activity log diffing
+  const existingRows = await context.db.query(
+    'SELECT * FROM checklist_items WHERE id = $1 AND issue_id = $2',
+    [itemId, issueId],
+  );
+  const existingItem = (existingRows as any[])[0];
 
   const sets: string[] = [];
   const values: unknown[] = [];
@@ -118,17 +144,37 @@ export async function updateItem(req: PluginRequest, context: PluginContext): Pr
     return { status: 404, body: { message: 'Checklist item not found' } };
   }
 
+  const updated = (rows as any[])[0];
+
   if (body.is_done === true) {
     await context.events.emit('checklist.item_completed', {
       issueKey,
       itemId,
-      subject: (rows as any[])[0].subject,
+      subject: updated.subject,
     });
+  }
+
+  if (shouldTrackActivity(context) && existingItem) {
+    if (body.is_done !== undefined && body.is_done !== existingItem.is_done) {
+      await context.api.activityLog.create(issueKey, {
+        action: body.is_done ? 'checklist_item_completed' : 'checklist_item_reopened',
+        fieldName: 'checklist',
+        newValue: updated.subject,
+      });
+    }
+    if (body.subject !== undefined && body.subject.trim() !== existingItem.subject) {
+      await context.api.activityLog.create(issueKey, {
+        action: 'checklist_item_updated',
+        fieldName: 'checklist',
+        oldValue: existingItem.subject,
+        newValue: body.subject.trim(),
+      });
+    }
   }
 
   await syncDoneRatio(context, issueId, issueKey);
 
-  return { status: 200, body: (rows as any[])[0] };
+  return { status: 200, body: updated };
 }
 
 export async function deleteItem(req: PluginRequest, context: PluginContext): Promise<PluginResponse> {
@@ -150,11 +196,21 @@ export async function deleteItem(req: PluginRequest, context: PluginContext): Pr
     [itemId, issueId],
   );
 
+  const deletedSubject = (existing as any[])[0].subject;
+
   await context.events.emit('checklist.item_removed', {
     issueKey,
     itemId,
-    subject: (existing as any[])[0].subject,
+    subject: deletedSubject,
   });
+
+  if (shouldTrackActivity(context)) {
+    await context.api.activityLog.create(issueKey, {
+      action: 'checklist_item_removed',
+      fieldName: 'checklist',
+      oldValue: deletedSubject,
+    });
+  }
 
   await syncDoneRatio(context, issueId, issueKey);
 

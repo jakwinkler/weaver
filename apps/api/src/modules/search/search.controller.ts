@@ -5,7 +5,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { z } from 'zod';
-import { JwtAuthGuard } from '../../core/auth';
+import { JwtAuthGuard, PermissionGuard } from '../../core/auth';
 import { ZodValidationPipe } from '../../common';
 import { SearchService } from './search.service';
 
@@ -17,7 +17,7 @@ const searchSchema = z.object({
 });
 
 @Controller('search')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionGuard)
 export class SearchController {
   constructor(private readonly searchService: SearchService) {}
 

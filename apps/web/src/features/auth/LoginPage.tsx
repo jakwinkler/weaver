@@ -18,7 +18,7 @@ export function LoginPage() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     const result = await loginMutation.mutateAsync({ email, password });
-    login(result.accessToken, result.user, result.tenantId);
+    login(result.accessToken, result.user, result.tenantId, result.refreshToken);
     navigate('/projects');
   };
 

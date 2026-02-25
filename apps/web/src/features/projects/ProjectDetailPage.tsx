@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useParams, Link, useLocation } from 'react-router-dom';
-import { useProject, useProjectIssues, useUpdateProject, useMyPermissions } from '@/api';
+import { useProject, useProjectIssues, useUpdateProject, useHasPermission, useProjectPlugins, useAvailablePlugins, useInstalledPlugins } from '@/api';
+import { getProjectViewEntries } from '@/plugins/plugin-slot-registry';
 import { Settings as SettingsIcon, Pencil, X, Check } from 'lucide-react';
 import { RichTextEditor, normalizeCommentBody, serializeDoc } from '@/components/RichTextEditor';
 import { ProjectIcon } from './ProjectSettingsPage';
@@ -25,11 +26,8 @@ export function ProjectDetailPage() {
     projectKey: projectKey!,
   });
   const updateProject = useUpdateProject();
-  const permissions = useMyPermissions();
   const location = useLocation();
-
-  const canEdit =
-    permissions.includes('*') || permissions.includes('projects.update');
+  const canEdit = useHasPermission('projects.update');
 
   const [editingDesc, setEditingDesc] = useState(false);
   const [descJson, setDescJson] = useState<Record<string, unknown> | null>(null);
@@ -82,12 +80,14 @@ export function ProjectDetailPage() {
             </Badge>
             <h1 className="text-2xl font-bold text-foreground">{project.name}</h1>
           </div>
-          <Button variant="secondary" size="sm" asChild>
-            <Link to={`/projects/${project.key}/settings`}>
-              <SettingsIcon className="h-4 w-4" />
-              Settings
-            </Link>
-          </Button>
+          {canEdit && (
+            <Button variant="secondary" size="sm" asChild>
+              <Link to={`/projects/${project.key}/settings`}>
+                <SettingsIcon className="h-4 w-4" />
+                Settings
+              </Link>
+            </Button>
+          )}
         </div>
 
         {/* Description */}
@@ -237,18 +237,26 @@ export function ProjectDetailPage() {
   );
 }
 
-const VIEW_LINKS = [
-  { label: 'Issues', path: 'issues' },
-  { label: 'Board', path: 'board' },
-  { label: 'Sprints', path: 'sprints' },
-  { label: 'Gantt', path: 'gantt' },
-  { label: 'Calendar', path: 'calendar' },
-];
-
 function ProjectViewNav({ projectKey, currentPath }: { projectKey: string; currentPath: string }) {
+  const { data: plugins } = useProjectPlugins(projectKey);
+  const { data: availablePlugins } = useAvailablePlugins();
+  const { data: installedPlugins } = useInstalledPlugins();
+
+  // Only show plugins that are both installed+enabled at tenant level AND enabled for this project
+  const tenantEnabledIds = new Set(
+    (installedPlugins || []).filter((p) => p.enabled).map((p) => p.pluginId),
+  );
+  const enabledPluginIds = (plugins?.map((p) => p.pluginId) || []).filter((id) => tenantEnabledIds.has(id));
+  const dynamicViews = getProjectViewEntries(availablePlugins ?? [], enabledPluginIds);
+
+  const viewLinks = [
+    { label: 'Issues', path: 'issues' },
+    ...dynamicViews.map((v) => ({ label: v.label, path: v.viewPath })),
+  ];
+
   return (
     <nav className="mb-6 flex gap-1 rounded-lg border border-border bg-card p-1">
-      {VIEW_LINKS.map(({ label, path }) => {
+      {viewLinks.map(({ label, path }) => {
         const href = `/projects/${projectKey}/${path}`;
         const isActive = currentPath === href;
         return (

@@ -5,6 +5,7 @@
   "description": "Link GitHub commits, pull requests, and branches to Weaver issues",
   "author": "Weaver Team",
   "icon": "github",
+  "type": "integration",
   "entrypoints": {
     "server": "./src/server/index.ts",
     "client": "./src/client/index.ts"

@@ -1,21 +1,17 @@
-import {
-  Timer,
-  GitBranch,
-  Github,
-  Gitlab,
-  FolderGit2,
-  ListChecks,
-  Puzzle,
-  type LucideIcon,
-} from 'lucide-react';
+import { icons, Puzzle, type LucideIcon } from 'lucide-react';
 
-export const PLUGIN_ICONS: Record<string, LucideIcon> = {
-  timer: Timer,
-  'git-branch': GitBranch,
-  github: Github,
-  gitlab: Gitlab,
-  'folder-git-2': FolderGit2,
-  'list-checks': ListChecks,
-};
+function kebabToPascal(name: string): string {
+  return name
+    .split('-')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join('');
+}
+
+export function getPluginIcon(name?: string): LucideIcon {
+  if (!name) return Puzzle;
+  const pascalName = kebabToPascal(name);
+  const icon = (icons as Record<string, LucideIcon>)[pascalName];
+  return icon ?? Puzzle;
+}
 
 export const DEFAULT_PLUGIN_ICON = Puzzle;

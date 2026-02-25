@@ -12,14 +12,30 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
-import { PLUGIN_ICONS, DEFAULT_PLUGIN_ICON } from '@/plugins/plugin-icons';
+import { getPluginIcon } from '@/plugins/plugin-icons';
 
 function PluginIcon({ iconName }: { iconName?: string }) {
-  const Icon = iconName ? PLUGIN_ICONS[iconName] || DEFAULT_PLUGIN_ICON : DEFAULT_PLUGIN_ICON;
+  const Icon = getPluginIcon(iconName);
   return (
     <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-100 text-indigo-700">
       <Icon className="h-5 w-5" />
     </span>
+  );
+}
+
+const TYPE_BADGE_STYLES: Record<string, string> = {
+  app: 'bg-blue-100 text-blue-700',
+  widget: 'bg-purple-100 text-purple-700',
+  feature: 'bg-emerald-100 text-emerald-700',
+  integration: 'bg-amber-100 text-amber-700',
+};
+
+function PluginTypeBadge({ type }: { type?: string }) {
+  if (!type) return null;
+  return (
+    <Badge className={cn('border-transparent capitalize', TYPE_BADGE_STYLES[type] || 'bg-muted text-muted-foreground')}>
+      {type}
+    </Badge>
   );
 }
 
@@ -33,6 +49,8 @@ export function PluginsPage() {
 
   const isInstalled = (pluginId: string) =>
     installed?.some((p) => p.pluginId === pluginId) ?? false;
+
+  const notInstalled = available?.filter((p) => !isInstalled(p.id)) ?? [];
 
   const isLoading = availableLoading || installedLoading;
 
@@ -54,7 +72,7 @@ export function PluginsPage() {
             Installed ({installed?.length ?? 0})
           </TabsTrigger>
           <TabsTrigger value="available">
-            Available ({available?.length ?? 0})
+            Available ({notInstalled.length})
           </TabsTrigger>
         </TabsList>
 
@@ -95,6 +113,7 @@ export function PluginsPage() {
                                 {manifest?.name || plugin.pluginId}
                               </h3>
                               <Badge variant="secondary">v{plugin.version}</Badge>
+                              <PluginTypeBadge type={manifest?.type} />
                               <Badge
                                 className={cn(
                                   plugin.enabled
@@ -161,15 +180,14 @@ export function PluginsPage() {
         {/* Available Tab */}
         <TabsContent value="available">
           <div className="space-y-4">
-            {!available || available.length === 0 ? (
+            {notInstalled.length === 0 ? (
               <Card>
                 <CardContent className="px-6 py-12 text-center">
                   <p className="text-sm text-muted-foreground">No plugins available.</p>
                 </CardContent>
               </Card>
             ) : (
-              available.map((plugin) => {
-                const alreadyInstalled = isInstalled(plugin.id);
+              notInstalled.map((plugin) => {
                 return (
                   <Card key={plugin.id}>
                     <CardContent className="p-6">
@@ -182,6 +200,7 @@ export function PluginsPage() {
                                 {plugin.name}
                               </h3>
                               <Badge variant="secondary">v{plugin.version}</Badge>
+                              <PluginTypeBadge type={plugin.type} />
                               {plugin.author && (
                                 <span className="text-xs text-muted-foreground">
                                   by {plugin.author}
@@ -205,21 +224,13 @@ export function PluginsPage() {
                           </div>
                         </div>
                         <div className="shrink-0">
-                          {alreadyInstalled ? (
-                            <Badge
-                              className="border-transparent bg-green-100 text-green-700 px-3 py-1.5 text-sm"
-                            >
-                              Installed
-                            </Badge>
-                          ) : (
-                            <Button
-                              size="sm"
-                              onClick={() => installPlugin.mutate(plugin.id)}
-                              disabled={installPlugin.isPending}
-                            >
-                              {installPlugin.isPending ? 'Installing...' : 'Install'}
-                            </Button>
-                          )}
+                          <Button
+                            size="sm"
+                            onClick={() => installPlugin.mutate(plugin.id)}
+                            disabled={installPlugin.isPending}
+                          >
+                            {installPlugin.isPending ? 'Installing...' : 'Install'}
+                          </Button>
                         </div>
                       </div>
                     </CardContent>

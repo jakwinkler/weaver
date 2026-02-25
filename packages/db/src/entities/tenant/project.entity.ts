@@ -39,6 +39,9 @@ export class ProjectEntity {
   @Column({ name: 'custom_fields', type: 'jsonb', default: '{}' })
   customFields!: Record<string, unknown>;
 
+  @Column({ type: 'varchar', length: 20, default: 'private' })
+  visibility!: 'private' | 'public';
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;
 

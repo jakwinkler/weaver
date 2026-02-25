@@ -1,11 +1,17 @@
 import {
   Controller,
   Get,
+  Post,
   Patch,
   Body,
   Param,
+  Query,
   UseGuards,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { updateUserSchema } from '@weaver/shared';
 import { JwtAuthGuard, AdminGuard, CurrentUser, RequestUser } from '../../core/auth';
 import { ZodValidationPipe } from '../../common';
@@ -27,6 +33,23 @@ export class UsersController {
     @Body(new ZodValidationPipe(updateUserSchema)) dto: any,
   ) {
     return this.usersService.update(user.userId, dto);
+  }
+
+  @Post('me/avatar')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadAvatar(
+    @CurrentUser() user: RequestUser,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) {
+      throw new BadRequestException('File is required');
+    }
+    return this.usersService.uploadAvatar(user.userId, file);
+  }
+
+  @Get('search')
+  async searchUsers(@Query('q') query: string, @CurrentUser() user: RequestUser) {
+    return this.usersService.searchTenantMembers(user.tenantId, query || '');
   }
 
   @Get()

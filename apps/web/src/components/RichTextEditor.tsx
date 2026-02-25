@@ -1,12 +1,16 @@
-import { useEditor, EditorContent } from '@tiptap/react';
+import { useEditor, EditorContent, ReactRenderer } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Image from '@tiptap/extension-image';
 import Placeholder from '@tiptap/extension-placeholder';
 import Link from '@tiptap/extension-link';
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
+import Mention from '@tiptap/extension-mention';
 import { common, createLowlight } from 'lowlight';
+import tippy, { type Instance as TippyInstance } from 'tippy.js';
 import { useCallback, useEffect, useRef } from 'react';
 import { useUploadAttachment, useGenericUploadAttachment, getAttachmentUrl } from '@/api';
+import { MentionList, fetchMentionUsers } from './MentionSuggestion';
+import type { MentionUser } from './MentionSuggestion';
 import {
   Bold,
   Italic,
@@ -111,11 +115,67 @@ export function RichTextEditor({
     extensions: [
       StarterKit.configure({
         codeBlock: false,
+        link: false,
       }),
       Image.configure({ inline: false }),
       Placeholder.configure({ placeholder }),
       Link.configure({ openOnClick: !editable }),
       CodeBlockLowlight.configure({ lowlight }),
+      Mention.configure({
+        HTMLAttributes: {
+          class: 'mention',
+        },
+        suggestion: {
+          items: async ({ query }: { query: string }): Promise<MentionUser[]> => {
+            if (!query) return [];
+            return fetchMentionUsers(query);
+          },
+          render: () => {
+            let component: ReactRenderer<any> | null = null;
+            let popup: TippyInstance[] | null = null;
+
+            return {
+              onStart: (props: any) => {
+                component = new ReactRenderer(MentionList, {
+                  props,
+                  editor: props.editor,
+                });
+
+                if (!props.clientRect) return;
+
+                popup = tippy('body', {
+                  getReferenceClientRect: props.clientRect,
+                  appendTo: () => document.body,
+                  content: component.element,
+                  showOnCreate: true,
+                  interactive: true,
+                  trigger: 'manual',
+                  placement: 'bottom-start',
+                });
+              },
+              onUpdate: (props: any) => {
+                component?.updateProps(props);
+                if (popup?.[0] && props.clientRect) {
+                  popup[0].setProps({
+                    getReferenceClientRect: props.clientRect,
+                  });
+                }
+              },
+              onKeyDown: (props: any) => {
+                if (props.event.key === 'Escape') {
+                  popup?.[0]?.hide();
+                  return true;
+                }
+                return (component?.ref as any)?.onKeyDown?.(props) ?? false;
+              },
+              onExit: () => {
+                popup?.[0]?.destroy();
+                component?.destroy();
+              },
+            };
+          },
+        },
+      }),
     ],
     content: normalizeCommentBody(content),
     editable,
@@ -192,7 +252,7 @@ export function RichTextEditor({
   }
 
   return (
-    <div className="rounded-md border border-gray-300 focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-500">
+    <div className="rounded-md border border-border focus-within:border-ring focus-within:ring-1 focus-within:ring-ring">
       <Toolbar editor={editor} />
       <EditorContent editor={editor} />
     </div>
@@ -203,7 +263,7 @@ function Toolbar({ editor }: { editor: ReturnType<typeof useEditor> }) {
   if (!editor) return null;
 
   const btn = (active: boolean) =>
-    `rounded p-1.5 ${active ? 'bg-indigo-100 text-indigo-700' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'}`;
+    `rounded p-1.5 ${active ? 'bg-accent text-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground'}`;
 
   const handleLink = () => {
     const url = window.prompt('URL:');
@@ -220,7 +280,7 @@ function Toolbar({ editor }: { editor: ReturnType<typeof useEditor> }) {
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-0.5 border-b border-gray-200 px-2 py-1">
+    <div className="flex flex-wrap items-center gap-0.5 border-b border-border px-2 py-1">
       <button type="button" onClick={() => editor.chain().focus().toggleBold().run()} className={btn(editor.isActive('bold'))} title="Bold">
         <Bold className="h-4 w-4" />
       </button>
@@ -231,7 +291,7 @@ function Toolbar({ editor }: { editor: ReturnType<typeof useEditor> }) {
         <Strikethrough className="h-4 w-4" />
       </button>
 
-      <div className="mx-1 h-5 w-px bg-gray-200" />
+      <div className="mx-1 h-5 w-px bg-border" />
 
       <button type="button" onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} className={btn(editor.isActive('heading', { level: 1 }))} title="Heading 1">
         <Heading1 className="h-4 w-4" />
@@ -243,7 +303,7 @@ function Toolbar({ editor }: { editor: ReturnType<typeof useEditor> }) {
         <Heading3 className="h-4 w-4" />
       </button>
 
-      <div className="mx-1 h-5 w-px bg-gray-200" />
+      <div className="mx-1 h-5 w-px bg-border" />
 
       <button type="button" onClick={() => editor.chain().focus().toggleBulletList().run()} className={btn(editor.isActive('bulletList'))} title="Bullet List">
         <List className="h-4 w-4" />
@@ -252,7 +312,7 @@ function Toolbar({ editor }: { editor: ReturnType<typeof useEditor> }) {
         <ListOrdered className="h-4 w-4" />
       </button>
 
-      <div className="mx-1 h-5 w-px bg-gray-200" />
+      <div className="mx-1 h-5 w-px bg-border" />
 
       <button type="button" onClick={() => editor.chain().focus().toggleBlockquote().run()} className={btn(editor.isActive('blockquote'))} title="Blockquote">
         <Quote className="h-4 w-4" />
@@ -261,7 +321,7 @@ function Toolbar({ editor }: { editor: ReturnType<typeof useEditor> }) {
         <Code className="h-4 w-4" />
       </button>
 
-      <div className="mx-1 h-5 w-px bg-gray-200" />
+      <div className="mx-1 h-5 w-px bg-border" />
 
       <button type="button" onClick={handleLink} className={btn(editor.isActive('link'))} title="Link">
         <LinkIcon className="h-4 w-4" />

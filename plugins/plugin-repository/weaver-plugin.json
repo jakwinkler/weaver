@@ -5,6 +5,7 @@
   "description": "Link repositories and branches to projects and issues",
   "author": "Weaver",
   "icon": "git-branch",
+  "type": "integration",
   "entrypoints": {
     "server": "src/server/index.ts"
   },

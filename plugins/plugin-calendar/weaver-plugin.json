@@ -1,0 +1,29 @@
+{
+  "id": "@weaver/plugin-calendar",
+  "name": "Calendar",
+  "version": "1.0.0",
+  "description": "Calendar view for project issues with due dates",
+  "author": "Weaver",
+  "icon": "calendar",
+  "type": "feature",
+  "scope": "project",
+  "entrypoints": {},
+  "permissions": ["calendar.view"],
+  "declaredPermissions": [
+    {
+      "key": "calendar.view",
+      "label": "View calendar",
+      "description": "View the calendar view of project issues"
+    }
+  ],
+  "ui": {
+    "projectViews": [
+      {
+        "label": "Calendar",
+        "icon": "calendar",
+        "viewPath": "calendar",
+        "requiredPermissions": ["calendar.view"]
+      }
+    ]
+  }
+}

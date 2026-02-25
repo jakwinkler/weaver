@@ -6,8 +6,9 @@ interface AuthState {
   accessToken: string | null;
   tenantId: string | null;
   role: string | null;
-  login: (token: string, user: User, tenantId: string) => void;
+  login: (token: string, user: User, tenantId: string, refreshToken?: string) => void;
   logout: () => void;
+  updateUser: (partial: Partial<User>) => void;
   isAuthenticated: () => boolean;
   isAdmin: () => boolean;
 }
@@ -30,17 +31,28 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     return token ? decodeJwtRole(token) : null;
   })(),
 
-  login: (token: string, user: User, tenantId: string) => {
+  login: (token: string, user: User, tenantId: string, refreshToken?: string) => {
     localStorage.setItem('accessToken', token);
     localStorage.setItem('tenantId', tenantId);
+    if (refreshToken) {
+      localStorage.setItem('refreshToken', refreshToken);
+    }
     const role = decodeJwtRole(token);
     set({ accessToken: token, user, tenantId, role });
   },
 
   logout: () => {
     localStorage.removeItem('accessToken');
+    localStorage.removeItem('refreshToken');
     localStorage.removeItem('tenantId');
     set({ accessToken: null, user: null, tenantId: null, role: null });
+  },
+
+  updateUser: (partial: Partial<User>) => {
+    const current = get().user;
+    if (current) {
+      set({ user: { ...current, ...partial } });
+    }
   },
 
   isAuthenticated: () => {

@@ -70,6 +70,14 @@ export interface PluginCoreApi {
     }): Promise<unknown>;
     unregisterAll(): Promise<void>;
   };
+  activityLog: {
+    create(issueKey: string, dto: {
+      action: string;
+      fieldName?: string | null;
+      oldValue?: string | null;
+      newValue?: string | null;
+    }): Promise<unknown>;
+  };
 }
 
 export interface PluginLogger {

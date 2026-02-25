@@ -1,0 +1,34 @@
+{
+  "id": "@weaver/plugin-board",
+  "name": "Kanban Board",
+  "version": "1.0.0",
+  "description": "Kanban board view for project issues organized by workflow status",
+  "author": "Weaver",
+  "icon": "layout-dashboard",
+  "type": "feature",
+  "scope": "project",
+  "entrypoints": {},
+  "permissions": ["board.view", "board.manage"],
+  "declaredPermissions": [
+    {
+      "key": "board.view",
+      "label": "View board",
+      "description": "View the Kanban board and issue cards"
+    },
+    {
+      "key": "board.manage",
+      "label": "Manage boards",
+      "description": "Create, edit, and delete board configurations"
+    }
+  ],
+  "ui": {
+    "projectViews": [
+      {
+        "label": "Board",
+        "icon": "layout-dashboard",
+        "viewPath": "board",
+        "requiredPermissions": ["board.view"]
+      }
+    ]
+  }
+}

@@ -13,7 +13,7 @@ import {
 } from '@nestjs/common';
 import { z } from 'zod';
 import { createSprintSchema } from '@weaver/shared';
-import { JwtAuthGuard } from '../../core/auth';
+import { JwtAuthGuard, PermissionGuard, RequirePermission } from '../../core/auth';
 import { ZodValidationPipe } from '../../common';
 import { SprintsService } from './sprints.service';
 
@@ -29,11 +29,12 @@ const addIssuesSchema = z.object({
 });
 
 @Controller('sprints')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionGuard)
 export class SprintsController {
   constructor(private readonly sprintsService: SprintsService) {}
 
   @Post()
+  @RequirePermission('sprints', 'create')
   async create(
     @Query('projectId') projectId: string,
     @Body(new ZodValidationPipe(createSprintSchema)) dto: any,
@@ -42,16 +43,19 @@ export class SprintsController {
   }
 
   @Get()
+  @RequirePermission('sprints', 'read')
   async findAll(@Query('projectId') projectId: string) {
     return this.sprintsService.findAll(projectId);
   }
 
   @Get(':id')
+  @RequirePermission('sprints', 'read')
   async findById(@Param('id') id: string) {
     return this.sprintsService.findById(id);
   }
 
   @Patch(':id')
+  @RequirePermission('sprints', 'update')
   async update(
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateSprintSchema)) dto: any,
@@ -61,21 +65,25 @@ export class SprintsController {
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @RequirePermission('sprints', 'delete')
   async delete(@Param('id') id: string) {
     await this.sprintsService.delete(id);
   }
 
   @Post(':id/start')
+  @RequirePermission('sprints', 'manage')
   async start(@Param('id') id: string) {
     return this.sprintsService.start(id);
   }
 
   @Post(':id/complete')
+  @RequirePermission('sprints', 'manage')
   async complete(@Param('id') id: string) {
     return this.sprintsService.complete(id);
   }
 
   @Post(':id/issues')
+  @RequirePermission('sprints', 'update')
   async addIssues(
     @Param('id') id: string,
     @Body(new ZodValidationPipe(addIssuesSchema)) dto: any,

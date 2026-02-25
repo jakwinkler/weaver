@@ -22,6 +22,7 @@ import {
   SavedFilterEntity,
   TimeEntryEntity,
   AttachmentEntity,
+  ProjectPluginEntity,
 } from '@weaver/db';
 import { requireTenantContext } from './tenant.context';
 
@@ -46,6 +47,7 @@ export const TENANT_ENTITIES = [
   SavedFilterEntity,
   TimeEntryEntity,
   AttachmentEntity,
+  ProjectPluginEntity,
 ];
 
 @Injectable()
@@ -69,7 +71,7 @@ export class TenantConnectionProvider {
       database: this.config.get('DATABASE_NAME', 'weaver'),
       schema: schemaName,
       entities: TENANT_ENTITIES,
-      synchronize: false,
+      synchronize: this.config.get('NODE_ENV') === 'development',
       logging: this.config.get('DATABASE_LOGGING') === 'true',
     });
 

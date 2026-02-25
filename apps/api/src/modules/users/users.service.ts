@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { UserEntity, TenantMembershipEntity } from '@weaver/db';
 import { UpdateUserDto } from '@weaver/shared';
+import { AttachmentsService } from '../attachments/attachments.service';
 
 const VALID_ROLES = ['owner', 'admin', 'member', 'viewer'];
 
@@ -13,6 +14,7 @@ export class UsersService {
     private readonly userRepo: Repository<UserEntity>,
     @InjectRepository(TenantMembershipEntity)
     private readonly membershipRepo: Repository<TenantMembershipEntity>,
+    private readonly attachmentsService: AttachmentsService,
   ) {}
 
   async findById(id: string): Promise<Omit<UserEntity, 'passwordHash'>> {
@@ -36,6 +38,36 @@ export class UsersService {
     const saved = await this.userRepo.save(user);
     const { passwordHash, ...rest } = saved;
     return rest;
+  }
+
+  async uploadAvatar(
+    userId: string,
+    file: Express.Multer.File,
+  ): Promise<Omit<UserEntity, 'passwordHash'>> {
+    const attachment = await this.attachmentsService.upload(file, userId);
+    return this.update(userId, {
+      avatarUrl: `/attachments/${attachment.id}/download`,
+    });
+  }
+
+  async searchTenantMembers(tenantId: string, query: string): Promise<any[]> {
+    const qb = this.membershipRepo
+      .createQueryBuilder('m')
+      .leftJoinAndSelect('m.user', 'u')
+      .where('m.tenantId = :tenantId', { tenantId })
+      .andWhere('(u.displayName ILIKE :q OR u.email ILIKE :q)', { q: `${query}%` })
+      .take(10);
+
+    const memberships = await qb.getMany();
+
+    return memberships.map((m) => ({
+      id: m.userId,
+      userId: m.userId,
+      role: m.role,
+      displayName: m.user.displayName,
+      email: m.user.email,
+      avatarUrl: m.user.avatarUrl,
+    }));
   }
 
   async findTenantMembers(tenantId: string): Promise<any[]> {

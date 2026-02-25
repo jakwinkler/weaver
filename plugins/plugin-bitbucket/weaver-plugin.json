@@ -5,6 +5,7 @@
   "description": "Link Bitbucket commits, pull requests, and branches to Weaver issues",
   "author": "Weaver Team",
   "icon": "folder-git-2",
+  "type": "integration",
   "entrypoints": {
     "server": "./src/server/index.ts",
     "client": "./src/client/index.ts"

@@ -28,11 +28,16 @@ export class PluginsController {
 
   @Get('permissions')
   async getPluginPermissions() {
+    const installed = await this.registry.getInstalled();
+    const enabledIds = new Set(
+      installed.filter((p) => p.enabled).map((p) => p.pluginId),
+    );
+
     const manifests = this.loader.getAllManifests();
     const result: Record<string, { pluginName: string; permissions: Array<{ key: string; label: string; description?: string }> }> = {};
 
     for (const manifest of manifests) {
-      if (manifest.declaredPermissions && manifest.declaredPermissions.length > 0) {
+      if (enabledIds.has(manifest.id) && manifest.declaredPermissions && manifest.declaredPermissions.length > 0) {
         result[manifest.id] = {
           pluginName: manifest.name,
           permissions: manifest.declaredPermissions,

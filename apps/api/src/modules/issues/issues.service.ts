@@ -1,6 +1,9 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { IssueEntity, WorkflowStatusEntity, ActivityLogEntity } from '@weaver/db';
-import { CreateIssueDto, UpdateIssueDto, PaginatedResponse } from '@weaver/shared';
+import { InjectRepository } from '@nestjs/typeorm';
+import { IssueEntity, WorkflowStatusEntity, ActivityLogEntity, SprintEntity } from '@weaver/db';
+import { UserEntity } from '@weaver/db';
+import { CreateIssueDto, UpdateIssueDto, ReorderIssuesDto, PaginatedResponse } from '@weaver/shared';
+import { Repository, In } from 'typeorm';
 import { TenantConnectionProvider } from '../../core/tenant';
 import { ProjectsService } from '../projects';
 import { WorkflowsService } from '../workflows';
@@ -20,11 +23,31 @@ export interface IssueFilters {
 @Injectable()
 export class IssuesService {
   constructor(
+    @InjectRepository(UserEntity)
+    private readonly userRepo: Repository<UserEntity>,
     private readonly tenantConnections: TenantConnectionProvider,
     private readonly projectsService: ProjectsService,
     private readonly workflowsService: WorkflowsService,
     private readonly eventDispatcher: EventDispatcherService,
   ) {}
+
+  private async resolveUserName(userId: string | null): Promise<string | null> {
+    if (!userId) return null;
+    const user = await this.userRepo.findOneBy({ id: userId });
+    return user?.displayName || user?.email || userId;
+  }
+
+  private async resolveStatusName(em: any, statusId: string | null): Promise<string | null> {
+    if (!statusId) return null;
+    const status = await em.getRepository(WorkflowStatusEntity).findOneBy({ id: statusId });
+    return status?.name || statusId;
+  }
+
+  private async resolveSprintName(em: any, sprintId: string | null): Promise<string | null> {
+    if (!sprintId) return null;
+    const sprint = await em.getRepository(SprintEntity).findOneBy({ id: sprintId });
+    return sprint?.name || sprintId;
+  }
 
   async create(projectKey: string, dto: CreateIssueDto, reporterId: string): Promise<IssueEntity> {
     const project = await this.projectsService.findByKey(projectKey);
@@ -75,6 +98,7 @@ export class IssuesService {
       summary: saved.summary,
       priority: saved.priority,
       assigneeId: saved.assigneeId,
+      userId: reporterId,
     });
 
     return saved;
@@ -117,17 +141,26 @@ export class IssuesService {
     return paginate(qb, params, ['summary', 'priority', 'createdAt', 'updatedAt', 'key', 'sortOrder', 'startDate', 'dueDate', 'percentDone']);
   }
 
-  async update(issueKey: string, dto: UpdateIssueDto): Promise<IssueEntity> {
+  async update(issueKey: string, dto: UpdateIssueDto, userId?: string): Promise<IssueEntity> {
     const issue = await this.findByKey(issueKey);
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(IssueEntity);
 
     const previousAssigneeId = issue.assigneeId;
+    const previousStatusId = issue.statusId;
+    const previousSprintId = issue.sprintId;
+    const previousPriority = issue.priority;
+    const previousStartDate = issue.startDate;
+    const previousDueDate = issue.dueDate;
+    const previousSummary = issue.summary;
+    const previousPercentDone = issue.percentDone;
 
     // Handle nullable fields explicitly
     if (dto.assigneeId !== undefined) issue.assigneeId = dto.assigneeId ?? null;
     if (dto.parentId !== undefined) issue.parentId = dto.parentId ?? null;
     if (dto.epicId !== undefined) issue.epicId = dto.epicId ?? null;
+    if (dto.sprintId !== undefined) issue.sprintId = dto.sprintId ?? null;
+    if (dto.statusId !== undefined) issue.statusId = dto.statusId;
     if (dto.summary !== undefined) issue.summary = dto.summary;
     if (dto.description !== undefined) issue.description = dto.description;
     if (dto.priority !== undefined) issue.priority = dto.priority;
@@ -150,19 +183,112 @@ export class IssuesService {
 
     this.eventDispatcher.emit('issue.updated', {
       issueKey,
+      projectKey: issueKey.split('-')[0],
       fields: changedFields,
+      userId: userId ?? null,
     });
+
+    // Log activity for tracked field changes
+    if (userId) {
+      const activityRepo = em.getRepository(ActivityLogEntity);
+      const trackedChanges: { field: string; oldVal: string | null; newVal: string | null }[] = [];
+
+      if (dto.assigneeId !== undefined && dto.assigneeId !== previousAssigneeId) {
+        const [oldName, newName] = await Promise.all([
+          this.resolveUserName(previousAssigneeId ?? null),
+          this.resolveUserName(dto.assigneeId ?? null),
+        ]);
+        trackedChanges.push({ field: 'assignee', oldVal: oldName, newVal: newName });
+      }
+      if (dto.statusId !== undefined && dto.statusId !== previousStatusId) {
+        const [oldName, newName] = await Promise.all([
+          this.resolveStatusName(em, previousStatusId),
+          this.resolveStatusName(em, dto.statusId),
+        ]);
+        trackedChanges.push({ field: 'status', oldVal: oldName, newVal: newName });
+      }
+      if (dto.sprintId !== undefined && dto.sprintId !== previousSprintId) {
+        const [oldName, newName] = await Promise.all([
+          this.resolveSprintName(em, previousSprintId ?? null),
+          this.resolveSprintName(em, dto.sprintId ?? null),
+        ]);
+        trackedChanges.push({ field: 'sprint', oldVal: oldName, newVal: newName });
+      }
+      if (dto.priority !== undefined && dto.priority !== previousPriority) {
+        trackedChanges.push({ field: 'priority', oldVal: previousPriority, newVal: dto.priority });
+      }
+      if (dto.startDate !== undefined && (dto.startDate ?? null) !== (previousStartDate ?? null)) {
+        trackedChanges.push({ field: 'startDate', oldVal: previousStartDate ?? null, newVal: dto.startDate ?? null });
+      }
+      if (dto.dueDate !== undefined && (dto.dueDate ?? null) !== (previousDueDate ?? null)) {
+        trackedChanges.push({ field: 'dueDate', oldVal: previousDueDate ?? null, newVal: dto.dueDate ?? null });
+      }
+      if (dto.summary !== undefined && dto.summary !== previousSummary) {
+        trackedChanges.push({ field: 'summary', oldVal: previousSummary, newVal: dto.summary });
+      }
+      if (dto.percentDone !== undefined && dto.percentDone !== previousPercentDone) {
+        trackedChanges.push({ field: 'percentDone', oldVal: String(previousPercentDone), newVal: String(dto.percentDone) });
+      }
+
+      for (const change of trackedChanges) {
+        const activity = activityRepo.create({
+          issueId: issue.id,
+          userId,
+          action: 'updated',
+          fieldName: change.field,
+          oldValue: change.oldVal,
+          newValue: change.newVal,
+        });
+        await activityRepo.save(activity);
+      }
+    }
 
     // Emit specific assigned event if assignee changed
     if (dto.assigneeId !== undefined && dto.assigneeId !== previousAssigneeId) {
       this.eventDispatcher.emit('issue.assigned', {
         issueKey,
+        projectKey: issueKey.split('-')[0],
         assigneeId: saved.assigneeId,
         previousAssigneeId,
+        userId: userId ?? null,
+      });
+    }
+
+    // Emit issue.moved event if status or sprint changed
+    const statusChanged = dto.statusId !== undefined && dto.statusId !== previousStatusId;
+    const sprintChanged = dto.sprintId !== undefined && dto.sprintId !== previousSprintId;
+    if (statusChanged || sprintChanged) {
+      this.eventDispatcher.emit('issue.moved', {
+        issueKey,
+        projectKey: issueKey.split('-')[0],
+        fromStatus: previousStatusId,
+        toStatus: saved.statusId,
+        fromSprint: previousSprintId ?? null,
+        toSprint: saved.sprintId ?? null,
+        userId: userId ?? null,
       });
     }
 
     return saved;
+  }
+
+  async reorder(dto: ReorderIssuesDto): Promise<void> {
+    const em = await this.tenantConnections.getEntityManager();
+    const repo = em.getRepository(IssueEntity);
+
+    const ids = dto.issues.map((i) => i.id);
+    const issues = await repo.find({ where: { id: In(ids) } });
+
+    if (issues.length !== ids.length) {
+      throw new NotFoundException('One or more issues not found');
+    }
+
+    const orderMap = new Map(dto.issues.map((i) => [i.id, i.sortOrder]));
+    for (const issue of issues) {
+      issue.sortOrder = orderMap.get(issue.id)!;
+    }
+
+    await repo.save(issues);
   }
 
   async transition(issueKey: string, transitionId: string, userId: string): Promise<IssueEntity> {
@@ -194,15 +320,19 @@ export class IssuesService {
     const issueRepo = em.getRepository(IssueEntity);
     const saved = await issueRepo.save(issue);
 
-    // Log activity
+    // Log activity with human-readable status names
+    const [oldStatusName, newStatusName] = await Promise.all([
+      this.resolveStatusName(em, oldStatusId),
+      this.resolveStatusName(em, transition.toStatusId),
+    ]);
     const activityRepo = em.getRepository(ActivityLogEntity);
     const activity = activityRepo.create({
       issueId: issue.id,
       userId,
       action: 'transitioned',
       fieldName: 'status',
-      oldValue: oldStatusId,
-      newValue: transition.toStatusId,
+      oldValue: oldStatusName,
+      newValue: newStatusName,
     });
     await activityRepo.save(activity);
 
@@ -211,6 +341,7 @@ export class IssuesService {
       projectKey: issueKey.split('-')[0],
       fromStatus: oldStatusId,
       toStatus: transition.toStatusId,
+      userId,
     });
 
     return saved;
@@ -222,6 +353,6 @@ export class IssuesService {
     const repo = em.getRepository(IssueEntity);
     await repo.remove(issue);
 
-    this.eventDispatcher.emit('issue.deleted', { issueKey });
+    this.eventDispatcher.emit('issue.deleted', { issueKey, projectKey: issueKey.split('-')[0] });
   }
 }

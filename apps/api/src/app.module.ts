@@ -25,6 +25,8 @@ import { NotificationsModule } from './modules/notifications';
 import { WebhooksModule } from './modules/webhooks';
 import { RolesModule } from './modules/roles';
 import { TeamsModule } from './modules/teams';
+import { DashboardModule } from './modules/dashboard';
+import { SettingsModule } from './modules/settings';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -58,6 +60,8 @@ import { HealthController } from './health.controller';
     WebhooksModule,
     RolesModule,
     TeamsModule,
+    DashboardModule,
+    SettingsModule,
   ],
   controllers: [HealthController],
 })

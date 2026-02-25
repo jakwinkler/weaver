@@ -1,12 +1,27 @@
+import { Suspense, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
-import { useInstalledPlugins, useMyPermissions } from '@/api';
-import { getPageComponent } from './plugin-slot-registry';
+import { useInstalledPlugins, useAvailablePlugins, useMyPermissions } from '@/api';
+import { getPageEntry } from './plugin-slot-registry';
+import { createPluginContext } from './plugin-context';
 import { Puzzle } from 'lucide-react';
 
 export function PluginPage() {
   const location = useLocation();
-  const { data: installedPlugins, isLoading } = useInstalledPlugins();
+  const { data: installedPlugins, isLoading: installedLoading } = useInstalledPlugins();
+  const { data: availablePlugins, isLoading: availableLoading } = useAvailablePlugins();
   const permissions = useMyPermissions();
+
+  const isLoading = installedLoading || availableLoading;
+
+  const enabledPluginIds = useMemo(
+    () => (installedPlugins ?? []).filter((p) => p.enabled).map((p) => p.pluginId),
+    [installedPlugins],
+  );
+
+  const entry = useMemo(
+    () => getPageEntry(location.pathname, availablePlugins ?? [], enabledPluginIds),
+    [location.pathname, availablePlugins, enabledPluginIds],
+  );
 
   if (isLoading) {
     return (
@@ -16,13 +31,7 @@ export function PluginPage() {
     );
   }
 
-  const enabledPluginIds = (installedPlugins ?? [])
-    .filter((p) => p.enabled)
-    .map((p) => p.pluginId);
-
-  const entry = getPageComponent(location.pathname, enabledPluginIds);
-
-  if (!entry) {
+  if (!entry || !entry.component) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center">
         <Puzzle className="mb-4 h-12 w-12 text-muted-foreground/40" />
@@ -51,5 +60,17 @@ export function PluginPage() {
   }
 
   const Component = entry.component;
-  return <Component />;
+  const pluginContext = createPluginContext(entry.pluginId);
+
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center py-20">
+          <p className="text-sm text-muted-foreground">Loading plugin...</p>
+        </div>
+      }
+    >
+      <Component pluginContext={pluginContext} />
+    </Suspense>
+  );
 }

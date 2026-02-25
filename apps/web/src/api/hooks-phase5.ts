@@ -137,6 +137,22 @@ export function useTestWebhook() {
   });
 }
 
+// ── User Search (Mentions) ──
+
+export function useSearchUsers(query: string) {
+  return useQuery({
+    queryKey: ['users', 'search', query],
+    queryFn: async () => {
+      const res = await apiClient.get<{ id: string; displayName: string; email: string; avatarUrl?: string }[]>(
+        '/users/search',
+        { params: { q: query } },
+      );
+      return res.data;
+    },
+    enabled: query.length >= 1,
+  });
+}
+
 // ── Roles ──
 
 interface Role {
@@ -238,4 +254,10 @@ export function useMyPermissions(): string[] {
   return Object.entries(myRole.permissions)
     .filter(([, v]) => v)
     .map(([k]) => k);
+}
+
+export function useHasPermission(...perms: string[]): boolean {
+  const permissions = useMyPermissions();
+  if (permissions.includes('*')) return true;
+  return perms.some((p) => permissions.includes(p));
 }

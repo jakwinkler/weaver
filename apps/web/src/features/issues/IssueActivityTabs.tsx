@@ -2,6 +2,7 @@ import { useState, useMemo, useCallback, useRef } from 'react';
 import { useComments } from '@/api/hooks-phase2';
 import { useActivity } from '@/api/hooks-phase2';
 import { useTimeEntries, useAttachments, useDeleteAttachment, useUploadAttachment, getAttachmentUrl } from '@/api/hooks-phase3';
+import { useProjectPlugins, useHasPermission } from '@/api';
 import { CommentsSection } from './CommentsSection';
 import { ActivityLog, ActivityEntryRow, ActionIcon } from './ActivityLog';
 import { TimeTrackingSection, TimeEntryIcon, formatTime } from './TimeTrackingSection';
@@ -25,12 +26,17 @@ export function IssueActivityTabs({ issueKey }: IssueActivityTabsProps) {
   const [activeTab, setActiveTab] = useState<Tab>('comments');
   const { data: attachments } = useAttachments(issueKey);
 
-  const tabs: { key: Tab; label: string; icon: React.ReactNode; count?: number }[] = [
+  const projectKey = issueKey.split('-')[0];
+  const { data: projectPlugins } = useProjectPlugins(projectKey);
+  const timeTrackingEnabled = !projectPlugins || projectPlugins.some((p) => p.pluginId === '@weaver/plugin-time-tracking');
+
+  const allTabs: { key: Tab; label: string; icon: React.ReactNode; count?: number; hidden?: boolean }[] = [
     { key: 'comments', label: 'Comments', icon: <MessageSquare className="h-4 w-4" /> },
-    { key: 'logs', label: 'Logs', icon: <FileText className="h-4 w-4" /> },
+    { key: 'logs', label: 'Logs', icon: <FileText className="h-4 w-4" />, hidden: !timeTrackingEnabled },
     { key: 'all', label: 'All', icon: <Layers className="h-4 w-4" /> },
     { key: 'attachments', label: 'Attachments', icon: <Paperclip className="h-4 w-4" />, count: attachments?.length },
   ];
+  const tabs = allTabs.filter((t) => !t.hidden);
 
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-6">
@@ -59,8 +65,8 @@ export function IssueActivityTabs({ issueKey }: IssueActivityTabsProps) {
 
       {/* Tab content */}
       {activeTab === 'comments' && <CommentsSection issueKey={issueKey} />}
-      {activeTab === 'logs' && <LogsTab issueKey={issueKey} />}
-      {activeTab === 'all' && <AllTab issueKey={issueKey} />}
+      {activeTab === 'logs' && timeTrackingEnabled && <LogsTab issueKey={issueKey} />}
+      {activeTab === 'all' && <AllTab issueKey={issueKey} includeTimeEntries={timeTrackingEnabled} />}
       {activeTab === 'attachments' && <AttachmentsTab issueKey={issueKey} />}
     </div>
   );
@@ -92,6 +98,7 @@ function AttachmentsTab({ issueKey }: { issueKey: string }) {
   const deleteAttachment = useDeleteAttachment(issueKey);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const canUpdate = useHasPermission('issues.update');
 
   const handleFiles = useCallback(
     (files: FileList | File[]) => {
@@ -130,35 +137,37 @@ function AttachmentsTab({ issueKey }: { issueKey: string }) {
   return (
     <div>
       {/* Drop zone */}
-      <div
-        onDrop={handleDrop}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        className={`mb-6 flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed px-6 py-8 transition-colors ${
-          isDragging
-            ? 'border-indigo-400 bg-indigo-50'
-            : 'border-gray-300 bg-gray-50 hover:border-gray-400'
-        }`}
-        onClick={() => fileInputRef.current?.click()}
-      >
-        <Upload className={`mb-2 h-8 w-8 ${isDragging ? 'text-indigo-500' : 'text-gray-400'}`} />
-        <p className="text-sm font-medium text-gray-700">
-          Drop files here or <span className="text-indigo-600">browse</span>
-        </p>
-        <p className="mt-1 text-xs text-gray-500">Any file type supported</p>
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          className="hidden"
-          onChange={(e) => {
-            if (e.target.files?.length) {
-              handleFiles(e.target.files);
-              e.target.value = '';
-            }
-          }}
-        />
-      </div>
+      {canUpdate && (
+        <div
+          onDrop={handleDrop}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          className={`mb-6 flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed px-6 py-8 transition-colors ${
+            isDragging
+              ? 'border-indigo-400 bg-indigo-50'
+              : 'border-gray-300 bg-gray-50 hover:border-gray-400'
+          }`}
+          onClick={() => fileInputRef.current?.click()}
+        >
+          <Upload className={`mb-2 h-8 w-8 ${isDragging ? 'text-indigo-500' : 'text-gray-400'}`} />
+          <p className="text-sm font-medium text-gray-700">
+            Drop files here or <span className="text-indigo-600">browse</span>
+          </p>
+          <p className="mt-1 text-xs text-gray-500">Any file type supported</p>
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              if (e.target.files?.length) {
+                handleFiles(e.target.files);
+                e.target.value = '';
+              }
+            }}
+          />
+        </div>
+      )}
 
       {uploadAttachment.isPending && (
         <p className="mb-4 text-sm text-indigo-600">Uploading...</p>
@@ -206,13 +215,15 @@ function AttachmentsTab({ issueKey }: { issueKey: string }) {
               >
                 <Download className="h-4 w-4" />
               </a>
-              <button
-                onClick={() => deleteAttachment.mutate(att.id)}
-                className="rounded p-1.5 text-gray-400 hover:bg-red-100 hover:text-red-600"
-                title="Delete"
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
+              {canUpdate && (
+                <button
+                  onClick={() => deleteAttachment.mutate(att.id)}
+                  className="rounded p-1.5 text-gray-400 hover:bg-red-100 hover:text-red-600"
+                  title="Delete"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              )}
             </div>
           </div>
         ))}
@@ -221,11 +232,12 @@ function AttachmentsTab({ issueKey }: { issueKey: string }) {
   );
 }
 
-function AllTab({ issueKey }: { issueKey: string }) {
+function AllTab({ issueKey, includeTimeEntries = true }: { issueKey: string; includeTimeEntries?: boolean }) {
   const { data: comments } = useComments(issueKey);
   const { data: activities } = useActivity(issueKey);
   const { data: timeEntries } = useTimeEntries(issueKey);
   const queryClient = useQueryClient();
+  const canDeleteComment = useHasPermission('comments.delete');
 
   const timeline = useMemo<TimelineItem[]>(() => {
     const items: TimelineItem[] = [];
@@ -239,13 +251,15 @@ function AllTab({ issueKey }: { issueKey: string }) {
       items.push({ type: 'activity', data: a, date: a.createdAt });
     });
 
-    timeEntries?.forEach((t) => {
-      items.push({ type: 'time_entry', data: t, date: t.loggedAt || t.createdAt });
-    });
+    if (includeTimeEntries) {
+      timeEntries?.forEach((t) => {
+        items.push({ type: 'time_entry', data: t, date: t.loggedAt || t.createdAt });
+      });
+    }
 
     items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     return items;
-  }, [comments, activities, timeEntries]);
+  }, [comments, activities, timeEntries, includeTimeEntries]);
 
   const handleDeleteComment = async (commentId: string) => {
     try {
@@ -278,19 +292,21 @@ function AllTab({ issueKey }: { issueKey: string }) {
                     <div className="flex items-start justify-between">
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-medium text-gray-900">
-                          {item.data.authorId.slice(0, 8)}
+                          {item.data.authorDisplayName ?? item.data.authorId.slice(0, 8)}
                         </span>
                         <span className="text-xs text-gray-400">
                           commented {new Date(item.date).toLocaleString()}
                         </span>
                       </div>
-                      <button
-                        onClick={() => handleDeleteComment(item.data.id)}
-                        className="rounded p-1 text-gray-400 hover:bg-red-100 hover:text-red-600"
-                        title="Delete comment"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </button>
+                      {canDeleteComment && (
+                        <button
+                          onClick={() => handleDeleteComment(item.data.id)}
+                          className="rounded p-1 text-gray-400 hover:bg-red-100 hover:text-red-600"
+                          title="Delete comment"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      )}
                     </div>
                     <div className="mt-1">
                       <RichTextEditor

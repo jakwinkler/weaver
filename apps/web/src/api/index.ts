@@ -11,6 +11,8 @@ export {
   useIssue,
   useCreateIssue,
   useUpdateIssue,
+  useUpdateIssueDynamic,
+  useReorderIssues,
 } from './hooks';
 export {
   useWorkflows,
@@ -55,11 +57,13 @@ export {
   useDisablePlugin,
   useUpdatePluginSettings,
 } from './hooks-phase4';
+export type { PluginManifest } from './hooks-phase4';
 export {
   useNotifications,
   useUnreadCount,
   useMarkNotificationRead,
   useMarkAllRead,
+  useSearchUsers,
   useWebhooks,
   useCreateWebhook,
   useDeleteWebhook,
@@ -71,6 +75,7 @@ export {
   useTeams,
   useCreateTeam,
   useMyPermissions,
+  useHasPermission,
 } from './hooks-phase5';
 export {
   useBulkUpdateIssues,
@@ -106,3 +111,25 @@ export {
   useSetProjectIssueTypes,
 } from './hooks-permissions';
 export type { PluginPermission, PluginPermissionsMap, ProjectMember } from './hooks-permissions';
+export {
+  useProjectPlugins,
+  useEnableProjectPlugin,
+  useDisableProjectPlugin,
+} from './hooks-project-plugins';
+export type { ProjectPlugin } from './hooks-project-plugins';
+export { useDashboard } from './hooks-dashboard';
+export { useProfile, useUpdateProfile, useUploadAvatar } from './hooks-profile';
+export { useTenantSettings, useUpdateTenantSettings, useTestSmtp } from './hooks-settings';
+export {
+  usePublicProjects,
+  usePublicProject,
+  usePublicProjectIssues,
+  usePublicProjectBoard,
+} from './hooks-public';
+export type {
+  DashboardData,
+  DashboardStats,
+  DashboardIssue,
+  DashboardActivity,
+  DashboardProject,
+} from './hooks-dashboard';

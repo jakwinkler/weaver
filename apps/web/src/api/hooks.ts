@@ -9,6 +9,7 @@ import type {
   CreateProjectDto,
   CreateIssueDto,
   UpdateIssueDto,
+  ReorderIssuesDto,
   PaginatedResponse,
 } from '@weaver/shared';
 
@@ -16,6 +17,7 @@ import type {
 
 interface AuthResponse {
   accessToken: string;
+  refreshToken?: string;
   user: User;
   tenantId: string;
 }
@@ -54,15 +56,16 @@ export function useCurrentUser() {
 interface UseProjectsParams {
   page?: number;
   perPage?: number;
+  sort?: string;
 }
 
 export function useProjects(params: UseProjectsParams = {}) {
-  const { page = 1, perPage = 50 } = params;
+  const { page = 1, perPage = 50, sort } = params;
   return useQuery({
-    queryKey: ['projects', { page, perPage }],
+    queryKey: ['projects', { page, perPage, sort }],
     queryFn: async () => {
       const res = await apiClient.get<PaginatedResponse<Project>>('/projects', {
-        params: { page, perPage },
+        params: { page, perPage, ...(sort ? { sort } : {}) },
       });
       return res.data;
     },
@@ -113,6 +116,7 @@ interface UseProjectIssuesParams {
   projectKey: string;
   page?: number;
   perPage?: number;
+  sort?: string;
   statusId?: string;
   assigneeId?: string;
   priority?: string;
@@ -123,17 +127,17 @@ interface UseProjectIssuesParams {
 }
 
 export function useProjectIssues(params: UseProjectIssuesParams) {
-  const { projectKey, page = 1, perPage = 50, ...filters } = params;
+  const { projectKey, page = 1, perPage = 50, sort, ...filters } = params;
   // Strip undefined values from filters
   const activeFilters = Object.fromEntries(
     Object.entries(filters).filter(([, v]) => v !== undefined),
   );
   return useQuery({
-    queryKey: ['issues', projectKey, { page, perPage, ...activeFilters }],
+    queryKey: ['issues', projectKey, { page, perPage, sort, ...activeFilters }],
     queryFn: async () => {
       const res = await apiClient.get<PaginatedResponse<Issue>>(
         `/projects/${projectKey}/issues`,
-        { params: { page, perPage, ...activeFilters } },
+        { params: { page, perPage, ...(sort ? { sort } : {}), ...activeFilters } },
       );
       return res.data;
     },
@@ -174,6 +178,31 @@ export function useUpdateIssue(issueKey: string) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['issue', issueKey] });
+      queryClient.invalidateQueries({ queryKey: ['issues'] });
+    },
+  });
+}
+
+export function useUpdateIssueDynamic() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ issueKey, ...data }: UpdateIssueDto & { issueKey: string }) => {
+      const res = await apiClient.patch<Issue>(`/issues/${issueKey}`, data);
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['issues'] });
+    },
+  });
+}
+
+export function useReorderIssues() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: ReorderIssuesDto) => {
+      await apiClient.patch('/issues/reorder', data);
+    },
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['issues'] });
     },
   });

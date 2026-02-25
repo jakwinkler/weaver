@@ -27,7 +27,7 @@ export function RegisterPage() {
       orgName,
       orgSlug,
     });
-    login(result.accessToken, result.user, result.tenantId);
+    login(result.accessToken, result.user, result.tenantId, result.refreshToken);
     navigate('/projects');
   };
 

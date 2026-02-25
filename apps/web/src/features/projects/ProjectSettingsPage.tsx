@@ -16,7 +16,10 @@ import {
   getAttachmentUrl,
 } from '@/api';
 import type { TenantUser } from '@/api';
-import { Settings, Users, Tag, FileText, Plus, Trash2, X, Upload } from 'lucide-react';
+import { Settings, Users, Tag, FileText, Plus, Trash2, X, Upload, ToggleLeft } from 'lucide-react';
+import { useProjectPlugins, useEnableProjectPlugin, useDisableProjectPlugin, useAvailablePlugins, useInstalledPlugins } from '@/api';
+import type { PluginManifest } from '@/api';
+import { getPluginIcon } from '@/plugins/plugin-icons';
 import { RichTextEditor, normalizeCommentBody, serializeDoc } from '@/components/RichTextEditor';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -58,7 +61,7 @@ export function ProjectIcon({
   );
 }
 
-type Tab = 'general' | 'members' | 'issue-types' | 'custom-fields';
+type Tab = 'general' | 'members' | 'issue-types' | 'custom-fields' | 'features';
 
 const MEMBER_ROLES = ['lead', 'member', 'viewer'] as const;
 
@@ -84,6 +87,7 @@ export function ProjectSettingsPage() {
             { key: 'members', label: 'Members', icon: Users },
             { key: 'issue-types', label: 'Issue Types', icon: Tag },
             { key: 'custom-fields', label: 'Custom Fields', icon: FileText },
+            { key: 'features', label: 'Features', icon: ToggleLeft },
           ] as const).map(({ key, label, icon: Icon }) => (
             <TabsTrigger key={key} value={key} className="flex flex-1 items-center gap-1.5">
               <Icon className="h-4 w-4" />
@@ -104,6 +108,9 @@ export function ProjectSettingsPage() {
         <TabsContent value="custom-fields">
           <CustomFieldsTab projectKey={projectKey} />
         </TabsContent>
+        <TabsContent value="features">
+          <FeaturesTab projectKey={projectKey} />
+        </TabsContent>
       </Tabs>
     </div>
   );
@@ -122,6 +129,7 @@ function GeneralTab({ projectKey }: { projectKey: string }) {
   const [editingDesc, setEditingDesc] = useState(false);
   const [leadUserId, setLeadUserId] = useState('');
   const [workflowId, setWorkflowId] = useState('');
+  const [visibility, setVisibility] = useState<'private' | 'public'>('private');
   const [initialized, setInitialized] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -134,6 +142,7 @@ function GeneralTab({ projectKey }: { projectKey: string }) {
     setDescriptionJson(normalizeCommentBody(project.description || ''));
     setLeadUserId(project.leadUserId || '');
     setWorkflowId(project.workflowId || '');
+    setVisibility(project.visibility || 'private');
     setInitialized(true);
   }
 
@@ -163,6 +172,7 @@ function GeneralTab({ projectKey }: { projectKey: string }) {
       description: descStr || undefined,
       leadUserId: leadUserId || undefined,
       workflowId: workflowId || undefined,
+      visibility,
     });
     setEditingDesc(false);
     setSaved(true);
@@ -298,6 +308,32 @@ function GeneralTab({ projectKey }: { projectKey: string }) {
                 <option key={w.id} value={w.id}>{w.name}</option>
               ))}
             </select>
+          </div>
+
+          <div>
+            <Label className="mb-1 block">Visibility</Label>
+            <div className="flex gap-4">
+              {(['private', 'public'] as const).map((v) => (
+                <label key={v} className="flex cursor-pointer items-center gap-2">
+                  <input
+                    type="radio"
+                    name="visibility"
+                    value={v}
+                    checked={visibility === v}
+                    onChange={() => setVisibility(v)}
+                    className="accent-primary"
+                  />
+                  <div>
+                    <span className="text-sm font-medium capitalize text-foreground">{v}</span>
+                    <p className="text-xs text-muted-foreground">
+                      {v === 'private'
+                        ? 'Only team members can access'
+                        : 'Anyone with the link can view'}
+                    </p>
+                  </div>
+                </label>
+              ))}
+            </div>
           </div>
 
           <div className="flex items-center gap-3 pt-2">
@@ -571,5 +607,89 @@ function CustomFieldsTab({ projectKey }: { projectKey: string }) {
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function FeaturesTab({ projectKey }: { projectKey: string }) {
+  const { data: availablePlugins, isLoading: availableLoading } = useAvailablePlugins();
+  const { data: installedPlugins, isLoading: installedLoading } = useInstalledPlugins();
+  const { data: plugins, isLoading: pluginsLoading } = useProjectPlugins(projectKey);
+  const enablePlugin = useEnableProjectPlugin();
+  const disablePlugin = useDisableProjectPlugin();
+
+  const installedEnabledIds = new Set(
+    (installedPlugins || []).filter((p) => p.enabled).map((p) => p.pluginId),
+  );
+  const projectScopedPlugins = (availablePlugins || []).filter(
+    (p: PluginManifest) => p.type === 'feature' && installedEnabledIds.has(p.id),
+  );
+  const enabledIds = new Set(plugins?.map((p) => p.pluginId) || []);
+
+  const handleToggle = (pluginId: string) => {
+    if (enabledIds.has(pluginId)) {
+      disablePlugin.mutate({ projectKey, pluginId });
+    } else {
+      enablePlugin.mutate({ projectKey, pluginId });
+    }
+  };
+
+  if (availableLoading || installedLoading || pluginsLoading) {
+    return <div className="py-8 text-center text-muted-foreground">Loading...</div>;
+  }
+
+  if (projectScopedPlugins.length === 0) {
+    return (
+      <Card>
+        <CardContent className="pt-6">
+          <p className="text-sm text-muted-foreground">
+            No project-scoped feature plugins are available. Install project plugins from the admin Plugins page.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">
+        Enable or disable project features. Disabled features will be hidden from the project navigation.
+      </p>
+      <Card>
+        <div className="divide-y divide-border">
+          {projectScopedPlugins.map((feature: PluginManifest) => {
+            const Icon = getPluginIcon(feature.icon);
+            const isEnabled = enabledIds.has(feature.id);
+            return (
+              <div key={feature.id} className="flex items-center justify-between px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-md bg-muted">
+                    <Icon className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-foreground">{feature.name}</p>
+                    <p className="text-xs text-muted-foreground">{feature.description}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => handleToggle(feature.id)}
+                  disabled={enablePlugin.isPending || disablePlugin.isPending}
+                  className={cn(
+                    'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                    isEnabled ? 'bg-primary' : 'bg-input',
+                  )}
+                >
+                  <span
+                    className={cn(
+                      'pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform',
+                      isEnabled ? 'translate-x-5' : 'translate-x-0',
+                    )}
+                  />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+    </div>
   );
 }
