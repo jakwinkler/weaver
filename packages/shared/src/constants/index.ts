@@ -19,7 +19,10 @@ export type TenantRole = (typeof TENANT_ROLES)[number];
 export const AUTH_PROVIDERS = ['local', 'google', 'saml', 'oidc'] as const;
 export type AuthProvider = (typeof AUTH_PROVIDERS)[number];
 
-export const ISSUE_LINK_TYPES = ['blocks', 'is_blocked_by', 'relates_to', 'duplicates', 'is_duplicated_by'] as const;
+export const ISSUE_LINK_TYPES = [
+  'blocks', 'is_blocked_by', 'relates_to', 'duplicates', 'is_duplicated_by',
+  'causes', 'is_caused_by', 'clones', 'is_cloned_from',
+] as const;
 export type IssueLinkType = (typeof ISSUE_LINK_TYPES)[number];
 
 export const CUSTOM_FIELD_TYPES = [

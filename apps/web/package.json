@@ -40,6 +40,7 @@
     "@tiptap/suggestion": "^3.20.0",
     "@weaver/plugin-checklist": "workspace:*",
     "@weaver/plugin-time-reports": "workspace:*",
+    "@weaver/plugin-relations": "workspace:*",
     "@weaver/plugin-timer": "workspace:*",
     "@xyflow/react": "^12.10.1",
     "axios": "^1.7.9",

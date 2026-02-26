@@ -64,6 +64,15 @@ function getInvalidationKeys(event: string, data: Record<string, unknown>): stri
         ...(issueKey ? [['activity', issueKey]] : []),
         ...(issueKey ? [['checklist', issueKey]] : []),
       ];
+    case 'relation.created':
+    case 'relation.removed': {
+      const targetKey = data.targetIssueKey as string | undefined;
+      return [
+        ...(issueKey ? [['relations', issueKey]] : []),
+        ...(targetKey ? [['relations', targetKey]] : []),
+        ...(issueKey ? [['activity', issueKey]] : []),
+      ];
+    }
     default:
       return [];
   }
@@ -200,6 +209,8 @@ export function useWebSocket() {
       'checklist.item_added',
       'checklist.item_completed',
       'checklist.item_removed',
+      'relation.created',
+      'relation.removed',
     ];
 
     for (const event of domainEvents) {

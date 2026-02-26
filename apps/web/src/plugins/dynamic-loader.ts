@@ -6,6 +6,7 @@ const pluginImporters: Record<string, PluginImporter> = {
   '@weaver/plugin-checklist': () => import('@weaver/plugin-checklist'),
   '@weaver/plugin-timer': () => import('@weaver/plugin-timer'),
   '@weaver/plugin-time-reports': () => import('@weaver/plugin-time-reports'),
+  '@weaver/plugin-relations': () => import('@weaver/plugin-relations'),
 };
 
 const componentCache = new Map<string, ComponentType<any>>();

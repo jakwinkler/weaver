@@ -1,0 +1,45 @@
+{
+  "id": "@weaver/plugin-relations",
+  "name": "Issue Relations",
+  "version": "1.0.0",
+  "description": "Manage relations between issues — blocks, duplicates, causes, clones, and more",
+  "author": "Weaver",
+  "icon": "git-compare",
+  "type": "widget",
+  "entrypoints": {
+    "server": "src/server/index.ts",
+    "client": "src/client/index.ts"
+  },
+  "permissions": ["relations.view", "relations.manage"],
+  "declaredPermissions": [
+    { "key": "relations.view", "label": "View relations", "description": "View issue relations" },
+    { "key": "relations.manage", "label": "Manage relations", "description": "Add and remove issue relations" }
+  ],
+  "settings": {
+    "schema": {
+      "trackActivity": {
+        "type": "boolean",
+        "description": "Log relation changes in the activity feed",
+        "default": true
+      }
+    }
+  },
+  "events": {
+    "emits": ["relation.created", "relation.removed"]
+  },
+  "ui": {
+    "slots": [
+      {
+        "slot": "issue-detail-content",
+        "component": "RelationsSlotWrapper",
+        "requiredPermissions": ["relations.view"]
+      }
+    ]
+  },
+  "routes": [
+    { "method": "GET", "path": "/issues/:issueKey/relations", "handler": "listRelations", "requiredPermissions": ["relations.view"] },
+    { "method": "POST", "path": "/issues/:issueKey/relations", "handler": "createRelation", "requiredPermissions": ["relations.manage"] },
+    { "method": "DELETE", "path": "/issues/:issueKey/relations/:linkId", "handler": "deleteRelation", "requiredPermissions": ["relations.manage"] },
+    { "method": "GET", "path": "/issues/:issueKey/relations/search", "handler": "searchIssues", "requiredPermissions": ["relations.view"] }
+  ]
+}
