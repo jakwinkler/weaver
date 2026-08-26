@@ -62,8 +62,9 @@ export class ProjectsController {
   async update(
     @Param('key') key: string,
     @Body(new ZodValidationPipe(updateProjectSchema)) dto: any,
+    @CurrentUser() user: RequestUser,
   ) {
-    return this.projectsService.update(key, dto);
+    return this.projectsService.update(key, dto, user.userId);
   }
 
   @Delete(':key')

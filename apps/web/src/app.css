@@ -66,6 +66,32 @@
   border-top-color: #334155;
 }
 
+#ws-toast-container {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 9999;
+  display: flex;
+  max-width: calc(100vw - 2rem);
+  flex-direction: column;
+  gap: 0.5rem;
+  pointer-events: none;
+}
+
+.ws-toast {
+  max-width: 22.5rem;
+  border: 1px solid var(--color-border);
+  background: var(--color-card);
+  color: var(--color-card-foreground);
+  padding: 0.625rem 1rem;
+  font-size: 0.8125rem;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 15%);
+  pointer-events: auto;
+  transition:
+    opacity 0.3s,
+    transform 0.3s;
+}
+
 /* ── Flat UI: override hardcoded Tailwind rounded-* classes ── */
 .rounded,
 .rounded-xs,

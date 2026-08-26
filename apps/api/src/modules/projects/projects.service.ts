@@ -59,6 +59,7 @@ export class ProjectsService {
       projectKey: saved.key,
       name: saved.name,
       leadUserId: userId,
+      userId,
     });
 
     return saved;
@@ -82,7 +83,11 @@ export class ProjectsService {
     return project;
   }
 
-  async update(key: string, dto: UpdateProjectDto & { customFields?: Record<string, unknown> }): Promise<ProjectEntity> {
+  async update(
+    key: string,
+    dto: UpdateProjectDto & { customFields?: Record<string, unknown> },
+    userId: string,
+  ): Promise<ProjectEntity> {
     const project = await this.findByKey(key);
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(ProjectEntity);
@@ -97,6 +102,7 @@ export class ProjectsService {
     this.eventDispatcher.emit('project.updated', {
       projectKey: key,
       fields: changedFields,
+      userId,
     });
 
     return saved;

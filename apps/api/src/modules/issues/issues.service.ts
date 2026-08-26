@@ -272,15 +272,23 @@ export class IssuesService {
     return saved;
   }
 
-  async reorder(dto: ReorderIssuesDto): Promise<void> {
+  async reorder(dto: ReorderIssuesDto, userId: string): Promise<void> {
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(IssueEntity);
 
     const ids = dto.issues.map((i) => i.id);
-    const issues = await repo.find({ where: { id: In(ids) } });
+    const issues = await repo.find({
+      where: { id: In(ids) },
+      relations: ['project'],
+    });
 
     if (issues.length !== ids.length) {
       throw new NotFoundException('One or more issues not found');
+    }
+
+    const projectIds = new Set(issues.map((issue) => issue.projectId));
+    if (projectIds.size !== 1) {
+      throw new BadRequestException('All reordered issues must belong to one project');
     }
 
     const orderMap = new Map(dto.issues.map((i) => [i.id, i.sortOrder]));
@@ -289,6 +297,12 @@ export class IssuesService {
     }
 
     await repo.save(issues);
+
+    this.eventDispatcher.emit('issue.reordered', {
+      projectKey: issues[0].project.key,
+      issueKeys: issues.map((issue) => issue.key),
+      userId,
+    });
   }
 
   async transition(issueKey: string, transitionId: string, userId: string): Promise<IssueEntity> {
@@ -347,12 +361,16 @@ export class IssuesService {
     return saved;
   }
 
-  async delete(issueKey: string): Promise<void> {
+  async delete(issueKey: string, userId: string): Promise<void> {
     const issue = await this.findByKey(issueKey);
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(IssueEntity);
     await repo.remove(issue);
 
-    this.eventDispatcher.emit('issue.deleted', { issueKey, projectKey: issueKey.split('-')[0] });
+    this.eventDispatcher.emit('issue.deleted', {
+      issueKey,
+      projectKey: issueKey.split('-')[0],
+      userId,
+    });
   }
 }
