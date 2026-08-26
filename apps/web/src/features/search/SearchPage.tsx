@@ -1,10 +1,12 @@
-import { useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   useSearch,
   useSavedFilters,
   useCreateSavedFilter,
   useDeleteSavedFilter,
 } from '@/api/hooks-phase3';
+import { Pagination, getStoredPerPage } from '@/components/Pagination';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -29,24 +31,72 @@ const WQL_EXAMPLES = [
 ];
 
 export function SearchPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const search = useSearch();
   const { data: savedFilters, isLoading: filtersLoading } = useSavedFilters();
   const createFilter = useCreateSavedFilter();
   const deleteFilter = useDeleteSavedFilter();
 
-  const [query, setQuery] = useState('');
+  const page = Number(searchParams.get('page')) || 1;
+  const perPage = Number(searchParams.get('perPage')) || getStoredPerPage();
+  const urlQuery = searchParams.get('q')?.trim() || '';
+
+  const [query, setQuery] = useState(urlQuery);
   const [filterName, setFilterName] = useState('');
   const [showSaveForm, setShowSaveForm] = useState(false);
 
+  const updateParams = useCallback(
+    (updates: Record<string, string | undefined>) => {
+      setSearchParams((previous) => {
+        const next = new URLSearchParams(previous);
+        for (const [key, value] of Object.entries(updates)) {
+          if (value === undefined || value === '') {
+            next.delete(key);
+          } else {
+            next.set(key, value);
+          }
+        }
+        return next;
+      });
+    },
+    [setSearchParams],
+  );
+
+  useEffect(() => {
+    if (!urlQuery) return;
+
+    setQuery(urlQuery);
+    search.mutate({ query: urlQuery, page, perPage });
+  }, [urlQuery, page, perPage, search.mutate]);
+
+  const runSearch = (nextQuery: string) => {
+    const trimmedQuery = nextQuery.trim();
+    if (!trimmedQuery) return;
+
+    setQuery(trimmedQuery);
+    if (trimmedQuery === urlQuery && page === 1) {
+      search.mutate({ query: trimmedQuery, page: 1, perPage });
+      return;
+    }
+
+    updateParams({ q: trimmedQuery, page: undefined });
+  };
+
   const handleSearch = (e: FormEvent) => {
     e.preventDefault();
-    if (!query.trim()) return;
-    search.mutate({ query: query.trim() });
+    runSearch(query);
   };
 
   const handleLoadFilter = (filterQuery: string) => {
-    setQuery(filterQuery);
-    search.mutate({ query: filterQuery });
+    runSearch(filterQuery);
+  };
+
+  const handlePageChange = (newPage: number) => {
+    updateParams({ page: newPage === 1 ? undefined : String(newPage) });
+  };
+
+  const handlePerPageChange = (newPerPage: number) => {
+    updateParams({ perPage: String(newPerPage), page: undefined });
   };
 
   const handleSaveFilter = async (e: FormEvent) => {
@@ -245,6 +295,16 @@ export function SearchPage() {
                   </TableBody>
                 </Table>
               )}
+              <div className="px-6 pb-4">
+                <Pagination
+                  page={search.data.meta.page}
+                  perPage={search.data.meta.perPage}
+                  total={search.data.meta.total}
+                  totalPages={search.data.meta.totalPages}
+                  onPageChange={handlePageChange}
+                  onPerPageChange={handlePerPageChange}
+                />
+              </div>
             </Card>
           )}
 

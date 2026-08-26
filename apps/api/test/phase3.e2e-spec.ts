@@ -210,13 +210,42 @@ describe('Phase 3: Custom Fields, Search, Saved Filters, Time Tracking (e2e)', (
   });
 
   describe('Search', () => {
+    it('POST /search - should return paginated results with response metadata', async () => {
+      await authedRequest()
+        .post('/api/v1/projects')
+        .send({ name: 'Search Test', key: 'SRC' })
+        .expect(201);
+
+      await authedRequest()
+        .post('/api/v1/projects/SRC/issues')
+        .send({ summary: 'Paginated search alpha' })
+        .expect(201);
+      await authedRequest()
+        .post('/api/v1/projects/SRC/issues')
+        .send({ summary: 'Paginated search beta' })
+        .expect(201);
+
+      const res = await authedRequest()
+        .post('/api/v1/search')
+        .send({ query: 'summary ~ "Paginated search"', page: 2, perPage: 1 })
+        .expect(201);
+
+      expect(res.body.data).toHaveLength(1);
+      expect(res.body.meta).toEqual({
+        page: 2,
+        perPage: 1,
+        total: 2,
+        totalPages: 2,
+      });
+    });
+
     it('POST /search - should search issues by priority', async () => {
       const res = await authedRequest()
         .post('/api/v1/search')
         .send({ query: 'priority = "medium"' })
         .expect(201);
       expect(res.body.data).toBeDefined();
-      expect(res.body.total).toBeDefined();
+      expect(res.body.meta.total).toBeDefined();
     });
 
     it('POST /search - should search by summary', async () => {
