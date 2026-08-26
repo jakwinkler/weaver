@@ -72,6 +72,14 @@ Weaver has a solid multi-tenant backend (NestJS + TypeORM + BullMQ), a React fro
 | 27 | Recurring Tasks | [27-recurring-tasks.md](./27-recurring-tasks.md) | Medium | M |
 | 28 | Audit Log | [28-audit-log.md](./28-audit-log.md) | High | M |
 
+### v1.1 - Personal Intelligence (Phase F)
+
+> "Weaver helps reconstruct the work without becoming surveillance"
+
+| # | Feature | File | Priority | Effort |
+|---|---------|------|----------|--------|
+| 29 | Automatic Time Plugin | [29-automatic-time-plugin.md](./29-automatic-time-plugin.md) | High | XL |
+
 ---
 
 ## Effort Key
