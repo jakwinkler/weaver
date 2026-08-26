@@ -15,11 +15,13 @@ import {
 } from '@dnd-kit/core';
 import {
   SortableContext,
+  sortableKeyboardCoordinates,
   verticalListSortingStrategy,
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useQueryClient } from '@tanstack/react-query';
+import { GripVertical } from 'lucide-react';
 import {
   useProject,
   useProjectIssues,
@@ -27,6 +29,7 @@ import {
   useProjectPlugins,
   useUpdateIssueDynamic,
   useReorderIssues,
+  useHasPermission,
 } from '@/api';
 import { FeatureNotEnabled } from './FeatureNotEnabled';
 import { useBoards, useCreateBoard } from '@/api/hooks-phase2';
@@ -37,6 +40,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { buildReorderPayload, moveIssueBetweenGroups } from '@/features/issues/dragAndDrop';
 
 interface StatusColumn {
   statusId: string;
@@ -87,15 +91,12 @@ function IssueCardContent({ issue }: { issue: Issue }) {
   );
 }
 
-function SortableIssueCard({ issue }: { issue: Issue }) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: issue.id, data: { issue, type: 'issue' } });
+function SortableIssueCard({ issue, disabled }: { issue: Issue; disabled: boolean }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: issue.id,
+    data: { issue, type: 'issue', containerId: issue.statusId },
+    disabled,
+  });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -106,16 +107,26 @@ function SortableIssueCard({ issue }: { issue: Issue }) {
     <div
       ref={setNodeRef}
       style={style}
-      {...attributes}
-      {...listeners}
+      data-testid="kanban-card"
       className={cn(
-        'block cursor-grab rounded-lg border border-border bg-card p-3 shadow-sm transition hover:shadow-md active:cursor-grabbing',
+        'group relative rounded-lg border border-border bg-card p-3 pr-9 shadow-sm transition hover:shadow-md',
         isDragging && 'opacity-30',
       )}
     >
-      <Link to={`/issues/${issue.key}`} onClick={(e) => isDragging && e.preventDefault()}>
+      <Link to={`/issues/${issue.key}`}>
         <IssueCardContent issue={issue} />
       </Link>
+      {!disabled && (
+        <button
+          type="button"
+          {...attributes}
+          {...listeners}
+          aria-label={`Drag ${issue.key}`}
+          className="absolute right-2 top-2 flex h-7 w-7 cursor-grab items-center justify-center text-muted-foreground opacity-60 transition hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing group-hover:opacity-100"
+        >
+          <GripVertical className="h-4 w-4" aria-hidden="true" />
+        </button>
+      )}
     </div>
   );
 }
@@ -123,9 +134,11 @@ function SortableIssueCard({ issue }: { issue: Issue }) {
 function DroppableColumn({
   column,
   isOver,
+  canEdit,
 }: {
   column: StatusColumn;
   isOver: boolean;
+  canEdit: boolean;
 }) {
   const { setNodeRef } = useDroppable({
     id: `column-${column.statusId}`,
@@ -137,6 +150,8 @@ function DroppableColumn({
   return (
     <div
       ref={setNodeRef}
+      data-testid="kanban-column"
+      data-status-id={column.statusId}
       className={cn(
         'flex w-72 flex-shrink-0 flex-col rounded-lg p-3 transition-colors',
         isOver ? 'bg-primary/10 ring-2 ring-primary/30' : 'bg-muted/50',
@@ -144,10 +159,7 @@ function DroppableColumn({
     >
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <div
-            className="h-3 w-3 rounded-full"
-            style={{ backgroundColor: column.color }}
-          />
+          <div className="h-3 w-3 rounded-full" style={{ backgroundColor: column.color }} />
           <h3 className="text-sm font-semibold text-foreground">{column.name}</h3>
         </div>
         <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
@@ -157,7 +169,7 @@ function DroppableColumn({
       <SortableContext items={issueIds} strategy={verticalListSortingStrategy}>
         <div className="flex min-h-[60px] flex-col gap-2">
           {column.issues.map((issue) => (
-            <SortableIssueCard key={issue.id} issue={issue} />
+            <SortableIssueCard key={issue.id} issue={issue} disabled={!canEdit} />
           ))}
           {column.issues.length === 0 && !isOver && (
             <p className="py-4 text-center text-xs text-muted-foreground">No issues</p>
@@ -168,13 +180,7 @@ function DroppableColumn({
   );
 }
 
-function CreateBoardForm({
-  projectId,
-  onCreated,
-}: {
-  projectId: string;
-  onCreated: () => void;
-}) {
+function CreateBoardForm({ projectId, onCreated }: { projectId: string; onCreated: () => void }) {
   const [name, setName] = useState('');
   const createBoard = useCreateBoard(projectId);
 
@@ -229,22 +235,27 @@ export function KanbanBoard() {
   const { data: issuesData, isLoading: issuesLoading } = useProjectIssues({
     projectKey: projectKey!,
     perPage: 200,
+    sort: 'sortOrder',
   });
-  const { data: boards, isLoading: boardsLoading, refetch: refetchBoards } = useBoards(
-    project?.id || '',
-  );
+  const {
+    data: boards,
+    isLoading: boardsLoading,
+    refetch: refetchBoards,
+  } = useBoards(project?.id || '');
   const { data: workflow } = useWorkflow(project?.workflowId || '');
   const queryClient = useQueryClient();
   const updateIssue = useUpdateIssueDynamic();
   const reorderIssues = useReorderIssues();
+  const canEdit = useHasPermission('issues.update');
 
   const [activeIssue, setActiveIssue] = useState<Issue | null>(null);
   const [overColumnId, setOverColumnId] = useState<string | null>(null);
   const [localIssues, setLocalIssues] = useState<Issue[] | null>(null);
+  const [moveError, setMoveError] = useState<string | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(KeyboardSensor),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
   if (projectPlugins && !projectPlugins.some((p) => p.pluginId === '@weaver/plugin-board')) {
@@ -348,6 +359,7 @@ export function KanbanBoard() {
   };
 
   const handleDragStart = (event: DragStartEvent) => {
+    setMoveError(null);
     const issue = event.active.data.current?.issue as Issue | undefined;
     if (issue) {
       setActiveIssue(issue);
@@ -356,32 +368,17 @@ export function KanbanBoard() {
   };
 
   const handleDragOver = (event: DragOverEvent) => {
-    const { active, over } = event;
-    if (!over || !localIssues) return;
+    const { over } = event;
+    if (!over) return;
 
-    const activeId = active.id as string;
     const targetStatusId = resolveStatusId(over.id as string);
 
     if (!targetStatusId) return;
 
     setOverColumnId(targetStatusId);
-
-    // Find which column the active issue is currently in
-    const activeIssue = localIssues.find((i) => i.id === activeId);
-    if (activeIssue && activeIssue.statusId !== targetStatusId) {
-      // Move issue to new column optimistically
-      setLocalIssues((prev) => {
-        if (!prev) return prev;
-        return prev.map((issue) =>
-          issue.id === activeId
-            ? { ...issue, statusId: targetStatusId }
-            : issue,
-        );
-      });
-    }
   };
 
-  const handleDragEnd = (event: DragEndEvent) => {
+  const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
     setActiveIssue(null);
     setOverColumnId(null);
@@ -392,72 +389,45 @@ export function KanbanBoard() {
     }
 
     const activeId = active.id as string;
-    const draggedIssue = issues.find((i) => i.id === activeId); // use original, not localIssues
-    if (!draggedIssue) {
+    const draggedIssue = issues.find((issue) => issue.id === activeId);
+    const targetStatusId = resolveStatusId(over.id as string);
+    if (!draggedIssue || !targetStatusId) {
       setLocalIssues(null);
       return;
     }
 
-    const targetStatusId = resolveStatusId(over.id as string) ?? draggedIssue.statusId;
-
-    // Get issues in target column from localIssues (already moved optimistically)
-    const columnIssues = localIssues.filter(
-      (i) => i.statusId === targetStatusId || i.id === activeId,
-    );
-    // Deduplicate (the dragged issue might match both conditions)
-    const seen = new Set<string>();
-    const uniqueColumnIssues = columnIssues.filter((i) => {
-      if (seen.has(i.id)) return false;
-      seen.add(i.id);
-      return true;
+    const result = moveIssueBetweenGroups(issues, {
+      activeId,
+      overId: over.id as string,
+      targetGroupId: targetStatusId,
+      groupField: 'statusId',
     });
-
-    // Compute new sort orders
-    const issueUpdates = uniqueColumnIssues.map((issue, idx) => ({
-      id: issue.id,
-      sortOrder: idx * 1000,
-    }));
-
-    // Apply final optimistic update
-    const updatedIssues = localIssues.map((issue) => {
-      if (issue.id === activeId) {
-        return {
-          ...issue,
-          statusId: targetStatusId,
-          sortOrder: issueUpdates.find((u) => u.id === issue.id)?.sortOrder ?? issue.sortOrder,
-        };
-      }
-      const update = issueUpdates.find((u) => u.id === issue.id);
-      return update ? { ...issue, sortOrder: update.sortOrder } : issue;
-    });
-    setLocalIssues(updatedIssues);
-
-    const statusChanged = draggedIssue.statusId !== targetStatusId;
-
-    const cleanup = () => {
-      queryClient.invalidateQueries({ queryKey: ['issues'] });
+    if (!result.changed || !result.activeIssue) {
       setLocalIssues(null);
-    };
-
-    if (statusChanged) {
-      updateIssue.mutate(
-        {
-          issueKey: draggedIssue.key,
-          statusId: targetStatusId,
-          sortOrder: issueUpdates.find((u) => u.id === activeId)?.sortOrder ?? 0,
-        },
-        { onSuccess: cleanup, onError: cleanup },
-      );
+      return;
     }
 
-    if (issueUpdates.length > 0) {
-      reorderIssues.mutate(
-        { issues: issueUpdates },
-        {
-          onSuccess: () => { if (!statusChanged) cleanup(); },
-          onError: cleanup,
-        },
+    setLocalIssues(result.issues);
+
+    try {
+      if (result.sourceGroupId !== result.targetGroupId) {
+        await updateIssue.mutateAsync({
+          issueKey: draggedIssue.key,
+          statusId: targetStatusId,
+          sortOrder: result.activeIssue.sortOrder,
+        });
+      }
+      const reorderPayload = buildReorderPayload(result.affectedIssues);
+      if (reorderPayload.length > 0) {
+        await reorderIssues.mutateAsync({ issues: reorderPayload });
+      }
+    } catch {
+      setMoveError(
+        'The issue could not be fully saved. The latest server state has been reloaded.',
       );
+    } finally {
+      await queryClient.invalidateQueries({ queryKey: ['issues'] });
+      setLocalIssues(null);
     }
   };
 
@@ -478,13 +448,20 @@ export function KanbanBoard() {
       </div>
 
       <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-xl font-bold text-foreground">
-          {boards![0].name}
-        </h1>
+        <h1 className="text-xl font-bold text-foreground">{boards![0].name}</h1>
         <span className="text-sm text-muted-foreground">
           {issues.length} issue{issues.length !== 1 ? 's' : ''}
         </span>
       </div>
+
+      {moveError && (
+        <p
+          role="alert"
+          className="mb-4 border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
+          {moveError}
+        </p>
+      )}
 
       <DndContext
         sensors={sensors}
@@ -494,12 +471,13 @@ export function KanbanBoard() {
         onDragEnd={handleDragEnd}
         onDragCancel={handleDragCancel}
       >
-        <div className="flex gap-4 overflow-x-auto pb-4">
+        <div data-testid="kanban-board" className="flex gap-4 overflow-x-auto pb-4">
           {columns.map((column) => (
             <DroppableColumn
               key={column.statusId}
               column={column}
               isOver={overColumnId === column.statusId}
+              canEdit={canEdit}
             />
           ))}
         </div>

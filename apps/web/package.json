@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "test": "vitest run",
+    "test": "vitest run --exclude 'e2e/**'",
     "clean": "rm -rf dist node_modules .turbo"
   },
   "dependencies": {
