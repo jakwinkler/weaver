@@ -4,6 +4,7 @@ import { apiClient } from '@/api/client';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { extractPlainText, normalizeRichTextContent } from '@/lib/richText';
 import {
   Table,
   TableHeader,
@@ -16,7 +17,7 @@ import {
 interface ParsedIssue {
   summary: string;
   priority?: string;
-  description?: string;
+  description?: unknown;
   labels?: string[];
   [key: string]: unknown;
 }
@@ -83,13 +84,11 @@ export function ImportExportPage() {
 
       for (const issue of issues) {
         const row = headers.map((h) => {
-          const val = issue[h];
+          const val = h === 'description' ? extractPlainText(issue.description) : issue[h];
           if (val === null || val === undefined) return '';
           if (Array.isArray(val)) return `"${val.join(';')}"`;
           const str = String(val).replace(/"/g, '""');
-          return str.includes(',') || str.includes('"') || str.includes('\n')
-            ? `"${str}"`
-            : str;
+          return str.includes(',') || str.includes('"') || str.includes('\n') ? `"${str}"` : str;
         });
         csvRows.push(row.join(','));
       }
@@ -137,7 +136,10 @@ export function ImportExportPage() {
           const issue: ParsedIssue = { summary: '' };
           headers.forEach((header, idx) => {
             if (header === 'labels' && values[idx]) {
-              issue.labels = values[idx].split(';').map((l) => l.trim()).filter(Boolean);
+              issue.labels = values[idx]
+                .split(';')
+                .map((l) => l.trim())
+                .filter(Boolean);
             } else {
               issue[header] = values[idx] || '';
             }
@@ -199,7 +201,7 @@ export function ImportExportPage() {
         await apiClient.post(`/projects/${selectedProject}/issues`, {
           summary: issue.summary,
           priority: issue.priority || 'medium',
-          description: issue.description || '',
+          description: normalizeRichTextContent(issue.description) ?? undefined,
           labels: issue.labels || [],
           customFields: {},
         });
@@ -254,10 +256,7 @@ export function ImportExportPage() {
           </CardHeader>
           <CardContent>
             <div className="flex gap-3">
-              <Button
-                onClick={handleExportCSV}
-                disabled={!selectedProject || exportLoading}
-              >
+              <Button onClick={handleExportCSV} disabled={!selectedProject || exportLoading}>
                 {exportLoading ? 'Exporting...' : 'Export CSV'}
               </Button>
               <Button
@@ -270,7 +269,9 @@ export function ImportExportPage() {
             </div>
 
             {!selectedProject && (
-              <p className="mt-3 text-xs text-muted-foreground">Select a project to enable export.</p>
+              <p className="mt-3 text-xs text-muted-foreground">
+                Select a project to enable export.
+              </p>
             )}
           </CardContent>
         </Card>
@@ -292,9 +293,7 @@ export function ImportExportPage() {
               className="block w-full text-sm text-muted-foreground file:mr-4 file:rounded-md file:border-0 file:bg-primary/10 file:px-4 file:py-2 file:text-sm file:font-medium file:text-primary hover:file:bg-primary/20"
             />
 
-            {parseError && (
-              <p className="mt-3 text-sm text-destructive">{parseError}</p>
-            )}
+            {parseError && <p className="mt-3 text-sm text-destructive">{parseError}</p>}
 
             {parsedData.length > 0 && !importProgress && (
               <div className="mt-4">
@@ -312,7 +311,9 @@ export function ImportExportPage() {
                     <TableBody>
                       {parsedData.slice(0, 20).map((issue, i) => (
                         <TableRow key={i}>
-                          <TableCell className="px-3 py-1.5 text-foreground">{issue.summary}</TableCell>
+                          <TableCell className="px-3 py-1.5 text-foreground">
+                            {issue.summary}
+                          </TableCell>
                           <TableCell className="px-3 py-1.5 text-muted-foreground">
                             {issue.priority || 'medium'}
                           </TableCell>
@@ -320,7 +321,10 @@ export function ImportExportPage() {
                       ))}
                       {parsedData.length > 20 && (
                         <TableRow>
-                          <TableCell colSpan={2} className="px-3 py-1.5 text-center text-muted-foreground">
+                          <TableCell
+                            colSpan={2}
+                            className="px-3 py-1.5 text-center text-muted-foreground"
+                          >
                             ... and {parsedData.length - 20} more
                           </TableCell>
                         </TableRow>
@@ -351,9 +355,7 @@ export function ImportExportPage() {
                     Importing... {importProgress.completed}/{importProgress.total}
                   </span>
                   {importProgress.errors > 0 && (
-                    <span className="text-destructive">
-                      {importProgress.errors} failed
-                    </span>
+                    <span className="text-destructive">{importProgress.errors} failed</span>
                   )}
                 </div>
                 <div className="h-2 overflow-hidden rounded-full bg-muted">
@@ -379,7 +381,9 @@ export function ImportExportPage() {
             )}
 
             {!selectedProject && (
-              <p className="mt-3 text-xs text-muted-foreground">Select a project to enable import.</p>
+              <p className="mt-3 text-xs text-muted-foreground">
+                Select a project to enable import.
+              </p>
             )}
           </CardContent>
         </Card>

@@ -13,7 +13,12 @@ import {
 import type { IssuePriority } from '@weaver/shared';
 import { IssueActivityTabs } from './IssueActivityTabs';
 import { PluginSlot } from '@/plugins';
-import { RichTextEditor, normalizeCommentBody } from '@/components/RichTextEditor';
+import {
+  RichTextEditor,
+  RichTextRenderer,
+  normalizeCommentBody,
+} from '@/components/RichTextEditor';
+import { isRichTextEmpty } from '@/lib/richText';
 import { ChevronDown, Pencil, Check, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -38,10 +43,7 @@ export function IssueDetailPage() {
   const { data: project } = useProject(projectKey);
   const workflowId = project?.workflowId || '';
   const { data: workflow } = useWorkflow(workflowId);
-  const { data: availableTransitions } = useWorkflowTransitions(
-    workflowId,
-    issue?.statusId || '',
-  );
+  const { data: availableTransitions } = useWorkflowTransitions(workflowId, issue?.statusId || '');
   const { data: users } = useUsers();
   const canUpdate = useHasPermission('issues.update');
   const canTransition = useHasPermission('issues.transition');
@@ -91,11 +93,9 @@ export function IssueDetailPage() {
   }, [issue?.description]);
 
   const saveDescription = useCallback(async () => {
-    if (!descJson) {
-      await updateIssue.mutateAsync({ description: undefined });
-    } else {
-      await updateIssue.mutateAsync({ description: descJson });
-    }
+    await updateIssue.mutateAsync({
+      description: isRichTextEmpty(descJson) ? null : descJson,
+    });
     setEditingDesc(false);
     setDescJson(null);
   }, [descJson, updateIssue]);
@@ -128,7 +128,14 @@ export function IssueDetailPage() {
     if (!userId) return '?';
     const user = users?.find((u) => u.id === userId);
     const name = user?.displayName || user?.email || '';
-    return name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2) || '?';
+    return (
+      name
+        .split(' ')
+        .map((n) => n[0])
+        .join('')
+        .toUpperCase()
+        .slice(0, 2) || '?'
+    );
   };
 
   const getStatusName = (statusId: string) => {
@@ -157,6 +164,9 @@ export function IssueDetailPage() {
     );
   }
 
+  const normalizedDescription = normalizeCommentBody(issue.description);
+  const hasDescription = !isRichTextEmpty(normalizedDescription);
+
   return (
     <div>
       {/* Breadcrumb */}
@@ -184,11 +194,7 @@ export function IssueDetailPage() {
                   {isEditing ? null : issue.summary}
                 </h1>
                 {canUpdate && (
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => setIsEditing(!isEditing)}
-                  >
+                  <Button variant="secondary" size="sm" onClick={() => setIsEditing(!isEditing)}>
                     {isEditing ? 'Cancel' : 'Edit'}
                   </Button>
                 )}
@@ -266,7 +272,10 @@ export function IssueDetailPage() {
                         <Button
                           size="sm"
                           variant="secondary"
-                          onClick={() => { setEditingDesc(false); setDescJson(null); }}
+                          onClick={() => {
+                            setEditingDesc(false);
+                            setDescJson(null);
+                          }}
                         >
                           <X className="h-3.5 w-3.5" />
                           Cancel
@@ -275,12 +284,8 @@ export function IssueDetailPage() {
                     </div>
                   ) : (
                     <div className="group relative">
-                      {issue.description ? (
-                        <RichTextEditor
-                          issueKey={issueKey}
-                          content={normalizeCommentBody(issue.description)}
-                          editable={false}
-                        />
+                      {hasDescription ? (
+                        <RichTextRenderer content={normalizedDescription} />
                       ) : (
                         <p className="text-sm italic text-muted-foreground">
                           {canUpdate ? 'Click to add a description...' : 'No description provided.'}
@@ -404,7 +409,9 @@ export function IssueDetailPage() {
                 </div>
                 <div>
                   <dt className="text-xs text-muted-foreground">Reporter</dt>
-                  <dd className="mt-0.5 text-sm text-foreground">{getUserName(issue.reporterId)}</dd>
+                  <dd className="mt-0.5 text-sm text-foreground">
+                    {getUserName(issue.reporterId)}
+                  </dd>
                 </div>
                 <div>
                   <dt className="text-xs text-muted-foreground">Assignee</dt>
@@ -412,7 +419,10 @@ export function IssueDetailPage() {
                     {canAssign ? (
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <button data-shortcut-assignee className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm hover:bg-accent cursor-pointer">
+                          <button
+                            data-shortcut-assignee
+                            className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm hover:bg-accent cursor-pointer"
+                          >
                             {issue.assigneeId ? (
                               <>
                                 <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-[10px] font-medium text-primary">
@@ -441,7 +451,12 @@ export function IssueDetailPage() {
                               className={cn('gap-2', u.id === issue.assigneeId && 'bg-accent')}
                             >
                               <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-[10px] font-medium text-primary shrink-0">
-                                {(u.displayName || u.email).split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)}
+                                {(u.displayName || u.email)
+                                  .split(' ')
+                                  .map((n) => n[0])
+                                  .join('')
+                                  .toUpperCase()
+                                  .slice(0, 2)}
                               </span>
                               {u.displayName || u.email}
                             </DropdownMenuItem>
@@ -478,9 +493,7 @@ export function IssueDetailPage() {
                       <input
                         type="date"
                         value={issue.startDate || ''}
-                        onChange={(e) =>
-                          updateIssue.mutate({ startDate: e.target.value || null })
-                        }
+                        onChange={(e) => updateIssue.mutate({ startDate: e.target.value || null })}
                         className="rounded-md border border-input bg-background px-2 py-1 text-sm focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
                       />
                     ) : (
@@ -495,9 +508,7 @@ export function IssueDetailPage() {
                       <input
                         type="date"
                         value={issue.dueDate || ''}
-                        onChange={(e) =>
-                          updateIssue.mutate({ dueDate: e.target.value || null })
-                        }
+                        onChange={(e) => updateIssue.mutate({ dueDate: e.target.value || null })}
                         className="rounded-md border border-input bg-background px-2 py-1 text-sm focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
                       />
                     ) : (
@@ -514,9 +525,7 @@ export function IssueDetailPage() {
                       max="100"
                       step="5"
                       value={issue.percentDone ?? 0}
-                      onChange={(e) =>
-                        updateIssue.mutate({ percentDone: Number(e.target.value) })
-                      }
+                      onChange={(e) => updateIssue.mutate({ percentDone: Number(e.target.value) })}
                       disabled={!canUpdate}
                       className="h-2 w-24 cursor-pointer accent-primary disabled:opacity-50 disabled:cursor-not-allowed"
                     />

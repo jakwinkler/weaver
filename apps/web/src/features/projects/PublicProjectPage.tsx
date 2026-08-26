@@ -7,6 +7,7 @@ import {
 } from '@/api/hooks-public';
 import type { PublicBoardData } from '@/api/hooks-public';
 import type { Issue, WorkflowStatus } from '@weaver/shared';
+import { extractPlainText } from '@/lib/richText';
 
 type Tab = 'issues' | 'board';
 
@@ -30,9 +31,7 @@ export function PublicProjectPage() {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-muted/50">
         <h1 className="text-2xl font-bold text-foreground">Project not found</h1>
-        <p className="mt-2 text-muted-foreground">
-          This project does not exist or is not public.
-        </p>
+        <p className="mt-2 text-muted-foreground">This project does not exist or is not public.</p>
         <Link to="/login" className="mt-4 text-sm text-primary hover:underline">
           Sign in
         </Link>
@@ -40,15 +39,14 @@ export function PublicProjectPage() {
     );
   }
 
+  const descriptionText = extractPlainText(project.description);
+
   return (
     <div className="min-h-screen bg-muted/50">
       {/* Header */}
       <header className="flex h-14 items-center justify-between bg-slate-900 px-6 text-white">
         <span className="text-xl font-bold">Weaver</span>
-        <Link
-          to="/login"
-          className="text-sm text-white/80 hover:text-white"
-        >
+        <Link to="/login" className="text-sm text-white/80 hover:text-white">
           Sign in
         </Link>
       </header>
@@ -58,8 +56,10 @@ export function PublicProjectPage() {
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-foreground">{project.name}</h1>
           <p className="text-sm text-muted-foreground">{project.key}</p>
-          {project.description && (
-            <p className="mt-2 text-sm text-muted-foreground">{String(project.description)}</p>
+          {descriptionText && (
+            <p className="mt-2 whitespace-pre-line text-sm text-muted-foreground">
+              {descriptionText}
+            </p>
           )}
         </div>
 
@@ -139,10 +139,7 @@ function PublicBoard({ tenantSlug, projectKey }: { tenantSlug: string; projectKe
       {board.statuses.map((status: WorkflowStatus) => (
         <div key={status.id} className="w-64 shrink-0">
           <div className="mb-2 flex items-center gap-2">
-            <span
-              className="h-3 w-3 rounded-full"
-              style={{ backgroundColor: status.color }}
-            />
+            <span className="h-3 w-3 rounded-full" style={{ backgroundColor: status.color }} />
             <span className="text-sm font-medium text-foreground">{status.name}</span>
             <span className="text-xs text-muted-foreground">
               {issuesByStatus.get(status.id)?.length || 0}
@@ -150,10 +147,7 @@ function PublicBoard({ tenantSlug, projectKey }: { tenantSlug: string; projectKe
           </div>
           <div className="space-y-2">
             {(issuesByStatus.get(status.id) || []).map((issue: Issue) => (
-              <div
-                key={issue.id}
-                className="border border-border bg-card p-3"
-              >
+              <div key={issue.id} className="border border-border bg-card p-3">
                 <p className="text-xs text-muted-foreground">{issue.key}</p>
                 <p className="mt-0.5 text-sm text-foreground">{issue.summary}</p>
               </div>

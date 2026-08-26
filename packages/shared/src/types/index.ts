@@ -100,7 +100,7 @@ export interface Issue {
   projectId: string;
   key: string;
   summary: string;
-  description?: Record<string, unknown>;
+  description?: Record<string, unknown> | null;
   statusId: string;
   issueTypeId?: string;
   priority: IssuePriority;

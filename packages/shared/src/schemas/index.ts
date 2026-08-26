@@ -53,7 +53,12 @@ export type UpdateUserDto = z.infer<typeof updateUserSchema>;
 
 export const createProjectSchema = z.object({
   name: z.string().min(1).max(255),
-  key: z.string().regex(PROJECT_KEY_REGEX, 'Project key must be 2-10 uppercase alphanumeric characters starting with a letter'),
+  key: z
+    .string()
+    .regex(
+      PROJECT_KEY_REGEX,
+      'Project key must be 2-10 uppercase alphanumeric characters starting with a letter',
+    ),
   description: z.string().max(5000).optional(),
 });
 export type CreateProjectDto = z.infer<typeof createProjectSchema>;
@@ -91,7 +96,7 @@ export type CreateIssueDto = z.infer<typeof createIssueSchema>;
 
 export const updateIssueSchema = z.object({
   summary: z.string().min(1).max(500).optional(),
-  description: z.record(z.unknown()).optional(),
+  description: z.record(z.unknown()).nullable().optional(),
   priority: z.enum(ISSUE_PRIORITIES).optional(),
   statusId: z.string().uuid().optional(),
   sprintId: z.string().uuid().nullable().optional(),
@@ -108,14 +113,21 @@ export const updateIssueSchema = z.object({
 export type UpdateIssueDto = z.infer<typeof updateIssueSchema>;
 
 export const reorderIssuesSchema = z.object({
-  issues: z.array(z.object({
-    id: z.string().uuid(),
-    sortOrder: z.number().int().min(0),
-  })).min(1).max(200),
+  issues: z
+    .array(
+      z.object({
+        id: z.string().uuid(),
+        sortOrder: z.number().int().min(0),
+      }),
+    )
+    .min(1)
+    .max(200),
 });
 export type ReorderIssuesDto = z.infer<typeof reorderIssuesSchema>;
 
-export const issueKeySchema = z.string().regex(ISSUE_KEY_REGEX, 'Invalid issue key format (e.g., WEB-123)');
+export const issueKeySchema = z
+  .string()
+  .regex(ISSUE_KEY_REGEX, 'Invalid issue key format (e.g., WEB-123)');
 
 // ── Pagination ──
 
