@@ -182,6 +182,7 @@ export function SearchPage() {
             <div className="flex gap-2">
               <Input
                 type="text"
+                data-shortcut-search
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder='e.g. priority = "high" AND label = "bug"'

@@ -27,6 +27,14 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
+import { useHotkeys } from '@/hooks/useHotkeys';
+
+function openShortcutMenu(selector: string) {
+  const trigger = document.querySelector<HTMLButtonElement>(selector);
+  if (!trigger) return;
+  trigger.focus();
+  trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+}
 
 export function IssueDetailPage() {
   const { issueKey } = useParams<{ issueKey: string }>();
@@ -38,10 +46,7 @@ export function IssueDetailPage() {
   const { data: project } = useProject(projectKey);
   const workflowId = project?.workflowId || '';
   const { data: workflow } = useWorkflow(workflowId);
-  const { data: availableTransitions } = useWorkflowTransitions(
-    workflowId,
-    issue?.statusId || '',
-  );
+  const { data: availableTransitions } = useWorkflowTransitions(workflowId, issue?.statusId || '');
   const { data: users } = useUsers();
   const canUpdate = useHasPermission('issues.update');
   const canTransition = useHasPermission('issues.transition');
@@ -53,29 +58,6 @@ export function IssueDetailPage() {
   const [labels, setLabels] = useState('');
   const [editingDesc, setEditingDesc] = useState(false);
   const [descJson, setDescJson] = useState<Record<string, unknown> | null>(null);
-
-  // Keyboard shortcuts: a = assignee picker, s = status transition menu
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement;
-      const tagName = target.tagName.toLowerCase();
-      const isInput = tagName === 'input' || tagName === 'textarea' || tagName === 'select';
-      if (isInput || target.isContentEditable) return;
-
-      if (e.key === 'a') {
-        e.preventDefault();
-        const trigger = document.querySelector<HTMLButtonElement>('[data-shortcut-assignee]');
-        trigger?.click();
-      } else if (e.key === 's') {
-        e.preventDefault();
-        const trigger = document.querySelector<HTMLButtonElement>('[data-shortcut-status]');
-        trigger?.click();
-      }
-    };
-
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, []);
 
   useEffect(() => {
     if (issue) {
@@ -99,6 +81,56 @@ export function IssueDetailPage() {
     setEditingDesc(false);
     setDescJson(null);
   }, [descJson, updateIssue]);
+
+  const cancelIssueEdit = useCallback(() => {
+    if (issue) {
+      setSummary(issue.summary);
+      setPriority(issue.priority);
+      setLabels(issue.labels.join(', '));
+    }
+    setIsEditing(false);
+  }, [issue]);
+
+  const cancelDescriptionEdit = useCallback(() => {
+    setEditingDesc(false);
+    setDescJson(null);
+  }, []);
+
+  useHotkeys(
+    [
+      {
+        keys: 'e',
+        handler: () => setIsEditing(true),
+        enabled: canUpdate && !isEditing,
+      },
+      {
+        keys: 'a',
+        handler: () => openShortcutMenu('[data-shortcut-assignee]'),
+        enabled: canAssign,
+      },
+      {
+        keys: 's',
+        handler: () => openShortcutMenu('[data-shortcut-status]'),
+        enabled: canTransition,
+      },
+      {
+        keys: 'Escape',
+        handler: (event) => {
+          if (isEditing) {
+            event.preventDefault();
+            cancelIssueEdit();
+          } else if (editingDesc) {
+            event.preventDefault();
+            cancelDescriptionEdit();
+          }
+        },
+        preventDefault: false,
+        allowInEditable: true,
+        allowInInteractive: true,
+      },
+    ],
+    { context: 'detail' },
+  );
 
   const handleSave = async (e: FormEvent) => {
     e.preventDefault();
@@ -128,7 +160,14 @@ export function IssueDetailPage() {
     if (!userId) return '?';
     const user = users?.find((u) => u.id === userId);
     const name = user?.displayName || user?.email || '';
-    return name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2) || '?';
+    return (
+      name
+        .split(' ')
+        .map((n) => n[0])
+        .join('')
+        .toUpperCase()
+        .slice(0, 2) || '?'
+    );
   };
 
   const getStatusName = (statusId: string) => {
@@ -187,7 +226,7 @@ export function IssueDetailPage() {
                   <Button
                     variant="secondary"
                     size="sm"
-                    onClick={() => setIsEditing(!isEditing)}
+                    onClick={() => (isEditing ? cancelIssueEdit() : setIsEditing(true))}
                   >
                     {isEditing ? 'Cancel' : 'Edit'}
                   </Button>
@@ -201,6 +240,7 @@ export function IssueDetailPage() {
                     <Input
                       id="editSummary"
                       type="text"
+                      autoFocus
                       required
                       value={summary}
                       onChange={(e) => setSummary(e.target.value)}
@@ -263,11 +303,7 @@ export function IssueDetailPage() {
                           <Check className="h-3.5 w-3.5" />
                           {updateIssue.isPending ? 'Saving...' : 'Save'}
                         </Button>
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => { setEditingDesc(false); setDescJson(null); }}
-                        >
+                        <Button size="sm" variant="secondary" onClick={cancelDescriptionEdit}>
                           <X className="h-3.5 w-3.5" />
                           Cancel
                         </Button>
@@ -404,7 +440,9 @@ export function IssueDetailPage() {
                 </div>
                 <div>
                   <dt className="text-xs text-muted-foreground">Reporter</dt>
-                  <dd className="mt-0.5 text-sm text-foreground">{getUserName(issue.reporterId)}</dd>
+                  <dd className="mt-0.5 text-sm text-foreground">
+                    {getUserName(issue.reporterId)}
+                  </dd>
                 </div>
                 <div>
                   <dt className="text-xs text-muted-foreground">Assignee</dt>
@@ -412,7 +450,10 @@ export function IssueDetailPage() {
                     {canAssign ? (
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <button data-shortcut-assignee className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm hover:bg-accent cursor-pointer">
+                          <button
+                            data-shortcut-assignee
+                            className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm hover:bg-accent cursor-pointer"
+                          >
                             {issue.assigneeId ? (
                               <>
                                 <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-[10px] font-medium text-primary">
@@ -441,7 +482,12 @@ export function IssueDetailPage() {
                               className={cn('gap-2', u.id === issue.assigneeId && 'bg-accent')}
                             >
                               <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-[10px] font-medium text-primary shrink-0">
-                                {(u.displayName || u.email).split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)}
+                                {(u.displayName || u.email)
+                                  .split(' ')
+                                  .map((n) => n[0])
+                                  .join('')
+                                  .toUpperCase()
+                                  .slice(0, 2)}
                               </span>
                               {u.displayName || u.email}
                             </DropdownMenuItem>
@@ -478,9 +524,7 @@ export function IssueDetailPage() {
                       <input
                         type="date"
                         value={issue.startDate || ''}
-                        onChange={(e) =>
-                          updateIssue.mutate({ startDate: e.target.value || null })
-                        }
+                        onChange={(e) => updateIssue.mutate({ startDate: e.target.value || null })}
                         className="rounded-md border border-input bg-background px-2 py-1 text-sm focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
                       />
                     ) : (
@@ -495,9 +539,7 @@ export function IssueDetailPage() {
                       <input
                         type="date"
                         value={issue.dueDate || ''}
-                        onChange={(e) =>
-                          updateIssue.mutate({ dueDate: e.target.value || null })
-                        }
+                        onChange={(e) => updateIssue.mutate({ dueDate: e.target.value || null })}
                         className="rounded-md border border-input bg-background px-2 py-1 text-sm focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
                       />
                     ) : (
@@ -514,9 +556,7 @@ export function IssueDetailPage() {
                       max="100"
                       step="5"
                       value={issue.percentDone ?? 0}
-                      onChange={(e) =>
-                        updateIssue.mutate({ percentDone: Number(e.target.value) })
-                      }
+                      onChange={(e) => updateIssue.mutate({ percentDone: Number(e.target.value) })}
                       disabled={!canUpdate}
                       className="h-2 w-24 cursor-pointer accent-primary disabled:opacity-50 disabled:cursor-not-allowed"
                     />

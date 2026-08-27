@@ -1,5 +1,5 @@
-import { useState, type FormEvent } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useEffect, useState, type FormEvent } from 'react';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   DndContext,
   DragOverlay,
@@ -13,11 +13,7 @@ import {
   type DragEndEvent,
   type DragOverEvent,
 } from '@dnd-kit/core';
-import {
-  SortableContext,
-  verticalListSortingStrategy,
-  useSortable,
-} from '@dnd-kit/sortable';
+import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -37,6 +33,8 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { useHotkeys } from '@/hooks/useHotkeys';
+import { getNextBoardIssueId, type BoardKeyboardDirection } from './boardKeyboardNavigation';
 
 interface StatusColumn {
   statusId: string;
@@ -44,6 +42,55 @@ interface StatusColumn {
   color: string;
   issues: Issue[];
   position: number;
+}
+
+interface WorkflowStatus {
+  id: string;
+  name: string;
+  color?: string | null;
+  category: string;
+}
+
+function buildStatusColumns(issues: Issue[], statuses: WorkflowStatus[]): StatusColumn[] {
+  const issuesByStatus = new Map<string, Issue[]>();
+  for (const issue of issues) {
+    const existing = issuesByStatus.get(issue.statusId) || [];
+    existing.push(issue);
+    issuesByStatus.set(issue.statusId, existing);
+  }
+
+  for (const columnIssues of issuesByStatus.values()) {
+    columnIssues.sort((a, b) => a.sortOrder - b.sortOrder);
+  }
+
+  const categoryOrder: Record<string, number> = { to_do: 0, in_progress: 1, done: 2 };
+  if (statuses.length > 0) {
+    return statuses
+      .map((status) => ({
+        statusId: status.id,
+        name: status.name,
+        color: status.color || '#6b7280',
+        issues: issuesByStatus.get(status.id) || [],
+        position: categoryOrder[status.category] ?? 1,
+      }))
+      .sort((a, b) => a.position - b.position);
+  }
+
+  if (issues.length > 0) {
+    return Array.from(issuesByStatus.entries()).map(([statusId, columnIssues]) => ({
+      statusId,
+      name: statusId.slice(0, 8),
+      color: '#6b7280',
+      issues: columnIssues,
+      position: 0,
+    }));
+  }
+
+  return [
+    { statusId: 'todo', name: 'To Do', color: '#6b7280', issues: [], position: 0 },
+    { statusId: 'in_progress', name: 'In Progress', color: '#3b82f6', issues: [], position: 1 },
+    { statusId: 'done', name: 'Done', color: '#22c55e', issues: [], position: 2 },
+  ];
 }
 
 function PriorityBadge({ priority }: { priority: string }) {
@@ -87,15 +134,19 @@ function IssueCardContent({ issue }: { issue: Issue }) {
   );
 }
 
-function SortableIssueCard({ issue }: { issue: Issue }) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: issue.id, data: { issue, type: 'issue' } });
+function SortableIssueCard({
+  issue,
+  isKeyboardFocused,
+  onKeyboardFocus,
+}: {
+  issue: Issue;
+  isKeyboardFocused: boolean;
+  onKeyboardFocus: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: issue.id,
+    data: { issue, type: 'issue' },
+  });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -108,8 +159,13 @@ function SortableIssueCard({ issue }: { issue: Issue }) {
       style={style}
       {...attributes}
       {...listeners}
+      tabIndex={isKeyboardFocused ? 0 : -1}
+      data-board-issue-id={issue.id}
+      data-keyboard-active={isKeyboardFocused ? 'true' : 'false'}
+      onFocus={onKeyboardFocus}
       className={cn(
-        'block cursor-grab rounded-lg border border-border bg-card p-3 shadow-sm transition hover:shadow-md active:cursor-grabbing',
+        'block cursor-grab rounded-lg border border-border bg-card p-3 shadow-sm transition hover:shadow-md active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
+        isKeyboardFocused && 'ring-2 ring-primary ring-offset-2',
         isDragging && 'opacity-30',
       )}
     >
@@ -123,9 +179,15 @@ function SortableIssueCard({ issue }: { issue: Issue }) {
 function DroppableColumn({
   column,
   isOver,
+  focusedIssueId,
+  firstIssueId,
+  onIssueFocus,
 }: {
   column: StatusColumn;
   isOver: boolean;
+  focusedIssueId: string | null;
+  firstIssueId: string | null;
+  onIssueFocus: (issueId: string) => void;
 }) {
   const { setNodeRef } = useDroppable({
     id: `column-${column.statusId}`,
@@ -144,10 +206,7 @@ function DroppableColumn({
     >
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <div
-            className="h-3 w-3 rounded-full"
-            style={{ backgroundColor: column.color }}
-          />
+          <div className="h-3 w-3 rounded-full" style={{ backgroundColor: column.color }} />
           <h3 className="text-sm font-semibold text-foreground">{column.name}</h3>
         </div>
         <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
@@ -157,7 +216,14 @@ function DroppableColumn({
       <SortableContext items={issueIds} strategy={verticalListSortingStrategy}>
         <div className="flex min-h-[60px] flex-col gap-2">
           {column.issues.map((issue) => (
-            <SortableIssueCard key={issue.id} issue={issue} />
+            <SortableIssueCard
+              key={issue.id}
+              issue={issue}
+              isKeyboardFocused={
+                focusedIssueId === issue.id || (!focusedIssueId && firstIssueId === issue.id)
+              }
+              onKeyboardFocus={() => onIssueFocus(issue.id)}
+            />
           ))}
           {column.issues.length === 0 && !isOver && (
             <p className="py-4 text-center text-xs text-muted-foreground">No issues</p>
@@ -168,13 +234,7 @@ function DroppableColumn({
   );
 }
 
-function CreateBoardForm({
-  projectId,
-  onCreated,
-}: {
-  projectId: string;
-  onCreated: () => void;
-}) {
+function CreateBoardForm({ projectId, onCreated }: { projectId: string; onCreated: () => void }) {
   const [name, setName] = useState('');
   const createBoard = useCreateBoard(projectId);
 
@@ -224,15 +284,18 @@ function CreateBoardForm({
 
 export function KanbanBoard() {
   const { projectKey } = useParams<{ projectKey: string }>();
+  const navigate = useNavigate();
   const { data: projectPlugins } = useProjectPlugins(projectKey!);
   const { data: project, isLoading: projectLoading } = useProject(projectKey!);
   const { data: issuesData, isLoading: issuesLoading } = useProjectIssues({
     projectKey: projectKey!,
     perPage: 200,
   });
-  const { data: boards, isLoading: boardsLoading, refetch: refetchBoards } = useBoards(
-    project?.id || '',
-  );
+  const {
+    data: boards,
+    isLoading: boardsLoading,
+    refetch: refetchBoards,
+  } = useBoards(project?.id || '');
   const { data: workflow } = useWorkflow(project?.workflowId || '');
   const queryClient = useQueryClient();
   const updateIssue = useUpdateIssueDynamic();
@@ -241,17 +304,73 @@ export function KanbanBoard() {
   const [activeIssue, setActiveIssue] = useState<Issue | null>(null);
   const [overColumnId, setOverColumnId] = useState<string | null>(null);
   const [localIssues, setLocalIssues] = useState<Issue[] | null>(null);
+  const [focusedIssueId, setFocusedIssueId] = useState<string | null>(null);
+
+  const isLoading = projectLoading || issuesLoading || boardsLoading;
+  const hasBoards = Boolean(boards && boards.length > 0);
+  const boardEnabled =
+    projectPlugins === undefined ||
+    projectPlugins.some((plugin) => plugin.pluginId === '@weaver/plugin-board');
+  const issues = localIssues ?? issuesData?.data ?? [];
+  const statuses = (workflow?.statuses || []) as WorkflowStatus[];
+  const columns = buildStatusColumns(issues, statuses);
+  const keyboardColumns = columns.map((column) => ({
+    statusId: column.statusId,
+    issueIds: column.issues.map((issue) => issue.id),
+  }));
+  const firstIssueId =
+    keyboardColumns.find((column) => column.issueIds.length > 0)?.issueIds[0] ?? null;
+  const issueIds = issues.map((issue) => issue.id).join('|');
+
+  const moveKeyboardFocus = (direction: BoardKeyboardDirection) => {
+    setFocusedIssueId((current) => getNextBoardIssueId(keyboardColumns, current, direction));
+  };
+
+  useHotkeys(
+    [
+      { keys: 'ArrowUp', handler: () => moveKeyboardFocus('up') },
+      { keys: 'ArrowDown', handler: () => moveKeyboardFocus('down') },
+      { keys: 'ArrowLeft', handler: () => moveKeyboardFocus('left') },
+      { keys: 'ArrowRight', handler: () => moveKeyboardFocus('right') },
+      {
+        keys: 'Enter',
+        handler: () => {
+          const focusedIssue = issues.find((issue) => issue.id === focusedIssueId);
+          if (focusedIssue) navigate(`/issues/${focusedIssue.key}`);
+        },
+        enabled: Boolean(focusedIssueId),
+      },
+    ],
+    {
+      context: 'board',
+      enabled: boardEnabled && hasBoards && !isLoading,
+    },
+  );
+
+  useEffect(() => {
+    if (focusedIssueId && !issues.some((issue) => issue.id === focusedIssueId)) {
+      setFocusedIssueId(null);
+      return;
+    }
+    if (!focusedIssueId) return;
+
+    const card = Array.from(document.querySelectorAll<HTMLElement>('[data-board-issue-id]')).find(
+      (element) => element.dataset.boardIssueId === focusedIssueId,
+    );
+    card?.focus({ preventScroll: true });
+    card?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [focusedIssueId, issueIds]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(KeyboardSensor),
+    useSensor(KeyboardSensor, {
+      keyboardCodes: { start: ['Space'], cancel: ['Escape'], end: ['Space'] },
+    }),
   );
 
   if (projectPlugins && !projectPlugins.some((p) => p.pluginId === '@weaver/plugin-board')) {
     return <FeatureNotEnabled featureName="Kanban Board" projectKey={projectKey!} />;
   }
-
-  const isLoading = projectLoading || issuesLoading || boardsLoading;
 
   if (isLoading) {
     return (
@@ -269,8 +388,6 @@ export function KanbanBoard() {
     );
   }
 
-  const hasBoards = boards && boards.length > 0;
-
   if (!hasBoards) {
     return (
       <div>
@@ -284,52 +401,6 @@ export function KanbanBoard() {
         <CreateBoardForm projectId={project.id} onCreated={() => refetchBoards()} />
       </div>
     );
-  }
-
-  const issues = localIssues ?? issuesData?.data ?? [];
-  const statuses = workflow?.statuses || [];
-
-  // Group issues by statusId
-  const issuesByStatus = new Map<string, Issue[]>();
-  for (const issue of issues) {
-    const existing = issuesByStatus.get(issue.statusId) || [];
-    existing.push(issue);
-    issuesByStatus.set(issue.statusId, existing);
-  }
-
-  // Sort issues within each column by sortOrder
-  for (const [, columnIssues] of issuesByStatus) {
-    columnIssues.sort((a, b) => a.sortOrder - b.sortOrder);
-  }
-
-  // Build columns from workflow statuses
-  const categoryOrder: Record<string, number> = { to_do: 0, in_progress: 1, done: 2 };
-  let columns: StatusColumn[];
-
-  if (statuses.length > 0) {
-    columns = statuses
-      .map((status) => ({
-        statusId: status.id,
-        name: status.name,
-        color: status.color || '#6b7280',
-        issues: issuesByStatus.get(status.id) || [],
-        position: categoryOrder[status.category] ?? 1,
-      }))
-      .sort((a, b) => a.position - b.position);
-  } else if (issues.length > 0) {
-    columns = Array.from(issuesByStatus.entries()).map(([statusId, columnIssues]) => ({
-      statusId,
-      name: statusId.slice(0, 8),
-      color: '#6b7280',
-      issues: columnIssues,
-      position: 0,
-    }));
-  } else {
-    columns = [
-      { statusId: 'todo', name: 'To Do', color: '#6b7280', issues: [], position: 0 },
-      { statusId: 'in_progress', name: 'In Progress', color: '#3b82f6', issues: [], position: 1 },
-      { statusId: 'done', name: 'Done', color: '#22c55e', issues: [], position: 2 },
-    ];
   }
 
   // Resolve a droppable/sortable ID to a statusId
@@ -373,9 +444,7 @@ export function KanbanBoard() {
       setLocalIssues((prev) => {
         if (!prev) return prev;
         return prev.map((issue) =>
-          issue.id === activeId
-            ? { ...issue, statusId: targetStatusId }
-            : issue,
+          issue.id === activeId ? { ...issue, statusId: targetStatusId } : issue,
         );
       });
     }
@@ -454,7 +523,9 @@ export function KanbanBoard() {
       reorderIssues.mutate(
         { issues: issueUpdates },
         {
-          onSuccess: () => { if (!statusChanged) cleanup(); },
+          onSuccess: () => {
+            if (!statusChanged) cleanup();
+          },
           onError: cleanup,
         },
       );
@@ -478,9 +549,7 @@ export function KanbanBoard() {
       </div>
 
       <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-xl font-bold text-foreground">
-          {boards![0].name}
-        </h1>
+        <h1 className="text-xl font-bold text-foreground">{boards![0].name}</h1>
         <span className="text-sm text-muted-foreground">
           {issues.length} issue{issues.length !== 1 ? 's' : ''}
         </span>
@@ -500,6 +569,9 @@ export function KanbanBoard() {
               key={column.statusId}
               column={column}
               isOver={overColumnId === column.statusId}
+              focusedIssueId={focusedIssueId}
+              firstIssueId={firstIssueId}
+              onIssueFocus={setFocusedIssueId}
             />
           ))}
         </div>

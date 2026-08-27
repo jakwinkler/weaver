@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, type FormEvent } from 'react';
+import { useState, useCallback, useEffect, useRef, type FormEvent } from 'react';
 import { useParams, Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -23,6 +23,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Table,
   TableHeader,
@@ -33,6 +34,7 @@ import {
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 import { X } from 'lucide-react';
+import { useHotkeys } from '@/hooks/useHotkeys';
 
 const UNASSIGNED_VALUE = '__unassigned__';
 
@@ -207,43 +209,72 @@ export function IssueListPage() {
   const [startDate, setStartDate] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
+  const [selectedIssueIds, setSelectedIssueIds] = useState<Set<string>>(() => new Set());
+  const rowRefs = useRef(new Map<string, HTMLTableRowElement>());
+  const issues = data?.data ?? [];
+  const issueKeys = issues.map((issue) => issue.key).join('|');
 
-  // Reset focused index when data or page changes
+  // Reset keyboard state when the visible result set changes.
   useEffect(() => {
     setFocusedIndex(-1);
-  }, [data, page]);
+    setSelectedIssueIds(new Set());
+  }, [issueKeys, page, perPage]);
 
-  // j/k/Enter keyboard navigation for issue list
   useEffect(() => {
-    const issues = data?.data;
-    if (!issues || issues.length === 0) return;
+    const focusedIssue = issues[focusedIndex];
+    if (!focusedIssue) return;
 
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement;
-      const tagName = target.tagName.toLowerCase();
-      const isInput = tagName === 'input' || tagName === 'textarea' || tagName === 'select';
-      if (isInput || target.isContentEditable) return;
+    const row = rowRefs.current.get(focusedIssue.id);
+    row?.focus({ preventScroll: true });
+    row?.scrollIntoView({ block: 'nearest' });
+  }, [focusedIndex, issueKeys]);
 
-      if (e.key === 'j') {
-        e.preventDefault();
-        setFocusedIndex((prev) => Math.min(prev + 1, issues.length - 1));
-      } else if (e.key === 'k') {
-        e.preventDefault();
-        setFocusedIndex((prev) => Math.max(prev - 1, 0));
-      } else if (e.key === 'Enter') {
-        setFocusedIndex((prev) => {
-          if (prev >= 0 && prev < issues.length) {
-            e.preventDefault();
-            navigate(`/issues/${issues[prev].key}`);
-          }
-          return prev;
-        });
-      }
-    };
+  useEffect(() => {
+    if (searchParams.get('create') !== '1') return;
+    setShowForm(true);
+    updateParams({ create: undefined });
+  }, [searchParams, updateParams]);
 
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [data, navigate]);
+  const moveFocus = (delta: -1 | 1) => {
+    if (issues.length === 0) return;
+    setFocusedIndex((previous) => {
+      if (previous < 0) return 0;
+      return Math.max(0, Math.min(previous + delta, issues.length - 1));
+    });
+  };
+
+  const toggleIssueSelection = (issueId: string) => {
+    setSelectedIssueIds((previous) => {
+      const next = new Set(previous);
+      if (next.has(issueId)) next.delete(issueId);
+      else next.add(issueId);
+      return next;
+    });
+  };
+
+  useHotkeys(
+    [
+      { keys: 'j', handler: () => moveFocus(1) },
+      { keys: 'k', handler: () => moveFocus(-1) },
+      {
+        keys: 'Enter',
+        handler: () => {
+          const focusedIssue = issues[focusedIndex];
+          if (focusedIssue) navigate(`/issues/${focusedIssue.key}`);
+        },
+        enabled: focusedIndex >= 0,
+      },
+      {
+        keys: 'x',
+        handler: () => {
+          const focusedIssue = issues[focusedIndex];
+          if (focusedIssue) toggleIssueSelection(focusedIssue.id);
+        },
+        enabled: focusedIndex >= 0,
+      },
+    ],
+    { context: 'list', ignoreInteractiveElements: true },
+  );
 
   const handleCreate = async (e: FormEvent) => {
     e.preventDefault();
@@ -298,6 +329,11 @@ export function IssueListPage() {
             <span>Issues</span>
           </div>
           <h1 className="mt-1 text-2xl font-bold text-foreground">Issues</h1>
+          {selectedIssueIds.size > 0 && (
+            <p className="mt-1 text-sm text-primary" aria-live="polite">
+              {selectedIssueIds.size} selected
+            </p>
+          )}
         </div>
         {canCreate && (
           <Button onClick={() => setShowForm(!showForm)}>
@@ -316,6 +352,7 @@ export function IssueListPage() {
                   <Input
                     id="issueSummary"
                     type="text"
+                    autoFocus
                     required
                     value={summary}
                     onChange={(e) => setSummary(e.target.value)}
@@ -336,7 +373,9 @@ export function IssueListPage() {
                   >
                     <option value="">None</option>
                     {issueTypes?.map((t) => (
-                      <option key={t.id} value={t.id}>{t.name}</option>
+                      <option key={t.id} value={t.id}>
+                        {t.name}
+                      </option>
                     ))}
                   </select>
                 </div>
@@ -398,6 +437,23 @@ export function IssueListPage() {
         <Table>
           <TableHeader className="bg-muted/50">
             <TableRow>
+              <TableHead className="w-10">
+                <Checkbox
+                  aria-label="Select all issues on this page"
+                  checked={
+                    issues.length > 0 && issues.every((issue) => selectedIssueIds.has(issue.id))
+                      ? true
+                      : selectedIssueIds.size > 0
+                        ? 'indeterminate'
+                        : false
+                  }
+                  onCheckedChange={(checked) => {
+                    setSelectedIssueIds(
+                      checked ? new Set(issues.map((issue) => issue.id)) : new Set(),
+                    );
+                  }}
+                />
+              </TableHead>
               <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 Type
               </TableHead>
@@ -451,11 +507,29 @@ export function IssueListPage() {
             {data?.data.map((issue, index) => (
               <TableRow
                 key={issue.id}
+                ref={(node) => {
+                  if (node) rowRefs.current.set(issue.id, node);
+                  else rowRefs.current.delete(issue.id);
+                }}
+                tabIndex={focusedIndex === index || (focusedIndex === -1 && index === 0) ? 0 : -1}
+                data-keyboard-active={focusedIndex === index ? 'true' : 'false'}
+                aria-selected={selectedIssueIds.has(issue.id)}
+                onFocus={(event) => {
+                  if (event.currentTarget === event.target) setFocusedIndex(index);
+                }}
                 className={cn(
-                  'hover:bg-muted/50',
+                  'hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset',
+                  selectedIssueIds.has(issue.id) && 'bg-primary/5',
                   focusedIndex === index && 'bg-accent ring-2 ring-primary/30 ring-inset',
                 )}
               >
+                <TableCell className="w-10">
+                  <Checkbox
+                    aria-label={`Select ${issue.key}`}
+                    checked={selectedIssueIds.has(issue.id)}
+                    onCheckedChange={() => toggleIssueSelection(issue.id)}
+                  />
+                </TableCell>
                 <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
                   {issue.issueType ? (
                     <span className="inline-flex items-center gap-1.5" title={issue.issueType.name}>
@@ -466,7 +540,9 @@ export function IssueListPage() {
                       />
                       <span className="text-xs">{issue.issueType.name}</span>
                     </span>
-                  ) : '—'}
+                  ) : (
+                    '—'
+                  )}
                 </TableCell>
                 <TableCell className="whitespace-nowrap text-sm font-medium text-primary">
                   <Link to={`/issues/${issue.key}`}>{issue.key}</Link>
@@ -561,7 +637,10 @@ export function IssueListPage() {
             ))}
             {data?.data.length === 0 && (
               <TableRow>
-                <TableCell colSpan={9} className="px-6 py-8 text-center text-sm text-muted-foreground">
+                <TableCell
+                  colSpan={10}
+                  className="px-6 py-8 text-center text-sm text-muted-foreground"
+                >
                   No issues yet. Create your first issue to get started.
                 </TableCell>
               </TableRow>
@@ -611,7 +690,12 @@ function PriorityBadge({ priority }: { priority: string }) {
   };
 
   return (
-    <span className={cn('inline-flex rounded-full px-2 py-0.5 text-xs font-medium', colors[priority] ?? 'bg-gray-100 text-gray-700')}>
+    <span
+      className={cn(
+        'inline-flex rounded-full px-2 py-0.5 text-xs font-medium',
+        colors[priority] ?? 'bg-gray-100 text-gray-700',
+      )}
+    >
       {priority}
     </span>
   );
