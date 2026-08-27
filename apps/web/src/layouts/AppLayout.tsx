@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore, useThemeStore } from '@/stores';
-import { useProjects, useUnreadCount, useInstalledPlugins, useAvailablePlugins, useMyPermissions } from '@/api';
+import { useProjects, useInstalledPlugins, useAvailablePlugins, useMyPermissions } from '@/api';
 import { ProjectIcon } from '@/features/projects/ProjectSettingsPage';
+import { NotificationPanel } from '@/features/notifications/NotificationPanel';
 import { UserAvatar } from '@/components/UserAvatar';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -17,7 +18,6 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   Search,
-  Bell,
   ChevronDown,
   ChevronRight,
   GitBranch,
@@ -58,7 +58,6 @@ export function AppLayout() {
   const isAdmin = useAuthStore((s) => s.isAdmin());
   const logout = useAuthStore((s) => s.logout);
   const { data: projectsData } = useProjects();
-  const { data: unreadCount } = useUnreadCount();
   const { data: installedPlugins } = useInstalledPlugins();
   const { data: availablePlugins } = useAvailablePlugins();
   const permissions = useMyPermissions();
@@ -235,20 +234,7 @@ export function AppLayout() {
           </div>
 
           <div className="flex items-center gap-3">
-            {/* Notification bell */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" className="relative text-white/80 hover:text-white hover:bg-white/10" onClick={() => navigate('/search')}>
-                  <Bell className="h-5 w-5" />
-                  {unreadCount != null && unreadCount > 0 && (
-                    <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-white">
-                      {unreadCount > 99 ? '99+' : unreadCount}
-                    </span>
-                  )}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Notifications</TooltipContent>
-            </Tooltip>
+            <NotificationPanel />
 
             {/* Theme toggle */}
             <Tooltip>

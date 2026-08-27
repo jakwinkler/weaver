@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { NotificationEntity } from '@weaver/db';
+import type { PaginatedResponse } from '@weaver/shared';
 import { TenantConnectionProvider } from '../../core/tenant';
 import { WeaverGateway } from '../../core/websocket';
 
@@ -38,7 +39,7 @@ export class NotificationsService {
     userId: string,
     page = 1,
     perPage = 20,
-  ): Promise<{ items: NotificationEntity[]; total: number }> {
+  ): Promise<PaginatedResponse<NotificationEntity>> {
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(NotificationEntity);
 
@@ -49,7 +50,15 @@ export class NotificationsService {
       take: perPage,
     });
 
-    return { items, total };
+    return {
+      data: items,
+      meta: {
+        page,
+        perPage,
+        total,
+        totalPages: Math.ceil(total / perPage),
+      },
+    };
   }
 
   async markRead(id: string, userId: string): Promise<NotificationEntity> {

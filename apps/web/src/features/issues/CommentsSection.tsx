@@ -4,6 +4,7 @@ import { useHasPermission } from '@/api';
 import { apiClient } from '@/api/client';
 import { useQueryClient } from '@tanstack/react-query';
 import { RichTextEditor, normalizeCommentBody } from './RichTextEditor';
+import { RichTextRenderer } from '@/components/RichTextRenderer';
 import { loadDraft, saveDraft, clearDraft } from './useCommentDraft';
 import { UserAvatar } from '@/components/UserAvatar';
 import { Trash2 } from 'lucide-react';
@@ -19,8 +20,8 @@ export function CommentsSection({ issueKey }: CommentsSectionProps) {
   const canCreate = useHasPermission('comments.create');
   const canDelete = useHasPermission('comments.delete');
 
-  const [editorContent, setEditorContent] = useState<Record<string, unknown> | null>(
-    () => loadDraft(issueKey),
+  const [editorContent, setEditorContent] = useState<Record<string, unknown> | null>(() =>
+    loadDraft(issueKey),
   );
   const draftTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
@@ -56,12 +57,13 @@ export function CommentsSection({ issueKey }: CommentsSectionProps) {
     }
   };
 
-  const isEmptyDoc = !editorContent || (
-    (editorContent as any).type === 'doc' &&
-    (editorContent as any).content?.length === 1 &&
-    (editorContent as any).content?.[0]?.type === 'paragraph' &&
-    (!(editorContent as any).content?.[0]?.content || (editorContent as any).content?.[0]?.content?.length === 0)
-  );
+  const isEmptyDoc =
+    !editorContent ||
+    ((editorContent as any).type === 'doc' &&
+      (editorContent as any).content?.length === 1 &&
+      (editorContent as any).content?.[0]?.type === 'paragraph' &&
+      (!(editorContent as any).content?.[0]?.content ||
+        (editorContent as any).content?.[0]?.content?.length === 0));
 
   if (isLoading) {
     return (
@@ -104,10 +106,7 @@ export function CommentsSection({ issueKey }: CommentsSectionProps) {
         )}
 
         {comments?.map((comment) => (
-          <div
-            key={comment.id}
-            className="rounded-lg border border-gray-100 bg-gray-50 p-4"
-          >
+          <div key={comment.id} className="rounded-lg border border-gray-100 bg-gray-50 p-4">
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-2">
                 <UserAvatar
@@ -138,11 +137,7 @@ export function CommentsSection({ issueKey }: CommentsSectionProps) {
               )}
             </div>
             <div className="mt-2">
-              <RichTextEditor
-                issueKey={issueKey}
-                content={normalizeCommentBody(comment.body)}
-                editable={false}
-              />
+              <RichTextRenderer issueKey={issueKey} content={normalizeCommentBody(comment.body)} />
             </div>
           </div>
         ))}

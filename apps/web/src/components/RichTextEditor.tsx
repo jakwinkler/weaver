@@ -4,13 +4,12 @@ import Image from '@tiptap/extension-image';
 import Placeholder from '@tiptap/extension-placeholder';
 import Link from '@tiptap/extension-link';
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
-import Mention from '@tiptap/extension-mention';
 import { common, createLowlight } from 'lowlight';
 import tippy, { type Instance as TippyInstance } from 'tippy.js';
 import { useCallback, useEffect, useRef } from 'react';
 import { useUploadAttachment, useGenericUploadAttachment, getAttachmentUrl } from '@/api';
-import { MentionList, fetchMentionUsers } from './MentionSuggestion';
-import type { MentionUser } from './MentionSuggestion';
+import { MentionList } from './MentionSuggestion';
+import { MentionWithAvatar } from './MentionNode';
 import {
   Bold,
   Italic,
@@ -121,15 +120,12 @@ export function RichTextEditor({
       Placeholder.configure({ placeholder }),
       Link.configure({ openOnClick: !editable }),
       CodeBlockLowlight.configure({ lowlight }),
-      Mention.configure({
+      MentionWithAvatar.configure({
         HTMLAttributes: {
           class: 'mention',
         },
         suggestion: {
-          items: async ({ query }: { query: string }): Promise<MentionUser[]> => {
-            if (!query) return [];
-            return fetchMentionUsers(query);
-          },
+          items: () => [],
           render: () => {
             let component: ReactRenderer<any> | null = null;
             let popup: TippyInstance[] | null = null;
@@ -281,49 +277,104 @@ function Toolbar({ editor }: { editor: ReturnType<typeof useEditor> }) {
 
   return (
     <div className="flex flex-wrap items-center gap-0.5 border-b border-border px-2 py-1">
-      <button type="button" onClick={() => editor.chain().focus().toggleBold().run()} className={btn(editor.isActive('bold'))} title="Bold">
+      <button
+        type="button"
+        onClick={() => editor.chain().focus().toggleBold().run()}
+        className={btn(editor.isActive('bold'))}
+        title="Bold"
+      >
         <Bold className="h-4 w-4" />
       </button>
-      <button type="button" onClick={() => editor.chain().focus().toggleItalic().run()} className={btn(editor.isActive('italic'))} title="Italic">
+      <button
+        type="button"
+        onClick={() => editor.chain().focus().toggleItalic().run()}
+        className={btn(editor.isActive('italic'))}
+        title="Italic"
+      >
         <Italic className="h-4 w-4" />
       </button>
-      <button type="button" onClick={() => editor.chain().focus().toggleStrike().run()} className={btn(editor.isActive('strike'))} title="Strikethrough">
+      <button
+        type="button"
+        onClick={() => editor.chain().focus().toggleStrike().run()}
+        className={btn(editor.isActive('strike'))}
+        title="Strikethrough"
+      >
         <Strikethrough className="h-4 w-4" />
       </button>
 
       <div className="mx-1 h-5 w-px bg-border" />
 
-      <button type="button" onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} className={btn(editor.isActive('heading', { level: 1 }))} title="Heading 1">
+      <button
+        type="button"
+        onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
+        className={btn(editor.isActive('heading', { level: 1 }))}
+        title="Heading 1"
+      >
         <Heading1 className="h-4 w-4" />
       </button>
-      <button type="button" onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} className={btn(editor.isActive('heading', { level: 2 }))} title="Heading 2">
+      <button
+        type="button"
+        onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+        className={btn(editor.isActive('heading', { level: 2 }))}
+        title="Heading 2"
+      >
         <Heading2 className="h-4 w-4" />
       </button>
-      <button type="button" onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()} className={btn(editor.isActive('heading', { level: 3 }))} title="Heading 3">
+      <button
+        type="button"
+        onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
+        className={btn(editor.isActive('heading', { level: 3 }))}
+        title="Heading 3"
+      >
         <Heading3 className="h-4 w-4" />
       </button>
 
       <div className="mx-1 h-5 w-px bg-border" />
 
-      <button type="button" onClick={() => editor.chain().focus().toggleBulletList().run()} className={btn(editor.isActive('bulletList'))} title="Bullet List">
+      <button
+        type="button"
+        onClick={() => editor.chain().focus().toggleBulletList().run()}
+        className={btn(editor.isActive('bulletList'))}
+        title="Bullet List"
+      >
         <List className="h-4 w-4" />
       </button>
-      <button type="button" onClick={() => editor.chain().focus().toggleOrderedList().run()} className={btn(editor.isActive('orderedList'))} title="Ordered List">
+      <button
+        type="button"
+        onClick={() => editor.chain().focus().toggleOrderedList().run()}
+        className={btn(editor.isActive('orderedList'))}
+        title="Ordered List"
+      >
         <ListOrdered className="h-4 w-4" />
       </button>
 
       <div className="mx-1 h-5 w-px bg-border" />
 
-      <button type="button" onClick={() => editor.chain().focus().toggleBlockquote().run()} className={btn(editor.isActive('blockquote'))} title="Blockquote">
+      <button
+        type="button"
+        onClick={() => editor.chain().focus().toggleBlockquote().run()}
+        className={btn(editor.isActive('blockquote'))}
+        title="Blockquote"
+      >
         <Quote className="h-4 w-4" />
       </button>
-      <button type="button" onClick={() => editor.chain().focus().toggleCodeBlock().run()} className={btn(editor.isActive('codeBlock'))} title="Code Block">
+      <button
+        type="button"
+        onClick={() => editor.chain().focus().toggleCodeBlock().run()}
+        className={btn(editor.isActive('codeBlock'))}
+        title="Code Block"
+      >
         <Code className="h-4 w-4" />
       </button>
 
       <div className="mx-1 h-5 w-px bg-border" />
 
-      <button type="button" onClick={handleLink} className={btn(editor.isActive('link'))} title="Link">
+      <button
+        type="button"
+        onClick={handleLink}
+        className={btn(editor.isActive('link'))}
+        title="Link"
+      >
         <LinkIcon className="h-4 w-4" />
       </button>
       <button type="button" onClick={handleImage} className={btn(false)} title="Image">

@@ -1,13 +1,29 @@
 import { useState, useMemo, useCallback, useRef } from 'react';
 import { useComments } from '@/api/hooks-phase2';
 import { useActivity } from '@/api/hooks-phase2';
-import { useTimeEntries, useAttachments, useDeleteAttachment, useUploadAttachment, getAttachmentUrl } from '@/api/hooks-phase3';
+import {
+  useTimeEntries,
+  useAttachments,
+  useDeleteAttachment,
+  useUploadAttachment,
+  getAttachmentUrl,
+} from '@/api/hooks-phase3';
 import { useProjectPlugins, useHasPermission } from '@/api';
 import { CommentsSection } from './CommentsSection';
 import { ActivityLog, ActivityEntryRow, ActionIcon } from './ActivityLog';
 import { TimeTrackingSection, TimeEntryIcon, formatTime } from './TimeTrackingSection';
-import { RichTextEditor, normalizeCommentBody } from './RichTextEditor';
-import { Trash2, MessageSquare, FileText, Layers, Paperclip, Upload, Download, FileIcon } from 'lucide-react';
+import { normalizeCommentBody } from './RichTextEditor';
+import { RichTextRenderer } from '@/components/RichTextRenderer';
+import {
+  Trash2,
+  MessageSquare,
+  FileText,
+  Layers,
+  Paperclip,
+  Upload,
+  Download,
+  FileIcon,
+} from 'lucide-react';
 import { apiClient } from '@/api/client';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -28,13 +44,30 @@ export function IssueActivityTabs({ issueKey }: IssueActivityTabsProps) {
 
   const projectKey = issueKey.split('-')[0];
   const { data: projectPlugins } = useProjectPlugins(projectKey);
-  const timeTrackingEnabled = !projectPlugins || projectPlugins.some((p) => p.pluginId === '@weaver/plugin-time-tracking');
+  const timeTrackingEnabled =
+    !projectPlugins || projectPlugins.some((p) => p.pluginId === '@weaver/plugin-time-tracking');
 
-  const allTabs: { key: Tab; label: string; icon: React.ReactNode; count?: number; hidden?: boolean }[] = [
+  const allTabs: {
+    key: Tab;
+    label: string;
+    icon: React.ReactNode;
+    count?: number;
+    hidden?: boolean;
+  }[] = [
     { key: 'comments', label: 'Comments', icon: <MessageSquare className="h-4 w-4" /> },
-    { key: 'logs', label: 'Logs', icon: <FileText className="h-4 w-4" />, hidden: !timeTrackingEnabled },
+    {
+      key: 'logs',
+      label: 'Logs',
+      icon: <FileText className="h-4 w-4" />,
+      hidden: !timeTrackingEnabled,
+    },
     { key: 'all', label: 'All', icon: <Layers className="h-4 w-4" /> },
-    { key: 'attachments', label: 'Attachments', icon: <Paperclip className="h-4 w-4" />, count: attachments?.length },
+    {
+      key: 'attachments',
+      label: 'Attachments',
+      icon: <Paperclip className="h-4 w-4" />,
+      count: attachments?.length,
+    },
   ];
   const tabs = allTabs.filter((t) => !t.hidden);
 
@@ -66,7 +99,9 @@ export function IssueActivityTabs({ issueKey }: IssueActivityTabsProps) {
       {/* Tab content */}
       {activeTab === 'comments' && <CommentsSection issueKey={issueKey} />}
       {activeTab === 'logs' && timeTrackingEnabled && <LogsTab issueKey={issueKey} />}
-      {activeTab === 'all' && <AllTab issueKey={issueKey} includeTimeEntries={timeTrackingEnabled} />}
+      {activeTab === 'all' && (
+        <AllTab issueKey={issueKey} includeTimeEntries={timeTrackingEnabled} />
+      )}
       {activeTab === 'attachments' && <AttachmentsTab issueKey={issueKey} />}
     </div>
   );
@@ -169,9 +204,7 @@ function AttachmentsTab({ issueKey }: { issueKey: string }) {
         </div>
       )}
 
-      {uploadAttachment.isPending && (
-        <p className="mb-4 text-sm text-indigo-600">Uploading...</p>
-      )}
+      {uploadAttachment.isPending && <p className="mb-4 text-sm text-indigo-600">Uploading...</p>}
 
       {/* Attachments list */}
       {(!attachments || attachments.length === 0) && (
@@ -232,7 +265,13 @@ function AttachmentsTab({ issueKey }: { issueKey: string }) {
   );
 }
 
-function AllTab({ issueKey, includeTimeEntries = true }: { issueKey: string; includeTimeEntries?: boolean }) {
+function AllTab({
+  issueKey,
+  includeTimeEntries = true,
+}: {
+  issueKey: string;
+  includeTimeEntries?: boolean;
+}) {
   const { data: comments } = useComments(issueKey);
   const { data: activities } = useActivity(issueKey);
   const { data: timeEntries } = useTimeEntries(issueKey);
@@ -277,9 +316,7 @@ function AllTab({ issueKey, includeTimeEntries = true }: { issueKey: string; inc
       )}
 
       <div className="relative mt-6">
-        {timeline.length > 0 && (
-          <div className="absolute left-4 top-0 bottom-0 w-px bg-gray-200" />
-        )}
+        {timeline.length > 0 && <div className="absolute left-4 top-0 bottom-0 w-px bg-gray-200" />}
         <div className="space-y-4">
           {timeline.map((item) => {
             if (item.type === 'comment') {
@@ -309,10 +346,9 @@ function AllTab({ issueKey, includeTimeEntries = true }: { issueKey: string; inc
                       )}
                     </div>
                     <div className="mt-1">
-                      <RichTextEditor
+                      <RichTextRenderer
                         issueKey={issueKey}
                         content={normalizeCommentBody(item.data.body)}
-                        editable={false}
                       />
                     </div>
                   </div>
@@ -321,9 +357,7 @@ function AllTab({ issueKey, includeTimeEntries = true }: { issueKey: string; inc
             }
 
             if (item.type === 'activity') {
-              return (
-                <ActivityEntryRow key={`activity-${item.data.id}`} entry={item.data} />
-              );
+              return <ActivityEntryRow key={`activity-${item.data.id}`} entry={item.data} />;
             }
 
             if (item.type === 'time_entry') {
@@ -335,7 +369,10 @@ function AllTab({ issueKey, includeTimeEntries = true }: { issueKey: string; inc
                   <div className="min-w-0 flex-1 pb-2">
                     <div className="flex items-baseline justify-between">
                       <p className="text-sm text-gray-900">
-                        Logged <span className="font-medium text-indigo-700">{formatTime(item.data.minutes)}</span>
+                        Logged{' '}
+                        <span className="font-medium text-indigo-700">
+                          {formatTime(item.data.minutes)}
+                        </span>
                         {item.data.description && (
                           <span className="text-gray-600"> — {item.data.description}</span>
                         )}

@@ -1,9 +1,18 @@
 import { useState, useCallback } from 'react';
 import { useParams, Link, useLocation } from 'react-router-dom';
-import { useProject, useProjectIssues, useUpdateProject, useHasPermission, useProjectPlugins, useAvailablePlugins, useInstalledPlugins } from '@/api';
+import {
+  useProject,
+  useProjectIssues,
+  useUpdateProject,
+  useHasPermission,
+  useProjectPlugins,
+  useAvailablePlugins,
+  useInstalledPlugins,
+} from '@/api';
 import { getProjectViewEntries } from '@/plugins/plugin-slot-registry';
 import { Settings as SettingsIcon, Pencil, X, Check } from 'lucide-react';
 import { RichTextEditor, normalizeCommentBody, serializeDoc } from '@/components/RichTextEditor';
+import { RichTextRenderer } from '@/components/RichTextRenderer';
 import { ProjectIcon } from './ProjectSettingsPage';
 import { IssueTypeIcon } from '@/components/IconPicker';
 import { Button } from '@/components/ui/button';
@@ -74,8 +83,15 @@ export function ProjectDetailPage() {
       <div className="mb-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <ProjectIcon iconAttachmentId={project.iconAttachmentId} projectKey={project.key} size="md" />
-            <Badge variant="outline" className="bg-primary/10 text-primary border-transparent font-semibold">
+            <ProjectIcon
+              iconAttachmentId={project.iconAttachmentId}
+              projectKey={project.key}
+              size="md"
+            />
+            <Badge
+              variant="outline"
+              className="bg-primary/10 text-primary border-transparent font-semibold"
+            >
               {project.key}
             </Badge>
             <h1 className="text-2xl font-bold text-foreground">{project.name}</h1>
@@ -100,19 +116,11 @@ export function ProjectDetailPage() {
                 placeholder="Add a project description..."
               />
               <div className="flex items-center gap-2">
-                <Button
-                  size="sm"
-                  onClick={saveDescription}
-                  disabled={updateProject.isPending}
-                >
+                <Button size="sm" onClick={saveDescription} disabled={updateProject.isPending}>
                   <Check className="h-3.5 w-3.5" />
                   {updateProject.isPending ? 'Saving...' : 'Save'}
                 </Button>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={cancelEditing}
-                >
+                <Button size="sm" variant="secondary" onClick={cancelEditing}>
                   <X className="h-3.5 w-3.5" />
                   Cancel
                 </Button>
@@ -122,10 +130,7 @@ export function ProjectDetailPage() {
             <div className="group relative">
               {project.description ? (
                 <div className="rounded-md">
-                  <RichTextEditor
-                    content={normalizeCommentBody(project.description)}
-                    editable={false}
-                  />
+                  <RichTextRenderer content={normalizeCommentBody(project.description)} />
                 </div>
               ) : (
                 <p className="text-sm italic text-muted-foreground">
@@ -202,14 +207,19 @@ export function ProjectDetailPage() {
                 <TableRow key={issue.id}>
                   <TableCell className="whitespace-nowrap text-muted-foreground">
                     {issue.issueType ? (
-                      <span className="inline-flex items-center gap-1.5" title={issue.issueType.name}>
+                      <span
+                        className="inline-flex items-center gap-1.5"
+                        title={issue.issueType.name}
+                      >
                         <IssueTypeIcon
                           icon={issue.issueType.icon}
                           iconColor={issue.issueType.iconColor}
                           iconAttachmentId={issue.issueType.iconAttachmentId}
                         />
                       </span>
-                    ) : '—'}
+                    ) : (
+                      '—'
+                    )}
                   </TableCell>
                   <TableCell className="whitespace-nowrap font-medium text-primary">
                     <Link to={`/issues/${issue.key}`}>{issue.key}</Link>
@@ -246,7 +256,9 @@ function ProjectViewNav({ projectKey, currentPath }: { projectKey: string; curre
   const tenantEnabledIds = new Set(
     (installedPlugins || []).filter((p) => p.enabled).map((p) => p.pluginId),
   );
-  const enabledPluginIds = (plugins?.map((p) => p.pluginId) || []).filter((id) => tenantEnabledIds.has(id));
+  const enabledPluginIds = (plugins?.map((p) => p.pluginId) || []).filter((id) =>
+    tenantEnabledIds.has(id),
+  );
   const dynamicViews = getProjectViewEntries(availablePlugins ?? [], enabledPluginIds);
 
   const viewLinks = [
