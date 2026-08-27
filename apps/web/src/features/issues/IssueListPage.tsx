@@ -1,8 +1,18 @@
 import { useState, useCallback, useEffect, type FormEvent } from 'react';
 import { useParams, Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { useProjectIssues, useCreateIssue, useProject, useIssueTypes, useWorkflow, useHasPermission, useUpdateIssueDynamic } from '@/api';
-import type { IssuePriority, Issue, PaginatedResponse } from '@weaver/shared';
+import {
+  useProjectIssues,
+  useCreateIssue,
+  useProject,
+  useIssueTypes,
+  useWorkflow,
+  useHasPermission,
+  useUpdateIssueDynamic,
+  useTransitionIssueDynamic,
+  useUsers,
+} from '@/api';
+import type { IssuePriority, Issue, PaginatedResponse, UpdateIssueDto } from '@weaver/shared';
 import { IssueTypeIcon } from '@/components/IconPicker';
 import { Pagination, getStoredPerPage } from '@/components/Pagination';
 import { SortableHeader, type SortDirection } from '@/components/SortableHeader';
@@ -22,6 +32,9 @@ import {
   TableCell,
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
+import { X } from 'lucide-react';
+
+const UNASSIGNED_VALUE = '__unassigned__';
 
 const PRIORITY_OPTIONS: InlineSelectOption[] = [
   { value: 'lowest', label: 'lowest' },
@@ -79,50 +92,112 @@ export function IssueListPage() {
   });
   const createIssue = useCreateIssue(projectKey!);
   const updateIssue = useUpdateIssueDynamic();
+  const transitionIssue = useTransitionIssueDynamic();
   const { data: issueTypes } = useIssueTypes();
   const { data: workflow } = useWorkflow(project?.workflowId || '');
+  const { data: users } = useUsers();
   const canCreate = useHasPermission('issues.create');
   const canEdit = useHasPermission('issues.update');
+  const canTransition = useHasPermission('issues.transition');
+  const [inlineEditError, setInlineEditError] = useState<string | null>(null);
 
-  const statusOptions: InlineSelectOption[] = (workflow?.statuses || []).map((s: any) => ({
+  const statusOptions: InlineSelectOption[] = (workflow?.statuses || []).map((s) => ({
     value: s.id,
     label: s.name,
     color: s.color || '#6b7280',
   }));
 
+  const assigneeOptions: InlineSelectOption[] = [
+    { value: UNASSIGNED_VALUE, label: 'Unassigned' },
+    ...(users || []).map((user) => ({
+      value: user.id,
+      label: user.displayName || user.email,
+    })),
+  ];
+
+  const getStatusOptions = (currentStatusId: string) => {
+    const transitionTargets = new Set([
+      currentStatusId,
+      ...(workflow?.transitions || [])
+        .filter((transition) => transition.fromStatusId === currentStatusId)
+        .map((transition) => transition.toStatusId),
+    ]);
+    return statusOptions.filter((option) => transitionTargets.has(option.value));
+  };
+
   const getStatusInfo = (statusId: string) => {
-    const status = workflow?.statuses?.find((s: any) => s.id === statusId);
+    const status = workflow?.statuses?.find((s) => s.id === statusId);
     return { name: status?.name || statusId.slice(0, 8), color: status?.color || '#6b7280' };
   };
 
-  const handleInlineUpdate = async (issueKey: string, field: string, value: unknown) => {
+  const getAssigneeName = (assigneeId: string | null | undefined) => {
+    if (!assigneeId) return 'Unassigned';
+    const assignee = users?.find((user) => user.id === assigneeId);
+    return assignee?.displayName || assignee?.email || assigneeId.slice(0, 8);
+  };
+
+  const handleOptimisticChange = async <K extends keyof UpdateIssueDto>(
+    issueKey: string,
+    field: K,
+    value: UpdateIssueDto[K],
+    persist: () => Promise<unknown>,
+  ) => {
     // Optimistic update
     const queryKeyPrefix = ['issues', projectKey];
-    const previousData = queryClient.getQueriesData<PaginatedResponse<Issue>>({ queryKey: queryKeyPrefix });
+    const previousData = queryClient.getQueriesData<PaginatedResponse<Issue>>({
+      queryKey: queryKeyPrefix,
+    });
 
-    queryClient.setQueriesData<PaginatedResponse<Issue>>(
-      { queryKey: queryKeyPrefix },
-      (old) => {
-        if (!old) return old;
-        return {
-          ...old,
-          data: old.data.map((issue) =>
-            issue.key === issueKey ? { ...issue, [field]: value } : issue,
-          ),
-        };
-      },
-    );
+    queryClient.setQueriesData<PaginatedResponse<Issue>>({ queryKey: queryKeyPrefix }, (old) => {
+      if (!old) return old;
+      return {
+        ...old,
+        data: old.data.map((issue) =>
+          issue.key === issueKey ? { ...issue, [field]: value } : issue,
+        ),
+      };
+    });
 
     try {
-      await updateIssue.mutateAsync({ issueKey, [field]: value } as any);
-    } catch {
+      await persist();
+    } catch (error) {
       // Rollback on error
       for (const [key, data] of previousData) {
         if (data) {
           queryClient.setQueryData(key, data);
         }
       }
+      setInlineEditError(`Could not update ${issueKey}. Your change was reverted.`);
+      throw error;
     }
+  };
+
+  const handleInlineUpdate = <K extends keyof UpdateIssueDto>(
+    issueKey: string,
+    field: K,
+    value: UpdateIssueDto[K],
+  ) =>
+    handleOptimisticChange(issueKey, field, value, () =>
+      updateIssue.mutateAsync({ issueKey, [field]: value } as UpdateIssueDto & {
+        issueKey: string;
+      }),
+    );
+
+  const handleStatusUpdate = (issueKey: string, fromStatusId: string, toStatusId: string) => {
+    const transition = workflow?.transitions?.find(
+      (candidate) => candidate.fromStatusId === fromStatusId && candidate.toStatusId === toStatusId,
+    );
+
+    if (!transition) {
+      setInlineEditError(`Could not update ${issueKey}. That transition is not available.`);
+      return Promise.reject(
+        new Error(`No workflow transition from ${fromStatusId} to ${toStatusId}`),
+      );
+    }
+
+    return handleOptimisticChange(issueKey, 'statusId', toStatusId, () =>
+      transitionIssue.mutateAsync({ issueKey, transitionId: transition.id }),
+    );
   };
 
   const [showForm, setShowForm] = useState(false);
@@ -350,6 +425,9 @@ export function IssueListPage() {
               <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 Status
               </TableHead>
+              <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                Assignee
+              </TableHead>
               <SortableHeader
                 label="Due Date"
                 field="dueDate"
@@ -407,17 +485,21 @@ export function IssueListPage() {
                   <InlineSelect
                     value={issue.priority}
                     options={PRIORITY_OPTIONS}
-                    onSave={(val) => handleInlineUpdate(issue.key, 'priority', val)}
+                    onSave={(val) =>
+                      handleInlineUpdate(issue.key, 'priority', val as IssuePriority)
+                    }
                     editable={canEdit}
+                    ariaLabel={`Edit ${issue.key} priority`}
                     renderValue={(val) => <PriorityBadge priority={val} />}
                   />
                 </TableCell>
                 <TableCell className="whitespace-nowrap">
                   <InlineSelect
                     value={issue.statusId}
-                    options={statusOptions}
-                    onSave={(val) => handleInlineUpdate(issue.key, 'statusId', val)}
-                    editable={canEdit}
+                    options={getStatusOptions(issue.statusId)}
+                    onSave={(val) => handleStatusUpdate(issue.key, issue.statusId, val)}
+                    editable={canEdit && canTransition}
+                    ariaLabel={`Edit ${issue.key} status`}
                     renderValue={(val, opt) => {
                       const info = opt
                         ? { name: opt.label, color: opt.color || '#6b7280' }
@@ -434,10 +516,31 @@ export function IssueListPage() {
                   />
                 </TableCell>
                 <TableCell className="whitespace-nowrap">
+                  <InlineSelect
+                    value={issue.assigneeId || UNASSIGNED_VALUE}
+                    options={assigneeOptions}
+                    onSave={(val) =>
+                      handleInlineUpdate(
+                        issue.key,
+                        'assigneeId',
+                        val === UNASSIGNED_VALUE ? null : val,
+                      )
+                    }
+                    editable={canEdit}
+                    ariaLabel={`Edit ${issue.key} assignee`}
+                    renderValue={(val) => (
+                      <span className="text-sm text-foreground">
+                        {getAssigneeName(val === UNASSIGNED_VALUE ? null : val)}
+                      </span>
+                    )}
+                  />
+                </TableCell>
+                <TableCell className="whitespace-nowrap">
                   <InlineDatePicker
                     value={issue.dueDate || null}
                     onSave={(val) => handleInlineUpdate(issue.key, 'dueDate', val)}
                     editable={canEdit}
+                    ariaLabel={`Edit ${issue.key} due date`}
                   />
                 </TableCell>
                 <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
@@ -458,7 +561,7 @@ export function IssueListPage() {
             ))}
             {data?.data.length === 0 && (
               <TableRow>
-                <TableCell colSpan={8} className="px-6 py-8 text-center text-sm text-muted-foreground">
+                <TableCell colSpan={9} className="px-6 py-8 text-center text-sm text-muted-foreground">
                   No issues yet. Create your first issue to get started.
                 </TableCell>
               </TableRow>
@@ -476,6 +579,23 @@ export function IssueListPage() {
           onPageChange={handlePageChange}
           onPerPageChange={handlePerPageChange}
         />
+      )}
+
+      {inlineEditError && (
+        <div
+          role="alert"
+          className="fixed bottom-4 right-4 z-50 flex max-w-sm items-start gap-3 rounded-md border border-destructive/40 bg-background px-4 py-3 text-sm text-foreground shadow-lg"
+        >
+          <span>{inlineEditError}</span>
+          <button
+            type="button"
+            className="rounded-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            aria-label="Dismiss inline edit error"
+            onClick={() => setInlineEditError(null)}
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
       )}
     </div>
   );
