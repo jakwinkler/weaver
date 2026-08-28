@@ -36,27 +36,23 @@ export class PluginLoaderService implements OnModuleInit, OnModuleDestroy {
     if (!fs.existsSync(this.pluginsDir)) return;
 
     try {
-      this.watcher = fs.watch(
-        this.pluginsDir,
-        { recursive: true },
-        (_eventType, filename) => {
-          if (!filename) return;
-          // Only react to manifest or server source changes
-          if (
-            !filename.endsWith('weaver-plugin.json') &&
-            !filename.includes(path.join('src', 'server'))
-          ) {
-            return;
-          }
+      this.watcher = fs.watch(this.pluginsDir, { recursive: true }, (_eventType, filename) => {
+        if (!filename) return;
+        // Only react to manifest or server source changes
+        if (
+          !filename.endsWith('weaver-plugin.json') &&
+          !filename.includes(path.join('src', 'server'))
+        ) {
+          return;
+        }
 
-          // Debounce: batch rapid file changes into a single reload
-          if (this.reloadTimer) clearTimeout(this.reloadTimer);
-          this.reloadTimer = setTimeout(() => {
-            this.logger.log(`Plugin change detected (${filename}), reloading...`);
-            this.reload();
-          }, 300);
-        },
-      );
+        // Debounce: batch rapid file changes into a single reload
+        if (this.reloadTimer) clearTimeout(this.reloadTimer);
+        this.reloadTimer = setTimeout(() => {
+          this.logger.log(`Plugin change detected (${filename}), reloading...`);
+          this.reload();
+        }, 300);
+      });
       this.logger.log('Watching plugins directory for changes');
     } catch (err) {
       this.logger.warn(`Failed to watch plugins directory: ${err}`);
@@ -109,6 +105,75 @@ export class PluginLoaderService implements OnModuleInit, OnModuleDestroy {
 
   getAllManifests(): PluginManifest[] {
     return Array.from(this.manifests.values());
+  }
+
+  getAllClientManifests(): PluginManifest[] {
+    return this.getAllManifests().map((manifest) => {
+      if (!manifest.entrypoints.client) return manifest;
+
+      return {
+        ...manifest,
+        clientBundle: this.getClientBundleUrl(manifest.id),
+      };
+    });
+  }
+
+  getClientBundleUrl(pluginId: string): string {
+    const prefix = (process.env.API_PREFIX || 'api/v1').replace(/^\/+|\/+$/g, '');
+    const pluginPath = pluginId
+      .split('/')
+      .map((segment) => encodeURIComponent(segment).replace('%40', '@'))
+      .join('/');
+    return `/${prefix}/plugin-assets/${pluginPath}/remoteEntry.js`;
+  }
+
+  getPluginDevServerUrl(pluginId: string): string | undefined {
+    if (process.env.NODE_ENV === 'production') return undefined;
+
+    const raw = process.env.WEAVER_PLUGIN_DEV_SERVERS;
+    if (!raw) return undefined;
+
+    try {
+      const servers = JSON.parse(raw) as Record<string, unknown>;
+      const value = servers[pluginId];
+      if (typeof value !== 'string') return undefined;
+      const url = new URL(value);
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') return undefined;
+      return url.toString().replace(/\/$/, '');
+    } catch (error) {
+      this.logger.warn(`Ignoring invalid WEAVER_PLUGIN_DEV_SERVERS: ${error}`);
+      return undefined;
+    }
+  }
+
+  resolveClientAsset(requestPath: string): string | undefined {
+    let decodedPath: string;
+    try {
+      decodedPath = requestPath
+        .split('/')
+        .map((segment) => decodeURIComponent(segment))
+        .join('/');
+    } catch {
+      return undefined;
+    }
+
+    const pluginId = Array.from(this.manifests.keys())
+      .sort((left, right) => right.length - left.length)
+      .find((id) => decodedPath.startsWith(`${id}/`));
+    if (!pluginId) return undefined;
+
+    const pluginDir = this.getPluginDir(pluginId);
+    if (!pluginDir) return undefined;
+
+    const assetPath = decodedPath.slice(pluginId.length + 1);
+    if (!assetPath) return undefined;
+
+    const clientRoot = path.resolve(pluginDir, 'dist/client');
+    const resolved = path.resolve(clientRoot, assetPath);
+    if (!resolved.startsWith(`${clientRoot}${path.sep}`)) return undefined;
+    if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) return undefined;
+
+    return resolved;
   }
 
   hasPlugin(pluginId: string): boolean {

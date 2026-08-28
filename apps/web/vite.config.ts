@@ -2,9 +2,11 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { resolve } from 'path';
+import { federation } from '@module-federation/vite';
+import moduleFederationConfig from './module-federation.config';
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), federation(moduleFederationConfig)],
   resolve: {
     alias: {
       '@': resolve(__dirname, './src'),
@@ -12,5 +14,8 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+  },
+  build: {
+    target: 'chrome89',
   },
 });

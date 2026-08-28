@@ -1,15 +1,12 @@
 {
-  "name": "@weaver/plugin-gitlab",
+  "name": "@weaver/plugin-template",
   "version": "1.0.0",
   "private": true,
-  "main": "./src/server/index.ts",
+  "main": "./src/client/index.ts",
   "scripts": {
     "build": "vite build",
     "dev": "vite",
     "clean": "rm -rf dist"
-  },
-  "dependencies": {
-    "@weaver/sdk": "workspace:*"
   },
   "peerDependencies": {
     "@tanstack/react-query": "^5.0.0",
@@ -18,7 +15,10 @@
     "zustand": "^5.0.0"
   },
   "devDependencies": {
-    "typescript": "^5.4.0",
+    "@weaver/config": "workspace:*",
+    "@weaver/sdk": "workspace:*",
+    "@types/react": "^18.3.18",
+    "typescript": "^5.7.2",
     "vite": "^6.0.7"
   }
 }
