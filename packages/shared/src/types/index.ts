@@ -115,6 +115,7 @@ export interface Issue {
   startDate?: string;
   dueDate?: string;
   percentDone: number;
+  storyPoints: number | null;
   createdAt: Date;
   updatedAt: Date;
   issueType?: IssueType | null;
@@ -186,7 +187,13 @@ export interface Sprint {
   startDate?: Date;
   endDate?: Date;
   status: SprintStatus;
+  stats?: SprintStats;
   createdAt: Date;
+}
+
+export interface SprintStats {
+  totalCommittedPoints: number;
+  totalCompletedPoints: number;
 }
 
 export interface Comment {

@@ -13,11 +13,7 @@ import {
   type DragEndEvent,
   type DragOverEvent,
 } from '@dnd-kit/core';
-import {
-  SortableContext,
-  verticalListSortingStrategy,
-  useSortable,
-} from '@dnd-kit/sortable';
+import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -73,7 +69,14 @@ function IssueCardContent({ issue }: { issue: Issue }) {
       <p className="text-sm font-medium text-foreground">{issue.summary}</p>
       <div className="mt-2 flex items-center justify-between">
         <span className="text-xs font-medium text-primary">{issue.key}</span>
-        <PriorityBadge priority={issue.priority} />
+        <div className="flex items-center gap-1.5">
+          {issue.storyPoints !== null && issue.storyPoints !== undefined && (
+            <Badge variant="secondary" className="rounded-full px-2 py-0.5 text-xs font-medium">
+              {issue.storyPoints} pts
+            </Badge>
+          )}
+          <PriorityBadge priority={issue.priority} />
+        </div>
       </div>
       {issue.assigneeId && (
         <div className="mt-2 flex items-center gap-1">
@@ -88,14 +91,10 @@ function IssueCardContent({ issue }: { issue: Issue }) {
 }
 
 function SortableIssueCard({ issue }: { issue: Issue }) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: issue.id, data: { issue, type: 'issue' } });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: issue.id,
+    data: { issue, type: 'issue' },
+  });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -120,19 +119,14 @@ function SortableIssueCard({ issue }: { issue: Issue }) {
   );
 }
 
-function DroppableColumn({
-  column,
-  isOver,
-}: {
-  column: StatusColumn;
-  isOver: boolean;
-}) {
+function DroppableColumn({ column, isOver }: { column: StatusColumn; isOver: boolean }) {
   const { setNodeRef } = useDroppable({
     id: `column-${column.statusId}`,
     data: { type: 'column', statusId: column.statusId },
   });
 
   const issueIds = column.issues.map((i) => i.id);
+  const pointTotal = column.issues.reduce((total, issue) => total + (issue.storyPoints ?? 0), 0);
 
   return (
     <div
@@ -144,11 +138,10 @@ function DroppableColumn({
     >
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <div
-            className="h-3 w-3 rounded-full"
-            style={{ backgroundColor: column.color }}
-          />
-          <h3 className="text-sm font-semibold text-foreground">{column.name}</h3>
+          <div className="h-3 w-3 rounded-full" style={{ backgroundColor: column.color }} />
+          <h3 className="text-sm font-semibold text-foreground">
+            {column.name} <span className="text-muted-foreground">({pointTotal} pts)</span>
+          </h3>
         </div>
         <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
           {column.issues.length}
@@ -168,13 +161,7 @@ function DroppableColumn({
   );
 }
 
-function CreateBoardForm({
-  projectId,
-  onCreated,
-}: {
-  projectId: string;
-  onCreated: () => void;
-}) {
+function CreateBoardForm({ projectId, onCreated }: { projectId: string; onCreated: () => void }) {
   const [name, setName] = useState('');
   const createBoard = useCreateBoard(projectId);
 
@@ -230,9 +217,11 @@ export function KanbanBoard() {
     projectKey: projectKey!,
     perPage: 200,
   });
-  const { data: boards, isLoading: boardsLoading, refetch: refetchBoards } = useBoards(
-    project?.id || '',
-  );
+  const {
+    data: boards,
+    isLoading: boardsLoading,
+    refetch: refetchBoards,
+  } = useBoards(project?.id || '');
   const { data: workflow } = useWorkflow(project?.workflowId || '');
   const queryClient = useQueryClient();
   const updateIssue = useUpdateIssueDynamic();
@@ -373,9 +362,7 @@ export function KanbanBoard() {
       setLocalIssues((prev) => {
         if (!prev) return prev;
         return prev.map((issue) =>
-          issue.id === activeId
-            ? { ...issue, statusId: targetStatusId }
-            : issue,
+          issue.id === activeId ? { ...issue, statusId: targetStatusId } : issue,
         );
       });
     }
@@ -454,7 +441,9 @@ export function KanbanBoard() {
       reorderIssues.mutate(
         { issues: issueUpdates },
         {
-          onSuccess: () => { if (!statusChanged) cleanup(); },
+          onSuccess: () => {
+            if (!statusChanged) cleanup();
+          },
           onError: cleanup,
         },
       );
@@ -478,9 +467,7 @@ export function KanbanBoard() {
       </div>
 
       <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-xl font-bold text-foreground">
-          {boards![0].name}
-        </h1>
+        <h1 className="text-xl font-bold text-foreground">{boards![0].name}</h1>
         <span className="text-sm text-muted-foreground">
           {issues.length} issue{issues.length !== 1 ? 's' : ''}
         </span>

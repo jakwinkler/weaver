@@ -1,7 +1,15 @@
 import { useState, useCallback, useEffect, type FormEvent } from 'react';
 import { useParams, Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { useProjectIssues, useCreateIssue, useProject, useIssueTypes, useWorkflow, useHasPermission, useUpdateIssueDynamic } from '@/api';
+import {
+  useProjectIssues,
+  useCreateIssue,
+  useProject,
+  useIssueTypes,
+  useWorkflow,
+  useHasPermission,
+  useUpdateIssueDynamic,
+} from '@/api';
 import type { IssuePriority, Issue, PaginatedResponse } from '@weaver/shared';
 import { IssueTypeIcon } from '@/components/IconPicker';
 import { Pagination, getStoredPerPage } from '@/components/Pagination';
@@ -9,6 +17,7 @@ import { SortableHeader, type SortDirection } from '@/components/SortableHeader'
 import { EditableCell } from '@/components/EditableCell';
 import { InlineSelect, type InlineSelectOption } from '@/components/InlineSelect';
 import { InlineDatePicker } from '@/components/InlineDatePicker';
+import { StoryPointsField } from '@/components/StoryPointsField';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -98,20 +107,19 @@ export function IssueListPage() {
   const handleInlineUpdate = async (issueKey: string, field: string, value: unknown) => {
     // Optimistic update
     const queryKeyPrefix = ['issues', projectKey];
-    const previousData = queryClient.getQueriesData<PaginatedResponse<Issue>>({ queryKey: queryKeyPrefix });
+    const previousData = queryClient.getQueriesData<PaginatedResponse<Issue>>({
+      queryKey: queryKeyPrefix,
+    });
 
-    queryClient.setQueriesData<PaginatedResponse<Issue>>(
-      { queryKey: queryKeyPrefix },
-      (old) => {
-        if (!old) return old;
-        return {
-          ...old,
-          data: old.data.map((issue) =>
-            issue.key === issueKey ? { ...issue, [field]: value } : issue,
-          ),
-        };
-      },
-    );
+    queryClient.setQueriesData<PaginatedResponse<Issue>>({ queryKey: queryKeyPrefix }, (old) => {
+      if (!old) return old;
+      return {
+        ...old,
+        data: old.data.map((issue) =>
+          issue.key === issueKey ? { ...issue, [field]: value } : issue,
+        ),
+      };
+    });
 
     try {
       await updateIssue.mutateAsync({ issueKey, [field]: value } as any);
@@ -131,6 +139,7 @@ export function IssueListPage() {
   const [priority, setPriority] = useState<IssuePriority>('medium');
   const [startDate, setStartDate] = useState('');
   const [dueDate, setDueDate] = useState('');
+  const [storyPoints, setStoryPoints] = useState<number | null>(null);
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
 
   // Reset focused index when data or page changes
@@ -178,6 +187,7 @@ export function IssueListPage() {
       labels: [],
       customFields: {},
       percentDone: 0,
+      ...(storyPoints !== null ? { storyPoints } : {}),
       ...(issueTypeId ? { issueTypeId } : {}),
       ...(startDate ? { startDate } : {}),
       ...(dueDate ? { dueDate } : {}),
@@ -187,6 +197,7 @@ export function IssueListPage() {
     setPriority('medium');
     setStartDate('');
     setDueDate('');
+    setStoryPoints(null);
     setShowForm(false);
   };
 
@@ -261,7 +272,9 @@ export function IssueListPage() {
                   >
                     <option value="">None</option>
                     {issueTypes?.map((t) => (
-                      <option key={t.id} value={t.id}>{t.name}</option>
+                      <option key={t.id} value={t.id}>
+                        {t.name}
+                      </option>
                     ))}
                   </select>
                 </div>
@@ -284,7 +297,18 @@ export function IssueListPage() {
                   </select>
                 </div>
               </div>
-              <div className="mt-4 grid grid-cols-2 gap-4">
+              <div className="mt-4 grid grid-cols-3 gap-4">
+                <div>
+                  <Label htmlFor="issueStoryPoints">Story Points</Label>
+                  <div className="mt-1">
+                    <StoryPointsField
+                      id="issueStoryPoints"
+                      value={storyPoints}
+                      onChange={setStoryPoints}
+                      values={[1, 2, 3, 5, 8, 13]}
+                    />
+                  </div>
+                </div>
                 <div>
                   <Label htmlFor="issueStartDate">Start Date</Label>
                   <Input
@@ -348,6 +372,9 @@ export function IssueListPage() {
                 onSort={handleSort}
               />
               <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                Points
+              </TableHead>
+              <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 Status
               </TableHead>
               <SortableHeader
@@ -388,7 +415,9 @@ export function IssueListPage() {
                       />
                       <span className="text-xs">{issue.issueType.name}</span>
                     </span>
-                  ) : '—'}
+                  ) : (
+                    '—'
+                  )}
                 </TableCell>
                 <TableCell className="whitespace-nowrap text-sm font-medium text-primary">
                   <Link to={`/issues/${issue.key}`}>{issue.key}</Link>
@@ -410,6 +439,15 @@ export function IssueListPage() {
                     onSave={(val) => handleInlineUpdate(issue.key, 'priority', val)}
                     editable={canEdit}
                     renderValue={(val) => <PriorityBadge priority={val} />}
+                  />
+                </TableCell>
+                <TableCell className="whitespace-nowrap">
+                  <StoryPointsField
+                    value={issue.storyPoints}
+                    onChange={(value) => handleInlineUpdate(issue.key, 'storyPoints', value)}
+                    disabled={!canEdit}
+                    showChips={false}
+                    compact
                   />
                 </TableCell>
                 <TableCell className="whitespace-nowrap">
@@ -458,7 +496,10 @@ export function IssueListPage() {
             ))}
             {data?.data.length === 0 && (
               <TableRow>
-                <TableCell colSpan={8} className="px-6 py-8 text-center text-sm text-muted-foreground">
+                <TableCell
+                  colSpan={9}
+                  className="px-6 py-8 text-center text-sm text-muted-foreground"
+                >
                   No issues yet. Create your first issue to get started.
                 </TableCell>
               </TableRow>
@@ -491,7 +532,12 @@ function PriorityBadge({ priority }: { priority: string }) {
   };
 
   return (
-    <span className={cn('inline-flex rounded-full px-2 py-0.5 text-xs font-medium', colors[priority] ?? 'bg-gray-100 text-gray-700')}>
+    <span
+      className={cn(
+        'inline-flex rounded-full px-2 py-0.5 text-xs font-medium',
+        colors[priority] ?? 'bg-gray-100 text-gray-700',
+      )}
+    >
       {priority}
     </span>
   );

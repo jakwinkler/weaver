@@ -151,11 +151,24 @@ describe('createIssueSchema', () => {
     const result = createIssueSchema.safeParse({
       summary: 'Fix login bug',
       priority: 'high',
+      storyPoints: 5,
       labels: ['bug', 'auth'],
       assigneeId: '550e8400-e29b-41d4-a716-446655440000',
       customFields: { severity: 'critical' },
     });
     expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.storyPoints).toBe(5);
+    }
+  });
+
+  it('should reject negative or fractional story points', () => {
+    expect(createIssueSchema.safeParse({ summary: 'Negative', storyPoints: -1 }).success).toBe(
+      false,
+    );
+    expect(createIssueSchema.safeParse({ summary: 'Fractional', storyPoints: 1.5 }).success).toBe(
+      false,
+    );
   });
 
   it('should reject invalid priority', () => {
@@ -187,6 +200,11 @@ describe('updateIssueSchema', () => {
       assigneeId: null,
     });
     expect(result.success).toBe(true);
+  });
+
+  it('should accept setting and clearing story points', () => {
+    expect(updateIssueSchema.safeParse({ storyPoints: 8 }).success).toBe(true);
+    expect(updateIssueSchema.safeParse({ storyPoints: null }).success).toBe(true);
   });
 });
 

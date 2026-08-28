@@ -135,10 +135,9 @@ export function useProjectIssues(params: UseProjectIssuesParams) {
   return useQuery({
     queryKey: ['issues', projectKey, { page, perPage, sort, ...activeFilters }],
     queryFn: async () => {
-      const res = await apiClient.get<PaginatedResponse<Issue>>(
-        `/projects/${projectKey}/issues`,
-        { params: { page, perPage, ...(sort ? { sort } : {}), ...activeFilters } },
-      );
+      const res = await apiClient.get<PaginatedResponse<Issue>>(`/projects/${projectKey}/issues`, {
+        params: { page, perPage, ...(sort ? { sort } : {}), ...activeFilters },
+      });
       return res.data;
     },
     enabled: !!projectKey,
@@ -179,6 +178,7 @@ export function useUpdateIssue(issueKey: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['issue', issueKey] });
       queryClient.invalidateQueries({ queryKey: ['issues'] });
+      queryClient.invalidateQueries({ queryKey: ['sprints'] });
     },
   });
 }
@@ -192,6 +192,7 @@ export function useUpdateIssueDynamic() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['issues'] });
+      queryClient.invalidateQueries({ queryKey: ['sprints'] });
     },
   });
 }
