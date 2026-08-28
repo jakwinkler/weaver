@@ -54,12 +54,15 @@ export class SprintsController {
     return this.sprintsService.findById(id);
   }
 
+  @Get(':id/stats')
+  @RequirePermission('sprints', 'read')
+  async getStats(@Param('id') id: string) {
+    return this.sprintsService.getStats(id);
+  }
+
   @Patch(':id')
   @RequirePermission('sprints', 'update')
-  async update(
-    @Param('id') id: string,
-    @Body(new ZodValidationPipe(updateSprintSchema)) dto: any,
-  ) {
+  async update(@Param('id') id: string, @Body(new ZodValidationPipe(updateSprintSchema)) dto: any) {
     return this.sprintsService.update(id, dto);
   }
 
@@ -84,10 +87,7 @@ export class SprintsController {
 
   @Post(':id/issues')
   @RequirePermission('sprints', 'update')
-  async addIssues(
-    @Param('id') id: string,
-    @Body(new ZodValidationPipe(addIssuesSchema)) dto: any,
-  ) {
+  async addIssues(@Param('id') id: string, @Body(new ZodValidationPipe(addIssuesSchema)) dto: any) {
     await this.sprintsService.addIssues(id, dto.issueIds);
     return { success: true };
   }

@@ -74,6 +74,9 @@ export class IssueEntity {
   @Column({ name: 'percent_done', type: 'int', default: 0 })
   percentDone!: number;
 
+  @Column({ name: 'story_points', type: 'int', nullable: true, default: null })
+  storyPoints!: number | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;
 

@@ -40,7 +40,11 @@ export class BoardsService {
     return board;
   }
 
-  async findByIdWithIssues(id: string): Promise<{ board: BoardEntity; issues: IssueEntity[] }> {
+  async findByIdWithIssues(id: string): Promise<{
+    board: BoardEntity;
+    issues: IssueEntity[];
+    columnPointTotals: Record<string, number>;
+  }> {
     const board = await this.findById(id);
     const em = await this.tenantConnections.getEntityManager();
     const issueRepo = em.getRepository(IssueEntity);
@@ -50,10 +54,18 @@ export class BoardsService {
       order: { sortOrder: 'ASC', createdAt: 'DESC' },
     });
 
-    return { board, issues };
+    const columnPointTotals = issues.reduce<Record<string, number>>((totals, issue) => {
+      totals[issue.statusId] = (totals[issue.statusId] ?? 0) + (issue.storyPoints ?? 0);
+      return totals;
+    }, {});
+
+    return { board, issues, columnPointTotals };
   }
 
-  async update(id: string, dto: { name?: string; type?: string; config?: Record<string, unknown> }): Promise<BoardEntity> {
+  async update(
+    id: string,
+    dto: { name?: string; type?: string; config?: Record<string, unknown> },
+  ): Promise<BoardEntity> {
     const board = await this.findById(id);
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(BoardEntity);

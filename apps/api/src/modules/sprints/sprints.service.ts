@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { SprintEntity, IssueEntity } from '@weaver/db';
-import { CreateSprintDto } from '@weaver/shared';
+import { SprintEntity, IssueEntity, WorkflowStatusEntity } from '@weaver/db';
+import { CreateSprintDto, SprintStats } from '@weaver/shared';
 import { TenantConnectionProvider } from '../../core/tenant';
 import { In } from 'typeorm';
 
@@ -24,13 +24,25 @@ export class SprintsService {
     return repo.save(sprint);
   }
 
-  async findAll(projectId: string): Promise<SprintEntity[]> {
+  async findAll(projectId: string): Promise<Array<SprintEntity & { stats: SprintStats }>> {
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(SprintEntity);
-    return repo.find({
+    const sprints = await repo.find({
       where: { projectId },
       order: { createdAt: 'DESC' },
     });
+
+    const statsBySprint = await this.getStatsForSprints(sprints.map((sprint) => sprint.id));
+    return sprints.map((sprint) => ({
+      ...sprint,
+      stats: statsBySprint.get(sprint.id) ?? this.emptyStats(),
+    }));
+  }
+
+  async getStats(id: string): Promise<SprintStats> {
+    await this.findById(id);
+    const statsBySprint = await this.getStatsForSprints([id]);
+    return statsBySprint.get(id) ?? this.emptyStats();
   }
 
   async findById(id: string): Promise<SprintEntity> {
@@ -43,7 +55,15 @@ export class SprintsService {
     return sprint;
   }
 
-  async update(id: string, dto: { name?: string; goal?: string | null; startDate?: string | null; endDate?: string | null }): Promise<SprintEntity> {
+  async update(
+    id: string,
+    dto: {
+      name?: string;
+      goal?: string | null;
+      startDate?: string | null;
+      endDate?: string | null;
+    },
+  ): Promise<SprintEntity> {
     const sprint = await this.findById(id);
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(SprintEntity);
@@ -63,7 +83,9 @@ export class SprintsService {
     const sprint = await this.findById(id);
 
     if (sprint.status !== 'planned') {
-      throw new BadRequestException(`Sprint can only be started from "planned" status, current status is "${sprint.status}"`);
+      throw new BadRequestException(
+        `Sprint can only be started from "planned" status, current status is "${sprint.status}"`,
+      );
     }
 
     const em = await this.tenantConnections.getEntityManager();
@@ -81,7 +103,9 @@ export class SprintsService {
     const sprint = await this.findById(id);
 
     if (sprint.status !== 'active') {
-      throw new BadRequestException(`Sprint can only be completed from "active" status, current status is "${sprint.status}"`);
+      throw new BadRequestException(
+        `Sprint can only be completed from "active" status, current status is "${sprint.status}"`,
+      );
     }
 
     const em = await this.tenantConnections.getEntityManager();
@@ -106,5 +130,34 @@ export class SprintsService {
       .set({ sprintId: id })
       .where({ id: In(issueIds) })
       .execute();
+  }
+
+  private emptyStats(): SprintStats {
+    return { totalCommittedPoints: 0, totalCompletedPoints: 0 };
+  }
+
+  private async getStatsForSprints(sprintIds: string[]): Promise<Map<string, SprintStats>> {
+    const statsBySprint = new Map<string, SprintStats>();
+    if (sprintIds.length === 0) return statsBySprint;
+
+    const em = await this.tenantConnections.getEntityManager();
+    const [issues, terminalStatuses] = await Promise.all([
+      em.getRepository(IssueEntity).find({ where: { sprintId: In(sprintIds) } }),
+      em.getRepository(WorkflowStatusEntity).find({ where: { isTerminal: true } }),
+    ]);
+    const terminalStatusIds = new Set(terminalStatuses.map((status) => status.id));
+
+    for (const issue of issues) {
+      if (!issue.sprintId) continue;
+      const stats = statsBySprint.get(issue.sprintId) ?? this.emptyStats();
+      const points = issue.storyPoints ?? 0;
+      stats.totalCommittedPoints += points;
+      if (terminalStatusIds.has(issue.statusId)) {
+        stats.totalCompletedPoints += points;
+      }
+      statsBySprint.set(issue.sprintId, stats);
+    }
+
+    return statsBySprint;
   }
 }
