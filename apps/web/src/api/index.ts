@@ -21,7 +21,9 @@ export {
   useWorkflowTransitions,
   useBoards,
   useBoard,
+  useBoardIssues,
   useCreateBoard,
+  useUpdateBoard,
   useSprints,
   useCreateSprint,
   useStartSprint,
@@ -77,10 +79,7 @@ export {
   useMyPermissions,
   useHasPermission,
 } from './hooks-phase5';
-export {
-  useBulkUpdateIssues,
-  useBulkDeleteIssues,
-} from './hooks-phase6';
+export { useBulkUpdateIssues, useBulkDeleteIssues } from './hooks-phase6';
 export {
   useUsers,
   useUpdateUserRole,

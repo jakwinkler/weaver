@@ -11,17 +11,10 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { z } from 'zod';
-import { createBoardSchema, BOARD_TYPES } from '@weaver/shared';
+import { createBoardSchema, updateBoardSchema } from '@weaver/shared';
 import { JwtAuthGuard, PermissionGuard, RequirePermission } from '../../core/auth';
 import { ZodValidationPipe } from '../../common';
 import { BoardsService } from './boards.service';
-
-const updateBoardSchema = z.object({
-  name: z.string().min(1).max(255).optional(),
-  type: z.enum(BOARD_TYPES).optional(),
-  config: z.record(z.unknown()).optional(),
-});
 
 @Controller('boards')
 @UseGuards(JwtAuthGuard, PermissionGuard)
@@ -57,10 +50,7 @@ export class BoardsController {
 
   @Patch(':id')
   @RequirePermission('projects', 'update')
-  async update(
-    @Param('id') id: string,
-    @Body(new ZodValidationPipe(updateBoardSchema)) dto: any,
-  ) {
+  async update(@Param('id') id: string, @Body(new ZodValidationPipe(updateBoardSchema)) dto: any) {
     return this.boardsService.update(id, dto);
   }
 
