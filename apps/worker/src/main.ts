@@ -2,7 +2,10 @@ import { Worker } from 'bullmq';
 import { config } from './config';
 import { processEvent } from './processors/events.processor';
 import { processWebhook } from './processors/webhooks.processor';
-import { processNotification } from './processors/notifications.processor';
+import {
+  closeNotificationProcessor,
+  processNotification,
+} from './processors/notifications.processor';
 
 const connection = {
   host: config.redis.host,
@@ -13,25 +16,22 @@ const connection = {
 const workers: Worker[] = [];
 
 function createWorkers(): void {
-  const eventsWorker = new Worker(
-    config.queues.events.name,
-    processEvent,
-    { connection, concurrency: config.queues.events.concurrency },
-  );
+  const eventsWorker = new Worker(config.queues.events.name, processEvent, {
+    connection,
+    concurrency: config.queues.events.concurrency,
+  });
   workers.push(eventsWorker);
 
-  const webhooksWorker = new Worker(
-    config.queues.webhooks.name,
-    processWebhook,
-    { connection, concurrency: config.queues.webhooks.concurrency },
-  );
+  const webhooksWorker = new Worker(config.queues.webhooks.name, processWebhook, {
+    connection,
+    concurrency: config.queues.webhooks.concurrency,
+  });
   workers.push(webhooksWorker);
 
-  const notificationsWorker = new Worker(
-    config.queues.notifications.name,
-    processNotification,
-    { connection, concurrency: config.queues.notifications.concurrency },
-  );
+  const notificationsWorker = new Worker(config.queues.notifications.name, processNotification, {
+    connection,
+    concurrency: config.queues.notifications.concurrency,
+  });
   workers.push(notificationsWorker);
 
   for (const worker of workers) {
@@ -51,6 +51,7 @@ function createWorkers(): void {
 async function shutdown(): Promise<void> {
   console.log('Shutting down workers...');
   await Promise.all(workers.map((w) => w.close()));
+  await closeNotificationProcessor();
   process.exit(0);
 }
 

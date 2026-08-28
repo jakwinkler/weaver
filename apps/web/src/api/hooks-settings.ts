@@ -27,8 +27,11 @@ export function useUpdateTenantSettings() {
 
 export function useTestSmtp() {
   return useMutation({
-    mutationFn: async () => {
-      const res = await apiClient.post<{ success: boolean; message: string }>('/settings/smtp/test');
+    mutationFn: async (smtp?: NonNullable<TenantSettings['smtp']>) => {
+      const res = await apiClient.post<{ success: boolean; message: string }>(
+        '/settings/smtp/test',
+        smtp ? { smtp } : {},
+      );
       return res.data;
     },
   });

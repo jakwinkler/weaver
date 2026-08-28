@@ -7,6 +7,8 @@ import {
   paginationSchema,
   createWorkflowStatusSchema,
   issueKeySchema,
+  notificationPreferencesSchema,
+  updateNotificationPreferencesSchema,
 } from '../src/schemas';
 
 describe('registerSchema', () => {
@@ -216,6 +218,35 @@ describe('paginationSchema', () => {
 
   it('should reject perPage > 200', () => {
     const result = paginationSchema.safeParse({ perPage: 201 });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('notificationPreferencesSchema', () => {
+  it('defaults every email notification preference to true', () => {
+    const result = notificationPreferencesSchema.parse({});
+
+    expect(result).toEqual({
+      emailOnAssign: true,
+      emailOnMention: true,
+      emailOnComment: true,
+      emailOnStatusChange: true,
+    });
+  });
+
+  it('accepts a partial notification preference update', () => {
+    const result = updateNotificationPreferencesSchema.safeParse({
+      emailOnMention: false,
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects unknown notification preference keys', () => {
+    const result = updateNotificationPreferencesSchema.safeParse({
+      emailOnEverything: false,
+    });
+
     expect(result.success).toBe(false);
   });
 });

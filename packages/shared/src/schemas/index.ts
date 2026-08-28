@@ -53,7 +53,12 @@ export type UpdateUserDto = z.infer<typeof updateUserSchema>;
 
 export const createProjectSchema = z.object({
   name: z.string().min(1).max(255),
-  key: z.string().regex(PROJECT_KEY_REGEX, 'Project key must be 2-10 uppercase alphanumeric characters starting with a letter'),
+  key: z
+    .string()
+    .regex(
+      PROJECT_KEY_REGEX,
+      'Project key must be 2-10 uppercase alphanumeric characters starting with a letter',
+    ),
   description: z.string().max(5000).optional(),
 });
 export type CreateProjectDto = z.infer<typeof createProjectSchema>;
@@ -108,14 +113,21 @@ export const updateIssueSchema = z.object({
 export type UpdateIssueDto = z.infer<typeof updateIssueSchema>;
 
 export const reorderIssuesSchema = z.object({
-  issues: z.array(z.object({
-    id: z.string().uuid(),
-    sortOrder: z.number().int().min(0),
-  })).min(1).max(200),
+  issues: z
+    .array(
+      z.object({
+        id: z.string().uuid(),
+        sortOrder: z.number().int().min(0),
+      }),
+    )
+    .min(1)
+    .max(200),
 });
 export type ReorderIssuesDto = z.infer<typeof reorderIssuesSchema>;
 
-export const issueKeySchema = z.string().regex(ISSUE_KEY_REGEX, 'Invalid issue key format (e.g., WEB-123)');
+export const issueKeySchema = z
+  .string()
+  .regex(ISSUE_KEY_REGEX, 'Invalid issue key format (e.g., WEB-123)');
 
 // ── Pagination ──
 
@@ -227,3 +239,23 @@ export const updateTenantSettingsSchema = z.object({
   smtp: smtpSettingsSchema.nullable().optional(),
 });
 export type UpdateTenantSettingsDto = z.infer<typeof updateTenantSettingsSchema>;
+
+export const testSmtpSettingsSchema = z
+  .object({
+    smtp: smtpSettingsSchema.optional(),
+  })
+  .strict();
+
+// ── Notification Preferences Schema ──
+
+export const notificationPreferencesSchema = z
+  .object({
+    emailOnAssign: z.boolean().default(true),
+    emailOnMention: z.boolean().default(true),
+    emailOnComment: z.boolean().default(true),
+    emailOnStatusChange: z.boolean().default(true),
+  })
+  .strict();
+
+export const updateNotificationPreferencesSchema = notificationPreferencesSchema.partial().strict();
+export type UpdateNotificationPreferencesDto = z.infer<typeof updateNotificationPreferencesSchema>;

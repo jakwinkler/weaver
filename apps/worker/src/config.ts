@@ -7,7 +7,10 @@ export const config = {
   queues: {
     events: { name: 'events', concurrency: 10 },
     webhooks: { name: 'webhooks', concurrency: 5 },
-    notifications: { name: 'notifications', concurrency: 10 },
+    notifications: {
+      name: process.env.NOTIFICATIONS_QUEUE_NAME || 'notifications',
+      concurrency: 10,
+    },
     scmSync: { name: 'scm-sync', concurrency: 3 },
     tenantOps: { name: 'tenant-ops', concurrency: 1 },
   },

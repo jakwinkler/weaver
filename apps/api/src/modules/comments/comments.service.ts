@@ -1,38 +1,43 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { CommentEntity, IssueEntity } from '@weaver/db';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { CommentEntity, IssueEntity, ProjectEntity } from '@weaver/db';
 import { CreateCommentDto } from '@weaver/shared';
 import { TenantConnectionProvider } from '../../core/tenant';
 import { UsersService } from '../users';
 import { EventDispatcherService } from '../events';
 import { NotificationsService } from '../notifications';
 import { MentionService } from './mention.service';
+import { getTenantContext } from '../../core/tenant';
+import { MailService } from '../mail';
 
 @Injectable()
 export class CommentsService {
+  private readonly logger = new Logger(CommentsService.name);
+
   constructor(
     private readonly tenantConnections: TenantConnectionProvider,
     private readonly usersService: UsersService,
     private readonly eventDispatcher: EventDispatcherService,
     private readonly notificationsService: NotificationsService,
     private readonly mentionService: MentionService,
+    private readonly mailService: MailService,
   ) {}
 
-  private async resolveIssueId(issueKey: string): Promise<string> {
+  private async resolveIssue(issueKey: string): Promise<IssueEntity> {
     const em = await this.tenantConnections.getEntityManager();
     const issue = await em.getRepository(IssueEntity).findOneBy({ key: issueKey });
     if (!issue) {
       throw new NotFoundException(`Issue "${issueKey}" not found`);
     }
-    return issue.id;
+    return issue;
   }
 
   async create(issueKey: string, dto: CreateCommentDto, authorId: string): Promise<CommentEntity> {
-    const issueId = await this.resolveIssueId(issueKey);
+    const issue = await this.resolveIssue(issueKey);
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(CommentEntity);
 
     const comment = repo.create({
-      issueId,
+      issueId: issue.id,
       authorId,
       body: dto.body,
     });
@@ -52,22 +57,22 @@ export class CommentsService {
     for (const mentionedUserId of mentionedUserIds) {
       if (mentionedUserId === authorId) continue; // skip self-mentions
       try {
-        await this.notificationsService.create(
-          mentionedUserId,
-          'mention',
-          `@You in ${issueKey}`,
-          { issueKey, commentId: saved.id },
-        );
+        await this.notificationsService.create(mentionedUserId, 'mention', `@You in ${issueKey}`, {
+          issueKey,
+          commentId: saved.id,
+        });
       } catch {
         // Ignore notification failures (e.g. invalid userId)
       }
     }
 
+    await this.sendCommentEmails(issue, authorId, mentionedUserIds, body);
+
     return saved;
   }
 
   async findByIssue(issueKey: string) {
-    const issueId = await this.resolveIssueId(issueKey);
+    const issueId = (await this.resolveIssue(issueKey)).id;
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(CommentEntity);
 
@@ -125,7 +130,9 @@ export class CommentsService {
     const repo = em.getRepository(CommentEntity);
 
     // Diff mentions: only notify newly mentioned users
-    const oldMentions = new Set(this.mentionService.extractMentions(comment.body as Record<string, unknown> | null));
+    const oldMentions = new Set(
+      this.mentionService.extractMentions(comment.body as Record<string, unknown> | null),
+    );
     const newBody = dto.body as Record<string, unknown> | null;
     const newMentions = this.mentionService.extractMentions(newBody);
 
@@ -140,15 +147,20 @@ export class CommentsService {
       if (oldMentions.has(mentionedUserId)) continue; // already mentioned
       if (updaterId && mentionedUserId === updaterId) continue; // skip self-mentions
       try {
-        await this.notificationsService.create(
-          mentionedUserId,
-          'mention',
-          `@You in ${issueKey}`,
-          { issueKey, commentId: saved.id },
-        );
+        await this.notificationsService.create(mentionedUserId, 'mention', `@You in ${issueKey}`, {
+          issueKey,
+          commentId: saved.id,
+        });
       } catch {
         // Ignore notification failures
       }
+    }
+
+    if (issue && updaterId) {
+      const newlyMentioned = newMentions.filter(
+        (userId) => !oldMentions.has(userId) && userId !== updaterId,
+      );
+      await this.sendMentionEmails(issue, updaterId, newlyMentioned, newBody);
     }
 
     return saved;
@@ -171,5 +183,124 @@ export class CommentsService {
         userId: userId ?? null,
       });
     }
+  }
+
+  private async sendCommentEmails(
+    issue: IssueEntity,
+    authorId: string,
+    mentionedUserIds: string[],
+    body: Record<string, unknown> | null,
+  ): Promise<void> {
+    const tenantId = getTenantContext()?.tenantId;
+    if (!tenantId) return;
+
+    try {
+      const context = await this.emailContext(issue, authorId, body);
+      const mentioned = new Set(mentionedUserIds);
+      const commentRecipients = [
+        ...new Set(
+          [issue.reporterId, issue.assigneeId].filter((userId): userId is string =>
+            Boolean(userId),
+          ),
+        ),
+      ].filter((userId) => userId !== authorId && !mentioned.has(userId));
+
+      await Promise.all([
+        ...mentionedUserIds
+          .filter((userId) => userId !== authorId)
+          .map((userId) =>
+            this.mailService.enqueueNotification({
+              tenantId,
+              userId,
+              preference: 'emailOnMention',
+              template: 'mentioned-in-comment',
+              context,
+            }),
+          ),
+        ...commentRecipients.map((userId) =>
+          this.mailService.enqueueNotification({
+            tenantId,
+            userId,
+            preference: 'emailOnComment',
+            template: 'comment-added',
+            context,
+          }),
+        ),
+      ]);
+    } catch (error) {
+      this.logger.warn(`Unable to prepare comment emails for ${issue.key}: ${String(error)}`);
+    }
+  }
+
+  private async sendMentionEmails(
+    issue: IssueEntity,
+    actorId: string,
+    mentionedUserIds: string[],
+    body: Record<string, unknown> | null,
+  ): Promise<void> {
+    const tenantId = getTenantContext()?.tenantId;
+    if (!tenantId || mentionedUserIds.length === 0) return;
+
+    try {
+      const context = await this.emailContext(issue, actorId, body);
+      await Promise.all(
+        mentionedUserIds.map((userId) =>
+          this.mailService.enqueueNotification({
+            tenantId,
+            userId,
+            preference: 'emailOnMention',
+            template: 'mentioned-in-comment',
+            context,
+          }),
+        ),
+      );
+    } catch (error) {
+      this.logger.warn(`Unable to prepare mention emails for ${issue.key}: ${String(error)}`);
+    }
+  }
+
+  private async emailContext(
+    issue: IssueEntity,
+    actorId: string,
+    body: Record<string, unknown> | null,
+  ): Promise<Record<string, unknown>> {
+    const em = await this.tenantConnections.getEntityManager();
+    const [actor, project] = await Promise.all([
+      this.usersService.findById(actorId),
+      em.getRepository(ProjectEntity).findOneBy({ id: issue.projectId }),
+    ]);
+
+    return {
+      actorName: actor.displayName || actor.email,
+      issueKey: issue.key,
+      issueSummary: issue.summary,
+      projectName: project?.name ?? issue.key.split('-')[0],
+      commentExcerpt: this.commentExcerpt(body),
+      issueUrl: this.mailService.issueUrl(issue.key),
+    };
+  }
+
+  private commentExcerpt(body: Record<string, unknown> | null): string {
+    const parts: string[] = [];
+
+    const walk = (node: unknown): void => {
+      if (!node || typeof node !== 'object') return;
+      const record = node as Record<string, unknown>;
+      if (typeof record.text === 'string') {
+        parts.push(record.text);
+      } else if (record.type === 'mention') {
+        const attrs = record.attrs as Record<string, unknown> | undefined;
+        const label = attrs?.label;
+        if (typeof label === 'string') parts.push(`@${label}`);
+      }
+      if (Array.isArray(record.content)) {
+        record.content.forEach(walk);
+      }
+    };
+
+    walk(body);
+    const text = parts.join(' ').replace(/\s+/g, ' ').trim();
+    if (!text) return 'Open Weaver to view the comment.';
+    return text.length > 240 ? `${text.slice(0, 237)}...` : text;
   }
 }

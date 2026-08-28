@@ -1,12 +1,5 @@
-import {
-  Controller,
-  Get,
-  Patch,
-  Post,
-  Body,
-  UseGuards,
-} from '@nestjs/common';
-import { updateTenantSettingsSchema } from '@weaver/shared';
+import { Controller, Get, Patch, Post, Body, UseGuards } from '@nestjs/common';
+import { testSmtpSettingsSchema, updateTenantSettingsSchema } from '@weaver/shared';
 import { JwtAuthGuard, AdminGuard, CurrentUser, RequestUser } from '../../core/auth';
 import { ZodValidationPipe } from '../../common';
 import { TenantService } from '../../core/tenant/tenant.service';
@@ -34,8 +27,11 @@ export class SettingsController {
   }
 
   @Post('smtp/test')
-  async testSmtp(@CurrentUser() user: RequestUser) {
-    await this.mailService.sendTestEmail(user.tenantId, user.email);
+  async testSmtp(
+    @CurrentUser() user: RequestUser,
+    @Body(new ZodValidationPipe(testSmtpSettingsSchema)) body: any,
+  ) {
+    await this.mailService.sendTestEmail(user.tenantId, user.email, body.smtp);
     return { success: true, message: 'Test email sent' };
   }
 }

@@ -77,10 +77,7 @@ export {
   useMyPermissions,
   useHasPermission,
 } from './hooks-phase5';
-export {
-  useBulkUpdateIssues,
-  useBulkDeleteIssues,
-} from './hooks-phase6';
+export { useBulkUpdateIssues, useBulkDeleteIssues } from './hooks-phase6';
 export {
   useUsers,
   useUpdateUserRole,
@@ -118,7 +115,12 @@ export {
 } from './hooks-project-plugins';
 export type { ProjectPlugin } from './hooks-project-plugins';
 export { useDashboard } from './hooks-dashboard';
-export { useProfile, useUpdateProfile, useUploadAvatar } from './hooks-profile';
+export {
+  useProfile,
+  useUpdateProfile,
+  useUploadAvatar,
+  useUpdateNotificationPreferences,
+} from './hooks-profile';
 export { useTenantSettings, useUpdateTenantSettings, useTestSmtp } from './hooks-settings';
 export {
   usePublicProjects,

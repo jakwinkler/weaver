@@ -32,6 +32,7 @@ import { DashboardPage } from '@/features/dashboard/DashboardPage';
 import { ProfilePage } from '@/features/profile/ProfilePage';
 import { PublicProjectPage } from '@/features/projects/PublicProjectPage';
 import { SystemSettingsPage } from '@/features/settings/SystemSettingsPage';
+import { EmailUnsubscribePage } from '@/features/notifications/EmailUnsubscribePage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -52,7 +53,11 @@ export function App() {
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
-            <Route path="/public/:tenantSlug/projects/:projectKey" element={<PublicProjectPage />} />
+            <Route path="/unsubscribe" element={<EmailUnsubscribePage />} />
+            <Route
+              path="/public/:tenantSlug/projects/:projectKey"
+              element={<PublicProjectPage />}
+            />
 
             <Route element={<ProtectedRoute />}>
               <Route element={<AppLayout />}>

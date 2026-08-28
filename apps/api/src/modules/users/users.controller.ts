@@ -12,7 +12,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { updateUserSchema } from '@weaver/shared';
+import { updateNotificationPreferencesSchema, updateUserSchema } from '@weaver/shared';
 import { JwtAuthGuard, AdminGuard, CurrentUser, RequestUser } from '../../core/auth';
 import { ZodValidationPipe } from '../../common';
 import { UsersService } from './users.service';
@@ -35,12 +35,17 @@ export class UsersController {
     return this.usersService.update(user.userId, dto);
   }
 
+  @Patch('me/notification-preferences')
+  async updateNotificationPreferences(
+    @CurrentUser() user: RequestUser,
+    @Body(new ZodValidationPipe(updateNotificationPreferencesSchema)) dto: any,
+  ) {
+    return this.usersService.updateNotificationPreferences(user.userId, dto);
+  }
+
   @Post('me/avatar')
   @UseInterceptors(FileInterceptor('file'))
-  async uploadAvatar(
-    @CurrentUser() user: RequestUser,
-    @UploadedFile() file: Express.Multer.File,
-  ) {
+  async uploadAvatar(@CurrentUser() user: RequestUser, @UploadedFile() file: Express.Multer.File) {
     if (!file) {
       throw new BadRequestException('File is required');
     }

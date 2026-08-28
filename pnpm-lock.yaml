@@ -115,6 +115,9 @@ importers:
       bcrypt:
         specifier: ^5.1.1
         version: 5.1.1
+      bullmq:
+        specifier: ^5.34.8
+        version: 5.69.3
       class-transformer:
         specifier: ^0.5.1
         version: 0.5.1
@@ -426,7 +429,19 @@ importers:
       ioredis:
         specifier: ^5.4.2
         version: 5.9.3
+      nodemailer:
+        specifier: ^8.0.1
+        version: 8.0.1
+      pg:
+        specifier: ^8.13.1
+        version: 8.18.0
+      typeorm:
+        specifier: ^0.3.20
+        version: 0.3.28(ioredis@5.9.3)(pg@8.18.0)
     devDependencies:
+      '@types/nodemailer':
+        specifier: ^7.0.11
+        version: 7.0.11
       '@weaver/config':
         specifier: workspace:*
         version: link:../../packages/config

@@ -1,14 +1,21 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IssueEntity, WorkflowStatusEntity, ActivityLogEntity, SprintEntity } from '@weaver/db';
 import { UserEntity } from '@weaver/db';
-import { CreateIssueDto, UpdateIssueDto, ReorderIssuesDto, PaginatedResponse } from '@weaver/shared';
+import {
+  CreateIssueDto,
+  UpdateIssueDto,
+  ReorderIssuesDto,
+  PaginatedResponse,
+} from '@weaver/shared';
 import { Repository, In } from 'typeorm';
 import { TenantConnectionProvider } from '../../core/tenant';
 import { ProjectsService } from '../projects';
 import { WorkflowsService } from '../workflows';
 import { EventDispatcherService } from '../events';
 import { PaginationParams, paginate } from '../../common';
+import { getTenantContext } from '../../core/tenant';
+import { MailService } from '../mail';
 
 export interface IssueFilters {
   statusId?: string;
@@ -22,6 +29,8 @@ export interface IssueFilters {
 
 @Injectable()
 export class IssuesService {
+  private readonly logger = new Logger(IssuesService.name);
+
   constructor(
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
@@ -29,6 +38,7 @@ export class IssuesService {
     private readonly projectsService: ProjectsService,
     private readonly workflowsService: WorkflowsService,
     private readonly eventDispatcher: EventDispatcherService,
+    private readonly mailService: MailService,
   ) {}
 
   private async resolveUserName(userId: string | null): Promise<string | null> {
@@ -54,8 +64,7 @@ export class IssuesService {
     const em = await this.tenantConnections.getEntityManager();
 
     // Resolve workflow: project-specific or default
-    const workflowId = project.workflowId
-      || (await this.workflowsService.getDefaultWorkflow()).id;
+    const workflowId = project.workflowId || (await this.workflowsService.getDefaultWorkflow()).id;
 
     const initialStatus = await em.getRepository(WorkflowStatusEntity).findOneBy({
       workflowId,
@@ -101,6 +110,10 @@ export class IssuesService {
       userId: reporterId,
     });
 
+    if (saved.assigneeId) {
+      await this.sendAssignmentEmail(saved, saved.assigneeId, reporterId, project.name);
+    }
+
     return saved;
   }
 
@@ -129,16 +142,33 @@ export class IssuesService {
       .where('issue.projectId = :projectId', { projectId: project.id });
 
     if (filters) {
-      if (filters.statusId) qb.andWhere('issue.statusId = :statusId', { statusId: filters.statusId });
-      if (filters.assigneeId) qb.andWhere('issue.assigneeId = :assigneeId', { assigneeId: filters.assigneeId });
-      if (filters.priority) qb.andWhere('issue.priority = :priority', { priority: filters.priority });
-      if (filters.startDateFrom) qb.andWhere('issue.startDate >= :startDateFrom', { startDateFrom: filters.startDateFrom });
-      if (filters.startDateTo) qb.andWhere('issue.startDate <= :startDateTo', { startDateTo: filters.startDateTo });
-      if (filters.dueDateFrom) qb.andWhere('issue.dueDate >= :dueDateFrom', { dueDateFrom: filters.dueDateFrom });
-      if (filters.dueDateTo) qb.andWhere('issue.dueDate <= :dueDateTo', { dueDateTo: filters.dueDateTo });
+      if (filters.statusId)
+        qb.andWhere('issue.statusId = :statusId', { statusId: filters.statusId });
+      if (filters.assigneeId)
+        qb.andWhere('issue.assigneeId = :assigneeId', { assigneeId: filters.assigneeId });
+      if (filters.priority)
+        qb.andWhere('issue.priority = :priority', { priority: filters.priority });
+      if (filters.startDateFrom)
+        qb.andWhere('issue.startDate >= :startDateFrom', { startDateFrom: filters.startDateFrom });
+      if (filters.startDateTo)
+        qb.andWhere('issue.startDate <= :startDateTo', { startDateTo: filters.startDateTo });
+      if (filters.dueDateFrom)
+        qb.andWhere('issue.dueDate >= :dueDateFrom', { dueDateFrom: filters.dueDateFrom });
+      if (filters.dueDateTo)
+        qb.andWhere('issue.dueDate <= :dueDateTo', { dueDateTo: filters.dueDateTo });
     }
 
-    return paginate(qb, params, ['summary', 'priority', 'createdAt', 'updatedAt', 'key', 'sortOrder', 'startDate', 'dueDate', 'percentDone']);
+    return paginate(qb, params, [
+      'summary',
+      'priority',
+      'createdAt',
+      'updatedAt',
+      'key',
+      'sortOrder',
+      'startDate',
+      'dueDate',
+      'percentDone',
+    ]);
   }
 
   async update(issueKey: string, dto: UpdateIssueDto, userId?: string): Promise<IssueEntity> {
@@ -218,16 +248,28 @@ export class IssuesService {
         trackedChanges.push({ field: 'priority', oldVal: previousPriority, newVal: dto.priority });
       }
       if (dto.startDate !== undefined && (dto.startDate ?? null) !== (previousStartDate ?? null)) {
-        trackedChanges.push({ field: 'startDate', oldVal: previousStartDate ?? null, newVal: dto.startDate ?? null });
+        trackedChanges.push({
+          field: 'startDate',
+          oldVal: previousStartDate ?? null,
+          newVal: dto.startDate ?? null,
+        });
       }
       if (dto.dueDate !== undefined && (dto.dueDate ?? null) !== (previousDueDate ?? null)) {
-        trackedChanges.push({ field: 'dueDate', oldVal: previousDueDate ?? null, newVal: dto.dueDate ?? null });
+        trackedChanges.push({
+          field: 'dueDate',
+          oldVal: previousDueDate ?? null,
+          newVal: dto.dueDate ?? null,
+        });
       }
       if (dto.summary !== undefined && dto.summary !== previousSummary) {
         trackedChanges.push({ field: 'summary', oldVal: previousSummary, newVal: dto.summary });
       }
       if (dto.percentDone !== undefined && dto.percentDone !== previousPercentDone) {
-        trackedChanges.push({ field: 'percentDone', oldVal: String(previousPercentDone), newVal: String(dto.percentDone) });
+        trackedChanges.push({
+          field: 'percentDone',
+          oldVal: String(previousPercentDone),
+          newVal: String(dto.percentDone),
+        });
       }
 
       for (const change of trackedChanges) {
@@ -252,6 +294,11 @@ export class IssuesService {
         previousAssigneeId,
         userId: userId ?? null,
       });
+
+      if (saved.assigneeId) {
+        const project = await this.projectsService.findByKey(issueKey.split('-')[0]);
+        await this.sendAssignmentEmail(saved, saved.assigneeId, userId ?? null, project.name);
+      }
     }
 
     // Emit issue.moved event if status or sprint changed
@@ -267,6 +314,21 @@ export class IssuesService {
         toSprint: saved.sprintId ?? null,
         userId: userId ?? null,
       });
+    }
+
+    if (statusChanged) {
+      const [oldStatus, newStatus, project] = await Promise.all([
+        this.resolveStatusName(em, previousStatusId),
+        this.resolveStatusName(em, saved.statusId),
+        this.projectsService.findByKey(issueKey.split('-')[0]),
+      ]);
+      await this.sendStatusChangeEmails(
+        saved,
+        oldStatus ?? previousStatusId,
+        newStatus ?? saved.statusId,
+        userId ?? null,
+        project.name,
+      );
     }
 
     return saved;
@@ -309,9 +371,7 @@ export class IssuesService {
 
     // Validate the transition starts from the current status
     if (transition.fromStatusId !== issue.statusId) {
-      throw new BadRequestException(
-        `Transition is not valid from the current status`,
-      );
+      throw new BadRequestException(`Transition is not valid from the current status`);
     }
 
     const oldStatusId = issue.statusId;
@@ -344,6 +404,15 @@ export class IssuesService {
       userId,
     });
 
+    const project = await this.projectsService.findByKey(issueKey.split('-')[0]);
+    await this.sendStatusChangeEmails(
+      saved,
+      oldStatusName ?? oldStatusId,
+      newStatusName ?? transition.toStatusId,
+      userId,
+      project.name,
+    );
+
     return saved;
   }
 
@@ -354,5 +423,74 @@ export class IssuesService {
     await repo.remove(issue);
 
     this.eventDispatcher.emit('issue.deleted', { issueKey, projectKey: issueKey.split('-')[0] });
+  }
+
+  private async sendAssignmentEmail(
+    issue: IssueEntity,
+    assigneeId: string,
+    actorId: string | null,
+    projectName: string,
+  ): Promise<void> {
+    const tenantId = getTenantContext()?.tenantId;
+    if (!tenantId) return;
+
+    try {
+      await this.mailService.enqueueNotification({
+        tenantId,
+        userId: assigneeId,
+        preference: 'emailOnAssign',
+        template: 'issue-assigned',
+        context: {
+          actorName: (await this.resolveUserName(actorId)) ?? 'Someone',
+          issueKey: issue.key,
+          issueSummary: issue.summary,
+          projectName,
+          issueUrl: this.mailService.issueUrl(issue.key),
+        },
+      });
+    } catch (error) {
+      this.logger.warn(`Unable to prepare assignment email for ${issue.key}: ${String(error)}`);
+    }
+  }
+
+  private async sendStatusChangeEmails(
+    issue: IssueEntity,
+    oldStatus: string,
+    newStatus: string,
+    actorId: string | null,
+    projectName: string,
+  ): Promise<void> {
+    const tenantId = getTenantContext()?.tenantId;
+    if (!tenantId) return;
+
+    const recipients = [
+      ...new Set([issue.assigneeId, issue.reporterId].filter(Boolean)),
+    ] as string[];
+    if (recipients.length === 0) return;
+
+    try {
+      const actorName = (await this.resolveUserName(actorId)) ?? 'Someone';
+      await Promise.all(
+        recipients.map((userId) =>
+          this.mailService.enqueueNotification({
+            tenantId,
+            userId,
+            preference: 'emailOnStatusChange',
+            template: 'issue-status-changed',
+            context: {
+              actorName,
+              issueKey: issue.key,
+              issueSummary: issue.summary,
+              projectName,
+              oldStatus,
+              newStatus,
+              issueUrl: this.mailService.issueUrl(issue.key),
+            },
+          }),
+        ),
+      );
+    } catch (error) {
+      this.logger.warn(`Unable to prepare status email for ${issue.key}: ${String(error)}`);
+    }
   }
 }

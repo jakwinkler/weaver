@@ -30,9 +30,55 @@ export interface User {
   passwordHash?: string;
   authProvider: AuthProvider;
   avatarUrl?: string;
+  notificationPreferences?: NotificationPreferences;
   createdAt: Date;
   updatedAt: Date;
 }
+
+export interface NotificationPreferences {
+  emailOnAssign: boolean;
+  emailOnMention: boolean;
+  emailOnComment: boolean;
+  emailOnStatusChange: boolean;
+}
+
+export type NotificationPreferenceKey = keyof NotificationPreferences;
+
+export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
+  emailOnAssign: true,
+  emailOnMention: true,
+  emailOnComment: true,
+  emailOnStatusChange: true,
+};
+
+export type EmailTemplateName =
+  | 'issue-assigned'
+  | 'mentioned-in-comment'
+  | 'issue-status-changed'
+  | 'comment-added';
+
+export interface EmailNotificationJobData {
+  type: 'email';
+  userId: string;
+  tenantId: string;
+  to: string;
+  title: string;
+  body: string;
+  html: string;
+  headers: Record<string, string>;
+  data?: Record<string, unknown>;
+}
+
+export interface InAppNotificationJobData {
+  type: 'in_app';
+  userId: string;
+  tenantId: string;
+  title: string;
+  body: string;
+  data?: Record<string, unknown>;
+}
+
+export type NotificationJobData = EmailNotificationJobData | InAppNotificationJobData;
 
 export interface TenantMembership {
   tenantId: string;
