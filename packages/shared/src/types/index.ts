@@ -184,16 +184,62 @@ export interface Sprint {
   projectId: string;
   name: string;
   goal?: string;
-  startDate?: Date;
-  endDate?: Date;
+  startDate?: Date | string;
+  endDate?: Date | string;
   status: SprintStatus;
+  initialScope?: SprintInitialScope | null;
   stats?: SprintStats;
   createdAt: Date;
+}
+
+export interface SprintScopeIssue {
+  issueId: string;
+  storyPoints: number;
+  statusId: string;
+}
+
+export interface SprintInitialScope {
+  capturedAt: string;
+  issues: SprintScopeIssue[];
 }
 
 export interface SprintStats {
   totalCommittedPoints: number;
   totalCompletedPoints: number;
+}
+
+export interface BurndownDataPoint {
+  date: string;
+  totalPoints: number;
+  remainingPoints: number;
+  idealRemaining: number;
+}
+
+export interface SprintReportDates {
+  startDate: string | null;
+  endDate: string | null;
+}
+
+export interface SprintSummary {
+  sprintId: string;
+  sprintName: string;
+  dates: SprintReportDates;
+  totalIssues: number;
+  completedIssues: number;
+  addedMidSprint: number;
+  removedMidSprint: number;
+  totalPointsCommitted: number;
+  completedPoints: number;
+  carryOverPoints: number;
+  completionPercentage: number;
+}
+
+export interface SprintVelocity {
+  sprintId: string;
+  sprintName: string;
+  committedPoints: number;
+  completedPoints: number;
+  dates: SprintReportDates;
 }
 
 export interface Comment {

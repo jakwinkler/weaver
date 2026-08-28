@@ -41,10 +41,18 @@ function SprintPointSummary({ sprint }: { sprint: Sprint }) {
   );
 }
 
-function SprintActions({ sprint }: { sprint: Sprint }) {
+function SprintActions({ sprint, projectKey }: { sprint: Sprint; projectKey: string }) {
   const startSprint = useStartSprint(sprint.id);
   const completeSprint = useCompleteSprint(sprint.id);
   const canManage = useHasPermission('sprints.manage');
+
+  if (sprint.status === 'completed') {
+    return (
+      <Button asChild size="sm" variant="outline" className="text-xs">
+        <Link to={`/projects/${projectKey}/reports/sprint/${sprint.id}`}>Report</Link>
+      </Button>
+    );
+  }
 
   if (!canManage) return null;
 
@@ -212,14 +220,19 @@ export function SprintBoard() {
 
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-xl font-bold text-foreground">Sprints</h1>
-        {canCreateSprint && (
-          <Button
-            onClick={() => setShowCreateForm(!showCreateForm)}
-            variant={showCreateForm ? 'outline' : 'default'}
-          >
-            {showCreateForm ? 'Cancel' : 'New Sprint'}
+        <div className="flex items-center gap-2">
+          <Button asChild variant="outline">
+            <Link to={`/projects/${projectKey}/reports/velocity`}>Velocity</Link>
           </Button>
-        )}
+          {canCreateSprint && (
+            <Button
+              onClick={() => setShowCreateForm(!showCreateForm)}
+              variant={showCreateForm ? 'outline' : 'default'}
+            >
+              {showCreateForm ? 'Cancel' : 'New Sprint'}
+            </Button>
+          )}
+        </div>
       </div>
 
       {showCreateForm && (
@@ -252,7 +265,7 @@ export function SprintBoard() {
                 <SprintPointSummary sprint={activeSprint} />
               </div>
             </div>
-            <SprintActions sprint={activeSprint} />
+            <SprintActions sprint={activeSprint} projectKey={projectKey!} />
           </div>
 
           {/* Progress bar */}
@@ -316,7 +329,7 @@ export function SprintBoard() {
                   <SprintPointSummary sprint={sprint} />
                 </div>
               </div>
-              <SprintActions sprint={sprint} />
+              <SprintActions sprint={sprint} projectKey={projectKey!} />
             </CardContent>
           </Card>
         ))}
