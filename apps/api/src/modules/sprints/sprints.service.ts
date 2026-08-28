@@ -47,7 +47,15 @@ export class SprintsService {
     return sprint;
   }
 
-  async update(id: string, dto: { name?: string; goal?: string | null; startDate?: string | null; endDate?: string | null }): Promise<SprintEntity> {
+  async update(
+    id: string,
+    dto: {
+      name?: string;
+      goal?: string | null;
+      startDate?: string | null;
+      endDate?: string | null;
+    },
+  ): Promise<SprintEntity> {
     const sprint = await this.findById(id);
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(SprintEntity);
@@ -67,7 +75,9 @@ export class SprintsService {
     const sprint = await this.findById(id);
 
     if (sprint.status !== 'planned') {
-      throw new BadRequestException(`Sprint can only be started from "planned" status, current status is "${sprint.status}"`);
+      throw new BadRequestException(
+        `Sprint can only be started from "planned" status, current status is "${sprint.status}"`,
+      );
     }
 
     const em = await this.tenantConnections.getEntityManager();
@@ -90,7 +100,9 @@ export class SprintsService {
     const sprint = await this.findById(id);
 
     if (sprint.status !== 'active') {
-      throw new BadRequestException(`Sprint can only be completed from "active" status, current status is "${sprint.status}"`);
+      throw new BadRequestException(
+        `Sprint can only be completed from "active" status, current status is "${sprint.status}"`,
+      );
     }
 
     const em = await this.tenantConnections.getEntityManager();
@@ -101,7 +113,12 @@ export class SprintsService {
       sprint.endDate = new Date().toISOString().split('T')[0];
     }
 
-    return repo.save(sprint);
+    const saved = await repo.save(sprint);
+    this.eventDispatcher.emit('sprint.completed', {
+      sprintId: saved.id,
+      projectId: saved.projectId,
+    });
+    return saved;
   }
 
   async addIssues(id: string, issueIds: string[]): Promise<void> {

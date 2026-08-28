@@ -25,7 +25,14 @@ import {
 import { AutomationConditionEvaluatorService } from './condition-evaluator.service';
 
 const MAX_CHAIN_DEPTH = 5;
-const CONDITION_TYPES = ['field_equals', 'field_empty', 'status_category', 'issue_type'] as const;
+const CONDITION_TYPES = [
+  'field_equals',
+  'field_not_equals',
+  'field_empty',
+  'field_contains',
+  'status_category',
+  'issue_type',
+] as const;
 const ACTION_TYPES = [
   'set_field',
   'transition',

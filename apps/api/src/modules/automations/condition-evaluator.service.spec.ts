@@ -37,6 +37,24 @@ describe('AutomationConditionEvaluatorService', () => {
     );
   });
 
+  it('evaluates inequality and contains for strings and arrays', async () => {
+    await expect(
+      service.evaluate({ type: 'field_not_equals', field: 'priority', value: 'low' }, issue),
+    ).resolves.toBe(true);
+    await expect(
+      service.evaluate({ type: 'field_contains', field: 'labels', value: 'urgent' }, {
+        ...issue,
+        labels: ['urgent', 'customer'],
+      } as never),
+    ).resolves.toBe(true);
+    await expect(
+      service.evaluate({ type: 'field_contains', field: 'summary', value: 'release' }, {
+        ...issue,
+        summary: 'Prepare release notes',
+      } as never),
+    ).resolves.toBe(true);
+  });
+
   it('evaluates status categories from the tenant workflow', async () => {
     statusRepo.findOneBy.mockResolvedValue({ category: 'done' });
     await expect(service.evaluate({ type: 'status_category', value: 'done' }, issue)).resolves.toBe(

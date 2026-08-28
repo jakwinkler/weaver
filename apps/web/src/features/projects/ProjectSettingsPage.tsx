@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, type FormEvent } from 'react';
 import { useParams } from 'react-router-dom';
+import { useAuthStore } from '@/stores';
 import {
   useProject,
   useUpdateProject,
@@ -16,8 +17,25 @@ import {
   getAttachmentUrl,
 } from '@/api';
 import type { TenantUser } from '@/api';
-import { Settings, Users, Tag, FileText, Plus, Trash2, X, Upload, ToggleLeft } from 'lucide-react';
-import { useProjectPlugins, useEnableProjectPlugin, useDisableProjectPlugin, useAvailablePlugins, useInstalledPlugins } from '@/api';
+import {
+  Settings,
+  Users,
+  Tag,
+  FileText,
+  Plus,
+  Trash2,
+  X,
+  Upload,
+  ToggleLeft,
+  Bot,
+} from 'lucide-react';
+import {
+  useProjectPlugins,
+  useEnableProjectPlugin,
+  useDisableProjectPlugin,
+  useAvailablePlugins,
+  useInstalledPlugins,
+} from '@/api';
 import type { PluginManifest } from '@/api';
 import { getPluginIcon } from '@/plugins/plugin-icons';
 import { RichTextEditor, normalizeCommentBody, serializeDoc } from '@/components/RichTextEditor';
@@ -28,6 +46,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
+import { AutomationsPage } from '@/features/admin/AutomationsPage';
 
 export function ProjectIcon({
   iconAttachmentId,
@@ -61,13 +80,14 @@ export function ProjectIcon({
   );
 }
 
-type Tab = 'general' | 'members' | 'issue-types' | 'custom-fields' | 'features';
+type Tab = 'general' | 'members' | 'issue-types' | 'custom-fields' | 'features' | 'automations';
 
 const MEMBER_ROLES = ['lead', 'member', 'viewer'] as const;
 
 export function ProjectSettingsPage() {
   const { projectKey } = useParams<{ projectKey: string }>();
   const [activeTab, setActiveTab] = useState<Tab>('general');
+  const isAdmin = useAuthStore((state) => state.isAdmin());
 
   if (!projectKey) return null;
 
@@ -75,21 +95,28 @@ export function ProjectSettingsPage() {
     <div>
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-foreground">Project Settings</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Manage settings for {projectKey}
-        </p>
+        <p className="mt-1 text-sm text-muted-foreground">Manage settings for {projectKey}</p>
       </div>
 
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as Tab)} className="mb-6">
-        <TabsList className="w-full">
-          {([
-            { key: 'general', label: 'General', icon: Settings },
-            { key: 'members', label: 'Members', icon: Users },
-            { key: 'issue-types', label: 'Issue Types', icon: Tag },
-            { key: 'custom-fields', label: 'Custom Fields', icon: FileText },
-            { key: 'features', label: 'Features', icon: ToggleLeft },
-          ] as const).map(({ key, label, icon: Icon }) => (
-            <TabsTrigger key={key} value={key} className="flex flex-1 items-center gap-1.5">
+        <TabsList className="h-auto w-full justify-start overflow-x-auto">
+          {(
+            [
+              { key: 'general', label: 'General', icon: Settings },
+              { key: 'members', label: 'Members', icon: Users },
+              { key: 'issue-types', label: 'Issue Types', icon: Tag },
+              { key: 'custom-fields', label: 'Custom Fields', icon: FileText },
+              { key: 'features', label: 'Features', icon: ToggleLeft },
+              ...(isAdmin
+                ? [{ key: 'automations', label: 'Automations', icon: Bot } as const]
+                : []),
+            ] as const
+          ).map(({ key, label, icon: Icon }) => (
+            <TabsTrigger
+              key={key}
+              value={key}
+              className="flex shrink-0 items-center gap-1.5 sm:flex-1"
+            >
               <Icon className="h-4 w-4" />
               {label}
             </TabsTrigger>
@@ -111,9 +138,24 @@ export function ProjectSettingsPage() {
         <TabsContent value="features">
           <FeaturesTab projectKey={projectKey} />
         </TabsContent>
+        {isAdmin && (
+          <TabsContent value="automations">
+            <ProjectAutomationsTab projectKey={projectKey} />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );
+}
+
+function ProjectAutomationsTab({ projectKey }: { projectKey: string }) {
+  const { data: project, isLoading } = useProject(projectKey);
+
+  if (isLoading || !project) {
+    return <div className="py-8 text-center text-muted-foreground">Loading automations...</div>;
+  }
+
+  return <AutomationsPage projectId={project.id} projectKey={project.key} embedded />;
 }
 
 function GeneralTab({ projectKey }: { projectKey: string }) {
@@ -186,7 +228,11 @@ function GeneralTab({ projectKey }: { projectKey: string }) {
           <div>
             <Label className="mb-1 block">Project Icon</Label>
             <div className="flex items-center gap-4">
-              <ProjectIcon iconAttachmentId={project.iconAttachmentId} projectKey={project.key} size="lg" />
+              <ProjectIcon
+                iconAttachmentId={project.iconAttachmentId}
+                projectKey={project.key}
+                size="lg"
+              />
               <div className="flex gap-2">
                 <input
                   ref={fileInputRef}
@@ -223,16 +269,14 @@ function GeneralTab({ projectKey }: { projectKey: string }) {
 
           <div>
             <Label className="mb-1 block">Key</Label>
-            <p className="rounded-md bg-muted/50 px-3 py-2 text-sm text-muted-foreground">{project.key}</p>
+            <p className="rounded-md bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
+              {project.key}
+            </p>
           </div>
 
           <div>
             <Label className="mb-1 block">Project Name</Label>
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-            />
+            <Input value={name} onChange={(e) => setName(e.target.value)} required />
           </div>
 
           <div>
@@ -305,7 +349,9 @@ function GeneralTab({ projectKey }: { projectKey: string }) {
             >
               <option value="">Default</option>
               {workflows?.map((w: any) => (
-                <option key={w.id} value={w.id}>{w.name}</option>
+                <option key={w.id} value={w.id}>
+                  {w.name}
+                </option>
               ))}
             </select>
           </div>
@@ -340,9 +386,7 @@ function GeneralTab({ projectKey }: { projectKey: string }) {
             <Button type="submit" disabled={updateProject.isPending}>
               {updateProject.isPending ? 'Saving...' : 'Save Changes'}
             </Button>
-            {saved && (
-              <span className="text-sm text-green-600">Changes saved!</span>
-            )}
+            {saved && <span className="text-sm text-green-600">Changes saved!</span>}
             {updateProject.isError && (
               <span className="text-sm text-destructive">Failed to save changes.</span>
             )}
@@ -430,7 +474,9 @@ function MembersTab({ projectKey }: { projectKey: string }) {
                     className="block rounded-md border border-input bg-background px-3 py-2 text-sm"
                   >
                     {MEMBER_ROLES.map((r) => (
-                      <option key={r} value={r}>{r}</option>
+                      <option key={r} value={r}>
+                        {r}
+                      </option>
                     ))}
                   </select>
                 </div>
@@ -480,7 +526,9 @@ function MembersTab({ projectKey }: { projectKey: string }) {
                       className="rounded border border-input bg-background px-2 py-1 text-xs"
                     >
                       {MEMBER_ROLES.map((r) => (
-                        <option key={r} value={r}>{r}</option>
+                        <option key={r} value={r}>
+                          {r}
+                        </option>
                       ))}
                     </select>
                     <Button
@@ -548,7 +596,8 @@ function IssueTypesTab({ projectKey }: { projectKey: string }) {
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
-        Select which issue types are available in this project. If none are selected, all types will be available.
+        Select which issue types are available in this project. If none are selected, all types will
+        be available.
       </p>
       <Card>
         <CardContent className="pt-4">
@@ -591,12 +640,16 @@ function CustomFieldsTab({ projectKey }: { projectKey: string }) {
     <Card>
       <CardContent className="pt-6">
         <p className="text-sm text-muted-foreground">
-          Project-scoped custom field values are stored here. Use the Custom Fields admin page to define project-type fields.
+          Project-scoped custom field values are stored here. Use the Custom Fields admin page to
+          define project-type fields.
         </p>
         {project?.customFields && Object.keys(project.customFields).length > 0 ? (
           <div className="mt-4 space-y-2">
             {Object.entries(project.customFields).map(([key, value]) => (
-              <div key={key} className="flex items-center justify-between rounded border border-border px-3 py-2">
+              <div
+                key={key}
+                className="flex items-center justify-between rounded border border-border px-3 py-2"
+              >
                 <span className="text-sm font-medium text-foreground">{key}</span>
                 <span className="text-sm text-muted-foreground">{String(value)}</span>
               </div>
@@ -642,7 +695,8 @@ function FeaturesTab({ projectKey }: { projectKey: string }) {
       <Card>
         <CardContent className="pt-6">
           <p className="text-sm text-muted-foreground">
-            No project-scoped feature plugins are available. Install project plugins from the admin Plugins page.
+            No project-scoped feature plugins are available. Install project plugins from the admin
+            Plugins page.
           </p>
         </CardContent>
       </Card>
@@ -652,7 +706,8 @@ function FeaturesTab({ projectKey }: { projectKey: string }) {
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
-        Enable or disable project features. Disabled features will be hidden from the project navigation.
+        Enable or disable project features. Disabled features will be hidden from the project
+        navigation.
       </p>
       <Card>
         <div className="divide-y divide-border">

@@ -77,10 +77,7 @@ export {
   useMyPermissions,
   useHasPermission,
 } from './hooks-phase5';
-export {
-  useBulkUpdateIssues,
-  useBulkDeleteIssues,
-} from './hooks-phase6';
+export { useBulkUpdateIssues, useBulkDeleteIssues } from './hooks-phase6';
 export {
   useUsers,
   useUpdateUserRole,
@@ -120,6 +117,22 @@ export type { ProjectPlugin } from './hooks-project-plugins';
 export { useDashboard } from './hooks-dashboard';
 export { useProfile, useUpdateProfile, useUploadAvatar } from './hooks-profile';
 export { useTenantSettings, useUpdateTenantSettings, useTestSmtp } from './hooks-settings';
+export {
+  useAutomations,
+  useCreateAutomation,
+  useUpdateAutomation,
+  useDeleteAutomation,
+  useAutomationLog,
+} from './hooks-automations';
+export type {
+  AutomationAction,
+  AutomationCondition,
+  AutomationExecution,
+  AutomationRule,
+  AutomationRuleInput,
+  AutomationSettableField,
+  AutomationTrigger,
+} from './hooks-automations';
 export {
   usePublicProjects,
   usePublicProject,

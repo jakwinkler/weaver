@@ -1,7 +1,13 @@
 import { useState } from 'react';
 import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore, useThemeStore } from '@/stores';
-import { useProjects, useUnreadCount, useInstalledPlugins, useAvailablePlugins, useMyPermissions } from '@/api';
+import {
+  useProjects,
+  useUnreadCount,
+  useInstalledPlugins,
+  useAvailablePlugins,
+  useMyPermissions,
+} from '@/api';
 import { ProjectIcon } from '@/features/projects/ProjectSettingsPage';
 import { UserAvatar } from '@/components/UserAvatar';
 import { Button } from '@/components/ui/button';
@@ -33,6 +39,7 @@ import {
   Sun,
   Moon,
   Cog,
+  Bot,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getNavigationEntries } from '@/plugins/plugin-slot-registry';
@@ -46,6 +53,7 @@ const adminNavItems = [
   { to: '/admin/roles', label: 'Roles & Permissions', icon: Shield },
   { to: '/admin/teams', label: 'Teams', icon: UsersRound },
   { to: '/admin/users', label: 'Users', icon: Users },
+  { to: '/admin/automations', label: 'Automations', icon: Bot },
   { to: '/settings/plugins', label: 'Plugins', icon: Plug },
   { to: '/settings/webhooks', label: 'Webhooks', icon: Webhook },
   { to: '/settings/general', label: 'System Settings', icon: Cog },
@@ -72,16 +80,16 @@ export function AppLayout() {
   // Initialize WebSocket connection for real-time updates
   useWebSocket();
 
-  const enabledPluginIds = (installedPlugins ?? [])
-    .filter((p) => p.enabled)
-    .map((p) => p.pluginId);
+  const enabledPluginIds = (installedPlugins ?? []).filter((p) => p.enabled).map((p) => p.pluginId);
   const appTypePluginIds = new Set(
     (availablePlugins ?? []).filter((p) => p.type === 'app').map((p) => p.id),
   );
   const navEntries = getNavigationEntries(availablePlugins ?? [], enabledPluginIds)
     .filter((entry) => appTypePluginIds.has(entry.pluginId))
-    .filter((entry) =>
-      permissions.includes('*') || entry.requiredPermissions.every((perm) => permissions.includes(perm)),
+    .filter(
+      (entry) =>
+        permissions.includes('*') ||
+        entry.requiredPermissions.every((perm) => permissions.includes(perm)),
     );
 
   const handleLogout = () => {
@@ -90,9 +98,9 @@ export function AppLayout() {
   };
 
   return (
-    <div className="flex h-screen bg-muted/50">
+    <div className="flex h-screen min-w-0 bg-muted/50">
       {/* Sidebar */}
-      <aside className="relative z-10 flex w-64 flex-col bg-slate-900 text-white">
+      <aside className="relative z-10 hidden w-64 shrink-0 flex-col bg-slate-900 text-white md:flex">
         <div className="flex h-14 items-center border-b border-white/10 px-5">
           <Link to="/" className="text-xl font-bold text-white">
             Weaver
@@ -111,11 +119,16 @@ export function AppLayout() {
                   to={`/projects/${project.key}`}
                   className={cn(
                     'flex items-center rounded-md px-2 py-1.5 text-sm text-white/80 hover:bg-white/10 hover:text-white',
-                    location.pathname.includes(`/projects/${project.key}`) && 'bg-white/15 text-white font-medium',
+                    location.pathname.includes(`/projects/${project.key}`) &&
+                      'bg-white/15 text-white font-medium',
                   )}
                 >
                   <span className="mr-2">
-                    <ProjectIcon iconAttachmentId={project.iconAttachmentId} projectKey={project.key} size="sm" />
+                    <ProjectIcon
+                      iconAttachmentId={project.iconAttachmentId}
+                      projectKey={project.key}
+                      size="sm"
+                    />
                   </span>
                   {project.name}
                 </Link>
@@ -219,26 +232,45 @@ export function AppLayout() {
       </aside>
 
       {/* Main area */}
-      <div className="relative flex flex-1 flex-col overflow-hidden">
+      <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
         {/* Top bar */}
-        <header className="flex h-14 items-center justify-between bg-slate-900 px-6">
+        <header className="flex h-14 items-center justify-between gap-2 bg-slate-900 px-3 sm:px-6">
           {/* Search bar */}
-          <div className="relative w-full max-w-md">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/50" />
-            <input
-              type="text"
-              placeholder="Search issues, projects, people..."
-              className="w-full bg-white/10 py-1.5 pl-9 pr-4 text-sm text-white placeholder-white/50 border border-white/15 focus:bg-white/15 focus:outline-none focus:ring-1 focus:ring-white/30"
-              onFocus={() => navigate('/search')}
-              readOnly
-            />
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <Link to="/" className="text-lg font-bold text-white md:hidden">
+              Weaver
+            </Link>
+            <div className="relative hidden w-full max-w-md sm:block">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/50" />
+              <input
+                type="text"
+                placeholder="Search issues, projects, people..."
+                className="w-full border border-white/15 bg-white/10 py-1.5 pl-9 pr-4 text-sm text-white placeholder-white/50 focus:bg-white/15 focus:outline-none focus:ring-1 focus:ring-white/30"
+                onFocus={() => navigate('/search')}
+                readOnly
+              />
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="ml-auto text-white/80 hover:bg-white/10 hover:text-white sm:hidden"
+              onClick={() => navigate('/search')}
+              aria-label="Search"
+            >
+              <Search className="h-5 w-5" />
+            </Button>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex shrink-0 items-center gap-1 sm:gap-3">
             {/* Notification bell */}
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" className="relative text-white/80 hover:text-white hover:bg-white/10" onClick={() => navigate('/search')}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="relative text-white/80 hover:text-white hover:bg-white/10"
+                  onClick={() => navigate('/search')}
+                >
                   <Bell className="h-5 w-5" />
                   {unreadCount != null && unreadCount > 0 && (
                     <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-white">
@@ -256,23 +288,32 @@ export function AppLayout() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="text-white/80 hover:text-white hover:bg-white/10"
-                  onClick={() => setTheme(theme === 'dark' ? 'light' : theme === 'light' ? 'dark' : 'dark')}
+                  className="hidden text-white/80 hover:bg-white/10 hover:text-white sm:inline-flex"
+                  onClick={() =>
+                    setTheme(theme === 'dark' ? 'light' : theme === 'light' ? 'dark' : 'dark')
+                  }
                 >
                   {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>{theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}</TooltipContent>
+              <TooltipContent>
+                {theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+              </TooltipContent>
             </Tooltip>
 
-            <Separator orientation="vertical" className="h-6 bg-white/20" />
+            <Separator orientation="vertical" className="hidden h-6 bg-white/20 sm:block" />
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="gap-2 text-white/80 hover:text-white hover:bg-white/10">
+                <Button
+                  variant="ghost"
+                  className="gap-2 px-2 text-white/80 hover:bg-white/10 hover:text-white sm:px-4"
+                >
                   <UserAvatar user={user} size="sm" />
-                  <span className="text-sm">{user?.displayName || user?.email}</span>
-                  <ChevronDown className="h-3 w-3" />
+                  <span className="hidden text-sm lg:inline">
+                    {user?.displayName || user?.email}
+                  </span>
+                  <ChevronDown className="hidden h-3 w-3 lg:block" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
@@ -292,7 +333,7 @@ export function AppLayout() {
         </header>
 
         {/* Content */}
-        <main className="flex-1 overflow-y-auto px-6 py-5">
+        <main className="min-w-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
           <Outlet />
         </main>
       </div>
