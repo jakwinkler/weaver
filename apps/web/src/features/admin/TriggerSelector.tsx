@@ -3,11 +3,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
   CONDITION_FIELDS,
+  cronForTrigger,
   TRIGGER_OPTIONS,
   triggerFromOption,
   triggerOptionValue,
   type TriggerOptionValue,
 } from './automation-utils';
+import { CronPreview } from './CronPreview';
 
 interface TriggerSelectorProps {
   trigger: AutomationTrigger;
@@ -87,6 +89,15 @@ export function TriggerSelector({ trigger, onChange }: TriggerSelectorProps) {
           <p id="automation-trigger-cron-help" className="text-xs text-muted-foreground">
             Uses five fields: minute, hour, day of month, month, and day of week.
           </p>
+        </div>
+      )}
+
+      {trigger.type === 'schedule' && (
+        <div className="border border-border bg-muted/30 px-4 py-3">
+          <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Schedule preview
+          </p>
+          <CronPreview expression={cronForTrigger(trigger)} />
         </div>
       )}
     </div>

@@ -15,6 +15,8 @@ import {
   AutomationAction,
   AutomationCondition,
   AutomationEventJobData,
+  AutomationJobData,
+  ScheduledAutomationJobData,
   automationTriggerSchema,
 } from './automation.types';
 import {
@@ -45,8 +47,8 @@ const ACTION_TYPES = [
 @Injectable()
 export class AutomationEngineService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(AutomationEngineService.name);
-  private queue?: Queue<AutomationEventJobData>;
-  private worker?: Worker<AutomationEventJobData>;
+  private queue?: Queue<AutomationJobData>;
+  private worker?: Worker<AutomationJobData>;
   private unregisterDispatcher?: () => void;
 
   constructor(
@@ -68,13 +70,13 @@ export class AutomationEngineService implements OnModuleInit, OnModuleDestroy {
       password: this.config.get<string>('REDIS_PASSWORD') || undefined,
     };
 
-    this.queue = new Queue<AutomationEventJobData>(queueName, {
+    this.queue = new Queue<AutomationJobData>(queueName, {
       connection: { ...baseConnection, maxRetriesPerRequest: 1 },
     });
     this.queue.on('error', (error) => {
       this.logger.error(`Automation queue error: ${error.message}`);
     });
-    this.worker = new Worker<AutomationEventJobData>(queueName, (job) => this.runJob(job), {
+    this.worker = new Worker<AutomationJobData>(queueName, (job) => this.runJob(job), {
       connection: { ...baseConnection, maxRetriesPerRequest: null },
       concurrency: this.config.get<number>('AUTOMATIONS_CONCURRENCY', 5),
     });
@@ -112,6 +114,7 @@ export class AutomationEngineService implements OnModuleInit, OnModuleDestroy {
     await this.queue.add(
       'evaluate-event',
       {
+        kind: 'event',
         tenantId: tenant.tenantId,
         schemaName: tenant.schemaName,
         event,
@@ -126,10 +129,10 @@ export class AutomationEngineService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
-  private async runJob(job: Job<AutomationEventJobData>): Promise<void> {
+  private async runJob(job: Job<AutomationJobData>): Promise<void> {
     const data = job.data;
     await tenantStorage.run({ tenantId: data.tenantId, schemaName: data.schemaName }, () =>
-      this.evaluateEvent(data),
+      data.kind === 'schedule' ? this.evaluateScheduledRule(data) : this.evaluateEvent(data),
     );
   }
 
@@ -138,46 +141,114 @@ export class AutomationEngineService implements OnModuleInit, OnModuleDestroy {
     const issue = await this.loadIssue(data.payload);
 
     for (const rule of rules) {
-      const actionsExecuted: AutomationAction[] = [];
-      let success = true;
-      let executionError: string | undefined;
-      try {
-        const conditions = asAutomationConditions(rule);
-        if (conditions.length > 0) {
-          if (!issue || !(await this.conditionEvaluator.evaluateAll(conditions, issue))) {
-            continue;
-          }
-        }
-
-        await automationExecutionStorage.run(
-          { depth: data.depth + 1, chainId: data.chainId },
-          async () => {
-            for (const action of asAutomationActions(rule)) {
-              await this.actionExecutor.execute(action, {
-                issueKey: issue?.key ?? null,
-                actorId: this.resolveActorId(data.payload, rule.createdBy),
-                event: data.event,
-                payload: data.payload,
-              });
-              actionsExecuted.push(action);
-            }
-          },
-        );
-      } catch (error) {
-        success = false;
-        executionError = error instanceof Error ? error.message : String(error);
-        this.logger.warn(`Automation rule ${rule.id} failed: ${executionError}`);
-      }
-
-      await this.automationsService.recordExecution({
-        ruleId: rule.id,
-        event: data.event,
-        payload: data.payload,
-        actionsExecuted,
-        success,
-        error: executionError,
-      });
+      await this.executeRule(rule, data.event, data.payload, issue, data.depth, data.chainId);
     }
+  }
+
+  private async evaluateScheduledRule(data: ScheduledAutomationJobData): Promise<void> {
+    const em = await this.tenantConnections.getEntityManager();
+    const rule = await em.getRepository(AutomationRuleEntity).findOneBy({ id: data.ruleId });
+    if (!rule?.enabled) return;
+
+    const trigger = automationTriggerSchema.safeParse(rule.trigger);
+    if (!trigger.success || trigger.data.type !== 'schedule') return;
+
+    const queryConditions = asAutomationConditions(rule).filter(
+      (condition): condition is Extract<AutomationCondition, { type: 'query' }> =>
+        condition.type === 'query',
+    );
+    const issues =
+      queryConditions.length > 0 ? await this.findScheduledIssues(rule, queryConditions) : [null];
+    const chainId = randomUUID();
+
+    for (const issue of issues) {
+      const payload: Record<string, unknown> = {
+        ruleId: rule.id,
+        scheduledAt: data.scheduledAt,
+        ...(issue ? { issueKey: issue.key, projectId: issue.projectId } : {}),
+      };
+      await this.executeRule(rule, 'schedule.fired', payload, issue, 0, chainId);
+    }
+  }
+
+  private async executeRule(
+    rule: AutomationRuleEntity,
+    event: string,
+    payload: Record<string, unknown>,
+    issue: IssueEntity | null,
+    depth: number,
+    chainId: string,
+  ): Promise<void> {
+    const conditions = asAutomationConditions(rule);
+    if (conditions.length > 0) {
+      if (!issue || !(await this.conditionEvaluator.evaluateAll(conditions, issue))) return;
+    }
+
+    const actionsExecuted: AutomationAction[] = [];
+    let success = true;
+    let executionError: string | undefined;
+    try {
+      await automationExecutionStorage.run({ depth: depth + 1, chainId }, async () => {
+        for (const action of asAutomationActions(rule)) {
+          await this.actionExecutor.execute(action, {
+            issueKey: issue?.key ?? null,
+            actorId: this.resolveActorId(payload, rule.createdBy),
+            event,
+            payload,
+          });
+          actionsExecuted.push(action);
+        }
+      });
+    } catch (error) {
+      success = false;
+      executionError = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`Automation rule ${rule.id} failed: ${executionError}`);
+    }
+
+    await this.automationsService.recordExecution({
+      ruleId: rule.id,
+      event,
+      payload,
+      actionsExecuted,
+      success,
+      error: executionError,
+    });
+  }
+
+  private async findScheduledIssues(
+    rule: AutomationRuleEntity,
+    conditions: Array<Extract<AutomationCondition, { type: 'query' }>>,
+  ): Promise<IssueEntity[]> {
+    const em = await this.tenantConnections.getEntityManager();
+    const query = em.getRepository(IssueEntity).createQueryBuilder('issue');
+    if (rule.projectId)
+      query.andWhere('issue.projectId = :projectId', { projectId: rule.projectId });
+
+    const columns = {
+      dueDate: 'dueDate',
+      startDate: 'startDate',
+      createdAt: 'createdAt',
+      updatedAt: 'updatedAt',
+    } as const;
+    conditions.forEach((condition, index) => {
+      const column = columns[condition.field];
+      const parameter = `scheduledQuery${index}`;
+      const operator = condition.operator === 'before' ? '<' : '>';
+      const dateOnly = condition.field === 'dueDate' || condition.field === 'startDate';
+      const value =
+        condition.value === 'now'
+          ? dateOnly
+            ? new Date().toISOString().slice(0, 10)
+            : new Date()
+          : dateOnly
+            ? condition.value.slice(0, 10)
+            : new Date(condition.value);
+      query
+        .andWhere(`issue.${column} IS NOT NULL`)
+        .andWhere(`issue.${column} ${operator} :${parameter}`, { [parameter]: value });
+    });
+
+    return query.orderBy('issue.key', 'ASC').getMany();
   }
 
   private async findMatchingRules(

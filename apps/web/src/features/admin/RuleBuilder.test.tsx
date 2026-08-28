@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
 
 import '@testing-library/jest-dom/vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RuleBuilder } from './RuleBuilder';
+
+afterEach(cleanup);
 
 describe('RuleBuilder', () => {
   it('completes the four-step rule creation flow', async () => {
@@ -70,5 +72,46 @@ describe('RuleBuilder', () => {
 
     expect(screen.getByRole('alert')).toHaveTextContent('Action 1 is incomplete.');
     expect(screen.getByText('Step 3 of 4: Actions')).toBeInTheDocument();
+  });
+
+  it('creates a named schedule with an issue query condition', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(
+      <RuleBuilder
+        open
+        onOpenChange={() => undefined}
+        onSubmit={onSubmit}
+        projects={[]}
+        users={[]}
+        statuses={[]}
+        issueTypes={[]}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText('Rule name'), {
+      target: { value: 'Mark overdue issues' },
+    });
+    fireEvent.change(screen.getByLabelText('When should this rule run?'), {
+      target: { value: 'schedule.daily_9am' },
+    });
+    expect(screen.getByText('Every day at 9:00 AM UTC')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add condition' }));
+    expect(screen.getByLabelText('Operator')).toHaveValue('before');
+    expect(screen.getByLabelText('Value')).toHaveValue('now');
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+
+    fireEvent.change(screen.getByLabelText('Label'), { target: { value: 'overdue' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Create rule' }));
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        trigger: { type: 'schedule', schedule: 'daily_9am' },
+        conditions: [{ type: 'query', field: 'dueDate', operator: 'before', value: 'now' }],
+      }),
+    );
   });
 });

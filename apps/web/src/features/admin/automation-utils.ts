@@ -5,6 +5,14 @@ import type {
   AutomationSettableField,
   AutomationTrigger,
 } from '@/api';
+import { describeCronExpression } from './CronPreview';
+
+export const NAMED_SCHEDULE_CRON = {
+  daily_9am: '0 9 * * *',
+  weekly_monday: '0 9 * * 1',
+  hourly: '0 * * * *',
+  every_15m: '*/15 * * * *',
+} as const;
 
 export const TRIGGER_OPTIONS = [
   {
@@ -50,16 +58,28 @@ export const TRIGGER_OPTIONS = [
     description: 'Runs when an active sprint is completed.',
   },
   {
-    value: 'schedule.daily',
+    value: 'schedule.daily_9am',
     category: 'Schedule',
     label: 'Daily at 9:00 AM UTC',
     description: 'Runs once each day using a fixed UTC schedule.',
   },
   {
-    value: 'schedule.weekly',
+    value: 'schedule.weekly_monday',
     category: 'Schedule',
     label: 'Weekly, Monday at 9:00 AM UTC',
     description: 'Runs once each Monday using a fixed UTC schedule.',
+  },
+  {
+    value: 'schedule.hourly',
+    category: 'Schedule',
+    label: 'Hourly',
+    description: 'Runs at the beginning of every hour in UTC.',
+  },
+  {
+    value: 'schedule.every_15m',
+    category: 'Schedule',
+    label: 'Every 15 minutes',
+    description: 'Runs four times an hour in UTC.',
   },
   {
     value: 'schedule.custom',
@@ -83,7 +103,13 @@ export const CONDITION_FIELDS = [
 ] as const;
 
 export type AutomationConditionField = (typeof CONDITION_FIELDS)[number]['value'];
-export type AutomationConditionOperator = 'equals' | 'not_equals' | 'empty' | 'contains';
+export type AutomationConditionOperator =
+  | 'equals'
+  | 'not_equals'
+  | 'empty'
+  | 'contains'
+  | 'before'
+  | 'after';
 
 export const ACTION_TYPES = [
   { value: 'set_field', label: 'Set issue field' },
@@ -106,8 +132,7 @@ export const SET_FIELD_OPTIONS: Array<{ value: AutomationSettableField; label: s
 
 export function triggerOptionValue(trigger: AutomationTrigger): TriggerOptionValue {
   if (trigger.type !== 'schedule') return trigger.type;
-  if (trigger.cron === '0 9 * * *') return 'schedule.daily';
-  if (trigger.cron === '0 9 * * 1') return 'schedule.weekly';
+  if (trigger.schedule) return `schedule.${trigger.schedule}` as TriggerOptionValue;
   return 'schedule.custom';
 }
 
@@ -115,29 +140,37 @@ export function triggerFromOption(
   value: TriggerOptionValue,
   current: AutomationTrigger,
 ): AutomationTrigger {
-  if (value === 'schedule.daily') return { type: 'schedule', cron: '0 9 * * *' };
-  if (value === 'schedule.weekly') return { type: 'schedule', cron: '0 9 * * 1' };
+  if (value.startsWith('schedule.') && value !== 'schedule.custom') {
+    return {
+      type: 'schedule',
+      schedule: value.slice('schedule.'.length) as keyof typeof NAMED_SCHEDULE_CRON,
+    };
+  }
   if (value === 'schedule.custom') {
     return {
       type: 'schedule',
-      cron: current.type === 'schedule' ? current.cron : '0 9 * * 1-5',
+      cron: current.type === 'schedule' && current.cron ? current.cron : '0 9 * * 1-5',
     };
   }
   if (value === 'issue.updated') return { type: value };
-  return { type: value };
+  return {
+    type: value as Exclude<AutomationTrigger['type'], 'issue.updated' | 'schedule'>,
+  };
 }
 
 export function describeTrigger(trigger: AutomationTrigger): string {
   if (trigger.type === 'schedule') {
-    if (trigger.cron === '0 9 * * *') return 'Every day at 9:00 AM UTC';
-    if (trigger.cron === '0 9 * * 1') return 'Every Monday at 9:00 AM UTC';
-    return `Schedule: ${trigger.cron}`;
+    return describeCronExpression(cronForTrigger(trigger));
   }
   if (trigger.type === 'issue.updated' && trigger.field) {
     const label = CONDITION_FIELDS.find((field) => field.value === trigger.field)?.label;
     return `${label ?? trigger.field} changes`;
   }
   return TRIGGER_OPTIONS.find((option) => option.value === trigger.type)?.label ?? trigger.type;
+}
+
+export function cronForTrigger(trigger: Extract<AutomationTrigger, { type: 'schedule' }>): string {
+  return trigger.schedule ? NAMED_SCHEDULE_CRON[trigger.schedule] : trigger.cron;
 }
 
 export function conditionField(condition: AutomationCondition): AutomationConditionField {
@@ -147,6 +180,7 @@ export function conditionField(condition: AutomationCondition): AutomationCondit
 }
 
 export function conditionOperator(condition: AutomationCondition): AutomationConditionOperator {
+  if (condition.type === 'query') return condition.operator;
   switch (condition.type) {
     case 'field_not_equals':
       return 'not_equals';
@@ -169,6 +203,12 @@ export function makeCondition(
   operator: AutomationConditionOperator,
   value: unknown = '',
 ): AutomationCondition {
+  if (operator === 'before' || operator === 'after') {
+    const queryField = ['dueDate', 'startDate', 'createdAt', 'updatedAt'].includes(field)
+      ? (field as 'dueDate' | 'startDate' | 'createdAt' | 'updatedAt')
+      : 'dueDate';
+    return { type: 'query', field: queryField, operator, value: String(value || 'now') };
+  }
   if (operator === 'empty') {
     const fallbackField = field === 'statusCategory' || field === 'issueType' ? 'summary' : field;
     return { type: 'field_empty', field: fallbackField };
@@ -185,8 +225,10 @@ export function makeCondition(
   return { type: 'field_equals', field, value };
 }
 
-export function createDefaultCondition(): AutomationCondition {
-  return { type: 'field_equals', field: 'priority', value: 'high' };
+export function createDefaultCondition(scheduled = false): AutomationCondition {
+  return scheduled
+    ? { type: 'query', field: 'dueDate', operator: 'before', value: 'now' }
+    : { type: 'field_equals', field: 'priority', value: 'high' };
 }
 
 export function createDefaultAction(
@@ -242,6 +284,8 @@ export function describeCondition(condition: AutomationCondition): string {
     not_equals: 'does not equal',
     empty: 'is empty',
     contains: 'contains',
+    before: 'is before',
+    after: 'is after',
   };
   const operator = conditionOperator(condition);
   const value = conditionValue(condition);
@@ -291,8 +335,18 @@ export function validateAutomationStep(input: AutomationRuleInput, step: number)
   const errors: string[] = [];
   if (step === 0) {
     if (!input.name.trim()) errors.push('Give this rule a name.');
-    if (input.trigger.type === 'schedule' && !input.trigger.cron.trim()) {
+    if (
+      input.trigger.type === 'schedule' &&
+      !input.trigger.schedule &&
+      !input.trigger.cron?.trim()
+    ) {
       errors.push('Enter a cron schedule.');
+    } else if (
+      input.trigger.type === 'schedule' &&
+      !input.trigger.schedule &&
+      describeCronExpression(input.trigger.cron ?? '') === 'Invalid cron expression'
+    ) {
+      errors.push('Enter a valid five-field cron schedule.');
     }
   }
   if (step === 1) {

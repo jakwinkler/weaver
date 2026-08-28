@@ -9,7 +9,12 @@ export type AutomationTrigger =
   | { type: 'comment.created' }
   | { type: 'sprint.started' }
   | { type: 'sprint.completed' }
-  | { type: 'schedule'; cron: string };
+  | {
+      type: 'schedule';
+      schedule: 'daily_9am' | 'weekly_monday' | 'hourly' | 'every_15m';
+      cron?: never;
+    }
+  | { type: 'schedule'; cron: string; schedule?: never };
 
 export type AutomationCondition =
   | { type: 'field_equals'; field: string; value: unknown }
@@ -17,7 +22,13 @@ export type AutomationCondition =
   | { type: 'field_empty'; field: string }
   | { type: 'field_contains'; field: string; value: unknown }
   | { type: 'status_category'; value: 'todo' | 'in_progress' | 'done' }
-  | { type: 'issue_type'; value: string };
+  | { type: 'issue_type'; value: string }
+  | {
+      type: 'query';
+      field: 'dueDate' | 'startDate' | 'createdAt' | 'updatedAt';
+      operator: 'before' | 'after';
+      value: string;
+    };
 
 export type AutomationAction =
   | { type: 'set_field'; field: AutomationSettableField; value: unknown }

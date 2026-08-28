@@ -8,6 +8,13 @@ export const config = {
     events: { name: 'events', concurrency: 10 },
     webhooks: { name: 'webhooks', concurrency: 5 },
     notifications: { name: 'notifications', concurrency: 10 },
+    automations: {
+      name: process.env.AUTOMATIONS_QUEUE_NAME || 'automations',
+    },
+    scheduledAutomations: {
+      name: process.env.SCHEDULED_AUTOMATIONS_QUEUE_NAME || 'scheduled-automations',
+      concurrency: parseInt(process.env.SCHEDULED_AUTOMATIONS_CONCURRENCY || '5', 10),
+    },
     scmSync: { name: 'scm-sync', concurrency: 3 },
     tenantOps: { name: 'tenant-ops', concurrency: 1 },
   },

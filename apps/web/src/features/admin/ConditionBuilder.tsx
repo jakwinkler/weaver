@@ -21,6 +21,7 @@ interface ConditionBuilderProps {
   users: TenantUser[];
   statuses: WorkflowStatus[];
   issueTypes: IssueType[];
+  scheduled?: boolean;
 }
 
 const OPERATOR_OPTIONS: Array<{ value: AutomationConditionOperator; label: string }> = [
@@ -28,6 +29,8 @@ const OPERATOR_OPTIONS: Array<{ value: AutomationConditionOperator; label: strin
   { value: 'not_equals', label: 'does not equal' },
   { value: 'empty', label: 'is empty' },
   { value: 'contains', label: 'contains' },
+  { value: 'before', label: 'is before' },
+  { value: 'after', label: 'is after' },
 ];
 
 function defaultValueForField(
@@ -60,6 +63,7 @@ export function ConditionBuilder({
   users,
   statuses,
   issueTypes,
+  scheduled = false,
 }: ConditionBuilderProps) {
   const updateCondition = (index: number, condition: AutomationCondition) => {
     onChange(
@@ -79,7 +83,9 @@ export function ConditionBuilder({
             This rule runs every time the trigger fires.
           </p>
           <p className="mt-1 text-sm text-muted-foreground">
-            Add a condition when the rule should only run for matching issues.
+            {scheduled
+              ? 'Add a query condition to select issues, then add any additional filters.'
+              : 'Add a condition when the rule should only run for matching issues.'}
           </p>
         </div>
       ) : (
@@ -111,12 +117,16 @@ export function ConditionBuilder({
                         value={field}
                         onChange={(event) => {
                           const nextField = event.target.value as AutomationConditionField;
+                          const nextOperator =
+                            scheduled && nextField === 'dueDate' ? 'before' : 'equals';
                           updateCondition(
                             index,
                             makeCondition(
                               nextField,
-                              'equals',
-                              defaultValueForField(nextField, users, statuses, issueTypes),
+                              nextOperator,
+                              nextOperator === 'before'
+                                ? 'now'
+                                : defaultValueForField(nextField, users, statuses, issueTypes),
                             ),
                           );
                         }}
@@ -147,9 +157,13 @@ export function ConditionBuilder({
                         }
                         className="block h-9 w-full border border-input bg-background px-3 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                       >
-                        {OPERATOR_OPTIONS.filter(
-                          (option) => !restrictedOperator || option.value === 'equals',
-                        ).map((option) => (
+                        {OPERATOR_OPTIONS.filter((option) => {
+                          if (restrictedOperator) return option.value === 'equals';
+                          if (option.value === 'before' || option.value === 'after') {
+                            return scheduled && field === 'dueDate';
+                          }
+                          return true;
+                        }).map((option) => (
                           <option key={option.value} value={option.value}>
                             {option.label}
                           </option>
@@ -191,7 +205,7 @@ export function ConditionBuilder({
       <Button
         type="button"
         variant="outline"
-        onClick={() => onChange([...conditions, createDefaultCondition()])}
+        onClick={() => onChange([...conditions, createDefaultCondition(scheduled)])}
       >
         <Plus className="h-4 w-4" />
         Add condition
@@ -228,6 +242,21 @@ function ConditionValueInput({
         <div className="flex h-9 items-center border border-dashed border-border bg-muted/30 px-3 text-sm text-muted-foreground">
           No value needed
         </div>
+      </div>
+    );
+  }
+
+  if (operator === 'before' || operator === 'after') {
+    return (
+      <div className="space-y-1.5">
+        <Label htmlFor={`condition-value-${index}`}>Value</Label>
+        <Input
+          id={`condition-value-${index}`}
+          value={String(value)}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder="now or YYYY-MM-DD"
+          autoComplete="off"
+        />
       </div>
     );
   }
