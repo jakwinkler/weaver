@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { NotificationEntity } from '@weaver/db';
-import { TenantConnectionProvider } from '../../core/tenant';
+import { requireTenantContext, TenantConnectionProvider } from '../../core/tenant';
 import { WeaverGateway } from '../../core/websocket';
 
 @Injectable()
@@ -29,7 +29,12 @@ export class NotificationsService {
 
     const saved = await repo.save(notification);
 
-    this.gateway.emitToUser(userId, 'notification:new', saved);
+    this.gateway.emitToUser(
+      requireTenantContext().tenantId,
+      userId,
+      'notification:new',
+      saved,
+    );
 
     return saved;
   }

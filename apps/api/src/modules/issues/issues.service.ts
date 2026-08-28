@@ -4,9 +4,13 @@ import { IssueEntity, WorkflowStatusEntity, ActivityLogEntity, SprintEntity } fr
 import { UserEntity } from '@weaver/db';
 import { CreateIssueDto, UpdateIssueDto, ReorderIssuesDto, PaginatedResponse } from '@weaver/shared';
 import { Repository, In } from 'typeorm';
-import { TenantConnectionProvider } from '../../core/tenant';
+import { TenantConnectionProvider, requireTenantContext } from '../../core/tenant';
 import { ProjectsService } from '../projects';
-import { WorkflowsService } from '../workflows';
+import {
+  ConditionEvaluatorRegistry,
+  PostFunctionRegistry,
+  WorkflowsService,
+} from '../workflows';
 import { EventDispatcherService } from '../events';
 import { PaginationParams, paginate } from '../../common';
 
@@ -29,6 +33,8 @@ export class IssuesService {
     private readonly projectsService: ProjectsService,
     private readonly workflowsService: WorkflowsService,
     private readonly eventDispatcher: EventDispatcherService,
+    private readonly conditionRegistry: ConditionEvaluatorRegistry,
+    private readonly postFunctionRegistry: PostFunctionRegistry,
   ) {}
 
   private async resolveUserName(userId: string | null): Promise<string | null> {
@@ -272,6 +278,35 @@ export class IssuesService {
     return saved;
   }
 
+  async addLabel(
+    issueKey: string,
+    label: string,
+    userId?: string,
+  ): Promise<IssueEntity> {
+    await this.findByKey(issueKey);
+    const em = await this.tenantConnections.getEntityManager();
+    const repo = em.getRepository(IssueEntity);
+    const result = await repo
+      .createQueryBuilder()
+      .update(IssueEntity)
+      .set({ labels: () => 'array_append("labels", :label)' })
+      .where('"key" = :issueKey', { issueKey })
+      .andWhere('NOT (:label = ANY("labels"))', { label })
+      .execute();
+    const saved = await this.findByKey(issueKey);
+
+    if (result.affected) {
+      this.eventDispatcher.emit('issue.updated', {
+        issueKey,
+        projectKey: issueKey.split('-')[0],
+        fields: { labels: saved.labels },
+        userId: userId ?? null,
+      });
+    }
+
+    return saved;
+  }
+
   async reorder(dto: ReorderIssuesDto): Promise<void> {
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(IssueEntity);
@@ -314,6 +349,35 @@ export class IssuesService {
       );
     }
 
+    const transitionContext = {
+      userId,
+      issueId: issue.id,
+      tenantId: requireTenantContext().tenantId,
+      currentStatusId: issue.statusId,
+      targetStatusId: transition.toStatusId,
+      issueData: issue as unknown as Record<string, unknown>,
+    };
+    try {
+      const conditionsPassed = await this.conditionRegistry.evaluateAll(
+        transition.conditions as Array<{
+          type: string;
+          params?: Record<string, unknown>;
+          [key: string]: unknown;
+        }>,
+        transitionContext,
+      );
+      if (!conditionsPassed) {
+        throw new BadRequestException('Workflow transition conditions were not met');
+      }
+    } catch (error) {
+      if (error instanceof BadRequestException) throw error;
+      throw new BadRequestException(
+        `Workflow transition condition failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+
     const oldStatusId = issue.statusId;
     issue.statusId = transition.toStatusId;
 
@@ -335,6 +399,29 @@ export class IssuesService {
       newValue: newStatusName,
     });
     await activityRepo.save(activity);
+
+    await this.postFunctionRegistry.executeAll(
+      transition.postFunctions as Array<{
+        type: string;
+        params?: Record<string, unknown>;
+        [key: string]: unknown;
+      }>,
+      {
+        userId,
+        issueId: issue.id,
+        tenantId: transitionContext.tenantId,
+        fromStatusId: oldStatusId,
+        toStatusId: transition.toStatusId,
+        issueData: saved as unknown as Record<string, unknown>,
+      },
+    );
+
+    this.eventDispatcher.emit('issue.updated', {
+      issueKey,
+      projectKey: issueKey.split('-')[0],
+      fields: { statusId: transition.toStatusId },
+      userId,
+    });
 
     this.eventDispatcher.emit('issue.status_changed', {
       issueKey,

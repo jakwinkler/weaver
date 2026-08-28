@@ -5,11 +5,13 @@ import { WeaverGateway } from '../../core/websocket';
 import { WebhooksService } from '../webhooks';
 
 export type PluginDispatcherFn = (event: string, payload: Record<string, unknown>) => Promise<void>;
+export type DomainDispatcherFn = (event: string, payload: Record<string, unknown>) => Promise<void>;
 
 @Injectable()
 export class EventDispatcherService {
   private readonly logger = new Logger(EventDispatcherService.name);
   private pluginDispatchers: PluginDispatcherFn[] = [];
+  private domainDispatchers = new Set<DomainDispatcherFn>();
 
   constructor(
     private readonly tenantConnections: TenantConnectionProvider,
@@ -19,6 +21,11 @@ export class EventDispatcherService {
 
   registerPluginDispatcher(fn: PluginDispatcherFn): void {
     this.pluginDispatchers.push(fn);
+  }
+
+  registerDomainDispatcher(fn: DomainDispatcherFn): () => void {
+    this.domainDispatchers.add(fn);
+    return () => this.domainDispatchers.delete(fn);
   }
 
   async emit(
@@ -37,6 +44,14 @@ export class EventDispatcherService {
       }
 
       this.logger.debug(`WS event "${event}" sent to tenant ${tenantCtx.tenantId}`);
+    }
+
+    for (const dispatcher of this.domainDispatchers) {
+      try {
+        await dispatcher(event, payload);
+      } catch (err) {
+        this.logger.warn(`Domain dispatcher failed for event ${event}: ${err}`);
+      }
     }
 
     try {

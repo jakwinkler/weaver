@@ -151,4 +151,28 @@ export class WebhooksService {
 
     return rows;
   }
+
+  async deliverAutomation(
+    url: string,
+    event: string,
+    payload: Record<string, unknown>,
+  ): Promise<void> {
+    const target = new URL(url);
+    if (target.protocol !== 'https:' && target.protocol !== 'http:') {
+      throw new Error('Automation webhooks require an HTTP or HTTPS URL');
+    }
+
+    const response = await fetch(target, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Webhook-Event': event,
+      },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) {
+      throw new Error(`Automation webhook returned HTTP ${response.status}`);
+    }
+  }
 }

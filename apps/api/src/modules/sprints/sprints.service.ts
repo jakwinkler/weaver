@@ -3,10 +3,14 @@ import { SprintEntity, IssueEntity } from '@weaver/db';
 import { CreateSprintDto } from '@weaver/shared';
 import { TenantConnectionProvider } from '../../core/tenant';
 import { In } from 'typeorm';
+import { EventDispatcherService } from '../events';
 
 @Injectable()
 export class SprintsService {
-  constructor(private readonly tenantConnections: TenantConnectionProvider) {}
+  constructor(
+    private readonly tenantConnections: TenantConnectionProvider,
+    private readonly eventDispatcher: EventDispatcherService,
+  ) {}
 
   async create(projectId: string, dto: CreateSprintDto): Promise<SprintEntity> {
     const em = await this.tenantConnections.getEntityManager();
@@ -74,7 +78,12 @@ export class SprintsService {
       sprint.startDate = new Date().toISOString().split('T')[0];
     }
 
-    return repo.save(sprint);
+    const saved = await repo.save(sprint);
+    this.eventDispatcher.emit('sprint.started', {
+      sprintId: saved.id,
+      projectId: saved.projectId,
+    });
+    return saved;
   }
 
   async complete(id: string): Promise<SprintEntity> {
