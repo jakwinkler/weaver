@@ -8,6 +8,8 @@ export {
   useCreateProject,
   useUpdateProject,
   useProjectIssues,
+  useRoadmapEpics,
+  useResizeRoadmapEpic,
   useIssue,
   useCreateIssue,
   useUpdateIssue,

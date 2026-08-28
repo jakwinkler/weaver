@@ -11,6 +11,7 @@ import type {
   UpdateIssueDto,
   ReorderIssuesDto,
   PaginatedResponse,
+  RoadmapEpic,
 } from '@weaver/shared';
 
 // ── Auth ──
@@ -142,6 +143,42 @@ export function useProjectIssues(params: UseProjectIssuesParams) {
       return res.data;
     },
     enabled: !!projectKey,
+  });
+}
+
+export function useRoadmapEpics(projectKey: string) {
+  return useQuery({
+    queryKey: ['issues', projectKey, 'roadmap'],
+    queryFn: async () => {
+      const res = await apiClient.get<RoadmapEpic[]>(`/projects/${projectKey}/epics`);
+      return res.data;
+    },
+    enabled: !!projectKey,
+  });
+}
+
+export function useResizeRoadmapEpic(projectKey: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      issueKey,
+      startDate,
+      dueDate,
+    }: {
+      issueKey: string;
+      startDate: string;
+      dueDate: string;
+    }) => {
+      const res = await apiClient.patch<Issue>(`/issues/${issueKey}`, {
+        startDate,
+        dueDate,
+      });
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['issues', projectKey, 'roadmap'] });
+      queryClient.invalidateQueries({ queryKey: ['issues', projectKey] });
+    },
   });
 }
 

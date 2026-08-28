@@ -92,7 +92,7 @@ export function AppLayout() {
   return (
     <div className="flex h-screen bg-muted/50">
       {/* Sidebar */}
-      <aside className="relative z-10 flex w-64 flex-col bg-slate-900 text-white">
+      <aside className="relative z-10 hidden w-64 flex-col bg-slate-900 text-white md:flex">
         <div className="flex h-14 items-center border-b border-white/10 px-5">
           <Link to="/" className="text-xl font-bold text-white">
             Weaver
@@ -219,11 +219,19 @@ export function AppLayout() {
       </aside>
 
       {/* Main area */}
-      <div className="relative flex flex-1 flex-col overflow-hidden">
+      <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
         {/* Top bar */}
-        <header className="flex h-14 items-center justify-between bg-slate-900 px-6">
+        <header className="flex h-14 items-center justify-between gap-3 bg-slate-900 px-3 sm:px-6">
+          <Link
+            to="/"
+            aria-label="Weaver home mobile"
+            className="text-lg font-bold text-white md:hidden"
+          >
+            Weaver
+          </Link>
+
           {/* Search bar */}
-          <div className="relative w-full max-w-md">
+          <div className="relative hidden w-full max-w-md md:block">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/50" />
             <input
               type="text"
@@ -235,6 +243,16 @@ export function AppLayout() {
           </div>
 
           <div className="flex items-center gap-3">
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Search"
+              className="text-white/80 hover:bg-white/10 hover:text-white md:hidden"
+              onClick={() => navigate('/search')}
+            >
+              <Search className="h-5 w-5" />
+            </Button>
+
             {/* Notification bell */}
             <Tooltip>
               <TooltipTrigger asChild>
@@ -265,14 +283,14 @@ export function AppLayout() {
               <TooltipContent>{theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}</TooltipContent>
             </Tooltip>
 
-            <Separator orientation="vertical" className="h-6 bg-white/20" />
+            <Separator orientation="vertical" className="hidden h-6 bg-white/20 sm:block" />
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="gap-2 text-white/80 hover:text-white hover:bg-white/10">
                   <UserAvatar user={user} size="sm" />
-                  <span className="text-sm">{user?.displayName || user?.email}</span>
-                  <ChevronDown className="h-3 w-3" />
+                  <span className="hidden text-sm xl:inline">{user?.displayName || user?.email}</span>
+                  <ChevronDown className="hidden h-3 w-3 sm:block" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
@@ -292,7 +310,7 @@ export function AppLayout() {
         </header>
 
         {/* Content */}
-        <main className="flex-1 overflow-y-auto px-6 py-5">
+        <main className="flex-1 overflow-y-auto px-4 py-5 sm:px-6">
           <Outlet />
         </main>
       </div>

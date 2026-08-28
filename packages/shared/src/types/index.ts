@@ -115,6 +115,7 @@ export interface Issue {
   startDate?: string;
   dueDate?: string;
   percentDone: number;
+  storyPoints: number | null;
   createdAt: Date;
   updatedAt: Date;
   issueType?: IssueType | null;
@@ -137,6 +138,43 @@ export interface IssueLink {
   sourceIssueId: string;
   targetIssueId: string;
   createdAt: Date;
+}
+
+export interface RoadmapStatus {
+  id: string;
+  name: string;
+  category: string;
+  color: string;
+  isTerminal: boolean;
+}
+
+export interface RoadmapEpicChild {
+  id: string;
+  key: string;
+  summary: string;
+  statusId: string;
+  status: RoadmapStatus;
+  startDate: string | null;
+  dueDate: string | null;
+  storyPoints: number | null;
+}
+
+export interface RoadmapEpic {
+  id: string;
+  key: string;
+  summary: string;
+  statusId: string;
+  status: RoadmapStatus;
+  startDate: string | null;
+  dueDate: string | null;
+  childIssueCount: number;
+  completedChildCount: number;
+  totalStoryPoints: number;
+  completedStoryPoints: number;
+  progress: number;
+  pointsProgress: number;
+  blockingEpicIds: string[];
+  children: RoadmapEpicChild[];
 }
 
 export interface Workflow {

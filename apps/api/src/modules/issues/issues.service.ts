@@ -1,8 +1,21 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { IssueEntity, WorkflowStatusEntity, ActivityLogEntity, SprintEntity } from '@weaver/db';
+import {
+  IssueEntity,
+  WorkflowStatusEntity,
+  ActivityLogEntity,
+  SprintEntity,
+  IssueLinkEntity,
+} from '@weaver/db';
 import { UserEntity } from '@weaver/db';
-import { CreateIssueDto, UpdateIssueDto, ReorderIssuesDto, PaginatedResponse } from '@weaver/shared';
+import {
+  CreateIssueDto,
+  UpdateIssueDto,
+  ReorderIssuesDto,
+  PaginatedResponse,
+  RoadmapEpic,
+  RoadmapStatus,
+} from '@weaver/shared';
 import { Repository, In } from 'typeorm';
 import { TenantConnectionProvider } from '../../core/tenant';
 import { ProjectsService } from '../projects';
@@ -88,6 +101,7 @@ export class IssuesService {
       startDate: dto.startDate ?? null,
       dueDate: dto.dueDate ?? null,
       percentDone: dto.percentDone ?? 0,
+      storyPoints: dto.storyPoints ?? null,
     });
 
     const saved = await repo.save(issue);
@@ -138,7 +152,116 @@ export class IssuesService {
       if (filters.dueDateTo) qb.andWhere('issue.dueDate <= :dueDateTo', { dueDateTo: filters.dueDateTo });
     }
 
-    return paginate(qb, params, ['summary', 'priority', 'createdAt', 'updatedAt', 'key', 'sortOrder', 'startDate', 'dueDate', 'percentDone']);
+    return paginate(qb, params, ['summary', 'priority', 'createdAt', 'updatedAt', 'key', 'sortOrder', 'startDate', 'dueDate', 'percentDone', 'storyPoints']);
+  }
+
+  async findEpicsByProject(projectKey: string): Promise<RoadmapEpic[]> {
+    const project = await this.projectsService.findByKey(projectKey);
+    const em = await this.tenantConnections.getEntityManager();
+    const issueRepo = em.getRepository(IssueEntity);
+
+    const epics = await issueRepo
+      .createQueryBuilder('issue')
+      .innerJoinAndSelect('issue.issueType', 'issueType')
+      .leftJoinAndSelect('issue.status', 'status')
+      .where('issue.projectId = :projectId', { projectId: project.id })
+      .andWhere('issueType.slug = :epicSlug', { epicSlug: 'epic' })
+      .orderBy('issue.startDate', 'ASC', 'NULLS LAST')
+      .addOrderBy('issue.key', 'ASC')
+      .getMany();
+
+    if (epics.length === 0) return [];
+
+    const epicIds = epics.map((epic) => epic.id);
+    const [children, links] = await Promise.all([
+      issueRepo
+        .createQueryBuilder('issue')
+        .leftJoinAndSelect('issue.status', 'status')
+        .where('issue.projectId = :projectId', { projectId: project.id })
+        .andWhere('issue.epicId IN (:...epicIds)', { epicIds })
+        .orderBy('issue.sortOrder', 'ASC')
+        .addOrderBy('issue.key', 'ASC')
+        .getMany(),
+      em.getRepository(IssueLinkEntity).find({
+        where: { sourceIssueId: In(epicIds), linkType: 'blocks' },
+        order: { createdAt: 'ASC' },
+      }),
+    ]);
+
+    const epicIdSet = new Set(epicIds);
+    const childrenByEpic = new Map<string, IssueEntity[]>();
+    for (const child of children) {
+      if (!child.epicId) continue;
+      const epicChildren = childrenByEpic.get(child.epicId) ?? [];
+      epicChildren.push(child);
+      childrenByEpic.set(child.epicId, epicChildren);
+    }
+
+    const blockingByEpic = new Map<string, string[]>();
+    for (const link of links) {
+      if (!epicIdSet.has(link.targetIssueId)) continue;
+      const targets = blockingByEpic.get(link.sourceIssueId) ?? [];
+      targets.push(link.targetIssueId);
+      blockingByEpic.set(link.sourceIssueId, targets);
+    }
+
+    return epics.map((epic) => {
+      const epicChildren = childrenByEpic.get(epic.id) ?? [];
+      const completedChildren = epicChildren.filter((child) => child.status?.isTerminal);
+      const totalStoryPoints = epicChildren.reduce(
+        (total, child) => total + (child.storyPoints ?? 0),
+        0,
+      );
+      const completedStoryPoints = completedChildren.reduce(
+        (total, child) => total + (child.storyPoints ?? 0),
+        0,
+      );
+      const childStartDates = epicChildren
+        .map((child) => child.startDate)
+        .filter((date): date is string => Boolean(date));
+      const childDueDates = epicChildren
+        .map((child) => child.dueDate)
+        .filter((date): date is string => Boolean(date));
+      const derivedStartDate = childStartDates.sort()[0] ?? null;
+      const derivedDueDate = childDueDates.sort().at(-1) ?? null;
+
+      return {
+        id: epic.id,
+        key: epic.key,
+        summary: epic.summary,
+        statusId: epic.statusId,
+        status: this.toRoadmapStatus(epic.status),
+        startDate: epic.startDate ?? derivedStartDate,
+        dueDate: epic.dueDate ?? derivedDueDate,
+        childIssueCount: epicChildren.length,
+        completedChildCount: completedChildren.length,
+        totalStoryPoints,
+        completedStoryPoints,
+        progress: epicChildren.length === 0 ? 0 : completedChildren.length / epicChildren.length,
+        pointsProgress: totalStoryPoints === 0 ? 0 : completedStoryPoints / totalStoryPoints,
+        blockingEpicIds: blockingByEpic.get(epic.id) ?? [],
+        children: epicChildren.map((child) => ({
+          id: child.id,
+          key: child.key,
+          summary: child.summary,
+          statusId: child.statusId,
+          status: this.toRoadmapStatus(child.status),
+          startDate: child.startDate,
+          dueDate: child.dueDate,
+          storyPoints: child.storyPoints,
+        })),
+      };
+    });
+  }
+
+  private toRoadmapStatus(status: WorkflowStatusEntity): RoadmapStatus {
+    return {
+      id: status.id,
+      name: status.name,
+      category: status.category,
+      color: status.color,
+      isTerminal: status.isTerminal,
+    };
   }
 
   async update(issueKey: string, dto: UpdateIssueDto, userId?: string): Promise<IssueEntity> {
@@ -154,6 +277,7 @@ export class IssuesService {
     const previousDueDate = issue.dueDate;
     const previousSummary = issue.summary;
     const previousPercentDone = issue.percentDone;
+    const previousStoryPoints = issue.storyPoints;
 
     // Handle nullable fields explicitly
     if (dto.assigneeId !== undefined) issue.assigneeId = dto.assigneeId ?? null;
@@ -170,6 +294,7 @@ export class IssuesService {
     if (dto.startDate !== undefined) issue.startDate = dto.startDate ?? null;
     if (dto.dueDate !== undefined) issue.dueDate = dto.dueDate ?? null;
     if (dto.percentDone !== undefined) issue.percentDone = dto.percentDone;
+    if (dto.storyPoints !== undefined) issue.storyPoints = dto.storyPoints ?? null;
 
     const saved = await repo.save(issue);
 
@@ -228,6 +353,13 @@ export class IssuesService {
       }
       if (dto.percentDone !== undefined && dto.percentDone !== previousPercentDone) {
         trackedChanges.push({ field: 'percentDone', oldVal: String(previousPercentDone), newVal: String(dto.percentDone) });
+      }
+      if (dto.storyPoints !== undefined && (dto.storyPoints ?? null) !== previousStoryPoints) {
+        trackedChanges.push({
+          field: 'storyPoints',
+          oldVal: previousStoryPoints === null ? null : String(previousStoryPoints),
+          newVal: dto.storyPoints === null ? null : String(dto.storyPoints),
+        });
       }
 
       for (const change of trackedChanges) {

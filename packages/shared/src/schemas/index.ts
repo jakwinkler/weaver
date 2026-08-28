@@ -86,6 +86,7 @@ export const createIssueSchema = z.object({
   startDate: dateStringSchema.optional(),
   dueDate: dateStringSchema.optional(),
   percentDone: z.number().int().min(0).max(100).default(0),
+  storyPoints: z.number().int().min(0).nullable().optional(),
 });
 export type CreateIssueDto = z.infer<typeof createIssueSchema>;
 
@@ -104,6 +105,7 @@ export const updateIssueSchema = z.object({
   startDate: dateStringSchema.nullable().optional(),
   dueDate: dateStringSchema.nullable().optional(),
   percentDone: z.number().int().min(0).max(100).optional(),
+  storyPoints: z.number().int().min(0).nullable().optional(),
 });
 export type UpdateIssueDto = z.infer<typeof updateIssueSchema>;
 

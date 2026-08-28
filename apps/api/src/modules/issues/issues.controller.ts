@@ -55,6 +55,12 @@ export class IssuesController {
     return this.issuesService.findByProject(projectKey, params, filters);
   }
 
+  @Get('projects/:projectKey/epics')
+  @RequirePermission('issues', 'read')
+  async findEpicsByProject(@Param('projectKey') projectKey: string) {
+    return this.issuesService.findEpicsByProject(projectKey);
+  }
+
   @Patch('issues/reorder')
   @RequirePermission('issues', 'update')
   @HttpCode(HttpStatus.NO_CONTENT)
