@@ -2,12 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useProject, useProjectPlugins, useHasPermission } from '@/api';
 import { FeatureNotEnabled } from './FeatureNotEnabled';
-import {
-  useSprints,
-  useCreateSprint,
-  useStartSprint,
-  useCompleteSprint,
-} from '@/api/hooks-phase2';
+import { useSprints, useCreateSprint, useStartSprint, useCompleteSprint } from '@/api/hooks-phase2';
 import type { Sprint, SprintStatus } from '@weaver/shared';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -71,17 +66,12 @@ function SprintActions({ sprint }: { sprint: Sprint }) {
   return null;
 }
 
-function CreateSprintForm({
-  projectId,
-  onCreated,
-}: {
-  projectId: string;
-  onCreated: () => void;
-}) {
+function CreateSprintForm({ projectId, onCreated }: { projectId: string; onCreated: () => void }) {
   const [name, setName] = useState('');
   const [goal, setGoal] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [capacity, setCapacity] = useState('');
   const createSprint = useCreateSprint(projectId);
 
   const handleSubmit = async (e: FormEvent) => {
@@ -91,11 +81,13 @@ function CreateSprintForm({
       goal: goal || undefined,
       startDate: startDate ? new Date(startDate) : undefined,
       endDate: endDate ? new Date(endDate) : undefined,
+      capacity: capacity ? Number(capacity) : undefined,
     });
     setName('');
     setGoal('');
     setStartDate('');
     setEndDate('');
+    setCapacity('');
     onCreated();
   };
 
@@ -146,6 +138,18 @@ function CreateSprintForm({
                 onChange={(e) => setEndDate(e.target.value)}
               />
             </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="sprintCapacity">Capacity (story points)</Label>
+            <Input
+              id="sprintCapacity"
+              type="number"
+              min="0"
+              max="10000"
+              value={capacity}
+              onChange={(e) => setCapacity(e.target.value)}
+              placeholder="Optional"
+            />
           </div>
           {createSprint.isError && (
             <p className="text-sm text-destructive">Failed to create sprint.</p>
@@ -213,7 +217,10 @@ export function SprintBoard() {
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-xl font-bold text-foreground">Sprints</h1>
         {canCreateSprint && (
-          <Button onClick={() => setShowCreateForm(!showCreateForm)} variant={showCreateForm ? 'outline' : 'default'}>
+          <Button
+            onClick={() => setShowCreateForm(!showCreateForm)}
+            variant={showCreateForm ? 'outline' : 'default'}
+          >
             {showCreateForm ? 'Cancel' : 'New Sprint'}
           </Button>
         )}
@@ -275,8 +282,7 @@ export function SprintBoard() {
                 {Math.max(
                   0,
                   Math.ceil(
-                    (new Date(activeSprint.endDate).getTime() - Date.now()) /
-                      (1000 * 60 * 60 * 24),
+                    (new Date(activeSprint.endDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24),
                   ),
                 )}{' '}
                 days remaining

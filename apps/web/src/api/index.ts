@@ -77,10 +77,7 @@ export {
   useMyPermissions,
   useHasPermission,
 } from './hooks-phase5';
-export {
-  useBulkUpdateIssues,
-  useBulkDeleteIssues,
-} from './hooks-phase6';
+export { useBulkUpdateIssues, useBulkDeleteIssues } from './hooks-phase6';
 export {
   useUsers,
   useUpdateUserRole,
@@ -126,6 +123,8 @@ export {
   usePublicProjectIssues,
   usePublicProjectBoard,
 } from './hooks-public';
+export { useBacklog, useMoveIssueToSprint, useSprintStats } from './hooks-backlog';
+export type { UseBacklogParams } from './hooks-backlog';
 export type {
   DashboardData,
   DashboardStats,

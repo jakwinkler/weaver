@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { SprintEntity, IssueEntity } from '@weaver/db';
-import { CreateSprintDto } from '@weaver/shared';
+import { SprintEntity, IssueEntity, WorkflowStatusEntity } from '@weaver/db';
+import { CreateSprintDto, SprintStats } from '@weaver/shared';
 import { TenantConnectionProvider } from '../../core/tenant';
 import { In } from 'typeorm';
 
@@ -19,6 +19,7 @@ export class SprintsService {
       startDate: dto.startDate ? dto.startDate.toISOString().split('T')[0] : null,
       endDate: dto.endDate ? dto.endDate.toISOString().split('T')[0] : null,
       status: 'planned',
+      capacity: dto.capacity ?? null,
     });
 
     return repo.save(sprint);
@@ -43,7 +44,16 @@ export class SprintsService {
     return sprint;
   }
 
-  async update(id: string, dto: { name?: string; goal?: string | null; startDate?: string | null; endDate?: string | null }): Promise<SprintEntity> {
+  async update(
+    id: string,
+    dto: {
+      name?: string;
+      goal?: string | null;
+      startDate?: string | null;
+      endDate?: string | null;
+      capacity?: number | null;
+    },
+  ): Promise<SprintEntity> {
     const sprint = await this.findById(id);
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(SprintEntity);
@@ -63,7 +73,9 @@ export class SprintsService {
     const sprint = await this.findById(id);
 
     if (sprint.status !== 'planned') {
-      throw new BadRequestException(`Sprint can only be started from "planned" status, current status is "${sprint.status}"`);
+      throw new BadRequestException(
+        `Sprint can only be started from "planned" status, current status is "${sprint.status}"`,
+      );
     }
 
     const em = await this.tenantConnections.getEntityManager();
@@ -81,7 +93,9 @@ export class SprintsService {
     const sprint = await this.findById(id);
 
     if (sprint.status !== 'active') {
-      throw new BadRequestException(`Sprint can only be completed from "active" status, current status is "${sprint.status}"`);
+      throw new BadRequestException(
+        `Sprint can only be completed from "active" status, current status is "${sprint.status}"`,
+      );
     }
 
     const em = await this.tenantConnections.getEntityManager();
@@ -106,5 +120,37 @@ export class SprintsService {
       .set({ sprintId: id })
       .where({ id: In(issueIds) })
       .execute();
+  }
+
+  async getStats(id: string): Promise<SprintStats> {
+    const sprint = await this.findById(id);
+    const em = await this.tenantConnections.getEntityManager();
+    const result = await em
+      .getRepository(IssueEntity)
+      .createQueryBuilder('issue')
+      .leftJoin(WorkflowStatusEntity, 'status', 'status.id = issue.statusId')
+      .select('COUNT(issue.id)', 'issueCount')
+      .addSelect('COALESCE(SUM(issue.storyPoints), 0)', 'committedPoints')
+      .addSelect('SUM(CASE WHEN status.isTerminal = true THEN 1 ELSE 0 END)', 'completedCount')
+      .addSelect(
+        'COALESCE(SUM(CASE WHEN status.isTerminal = true THEN issue.storyPoints ELSE 0 END), 0)',
+        'completedPoints',
+      )
+      .where('issue.sprintId = :id', { id })
+      .getRawOne<{
+        issueCount: string;
+        committedPoints: string;
+        completedCount: string;
+        completedPoints: string;
+      }>();
+
+    return {
+      sprintId: sprint.id,
+      capacity: sprint.capacity,
+      committedPoints: Number(result?.committedPoints ?? 0),
+      issueCount: Number(result?.issueCount ?? 0),
+      completedCount: Number(result?.completedCount ?? 0),
+      completedPoints: Number(result?.completedPoints ?? 0),
+    };
   }
 }

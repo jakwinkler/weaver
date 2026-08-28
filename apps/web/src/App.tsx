@@ -13,6 +13,7 @@ import { IssueListPage } from '@/features/issues/IssueListPage';
 import { IssueDetailPage } from '@/features/issues/IssueDetailPage';
 import { KanbanBoard } from '@/features/boards/KanbanBoard';
 import { SprintBoard } from '@/features/boards/SprintBoard';
+import { BacklogView } from '@/features/boards/BacklogView';
 import { WorkflowEditor } from '@/features/workflows/WorkflowEditor';
 import { WorkflowListPage } from '@/features/workflows/WorkflowListPage';
 import { CustomFieldsPage } from '@/features/settings/CustomFieldsPage';
@@ -52,7 +53,10 @@ export function App() {
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
-            <Route path="/public/:tenantSlug/projects/:projectKey" element={<PublicProjectPage />} />
+            <Route
+              path="/public/:tenantSlug/projects/:projectKey"
+              element={<PublicProjectPage />}
+            />
 
             <Route element={<ProtectedRoute />}>
               <Route element={<AppLayout />}>
@@ -64,6 +68,7 @@ export function App() {
                 <Route path="/issues/:issueKey" element={<IssueDetailPage />} />
                 <Route path="/projects/:projectKey/board" element={<KanbanBoard />} />
                 <Route path="/projects/:projectKey/sprints" element={<SprintBoard />} />
+                <Route path="/projects/:projectKey/backlog" element={<BacklogView />} />
                 <Route path="/projects/:projectKey/gantt" element={<GanttChart />} />
                 <Route path="/projects/:projectKey/calendar" element={<CalendarView />} />
                 <Route path="/search" element={<SearchPage />} />
