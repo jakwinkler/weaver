@@ -107,6 +107,35 @@ export const updateIssueSchema = z.object({
 });
 export type UpdateIssueDto = z.infer<typeof updateIssueSchema>;
 
+export const bulkIssueUpdatesSchema = updateIssueSchema
+  .pick({
+    statusId: true,
+    assigneeId: true,
+    priority: true,
+    sprintId: true,
+    labels: true,
+  })
+  .refine((updates) => Object.keys(updates).length > 0, {
+    message: 'At least one bulk update field is required',
+  });
+export type BulkIssueUpdatesDto = z.infer<typeof bulkIssueUpdatesSchema>;
+
+const bulkIssueIdsSchema = z
+  .array(z.string().uuid())
+  .min(1, 'At least one issue is required')
+  .max(100, 'Bulk operations are limited to 100 issues');
+
+export const bulkUpdateIssuesSchema = z.object({
+  issueIds: bulkIssueIdsSchema,
+  updates: bulkIssueUpdatesSchema,
+});
+export type BulkUpdateIssuesDto = z.infer<typeof bulkUpdateIssuesSchema>;
+
+export const bulkDeleteIssuesSchema = z.object({
+  issueIds: bulkIssueIdsSchema,
+});
+export type BulkDeleteIssuesDto = z.infer<typeof bulkDeleteIssuesSchema>;
+
 export const reorderIssuesSchema = z.object({
   issues: z.array(z.object({
     id: z.string().uuid(),

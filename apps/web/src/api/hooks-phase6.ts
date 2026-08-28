@@ -1,17 +1,18 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from './client';
+import type { BulkIssueUpdatesDto, Issue } from '@weaver/shared';
 
 export function useBulkUpdateIssues() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (data: { issueKeys: string[]; updates: Record<string, unknown> }) => {
-      const results = await Promise.allSettled(
-        data.issueKeys.map((key) => apiClient.patch(`/issues/${key}`, data.updates)),
-      );
-      return results;
+    mutationFn: async (data: { issueIds: string[]; updates: BulkIssueUpdatesDto }) => {
+      const response = await apiClient.patch<Issue[]>('/issues/bulk', data);
+      return response.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['issues'] });
+      queryClient.invalidateQueries({ queryKey: ['boards'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     },
   });
 }
@@ -19,14 +20,16 @@ export function useBulkUpdateIssues() {
 export function useBulkDeleteIssues() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (issueKeys: string[]) => {
-      const results = await Promise.allSettled(
-        issueKeys.map((key) => apiClient.delete(`/issues/${key}`)),
-      );
-      return results;
+    mutationFn: async (issueIds: string[]) => {
+      const response = await apiClient.delete<{ count: number }>('/issues/bulk', {
+        data: { issueIds },
+      });
+      return response.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['issues'] });
+      queryClient.invalidateQueries({ queryKey: ['boards'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     },
   });
 }

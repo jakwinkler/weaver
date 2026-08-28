@@ -30,6 +30,12 @@ function getInvalidationKeys(event: string, data: Record<string, unknown>): stri
         ['boards'],
         ['dashboard'],
       ];
+    case 'issue.bulk_updated':
+      return [
+        ['issues'],
+        ['boards'],
+        ['dashboard'],
+      ];
     case 'issue.moved':
     case 'issue.status_changed':
       return [
@@ -39,6 +45,7 @@ function getInvalidationKeys(event: string, data: Record<string, unknown>): stri
         ['dashboard'],
       ];
     case 'issue.deleted':
+    case 'issue.bulk_deleted':
       return [
         ['issues'],
         ['boards'],
@@ -87,6 +94,8 @@ function buildToastMessage(event: string, data: Record<string, unknown>): string
       return `${issueKey ?? 'An issue'} was created: ${data.summary ?? ''}`;
     case 'issue.updated':
       return `${issueKey ?? 'An issue'} was updated`;
+    case 'issue.bulk_updated':
+      return `${data.count ?? 'Multiple'} issues were updated`;
     case 'issue.assigned':
       return `${issueKey ?? 'An issue'} was reassigned`;
     case 'issue.moved':
@@ -94,6 +103,8 @@ function buildToastMessage(event: string, data: Record<string, unknown>): string
       return `${issueKey ?? 'An issue'} changed status`;
     case 'issue.deleted':
       return `${issueKey ?? 'An issue'} was deleted`;
+    case 'issue.bulk_deleted':
+      return `${data.count ?? 'Multiple'} issues were deleted`;
     case 'comment.created':
       return `New comment on ${issueKey ?? 'an issue'}`;
     case 'project.created':
@@ -198,10 +209,12 @@ export function useWebSocket() {
     const domainEvents = [
       'issue.created',
       'issue.updated',
+      'issue.bulk_updated',
       'issue.assigned',
       'issue.moved',
       'issue.status_changed',
       'issue.deleted',
+      'issue.bulk_deleted',
       'comment.created',
       'comment.deleted',
       'project.created',

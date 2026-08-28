@@ -1,7 +1,17 @@
-import { useState, useCallback, useEffect, type FormEvent } from 'react';
+import { useState, useCallback, useEffect, useRef, type FormEvent } from 'react';
 import { useParams, Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { useProjectIssues, useCreateIssue, useProject, useIssueTypes, useWorkflow, useHasPermission, useUpdateIssueDynamic } from '@/api';
+import {
+  useProjectIssues,
+  useCreateIssue,
+  useProject,
+  useIssueTypes,
+  useWorkflow,
+  useHasPermission,
+  useSprints,
+  useUpdateIssueDynamic,
+  useUsers,
+} from '@/api';
 import type { IssuePriority, Issue, PaginatedResponse } from '@weaver/shared';
 import { IssueTypeIcon } from '@/components/IconPicker';
 import { Pagination, getStoredPerPage } from '@/components/Pagination';
@@ -9,6 +19,7 @@ import { SortableHeader, type SortDirection } from '@/components/SortableHeader'
 import { EditableCell } from '@/components/EditableCell';
 import { InlineSelect, type InlineSelectOption } from '@/components/InlineSelect';
 import { InlineDatePicker } from '@/components/InlineDatePicker';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -22,6 +33,12 @@ import {
   TableCell,
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
+import { BulkActionBar } from './BulkActionBar';
+import {
+  getPageSelectionState,
+  setCurrentPageSelection,
+  toggleIssueSelection,
+} from './issueSelection';
 
 const PRIORITY_OPTIONS: InlineSelectOption[] = [
   { value: 'lowest', label: 'lowest' },
@@ -81,8 +98,12 @@ export function IssueListPage() {
   const updateIssue = useUpdateIssueDynamic();
   const { data: issueTypes } = useIssueTypes();
   const { data: workflow } = useWorkflow(project?.workflowId || '');
+  const { data: sprints } = useSprints(project?.id || '');
+  const { data: users } = useUsers();
   const canCreate = useHasPermission('issues.create');
   const canEdit = useHasPermission('issues.update');
+  const canDelete = useHasPermission('issues.delete');
+  const canBulkSelect = canEdit || canDelete;
 
   const statusOptions: InlineSelectOption[] = (workflow?.statuses || []).map((s: any) => ({
     value: s.id,
@@ -132,11 +153,51 @@ export function IssueListPage() {
   const [startDate, setStartDate] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
+  const [selectedIssueIds, setSelectedIssueIds] = useState<Set<string>>(new Set());
+  const lastSelectedIndex = useRef<number | null>(null);
+
+  const clearSelection = useCallback(() => {
+    setSelectedIssueIds(new Set());
+    lastSelectedIndex.current = null;
+  }, []);
+
+  const handleIssueSelection = useCallback(
+    (issueId: string, index: number, rangeSelection = false) => {
+      const orderedIssueIds = data?.data.map((issue) => issue.id) ?? [];
+      setSelectedIssueIds((current) =>
+        toggleIssueSelection(
+          current,
+          orderedIssueIds,
+          issueId,
+          lastSelectedIndex.current,
+          rangeSelection,
+        ),
+      );
+      lastSelectedIndex.current = index;
+    },
+    [data?.data],
+  );
+
+  const handleSelectAll = useCallback(
+    (selected: boolean) => {
+      const currentPageIssueIds = data?.data.map((issue) => issue.id) ?? [];
+      setSelectedIssueIds((current) =>
+        setCurrentPageSelection(current, currentPageIssueIds, selected),
+      );
+      lastSelectedIndex.current = null;
+    },
+    [data?.data],
+  );
 
   // Reset focused index when data or page changes
   useEffect(() => {
     setFocusedIndex(-1);
   }, [data, page]);
+
+  // Selection is page-scoped, so clear it whenever the visible issue set changes.
+  useEffect(() => {
+    clearSelection();
+  }, [clearSelection, page, perPage, projectKey, sortParam]);
 
   // j/k/Enter keyboard navigation for issue list
   useEffect(() => {
@@ -163,12 +224,20 @@ export function IssueListPage() {
           }
           return prev;
         });
+      } else if (e.key === 'x' && canBulkSelect) {
+        setFocusedIndex((prev) => {
+          if (prev >= 0 && prev < issues.length) {
+            e.preventDefault();
+            handleIssueSelection(issues[prev].id, prev);
+          }
+          return prev;
+        });
       }
     };
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [data, navigate]);
+  }, [canBulkSelect, data, handleIssueSelection, navigate]);
 
   const handleCreate = async (e: FormEvent) => {
     e.preventDefault();
@@ -202,6 +271,12 @@ export function IssueListPage() {
     const sort = buildSortParam(field, direction);
     updateParams({ sort, page: undefined });
   };
+
+  const currentPageIssueIds = data?.data.map((issue) => issue.id) ?? [];
+  const { allSelected, someSelected } = getPageSelectionState(
+    selectedIssueIds,
+    currentPageIssueIds,
+  );
 
   if (isLoading) {
     return (
@@ -319,10 +394,37 @@ export function IssueListPage() {
         </Card>
       )}
 
+      {canBulkSelect && (
+        <BulkActionBar
+          selectedIssueIds={[...selectedIssueIds]}
+          statusOptions={statusOptions}
+          assigneeOptions={(users || []).map((user) => ({
+            value: user.id,
+            label: user.displayName || user.email,
+          }))}
+          sprintOptions={(sprints || []).map((sprint) => ({
+            value: sprint.id,
+            label: sprint.name,
+          }))}
+          canUpdate={canEdit}
+          canDelete={canDelete}
+          onClearSelection={clearSelection}
+        />
+      )}
+
       <div className="overflow-hidden rounded-lg border border-border bg-card">
         <Table>
           <TableHeader className="bg-muted/50">
             <TableRow>
+              {canBulkSelect && (
+                <TableHead className="w-10">
+                  <Checkbox
+                    checked={allSelected ? true : someSelected ? 'indeterminate' : false}
+                    onCheckedChange={(checked) => handleSelectAll(checked === true)}
+                    aria-label="Select all issues on this page"
+                  />
+                </TableHead>
+              )}
               <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 Type
               </TableHead>
@@ -378,6 +480,15 @@ export function IssueListPage() {
                   focusedIndex === index && 'bg-accent ring-2 ring-primary/30 ring-inset',
                 )}
               >
+                {canBulkSelect && (
+                  <TableCell className="w-10">
+                    <Checkbox
+                      checked={selectedIssueIds.has(issue.id)}
+                      onClick={(event) => handleIssueSelection(issue.id, index, event.shiftKey)}
+                      aria-label={`Select ${issue.key}`}
+                    />
+                  </TableCell>
+                )}
                 <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
                   {issue.issueType ? (
                     <span className="inline-flex items-center gap-1.5" title={issue.issueType.name}>
@@ -458,7 +569,10 @@ export function IssueListPage() {
             ))}
             {data?.data.length === 0 && (
               <TableRow>
-                <TableCell colSpan={8} className="px-6 py-8 text-center text-sm text-muted-foreground">
+                <TableCell
+                  colSpan={canBulkSelect ? 9 : 8}
+                  className="px-6 py-8 text-center text-sm text-muted-foreground"
+                >
                   No issues yet. Create your first issue to get started.
                 </TableCell>
               </TableRow>

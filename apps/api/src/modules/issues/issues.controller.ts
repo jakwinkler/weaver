@@ -11,7 +11,13 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { createIssueSchema, updateIssueSchema, reorderIssuesSchema } from '@weaver/shared';
+import {
+  bulkDeleteIssuesSchema,
+  bulkUpdateIssuesSchema,
+  createIssueSchema,
+  updateIssueSchema,
+  reorderIssuesSchema,
+} from '@weaver/shared';
 import {
   JwtAuthGuard,
   PermissionGuard,
@@ -62,6 +68,24 @@ export class IssuesController {
     @Body(new ZodValidationPipe(reorderIssuesSchema)) dto: any,
   ) {
     await this.issuesService.reorder(dto);
+  }
+
+  @Patch('issues/bulk')
+  @RequirePermission('issues', 'update')
+  async bulkUpdate(
+    @Body(new ZodValidationPipe(bulkUpdateIssuesSchema)) dto: any,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.issuesService.bulkUpdate(dto.issueIds, dto.updates, user.userId);
+  }
+
+  @Delete('issues/bulk')
+  @RequirePermission('issues', 'delete')
+  async bulkDelete(
+    @Body(new ZodValidationPipe(bulkDeleteIssuesSchema)) dto: any,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.issuesService.bulkDelete(dto.issueIds, user.userId);
   }
 
   @Get('issues/:issueKey')
