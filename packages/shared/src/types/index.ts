@@ -161,6 +161,7 @@ export interface Issue {
   startDate?: string;
   dueDate?: string;
   percentDone: number;
+  storyPoints?: number | null;
   createdAt: Date;
   updatedAt: Date;
   issueType?: IssueType | null;
@@ -232,7 +233,17 @@ export interface Sprint {
   startDate?: Date;
   endDate?: Date;
   status: SprintStatus;
+  capacity?: number | null;
   createdAt: Date;
+}
+
+export interface SprintStats {
+  sprintId: string;
+  capacity: number | null;
+  committedPoints: number;
+  issueCount: number;
+  completedCount: number;
+  completedPoints: number;
 }
 
 export interface Comment {

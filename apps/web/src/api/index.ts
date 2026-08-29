@@ -129,6 +129,8 @@ export {
   usePublicProjectIssues,
   usePublicProjectBoard,
 } from './hooks-public';
+export { useBacklog, useMoveIssueToSprint, useSprintStats } from './hooks-backlog';
+export type { UseBacklogParams } from './hooks-backlog';
 export type {
   DashboardData,
   DashboardStats,

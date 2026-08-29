@@ -3,6 +3,8 @@ import {
   loginSchema,
   createProjectSchema,
   createIssueSchema,
+  createSprintSchema,
+  moveIssueSprintSchema,
   updateIssueSchema,
   paginationSchema,
   createWorkflowStatusSchema,
@@ -156,8 +158,15 @@ describe('createIssueSchema', () => {
       labels: ['bug', 'auth'],
       assigneeId: '550e8400-e29b-41d4-a716-446655440000',
       customFields: { severity: 'critical' },
+      storyPoints: 5,
     });
     expect(result.success).toBe(true);
+  });
+
+  it('should reject negative story points', () => {
+    expect(
+      createIssueSchema.safeParse({ summary: 'Invalid estimate', storyPoints: -1 }).success,
+    ).toBe(false);
   });
 
   it('should reject invalid priority', () => {
@@ -196,6 +205,17 @@ describe('updateIssueSchema', () => {
       description: null,
     });
     expect(result.success).toBe(true);
+  });
+});
+
+describe('sprint planning schemas', () => {
+  it('accepts a nullable sprint target and explicit sort order', () => {
+    expect(moveIssueSprintSchema.safeParse({ sprintId: null, sortOrder: 2000 }).success).toBe(true);
+  });
+
+  it('accepts optional sprint capacity and rejects negative capacity', () => {
+    expect(createSprintSchema.safeParse({ name: 'Sprint 1', capacity: 20 }).success).toBe(true);
+    expect(createSprintSchema.safeParse({ name: 'Sprint 1', capacity: -1 }).success).toBe(false);
   });
 });
 

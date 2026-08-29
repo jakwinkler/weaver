@@ -105,6 +105,7 @@ function CreateSprintForm({ projectId, onCreated }: { projectId: string; onCreat
   const [goal, setGoal] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [capacity, setCapacity] = useState('');
   const createSprint = useCreateSprint(projectId);
 
   const handleSubmit = async (event: FormEvent) => {
@@ -114,11 +115,13 @@ function CreateSprintForm({ projectId, onCreated }: { projectId: string; onCreat
       goal: goal || undefined,
       startDate: startDate ? new Date(startDate) : undefined,
       endDate: endDate ? new Date(endDate) : undefined,
+      capacity: capacity ? Number(capacity) : undefined,
     });
     setName('');
     setGoal('');
     setStartDate('');
     setEndDate('');
+    setCapacity('');
     onCreated();
   };
 
@@ -169,6 +172,18 @@ function CreateSprintForm({ projectId, onCreated }: { projectId: string; onCreat
                 onChange={(event) => setEndDate(event.target.value)}
               />
             </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="sprintCapacity">Capacity (story points)</Label>
+            <Input
+              id="sprintCapacity"
+              type="number"
+              min="0"
+              max="10000"
+              value={capacity}
+              onChange={(e) => setCapacity(e.target.value)}
+              placeholder="Optional"
+            />
           </div>
           {createSprint.isError && (
             <p className="text-sm text-destructive">Failed to create sprint.</p>

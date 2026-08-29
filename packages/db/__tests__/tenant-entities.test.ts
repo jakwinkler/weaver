@@ -73,8 +73,9 @@ describe('Tenant Schema Entities', () => {
     });
 
     it('should have OneToMany relations', () => {
-      const relations = storage.relations
-        .filter((r) => r.target === ProjectEntity && r.relationType === 'one-to-many');
+      const relations = storage.relations.filter(
+        (r) => r.target === ProjectEntity && r.relationType === 'one-to-many',
+      );
       expect(relations.length).toBeGreaterThanOrEqual(3);
     });
   });
@@ -93,6 +94,7 @@ describe('Tenant Schema Entities', () => {
       expect(columns).toContain('customFields');
       expect(columns).toContain('labels');
       expect(columns).toContain('sortOrder');
+      expect(columns).toContain('storyPoints');
     });
 
     it('should have indexes on projectId and statusId', () => {
@@ -101,10 +103,20 @@ describe('Tenant Schema Entities', () => {
     });
   });
 
+  describe('SprintEntity', () => {
+    it('should have an optional capacity column', () => {
+      const columns = storage.columns
+        .filter((column) => column.target === SprintEntity)
+        .map((column) => column.propertyName);
+      expect(columns).toContain('capacity');
+    });
+  });
+
   describe('WorkflowEntity', () => {
     it('should have OneToMany to statuses and transitions', () => {
-      const relations = storage.relations
-        .filter((r) => r.target === WorkflowEntity && r.relationType === 'one-to-many');
+      const relations = storage.relations.filter(
+        (r) => r.target === WorkflowEntity && r.relationType === 'one-to-many',
+      );
       const names = relations.map((r) => r.propertyName);
       expect(names).toContain('statuses');
       expect(names).toContain('transitions');
@@ -113,8 +125,9 @@ describe('Tenant Schema Entities', () => {
 
   describe('WorkflowTransitionEntity', () => {
     it('should have relations to workflow, fromStatus, toStatus', () => {
-      const relations = storage.relations
-        .filter((r) => r.target === WorkflowTransitionEntity && r.relationType === 'many-to-one');
+      const relations = storage.relations.filter(
+        (r) => r.target === WorkflowTransitionEntity && r.relationType === 'many-to-one',
+      );
       const names = relations.map((r) => r.propertyName);
       expect(names).toContain('workflow');
       expect(names).toContain('fromStatus');
@@ -140,8 +153,9 @@ describe('Tenant Schema Entities', () => {
 
   describe('CommentEntity', () => {
     it('should have ManyToOne relation to issue', () => {
-      const relations = storage.relations
-        .filter((r) => r.target === CommentEntity && r.relationType === 'many-to-one');
+      const relations = storage.relations.filter(
+        (r) => r.target === CommentEntity && r.relationType === 'many-to-one',
+      );
       const names = relations.map((r) => r.propertyName);
       expect(names).toContain('issue');
     });

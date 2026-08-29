@@ -91,6 +91,7 @@ export const createIssueSchema = z.object({
   startDate: dateStringSchema.optional(),
   dueDate: dateStringSchema.optional(),
   percentDone: z.number().int().min(0).max(100).default(0),
+  storyPoints: z.number().int().min(0).max(100).nullable().optional(),
 });
 export type CreateIssueDto = z.infer<typeof createIssueSchema>;
 
@@ -109,6 +110,7 @@ export const updateIssueSchema = z.object({
   startDate: dateStringSchema.nullable().optional(),
   dueDate: dateStringSchema.nullable().optional(),
   percentDone: z.number().int().min(0).max(100).optional(),
+  storyPoints: z.number().int().min(0).max(100).nullable().optional(),
 });
 export type UpdateIssueDto = z.infer<typeof updateIssueSchema>;
 
@@ -140,6 +142,12 @@ export const bulkDeleteIssuesSchema = z.object({
   issueIds: bulkIssueIdsSchema,
 });
 export type BulkDeleteIssuesDto = z.infer<typeof bulkDeleteIssuesSchema>;
+
+export const moveIssueSprintSchema = z.object({
+  sprintId: z.string().uuid().nullable(),
+  sortOrder: z.number().int().min(0).optional(),
+});
+export type MoveIssueSprintDto = z.infer<typeof moveIssueSprintSchema>;
 
 export const reorderIssuesSchema = z.object({
   issues: z
@@ -228,6 +236,7 @@ export const createSprintSchema = z.object({
   goal: z.string().max(1000).optional(),
   startDate: z.coerce.date().optional(),
   endDate: z.coerce.date().optional(),
+  capacity: z.number().int().min(0).max(10000).nullable().optional(),
 });
 export type CreateSprintDto = z.infer<typeof createSprintSchema>;
 

@@ -31,6 +31,9 @@ export class SprintEntity {
   @Column({ length: 20, default: 'planned' })
   status!: string;
 
+  @Column({ type: 'int', nullable: true })
+  capacity!: number | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;
 

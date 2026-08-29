@@ -15,6 +15,7 @@ import {
   bulkDeleteIssuesSchema,
   bulkUpdateIssuesSchema,
   createIssueSchema,
+  moveIssueSprintSchema,
   updateIssueSchema,
   reorderIssuesSchema,
 } from '@weaver/shared';
@@ -45,10 +46,7 @@ export class IssuesController {
 
   @Get('projects/:projectKey/issues')
   @RequirePermission('issues', 'read')
-  async findByProject(
-    @Param('projectKey') projectKey: string,
-    @Query() query: any,
-  ) {
+  async findByProject(@Param('projectKey') projectKey: string, @Query() query: any) {
     const params = parsePagination(query);
     const filters: Record<string, string | undefined> = {};
     if (query.statusId) filters.statusId = query.statusId;
@@ -59,6 +57,17 @@ export class IssuesController {
     if (query.dueDateFrom) filters.dueDateFrom = query.dueDateFrom;
     if (query.dueDateTo) filters.dueDateTo = query.dueDateTo;
     return this.issuesService.findByProject(projectKey, params, filters);
+  }
+
+  @Get('projects/:projectKey/backlog')
+  @RequirePermission('issues', 'read')
+  async findBacklog(@Param('projectKey') projectKey: string, @Query() query: any) {
+    const params = parsePagination(query);
+    return this.issuesService.findBacklog(projectKey, params, {
+      priority: query.priority,
+      assigneeId: query.assigneeId,
+      issueTypeId: query.issueTypeId,
+    });
   }
 
   @Patch('issues/reorder')
@@ -103,6 +112,16 @@ export class IssuesController {
     @CurrentUser() user: RequestUser,
   ) {
     return this.issuesService.update(issueKey, dto, user.userId);
+  }
+
+  @Patch('issues/:issueKey/sprint')
+  @RequirePermission('issues', 'update')
+  async moveToSprint(
+    @Param('issueKey') issueKey: string,
+    @Body(new ZodValidationPipe(moveIssueSprintSchema)) dto: any,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.issuesService.moveToSprint(issueKey, dto, user.userId);
   }
 
   @Post('issues/:issueKey/transition')

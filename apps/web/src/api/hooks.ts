@@ -135,10 +135,9 @@ export function useProjectIssues(params: UseProjectIssuesParams) {
   return useQuery({
     queryKey: ['issues', projectKey, { page, perPage, sort, ...activeFilters }],
     queryFn: async () => {
-      const res = await apiClient.get<PaginatedResponse<Issue>>(
-        `/projects/${projectKey}/issues`,
-        { params: { page, perPage, ...(sort ? { sort } : {}), ...activeFilters } },
-      );
+      const res = await apiClient.get<PaginatedResponse<Issue>>(`/projects/${projectKey}/issues`, {
+        params: { page, perPage, ...(sort ? { sort } : {}), ...activeFilters },
+      });
       return res.data;
     },
     enabled: !!projectKey,
@@ -165,6 +164,7 @@ export function useCreateIssue(projectKey: string) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['issues', projectKey] });
+      queryClient.invalidateQueries({ queryKey: ['backlog', projectKey] });
     },
   });
 }
