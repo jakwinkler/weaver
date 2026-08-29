@@ -3,6 +3,7 @@ import { config } from './config';
 import { processEvent } from './processors/events.processor';
 import { processWebhook } from './processors/webhooks.processor';
 import { processNotification } from './processors/notifications.processor';
+import { processImport } from './processors/import.processor';
 
 const connection = {
   host: config.redis.host,
@@ -33,6 +34,13 @@ function createWorkers(): void {
     { connection, concurrency: config.queues.notifications.concurrency },
   );
   workers.push(notificationsWorker);
+
+  const importsWorker = new Worker(
+    config.queues.imports.name,
+    processImport,
+    { connection, concurrency: config.queues.imports.concurrency },
+  );
+  workers.push(importsWorker);
 
   for (const worker of workers) {
     worker.on('completed', (job) => {

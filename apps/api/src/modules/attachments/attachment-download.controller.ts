@@ -16,7 +16,7 @@ import { AttachmentsService } from './attachments.service';
 import * as fs from 'fs';
 import * as path from 'path';
 
-const UPLOAD_DIR = '/tmp/weaver-uploads';
+const UPLOAD_DIR = process.env.UPLOAD_DIR || '/tmp/weaver-uploads';
 
 @Controller('attachments')
 @UseGuards(JwtAuthGuard, PermissionGuard)

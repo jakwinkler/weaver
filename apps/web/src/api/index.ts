@@ -121,6 +121,12 @@ export { useDashboard } from './hooks-dashboard';
 export { useProfile, useUpdateProfile, useUploadAvatar } from './hooks-profile';
 export { useTenantSettings, useUpdateTenantSettings, useTestSmtp } from './hooks-settings';
 export {
+  useDiscoverJiraProjects,
+  useStartJiraImport,
+  useImportStatus,
+  useCancelImport,
+} from './hooks-import';
+export {
   usePublicProjects,
   usePublicProject,
   usePublicProjectIssues,

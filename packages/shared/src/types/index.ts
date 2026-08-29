@@ -10,6 +10,8 @@ import type {
   CustomFieldType,
 } from '../constants';
 
+export * from './import';
+
 // ── Public Schema Types ──
 
 export interface Tenant {

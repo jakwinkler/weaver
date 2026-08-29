@@ -1,54 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
-import {
-  ProjectEntity,
-  ProjectMemberEntity,
-  ProjectIssueTypeEntity,
-  IssueEntity,
-  IssueTypeEntity,
-  IssueLinkEntity,
-  WorkflowEntity,
-  WorkflowStatusEntity,
-  WorkflowTransitionEntity,
-  BoardEntity,
-  SprintEntity,
-  CommentEntity,
-  ActivityLogEntity,
-  RoleEntity,
-  CustomFieldDefinitionEntity,
-  NotificationEntity,
-  WebhookEntity,
-  SavedFilterEntity,
-  TimeEntryEntity,
-  AttachmentEntity,
-  ProjectPluginEntity,
-} from '@weaver/db';
+import { TENANT_ENTITIES as DATABASE_TENANT_ENTITIES } from '@weaver/db';
 import { requireTenantContext } from './tenant.context';
 
-export const TENANT_ENTITIES = [
-  ProjectEntity,
-  ProjectMemberEntity,
-  ProjectIssueTypeEntity,
-  IssueEntity,
-  IssueTypeEntity,
-  IssueLinkEntity,
-  WorkflowEntity,
-  WorkflowStatusEntity,
-  WorkflowTransitionEntity,
-  BoardEntity,
-  SprintEntity,
-  CommentEntity,
-  ActivityLogEntity,
-  RoleEntity,
-  CustomFieldDefinitionEntity,
-  NotificationEntity,
-  WebhookEntity,
-  SavedFilterEntity,
-  TimeEntryEntity,
-  AttachmentEntity,
-  ProjectPluginEntity,
-];
+export const TENANT_ENTITIES = [...DATABASE_TENANT_ENTITIES];
 
 @Injectable()
 export class TenantConnectionProvider {

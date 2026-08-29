@@ -49,6 +49,9 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-${JWT_SECRET}}
+      UPLOAD_DIR: /var/lib/weaver/uploads
+    volumes:
+      - uploads_data:/var/lib/weaver/uploads
     depends_on:
       postgres:
         condition: service_healthy
@@ -75,6 +78,9 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      UPLOAD_DIR: /var/lib/weaver/uploads
+    volumes:
+      - uploads_data:/var/lib/weaver/uploads
     depends_on:
       postgres:
         condition: service_healthy
@@ -95,3 +101,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  uploads_data:

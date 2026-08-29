@@ -27,6 +27,7 @@ import {
   UsersRound,
   Plug,
   Webhook,
+  FileUp,
   Settings,
   LogOut,
   User,
@@ -39,7 +40,7 @@ import { getNavigationEntries } from '@/plugins/plugin-slot-registry';
 import { getPluginIcon } from '@/plugins/plugin-icons';
 import { useWebSocket } from '@/hooks/useWebSocket';
 
-const adminNavItems = [
+export const adminNavItems = [
   { to: '/admin/workflows', label: 'Workflows', icon: GitBranch },
   { to: '/admin/issue-types', label: 'Issue Types', icon: Tags },
   { to: '/settings/custom-fields', label: 'Custom Fields', icon: Settings },
@@ -48,6 +49,7 @@ const adminNavItems = [
   { to: '/admin/users', label: 'Users', icon: Users },
   { to: '/settings/plugins', label: 'Plugins', icon: Plug },
   { to: '/settings/webhooks', label: 'Webhooks', icon: Webhook },
+  { to: '/settings/import-export', label: 'Import / Export', icon: FileUp },
   { to: '/settings/general', label: 'System Settings', icon: Cog },
 ];
 

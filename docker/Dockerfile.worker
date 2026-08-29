@@ -8,30 +8,33 @@ COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY packages/config/package.json ./packages/config/
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/db/package.json ./packages/db/
+COPY packages/jira-import/package.json ./packages/jira-import/
 COPY apps/worker/package.json ./apps/worker/
 RUN pnpm install --frozen-lockfile
 
 # Build
-FROM base AS build
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/packages/config/node_modules ./packages/config/node_modules
-COPY --from=deps /app/packages/shared/node_modules ./packages/shared/node_modules
-COPY --from=deps /app/packages/db/node_modules ./packages/db/node_modules
-COPY --from=deps /app/apps/worker/node_modules ./apps/worker/node_modules
+FROM deps AS build
 COPY . .
 RUN pnpm --filter @weaver/shared build && \
     pnpm --filter @weaver/db build && \
+    pnpm --filter @weaver/jira-import build && \
     pnpm --filter @weaver/worker build
 
 # Production
 FROM base AS production
 ENV NODE_ENV=production
 COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/packages/shared/node_modules ./packages/shared/node_modules
 COPY --from=build /app/packages/shared/dist ./packages/shared/dist
 COPY --from=build /app/packages/shared/package.json ./packages/shared/
 COPY --from=build /app/packages/db/dist ./packages/db/dist
 COPY --from=build /app/packages/db/package.json ./packages/db/
+COPY --from=build /app/packages/db/node_modules ./packages/db/node_modules
+COPY --from=build /app/packages/jira-import/dist ./packages/jira-import/dist
+COPY --from=build /app/packages/jira-import/package.json ./packages/jira-import/
+COPY --from=build /app/packages/jira-import/node_modules ./packages/jira-import/node_modules
 COPY --from=build /app/apps/worker/dist ./apps/worker/dist
 COPY --from=build /app/apps/worker/package.json ./apps/worker/
+COPY --from=build /app/apps/worker/node_modules ./apps/worker/node_modules
 
 CMD ["node", "apps/worker/dist/main.js"]
