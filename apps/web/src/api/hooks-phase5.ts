@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
 import { apiClient } from './client';
 
 // ── Notifications ──
@@ -17,9 +18,10 @@ export function useNotifications(page = 1, perPage = 20) {
   return useQuery({
     queryKey: ['notifications', page, perPage],
     queryFn: async () => {
-      const res = await apiClient.get<{ data: Notification[]; meta: { page: number; perPage: number; total: number; totalPages: number } }>(
-        `/notifications?page=${page}&perPage=${perPage}`,
-      );
+      const res = await apiClient.get<{
+        data: Notification[];
+        meta: { page: number; perPage: number; total: number; totalPages: number };
+      }>(`/notifications?page=${page}&perPage=${perPage}`);
       return res.data;
     },
   });
@@ -96,7 +98,12 @@ export function useWebhooks() {
 export function useCreateWebhook() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (data: { url: string; events: string[]; secret?: string; projectId?: string }) => {
+    mutationFn: async (data: {
+      url: string;
+      events: string[];
+      secret?: string;
+      projectId?: string;
+    }) => {
       const res = await apiClient.post<Webhook>('/webhooks', data);
       return res.data;
     },
@@ -140,17 +147,30 @@ export function useTestWebhook() {
 // ── User Search (Mentions) ──
 
 export function useSearchUsers(query: string) {
-  return useQuery({
-    queryKey: ['users', 'search', query],
+  const [debouncedQuery, setDebouncedQuery] = useState<string | null>(null);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setDebouncedQuery(query), 300);
+    return () => window.clearTimeout(timeout);
+  }, [query]);
+
+  const search = useQuery({
+    queryKey: ['users', 'search', debouncedQuery],
     queryFn: async () => {
-      const res = await apiClient.get<{ id: string; displayName: string; email: string; avatarUrl?: string }[]>(
-        '/users/search',
-        { params: { q: query } },
-      );
+      const res = await apiClient.get<
+        { id: string; displayName: string; email: string; avatarUrl: string | null }[]
+      >('/users/search', { params: { q: debouncedQuery ?? '' } });
       return res.data;
     },
-    enabled: query.length >= 1,
+    enabled: debouncedQuery !== null,
   });
+
+  const isDebouncing = debouncedQuery !== query;
+  return {
+    ...search,
+    data: isDebouncing ? undefined : search.data,
+    isLoading: isDebouncing || search.isLoading,
+  };
 }
 
 // ── Roles ──

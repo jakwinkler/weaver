@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { CommentEntity, IssueEntity } from '@weaver/db';
 import { CreateCommentDto } from '@weaver/shared';
 import { TenantConnectionProvider } from '../../core/tenant';
@@ -9,6 +9,8 @@ import { MentionService } from './mention.service';
 
 @Injectable()
 export class CommentsService {
+  private readonly logger = new Logger(CommentsService.name);
+
   constructor(
     private readonly tenantConnections: TenantConnectionProvider,
     private readonly usersService: UsersService,
@@ -26,10 +28,24 @@ export class CommentsService {
     return issue.id;
   }
 
-  async create(issueKey: string, dto: CreateCommentDto, authorId: string): Promise<CommentEntity> {
+  async create(
+    issueKey: string,
+    dto: CreateCommentDto,
+    authorId: string,
+    tenantId: string,
+  ): Promise<CommentEntity> {
     const issueId = await this.resolveIssueId(issueKey);
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(CommentEntity);
+
+    const body = dto.body as Record<string, unknown> | null;
+    const mentionedUserIds = this.mentionService
+      .extractMentions(body)
+      .filter((mentionedUserId) => mentionedUserId !== authorId);
+    const tenantMemberIds = await this.usersService.filterTenantMemberIds(
+      tenantId,
+      mentionedUserIds,
+    );
 
     const comment = repo.create({
       issueId,
@@ -47,19 +63,18 @@ export class CommentsService {
     });
 
     // Send mention notifications
-    const body = dto.body as Record<string, unknown> | null;
-    const mentionedUserIds = this.mentionService.extractMentions(body);
-    for (const mentionedUserId of mentionedUserIds) {
-      if (mentionedUserId === authorId) continue; // skip self-mentions
+    for (const mentionedUserId of tenantMemberIds) {
       try {
-        await this.notificationsService.create(
-          mentionedUserId,
-          'mention',
-          `@You in ${issueKey}`,
-          { issueKey, commentId: saved.id },
+        await this.notificationsService.create(mentionedUserId, 'mention', `@You in ${issueKey}`, {
+          issueKey,
+          commentId: saved.id,
+        });
+      } catch (error) {
+        this.logger.warn(
+          `Could not create mention notification for user ${mentionedUserId}: ${
+            error instanceof Error ? error.message : 'unknown error'
+          }`,
         );
-      } catch {
-        // Ignore notification failures (e.g. invalid userId)
       }
     }
 
@@ -119,15 +134,30 @@ export class CommentsService {
     return comment;
   }
 
-  async update(id: string, dto: CreateCommentDto, updaterId?: string): Promise<CommentEntity> {
+  async update(
+    id: string,
+    dto: CreateCommentDto,
+    updaterId: string,
+    tenantId: string,
+  ): Promise<CommentEntity> {
     const comment = await this.findById(id);
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(CommentEntity);
 
     // Diff mentions: only notify newly mentioned users
-    const oldMentions = new Set(this.mentionService.extractMentions(comment.body as Record<string, unknown> | null));
+    const oldMentions = new Set(
+      this.mentionService.extractMentions(comment.body as Record<string, unknown> | null),
+    );
     const newBody = dto.body as Record<string, unknown> | null;
     const newMentions = this.mentionService.extractMentions(newBody);
+
+    const newRecipientIds = newMentions.filter(
+      (mentionedUserId) => !oldMentions.has(mentionedUserId) && mentionedUserId !== updaterId,
+    );
+    const tenantMemberIds = await this.usersService.filterTenantMemberIds(
+      tenantId,
+      newRecipientIds,
+    );
 
     comment.body = dto.body;
     const saved = await repo.save(comment);
@@ -145,18 +175,18 @@ export class CommentsService {
       });
     }
 
-    for (const mentionedUserId of newMentions) {
-      if (oldMentions.has(mentionedUserId)) continue; // already mentioned
-      if (updaterId && mentionedUserId === updaterId) continue; // skip self-mentions
+    for (const mentionedUserId of tenantMemberIds) {
       try {
-        await this.notificationsService.create(
-          mentionedUserId,
-          'mention',
-          `@You in ${issueKey}`,
-          { issueKey, commentId: saved.id },
+        await this.notificationsService.create(mentionedUserId, 'mention', `@You in ${issueKey}`, {
+          issueKey,
+          commentId: saved.id,
+        });
+      } catch (error) {
+        this.logger.warn(
+          `Could not create mention notification for user ${mentionedUserId}: ${
+            error instanceof Error ? error.message : 'unknown error'
+          }`,
         );
-      } catch {
-        // Ignore notification failures
       }
     }
 

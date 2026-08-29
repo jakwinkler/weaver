@@ -11,7 +11,13 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { createCommentSchema } from '@weaver/shared';
-import { JwtAuthGuard, CurrentUser, RequestUser, PermissionGuard, RequirePermission } from '../../core/auth';
+import {
+  JwtAuthGuard,
+  CurrentUser,
+  RequestUser,
+  PermissionGuard,
+  RequirePermission,
+} from '../../core/auth';
 import { ZodValidationPipe } from '../../common';
 import { CommentsService } from './comments.service';
 
@@ -27,7 +33,7 @@ export class CommentsController {
     @Body(new ZodValidationPipe(createCommentSchema)) dto: any,
     @CurrentUser() user: RequestUser,
   ) {
-    return this.commentsService.create(issueKey, dto, user.userId);
+    return this.commentsService.create(issueKey, dto, user.userId, user.tenantId);
   }
 
   @Get()
@@ -43,7 +49,7 @@ export class CommentsController {
     @Body(new ZodValidationPipe(createCommentSchema)) dto: any,
     @CurrentUser() user: RequestUser,
   ) {
-    return this.commentsService.update(id, dto, user.userId);
+    return this.commentsService.update(id, dto, user.userId, user.tenantId);
   }
 
   @Delete(':id')

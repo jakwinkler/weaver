@@ -24,15 +24,13 @@ describe('Phase 5: Real-Time, Notifications, Webhooks, RBAC, Teams (e2e)', () =>
     dataSource = app.get(DataSource);
     connections = app.get(TenantConnectionProvider);
 
-    const res = await request(app.getHttpServer())
-      .post('/api/v1/auth/register')
-      .send({
-        email: 'p5-test@example.com',
-        password: 'password123',
-        displayName: 'Phase5 Tester',
-        orgName: 'P5 Test Org',
-        orgSlug: 'p5-test-org',
-      });
+    const res = await request(app.getHttpServer()).post('/api/v1/auth/register').send({
+      email: 'p5-test@example.com',
+      password: 'password123',
+      displayName: 'Phase5 Tester',
+      orgName: 'P5 Test Org',
+      orgSlug: 'p5-test-org',
+    });
 
     accessToken = res.body.accessToken;
     tenantId = res.body.tenant.id;
@@ -40,8 +38,12 @@ describe('Phase 5: Real-Time, Notifications, Webhooks, RBAC, Teams (e2e)', () =>
 
   afterAll(async () => {
     await dataSource.query(`DROP SCHEMA IF EXISTS "tenant_p5_test_org" CASCADE`);
-    await dataSource.query(`DELETE FROM public.tenant_memberships WHERE tenant_id IN (SELECT id FROM public.tenants WHERE slug = 'p5-test-org')`);
-    await dataSource.query(`DELETE FROM public.installed_plugins WHERE tenant_id IN (SELECT id FROM public.tenants WHERE slug = 'p5-test-org')`);
+    await dataSource.query(
+      `DELETE FROM public.tenant_memberships WHERE tenant_id IN (SELECT id FROM public.tenants WHERE slug = 'p5-test-org')`,
+    );
+    await dataSource.query(
+      `DELETE FROM public.installed_plugins WHERE tenant_id IN (SELECT id FROM public.tenants WHERE slug = 'p5-test-org')`,
+    );
     await dataSource.query(`DELETE FROM public.tenants WHERE slug = 'p5-test-org'`);
     await dataSource.query(`DELETE FROM public.users WHERE email = 'p5-test@example.com'`);
     await connections.closeAll();
@@ -74,21 +76,18 @@ describe('Phase 5: Real-Time, Notifications, Webhooks, RBAC, Teams (e2e)', () =>
   describe('Notifications', () => {
     it('GET /notifications - should return empty list initially', async () => {
       const res = await authedRequest().get('/api/v1/notifications').expect(200);
-      expect(Array.isArray(res.body)).toBe(true);
+      expect(res.body.data).toEqual([]);
+      expect(res.body.meta).toMatchObject({ page: 1, perPage: 20, total: 0, totalPages: 0 });
     });
 
     it('GET /notifications/unread-count - should return zero', async () => {
-      const res = await authedRequest()
-        .get('/api/v1/notifications/unread-count')
-        .expect(200);
+      const res = await authedRequest().get('/api/v1/notifications/unread-count').expect(200);
       expect(res.body.count).toBeDefined();
       expect(res.body.count).toBe(0);
     });
 
     it('POST /notifications/mark-all-read - should succeed', async () => {
-      await authedRequest()
-        .post('/api/v1/notifications/mark-all-read')
-        .expect(204);
+      await authedRequest().post('/api/v1/notifications/mark-all-read').expect(204);
     });
   });
 
@@ -116,9 +115,7 @@ describe('Phase 5: Real-Time, Notifications, Webhooks, RBAC, Teams (e2e)', () =>
     });
 
     it('GET /webhooks/:id - should get webhook', async () => {
-      const res = await authedRequest()
-        .get(`/api/v1/webhooks/${webhookId}`)
-        .expect(200);
+      const res = await authedRequest().get(`/api/v1/webhooks/${webhookId}`).expect(200);
       expect(res.body.id).toBe(webhookId);
     });
 
@@ -132,16 +129,12 @@ describe('Phase 5: Real-Time, Notifications, Webhooks, RBAC, Teams (e2e)', () =>
     });
 
     it('GET /webhooks/:id/deliveries - should return empty deliveries', async () => {
-      const res = await authedRequest()
-        .get(`/api/v1/webhooks/${webhookId}/deliveries`)
-        .expect(200);
+      const res = await authedRequest().get(`/api/v1/webhooks/${webhookId}/deliveries`).expect(200);
       expect(Array.isArray(res.body)).toBe(true);
     });
 
     it('DELETE /webhooks/:id - should delete webhook', async () => {
-      await authedRequest()
-        .delete(`/api/v1/webhooks/${webhookId}`)
-        .expect(204);
+      await authedRequest().delete(`/api/v1/webhooks/${webhookId}`).expect(204);
     });
   });
 
@@ -169,15 +162,20 @@ describe('Phase 5: Real-Time, Notifications, Webhooks, RBAC, Teams (e2e)', () =>
     it('PATCH /roles/:id - should update role', async () => {
       const res = await authedRequest()
         .patch(`/api/v1/roles/${roleId}`)
-        .send({ permissions: { 'issues:read': true, 'issues:write': true, 'projects:read': true, 'projects:write': true } })
+        .send({
+          permissions: {
+            'issues:read': true,
+            'issues:write': true,
+            'projects:read': true,
+            'projects:write': true,
+          },
+        })
         .expect(200);
       expect(res.body.permissions['projects:write']).toBe(true);
     });
 
     it('DELETE /roles/:id - should delete custom role', async () => {
-      await authedRequest()
-        .delete(`/api/v1/roles/${roleId}`)
-        .expect(204);
+      await authedRequest().delete(`/api/v1/roles/${roleId}`).expect(204);
     });
   });
 
@@ -200,16 +198,12 @@ describe('Phase 5: Real-Time, Notifications, Webhooks, RBAC, Teams (e2e)', () =>
     });
 
     it('GET /teams/:id/members - should list members', async () => {
-      const res = await authedRequest()
-        .get(`/api/v1/teams/${teamId}/members`)
-        .expect(200);
+      const res = await authedRequest().get(`/api/v1/teams/${teamId}/members`).expect(200);
       expect(Array.isArray(res.body)).toBe(true);
     });
 
     it('DELETE /teams/:id - should delete team', async () => {
-      await authedRequest()
-        .delete(`/api/v1/teams/${teamId}`)
-        .expect(204);
+      await authedRequest().delete(`/api/v1/teams/${teamId}`).expect(204);
     });
   });
 });

@@ -4,7 +4,6 @@ import Image from '@tiptap/extension-image';
 import Placeholder from '@tiptap/extension-placeholder';
 import Link from '@tiptap/extension-link';
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
-import Mention from '@tiptap/extension-mention';
 import { common, createLowlight } from 'lowlight';
 import tippy, { type Instance as TippyInstance } from 'tippy.js';
 import { useCallback, useEffect, useRef } from 'react';
@@ -15,8 +14,8 @@ import {
   normalizeRichTextContent,
   serializeDoc,
 } from '@/lib/richText';
-import { MentionList, fetchMentionUsers } from './MentionSuggestion';
-import type { MentionUser } from './MentionSuggestion';
+import { MentionList } from './MentionSuggestion';
+import { MentionWithAvatar } from './MentionNode';
 import {
   Bold,
   Italic,
@@ -74,15 +73,12 @@ export function RichTextEditor({
       Placeholder.configure({ placeholder }),
       Link.configure({ openOnClick: !editable }),
       CodeBlockLowlight.configure({ lowlight }),
-      Mention.configure({
+      MentionWithAvatar.configure({
         HTMLAttributes: {
           class: 'mention',
         },
         suggestion: {
-          items: async ({ query }: { query: string }): Promise<MentionUser[]> => {
-            if (!query) return [];
-            return fetchMentionUsers(query);
-          },
+          items: () => [],
           render: () => {
             let component: ReactRenderer<any> | null = null;
             let popup: TippyInstance[] | null = null;
