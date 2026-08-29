@@ -320,6 +320,9 @@ importers:
       '@tiptap/suggestion':
         specifier: ^3.20.0
         version: 3.20.0(@tiptap/core@3.20.0(@tiptap/pm@3.20.0))(@tiptap/pm@3.20.0)
+      '@weaver/plugin-automatic-time':
+        specifier: workspace:*
+        version: link:../../plugins/plugin-automatic-time
       '@weaver/plugin-checklist':
         specifier: workspace:*
         version: link:../../plugins/plugin-checklist
@@ -634,6 +637,34 @@ importers:
       vitest:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@22.19.11)(jsdom@25.0.1)(lightningcss@1.31.1)(terser@5.46.0)
+
+  plugins/plugin-automatic-time:
+    dependencies:
+      lucide-react:
+        specifier: '*'
+        version: 0.575.0(react@18.3.1)
+      react:
+        specifier: ^18.3.1
+        version: 18.3.1
+      react-dom:
+        specifier: ^18.3.1
+        version: 18.3.1(react@18.3.1)
+      react-router-dom:
+        specifier: ^7.0.0
+        version: 7.13.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+    devDependencies:
+      '@types/react':
+        specifier: ^18.3.18
+        version: 18.3.28
+      '@weaver/config':
+        specifier: workspace:*
+        version: link:../../packages/config
+      '@weaver/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
 
   plugins/plugin-bitbucket:
     dependencies:

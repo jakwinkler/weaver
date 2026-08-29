@@ -7,6 +7,7 @@ import {
   Body,
   HttpCode,
   HttpStatus,
+  BadRequestException,
   UseGuards,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../core/auth';
@@ -29,15 +30,23 @@ export class PluginsController {
   @Get('permissions')
   async getPluginPermissions() {
     const installed = await this.registry.getInstalled();
-    const enabledIds = new Set(
-      installed.filter((p) => p.enabled).map((p) => p.pluginId),
-    );
+    const enabledIds = new Set(installed.filter((p) => p.enabled).map((p) => p.pluginId));
 
     const manifests = this.loader.getAllManifests();
-    const result: Record<string, { pluginName: string; permissions: Array<{ key: string; label: string; description?: string }> }> = {};
+    const result: Record<
+      string,
+      {
+        pluginName: string;
+        permissions: Array<{ key: string; label: string; description?: string }>;
+      }
+    > = {};
 
     for (const manifest of manifests) {
-      if (enabledIds.has(manifest.id) && manifest.declaredPermissions && manifest.declaredPermissions.length > 0) {
+      if (
+        enabledIds.has(manifest.id) &&
+        manifest.declaredPermissions &&
+        manifest.declaredPermissions.length > 0
+      ) {
         result[manifest.id] = {
           pluginName: manifest.name,
           permissions: manifest.declaredPermissions,
@@ -60,7 +69,17 @@ export class PluginsController {
 
   @Post('uninstall')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async uninstall(@Body('pluginId') pluginId: string) {
+  async uninstall(
+    @Body('pluginId') pluginId: string,
+    @Body('confirmDataDeletion') confirmDataDeletion?: boolean,
+  ) {
+    const manifest = this.loader.getManifest(pluginId);
+    if (manifest?.uninstall?.deletesPrivateData && confirmDataDeletion !== true) {
+      throw new BadRequestException(
+        manifest.uninstall.confirmationMessage ??
+          `Uninstalling ${manifest.name} deletes its private plugin data and requires confirmation`,
+      );
+    }
     return this.registry.uninstall(pluginId);
   }
 

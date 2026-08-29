@@ -1,0 +1,18 @@
+{
+  "name": "@weaver/plugin-automatic-time",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./src/client/index.ts",
+  "peerDependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "lucide-react": "*",
+    "react-router-dom": "^7.0.0"
+  },
+  "devDependencies": {
+    "@weaver/config": "workspace:*",
+    "@weaver/sdk": "workspace:*",
+    "@types/react": "^18.3.18",
+    "typescript": "^5.7.2"
+  }
+}

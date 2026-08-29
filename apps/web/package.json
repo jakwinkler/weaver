@@ -39,6 +39,7 @@
     "@tiptap/starter-kit": "^3.20.0",
     "@tiptap/suggestion": "^3.20.0",
     "@weaver/plugin-checklist": "workspace:*",
+    "@weaver/plugin-automatic-time": "workspace:*",
     "@weaver/plugin-time-reports": "workspace:*",
     "@weaver/plugin-relations": "workspace:*",
     "@weaver/plugin-timer": "workspace:*",

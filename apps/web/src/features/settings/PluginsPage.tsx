@@ -33,7 +33,12 @@ const TYPE_BADGE_STYLES: Record<string, string> = {
 function PluginTypeBadge({ type }: { type?: string }) {
   if (!type) return null;
   return (
-    <Badge className={cn('border-transparent capitalize', TYPE_BADGE_STYLES[type] || 'bg-muted text-muted-foreground')}>
+    <Badge
+      className={cn(
+        'border-transparent capitalize',
+        TYPE_BADGE_STYLES[type] || 'bg-muted text-muted-foreground',
+      )}
+    >
       {type}
     </Badge>
   );
@@ -54,6 +59,21 @@ export function PluginsPage() {
 
   const isLoading = availableLoading || installedLoading;
 
+  const uninstall = (pluginId: string) => {
+    const manifest = available?.find((candidate) => candidate.id === pluginId);
+    const deletesPrivateData = manifest?.uninstall?.deletesPrivateData === true;
+    if (
+      deletesPrivateData &&
+      !window.confirm(
+        manifest.uninstall?.confirmationMessage ??
+          `Uninstalling ${manifest.name} permanently deletes its private plugin data. Official Weaver records are preserved. Continue?`,
+      )
+    ) {
+      return;
+    }
+    uninstallPlugin.mutate({ pluginId, confirmDataDeletion: deletesPrivateData });
+  };
+
   if (isLoading) {
     return (
       <div>
@@ -68,12 +88,8 @@ export function PluginsPage() {
 
       <Tabs defaultValue="installed">
         <TabsList className="mb-6">
-          <TabsTrigger value="installed">
-            Installed ({installed?.length ?? 0})
-          </TabsTrigger>
-          <TabsTrigger value="available">
-            Available ({notInstalled.length})
-          </TabsTrigger>
+          <TabsTrigger value="installed">Installed ({installed?.length ?? 0})</TabsTrigger>
+          <TabsTrigger value="available">Available ({notInstalled.length})</TabsTrigger>
         </TabsList>
 
         {/* Installed Tab */}
@@ -89,7 +105,7 @@ export function PluginsPage() {
                     className="mt-3 h-auto p-0 text-sm"
                     onClick={() => {
                       const trigger = document.querySelector<HTMLButtonElement>(
-                        '[role="tab"][data-state][value="available"]'
+                        '[role="tab"][data-state][value="available"]',
                       );
                       trigger?.click();
                     }}
@@ -118,7 +134,7 @@ export function PluginsPage() {
                                 className={cn(
                                   plugin.enabled
                                     ? 'border-transparent bg-green-100 text-green-700'
-                                    : 'border-transparent bg-muted text-muted-foreground'
+                                    : 'border-transparent bg-muted text-muted-foreground',
                                 )}
                               >
                                 {plugin.enabled ? 'Enabled' : 'Disabled'}
@@ -162,7 +178,7 @@ export function PluginsPage() {
                           <Button
                             variant="destructive"
                             size="sm"
-                            onClick={() => uninstallPlugin.mutate(plugin.pluginId)}
+                            onClick={() => uninstall(plugin.pluginId)}
                             disabled={uninstallPlugin.isPending}
                           >
                             Uninstall

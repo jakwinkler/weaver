@@ -9,6 +9,8 @@ export interface PluginManifest {
   icon?: string;
   type?: 'app' | 'widget' | 'feature' | 'integration';
   scope?: 'tenant' | 'project';
+  enabledByDefault?: boolean;
+  uninstall?: PluginUninstallMetadata;
   entrypoints: {
     server?: string;
     client?: string;
@@ -32,6 +34,11 @@ export interface PluginManifest {
   };
   routes?: PluginRouteDefinition[];
   migrations?: Array<string | PluginMigrationDefinition>;
+}
+
+export interface PluginUninstallMetadata {
+  deletesPrivateData: boolean;
+  confirmationMessage?: string;
 }
 
 export interface PluginRequirements {

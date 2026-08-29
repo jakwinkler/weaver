@@ -4,7 +4,7 @@
 
 ## Status
 
-- Phases 0 and 1 complete; Phase 2 not started
+- Phases 0, 1, and 2 complete; Phase 3 not started
 - First user: Matt, single-user workflow
 - Initial platform: macOS
 - Distribution: bundled first-party plugin, disabled by default
@@ -468,16 +468,28 @@ Phase 1 evidence:
 
 ### Phase 2: Synthetic end-to-end vertical slice
 
-- [ ] Scaffold `@weaver/plugin-automatic-time` with server, client, manifest, and migrations.
-- [ ] Add plugin-owned draft, correction-memory, release-batch, user-settings, and device tables.
-- [ ] Add a Drafts navigation entry and page.
-- [ ] Load synthetic derived drafts through a test-only fixture adapter.
-- [ ] Implement manual issue assignment, edit, hide, and delete.
-- [ ] Implement Daily Review and atomic release.
-- [ ] Verify released entries appear in issue history and existing reports.
-- [ ] Verify disable and uninstall behavior.
+- [x] Scaffold `@weaver/plugin-automatic-time` with server, client, manifest, and migrations.
+- [x] Add plugin-owned draft, correction-memory, release-batch, user-settings, and device tables.
+- [x] Add a Drafts navigation entry and page.
+- [x] Load synthetic derived drafts through a test-only fixture adapter.
+- [x] Implement manual issue assignment, edit, hide, and delete.
+- [x] Implement Daily Review and atomic release.
+- [x] Verify released entries appear in issue history and existing reports.
+- [x] Verify disable and uninstall behavior.
 
 Gate: a synthetic private draft can be reviewed and released into exactly one official core entry with no duplicate after retry.
+
+Phase 2 evidence:
+
+- `@weaver/plugin-automatic-time` is a bundled, tenant-scoped app that installs disabled by default. Its validated manifest declares private-draft permissions, core capabilities, Drafts and Daily Review pages, routes, versioned migrations, and explicit private-data deletion behavior.
+- Version `0.1.0` creates namespaced draft, correction-memory, release-batch, user-settings, and device tables. Draft reads and mutations require the interactive user ID, and the database-backed test proves another user can neither see nor edit the draft.
+- Synthetic fixture import is fail-closed unless the dedicated test-process switch is enabled. It accepts derived draft metadata and evidence digests only, not raw application, window, browser, repository, or Git data.
+- The Drafts page supports issue assignment, minutes and description edits, hiding, deletion, date navigation, and private-state messaging. Daily Review blocks unresolved work and requires an explicit release action.
+- Release records a pending per-user, per-day idempotency batch, asks core to create the official entries atomically, and records the private-to-official mapping in one plugin mutation. Retry returns the same official entry with `created: 0`.
+- `automatic-time-plugin.e2e-spec.ts` covers install-disabled, explicit enable, fixture import, cross-user privacy, edit, assign, hide, delete, review, release, retry, issue activity visibility, Time Reports visibility, disable, confirmed uninstall, private-table deletion, and official-entry preservation.
+- Private-data uninstall requires explicit confirmation and runs lifecycle cleanup plus registry removal in one database transaction. A focused regression test proves a failed private-data deletion leaves the plugin installed.
+- The Phase 2 acceptance flow exposed and fixed the existing Time Reports issue grouping query, which now reads the canonical `issues.summary` column.
+- Browser acceptance at 1920 by 1080 verifies install-disabled, explicit enable, Drafts navigation, edit, manual assignment, resolved Daily Review, explicit release, and the resulting `0h 50m` entry in the issue Logs tab. The console is clean, and the web Tailwind source explicitly includes the bundled plugin so its responsive layout is present in production CSS.
 
 ### Phase 3: Companion foundation and pairing
 

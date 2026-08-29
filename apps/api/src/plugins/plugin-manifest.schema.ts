@@ -31,6 +31,14 @@ const manifestSchema = z
     icon: z.string().optional(),
     type: z.enum(['app', 'widget', 'feature', 'integration']).optional(),
     scope: z.enum(['tenant', 'project']).optional(),
+    enabledByDefault: z.boolean().optional(),
+    uninstall: z
+      .object({
+        deletesPrivateData: z.boolean(),
+        confirmationMessage: nonEmptyString.optional(),
+      })
+      .strict()
+      .optional(),
     entrypoints: z
       .object({
         server: nonEmptyString.optional(),

@@ -6,6 +6,7 @@ const pluginImporters: Record<string, PluginImporter> = {
   '@weaver/plugin-checklist': () => import('@weaver/plugin-checklist'),
   '@weaver/plugin-timer': () => import('@weaver/plugin-timer'),
   '@weaver/plugin-time-reports': () => import('@weaver/plugin-time-reports'),
+  '@weaver/plugin-automatic-time': () => import('@weaver/plugin-automatic-time'),
   '@weaver/plugin-relations': () => import('@weaver/plugin-relations'),
 };
 
@@ -30,9 +31,7 @@ export function getPluginComponent(
     const mod = await importer();
     const Component = mod[componentName] as ComponentType<any> | undefined;
     if (!Component) {
-      throw new Error(
-        `Component "${componentName}" not found in plugin "${pluginId}"`,
-      );
+      throw new Error(`Component "${componentName}" not found in plugin "${pluginId}"`);
     }
     return { default: Component };
   });

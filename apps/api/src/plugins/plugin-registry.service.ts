@@ -6,8 +6,6 @@ import type { PluginManifest, PluginMigrationDefinition, WeaverPlugin } from '@w
 import { PluginLoaderService } from './plugin-loader.service';
 import { PluginContextFactory } from './plugin-context.factory';
 import { requireTenantContext } from '../core/tenant';
-import { TenantConnectionProvider } from '../core/tenant';
-import { CustomFieldDefinitionEntity } from '@weaver/db';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -20,7 +18,6 @@ export class PluginRegistryService {
     private readonly repo: Repository<InstalledPluginEntity>,
     private readonly loader: PluginLoaderService,
     private readonly contextFactory: PluginContextFactory,
-    private readonly tenantConnections: TenantConnectionProvider,
   ) {}
 
   async install(pluginId: string): Promise<InstalledPluginEntity> {
@@ -51,7 +48,7 @@ export class PluginRegistryService {
         tenantId: tenant.tenantId,
         pluginId: manifest.id,
         version: manifest.version,
-        enabled: true,
+        enabled: manifest.enabledByDefault ?? true,
         settings: {},
       });
       return transactionalRepo.save(plugin);
@@ -101,39 +98,35 @@ export class PluginRegistryService {
   async uninstall(pluginId: string): Promise<void> {
     const tenant = requireTenantContext();
 
-    // Call lifecycle hook before deleting
-    try {
-      const installed = await this.repo.findOne({
+    await this.repo.manager.transaction(async (manager) => {
+      const transactionalRepo = manager.getRepository(InstalledPluginEntity);
+      const installed = await transactionalRepo.findOne({
         where: { tenantId: tenant.tenantId, pluginId },
       });
-      if (installed) {
-        const context = await this.contextFactory.create(pluginId, installed.settings);
-        const mod = await this.loader.getModule(pluginId);
-        if (mod?.onUninstall) {
-          await mod.onUninstall(context);
-        }
+      if (!installed) {
+        throw new NotFoundException(`Plugin not installed: ${pluginId}`);
       }
-    } catch (err) {
-      this.logger.warn(`Failed to run onUninstall for plugin ${pluginId}: ${err}`);
-    }
 
-    // Clean up plugin-owned custom fields
-    try {
-      const em = await this.tenantConnections.getEntityManager();
-      const cfRepo = em.getRepository(CustomFieldDefinitionEntity);
-      await cfRepo.delete({ pluginId });
+      const context = await this.contextFactory.create(pluginId, installed.settings, undefined, {
+        manager,
+        capabilityState: { installed: true, enabled: installed.enabled },
+      });
+      const mod = await this.loader.getModule(pluginId);
+      if (mod?.onUninstall) {
+        await mod.onUninstall(context);
+      }
+
+      await manager.query('DELETE FROM custom_field_definitions WHERE plugin_id = $1', [pluginId]);
       this.logger.log(`Cleaned up custom fields for plugin: ${pluginId}`);
-    } catch (err) {
-      this.logger.warn(`Failed to clean up custom fields for plugin ${pluginId}: ${err}`);
-    }
 
-    const result = await this.repo.delete({
-      tenantId: tenant.tenantId,
-      pluginId,
+      const result = await transactionalRepo.delete({
+        tenantId: tenant.tenantId,
+        pluginId,
+      });
+      if (result.affected === 0) {
+        throw new NotFoundException(`Plugin not installed: ${pluginId}`);
+      }
     });
-    if (result.affected === 0) {
-      throw new NotFoundException(`Plugin not installed: ${pluginId}`);
-    }
   }
 
   async enable(pluginId: string): Promise<InstalledPluginEntity> {

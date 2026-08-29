@@ -9,12 +9,15 @@ describe('PluginRegistryService atomic lifecycle handling', () => {
     findOne: jest.fn(),
     create: jest.fn((value) => value),
     save: jest.fn(async (value) => value),
+    delete: jest.fn(async () => ({ affected: 1 })),
   };
   const transactionManager = {
     getRepository: jest.fn(() => transactionRepo),
+    query: jest.fn(),
   };
   const repo = {
     findOne: jest.fn(),
+    delete: jest.fn(async () => ({ affected: 1 })),
     manager: {
       transaction: jest.fn(async (callback) => callback(transactionManager)),
     },
@@ -30,10 +33,6 @@ describe('PluginRegistryService atomic lifecycle handling', () => {
   const contextFactory = {
     create: jest.fn().mockResolvedValue(context),
   };
-  const tenantConnections = {
-    getEntityManager: jest.fn(),
-  };
-
   let registry: PluginRegistryService;
   let pluginDirectory: string;
 
@@ -43,6 +42,9 @@ describe('PluginRegistryService atomic lifecycle handling', () => {
     transactionRepo.findOne.mockResolvedValue(null);
     transactionRepo.create.mockImplementation((value) => value);
     transactionRepo.save.mockImplementation(async (value) => value);
+    transactionRepo.delete.mockResolvedValue({ affected: 1 });
+    repo.findOne.mockResolvedValue(null);
+    repo.delete.mockResolvedValue({ affected: 1 });
     contextFactory.create.mockResolvedValue(context);
     loader.getManifest.mockReturnValue({
       id: '@weaver/plugin-automatic-time',
@@ -53,12 +55,7 @@ describe('PluginRegistryService atomic lifecycle handling', () => {
     });
     pluginDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'weaver-plugin-registry-'));
     loader.getPluginDir.mockReturnValue(pluginDirectory);
-    registry = new PluginRegistryService(
-      repo as any,
-      loader as any,
-      contextFactory as any,
-      tenantConnections as any,
-    );
+    registry = new PluginRegistryService(repo as any, loader as any, contextFactory as any);
   });
 
   afterEach(() => {
@@ -80,6 +77,45 @@ describe('PluginRegistryService atomic lifecycle handling', () => {
 
     expect(repo.manager.transaction).toHaveBeenCalledTimes(1);
     expect(transactionRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('respects a manifest that installs disabled by default', async () => {
+    loader.getManifest.mockReturnValue({
+      id: '@weaver/plugin-automatic-time',
+      name: 'Automatic Time',
+      version: '0.1.0',
+      entrypoints: { server: 'src/server/index.ts' },
+      permissions: [],
+      enabledByDefault: false,
+    });
+    loader.getModule.mockResolvedValue({});
+
+    await inTenant(() => registry.install('@weaver/plugin-automatic-time'));
+
+    expect(transactionRepo.save).toHaveBeenCalledWith(expect.objectContaining({ enabled: false }));
+  });
+
+  it('keeps a plugin installed when private-data deletion fails', async () => {
+    const installed = {
+      id: 'installed-1',
+      tenantId: 'tenant-1',
+      pluginId: '@weaver/plugin-automatic-time',
+      version: '0.1.0',
+      enabled: false,
+      settings: {},
+    };
+    repo.findOne.mockResolvedValue(installed);
+    transactionRepo.findOne.mockResolvedValue(installed);
+    loader.getModule.mockResolvedValue({
+      onUninstall: jest.fn().mockRejectedValue(new Error('private data deletion failed')),
+    });
+
+    await expect(
+      inTenant(() => registry.uninstall('@weaver/plugin-automatic-time')),
+    ).rejects.toThrow('private data deletion failed');
+
+    expect(repo.delete).not.toHaveBeenCalled();
+    expect(transactionRepo.delete).not.toHaveBeenCalled();
   });
 
   it('does not advance the installed version when onUpgrade fails', async () => {
