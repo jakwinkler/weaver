@@ -7,3 +7,7 @@ export {
   TenantEmailRateLimiter,
   type NotificationJobData,
 } from './notifications.processor';
+export {
+  createScheduledAutomationProcessor,
+  type ScheduledAutomationJobData,
+} from './automation.processor';

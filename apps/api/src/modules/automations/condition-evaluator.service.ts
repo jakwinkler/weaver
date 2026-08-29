@@ -40,6 +40,17 @@ export class AutomationConditionEvaluatorService {
           issueType?.slug.toLowerCase() === expected || issueType?.name.toLowerCase() === expected
         );
       }
+      case 'query': {
+        const actual = this.readField(issue, condition.field);
+        if (!(actual instanceof Date) && typeof actual !== 'string') return false;
+        const actualTime = new Date(actual).getTime();
+        const expectedTime =
+          condition.value === 'now' ? Date.now() : new Date(condition.value).getTime();
+        if (Number.isNaN(actualTime) || Number.isNaN(expectedTime)) return false;
+        return condition.operator === 'before'
+          ? actualTime < expectedTime
+          : actualTime > expectedTime;
+      }
     }
   }
 

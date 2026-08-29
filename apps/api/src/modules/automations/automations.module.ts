@@ -9,6 +9,7 @@ import { WebhooksModule } from '../webhooks';
 import { WorkflowsModule } from '../workflows';
 import { AutomationActionExecutorService } from './action-executor.service';
 import { AutomationEngineService } from './automation-engine.service';
+import { AutomationSchedulerService } from './automation-scheduler.service';
 import { AutomationsController } from './automations.controller';
 import { AutomationsService } from './automations.service';
 import { AutomationConditionEvaluatorService } from './condition-evaluator.service';
@@ -28,6 +29,7 @@ import { AutomationConditionEvaluatorService } from './condition-evaluator.servi
     AutomationsService,
     AutomationConditionEvaluatorService,
     AutomationActionExecutorService,
+    AutomationSchedulerService,
     AutomationEngineService,
   ],
   exports: [AutomationsService],

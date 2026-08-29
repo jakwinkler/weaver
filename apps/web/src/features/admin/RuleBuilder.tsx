@@ -221,7 +221,16 @@ export function RuleBuilder({
 
               <TriggerSelector
                 trigger={draft.trigger}
-                onChange={(trigger) => setDraft((current) => ({ ...current, trigger }))}
+                onChange={(trigger) =>
+                  setDraft((current) => ({
+                    ...current,
+                    trigger,
+                    conditions:
+                      trigger.type === 'schedule'
+                        ? current.conditions
+                        : current.conditions.filter((condition) => condition.type !== 'query'),
+                  }))
+                }
               />
             </div>
           )}
@@ -233,6 +242,7 @@ export function RuleBuilder({
               users={users}
               statuses={statuses}
               issueTypes={issueTypes}
+              scheduled={draft.trigger.type === 'schedule'}
             />
           )}
 

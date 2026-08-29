@@ -12,11 +12,28 @@ import {
 describe('automation builder utilities', () => {
   it('maps schedule presets without losing custom cron expressions', () => {
     const custom: AutomationTrigger = { type: 'schedule', cron: '15 14 * * 2' };
-    expect(triggerOptionValue({ type: 'schedule', cron: '0 9 * * *' })).toBe('schedule.daily');
-    expect(triggerOptionValue({ type: 'schedule', cron: '0 9 * * 1' })).toBe('schedule.weekly');
+    expect(triggerOptionValue({ type: 'schedule', schedule: 'daily_9am' })).toBe(
+      'schedule.daily_9am',
+    );
+    expect(triggerOptionValue({ type: 'schedule', schedule: 'weekly_monday' })).toBe(
+      'schedule.weekly_monday',
+    );
+    expect(triggerOptionValue({ type: 'schedule', schedule: 'hourly' })).toBe('schedule.hourly');
+    expect(triggerOptionValue({ type: 'schedule', schedule: 'every_15m' })).toBe(
+      'schedule.every_15m',
+    );
     expect(triggerOptionValue(custom)).toBe('schedule.custom');
     expect(triggerFromOption('schedule.custom', custom)).toEqual(custom);
-    expect(describeTrigger(custom)).toBe('Schedule: 15 14 * * 2');
+    expect(describeTrigger(custom)).toBe('Every Tuesday at 2:15 PM UTC');
+  });
+
+  it('builds scheduled query conditions for date comparisons', () => {
+    expect(makeCondition('dueDate', 'before', 'now')).toEqual({
+      type: 'query',
+      field: 'dueDate',
+      operator: 'before',
+      value: 'now',
+    });
   });
 
   it('builds each visual condition operator in the API format', () => {
@@ -68,5 +85,16 @@ describe('automation builder utilities', () => {
     expect(validateAutomationStep(input, 0)).toEqual(['Give this rule a name.']);
     expect(validateAutomationStep(input, 1)).toEqual(['Condition 1 needs a value.']);
     expect(validateAutomationStep(input, 2)).toEqual(['Action 1 needs a valid HTTP or HTTPS URL.']);
+
+    expect(
+      validateAutomationStep(
+        {
+          ...input,
+          name: 'Invalid cron',
+          trigger: { type: 'schedule', cron: '0 9 * * 99' },
+        },
+        0,
+      ),
+    ).toEqual(['Enter a valid five-field cron schedule.']);
   });
 });

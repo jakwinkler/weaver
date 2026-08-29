@@ -24,6 +24,16 @@ describe('automation schemas', () => {
     });
     expect(scheduleRule.trigger.type).toBe('schedule');
 
+    for (const schedule of ['daily_9am', 'weekly_monday', 'hourly', 'every_15m']) {
+      expect(
+        createAutomationRuleSchema.safeParse({
+          name: `${schedule} rule`,
+          trigger: { type: 'schedule', schedule },
+          actions: [{ type: 'add_label', label: 'scheduled' }],
+        }).success,
+      ).toBe(true);
+    }
+
     for (const type of [
       'issue.created',
       'issue.status_changed',
@@ -80,5 +90,58 @@ describe('automation schemas', () => {
     });
 
     expect(result.success).toBe(true);
+  });
+
+  it('validates custom cron expressions and requires one schedule source', () => {
+    const base = {
+      name: 'Scheduled rule',
+      actions: [{ type: 'add_label', label: 'scheduled' }],
+    };
+
+    expect(
+      createAutomationRuleSchema.safeParse({
+        ...base,
+        trigger: { type: 'schedule', cron: 'not cron' },
+      }).success,
+    ).toBe(false);
+    expect(
+      createAutomationRuleSchema.safeParse({
+        ...base,
+        trigger: { type: 'schedule' },
+      }).success,
+    ).toBe(false);
+    expect(
+      createAutomationRuleSchema.safeParse({
+        ...base,
+        trigger: { type: 'schedule', schedule: 'hourly', cron: '0 * * * *' },
+      }).success,
+    ).toBe(false);
+  });
+
+  it('allows query conditions only on scheduled rules', () => {
+    const queryCondition = {
+      type: 'query',
+      field: 'dueDate',
+      operator: 'before',
+      value: 'now',
+    };
+    const actions = [{ type: 'add_label', label: 'overdue' }];
+
+    expect(
+      createAutomationRuleSchema.safeParse({
+        name: 'Overdue issues',
+        trigger: { type: 'schedule', schedule: 'daily_9am' },
+        conditions: [queryCondition],
+        actions,
+      }).success,
+    ).toBe(true);
+    expect(
+      createAutomationRuleSchema.safeParse({
+        name: 'Invalid event query',
+        trigger: { type: 'issue.created' },
+        conditions: [queryCondition],
+        actions,
+      }).success,
+    ).toBe(false);
   });
 });

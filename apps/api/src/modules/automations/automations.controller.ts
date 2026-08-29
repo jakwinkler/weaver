@@ -48,6 +48,12 @@ export class AutomationsController {
     return this.automationsService.findExecutions(id);
   }
 
+  @Post(':id/run')
+  @HttpCode(HttpStatus.ACCEPTED)
+  async runNow(@Param('id') id: string) {
+    return this.automationsService.runNow(id);
+  }
+
   @Get(':id')
   async findById(@Param('id') id: string) {
     return this.automationsService.findById(id);

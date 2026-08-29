@@ -1,16 +1,21 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { AutomationLogEntity, AutomationRuleEntity, ProjectEntity } from '@weaver/db';
 import { requireTenantContext, TenantConnectionProvider } from '../../core/tenant';
 import {
   AutomationAction,
   AutomationCondition,
   CreateAutomationRuleDto,
+  createAutomationRuleSchema,
   UpdateAutomationRuleDto,
 } from './automation.types';
+import { AutomationSchedulerService } from './automation-scheduler.service';
 
 @Injectable()
 export class AutomationsService {
-  constructor(private readonly tenantConnections: TenantConnectionProvider) {}
+  constructor(
+    private readonly tenantConnections: TenantConnectionProvider,
+    private readonly scheduler: AutomationSchedulerService,
+  ) {}
 
   async create(dto: CreateAutomationRuleDto, createdBy: string): Promise<AutomationRuleEntity> {
     await this.validateProject(dto.projectId);
@@ -25,7 +30,9 @@ export class AutomationsService {
       actions: dto.actions,
       createdBy,
     });
-    return repo.save(rule);
+    const saved = await repo.save(rule);
+    await this.scheduler.syncRule(saved);
+    return saved;
   }
 
   async findAll(projectId?: string): Promise<AutomationRuleEntity[]> {
@@ -50,6 +57,18 @@ export class AutomationsService {
     const rule = await this.findById(id);
     if (dto.projectId !== undefined) await this.validateProject(dto.projectId);
 
+    const merged = createAutomationRuleSchema.safeParse({
+      projectId: dto.projectId !== undefined ? dto.projectId : rule.projectId,
+      name: dto.name ?? rule.name,
+      enabled: dto.enabled ?? rule.enabled,
+      trigger: dto.trigger ?? rule.trigger,
+      conditions: dto.conditions ?? rule.conditions,
+      actions: dto.actions ?? rule.actions,
+    });
+    if (!merged.success) {
+      throw new BadRequestException(merged.error.flatten());
+    }
+
     if (dto.projectId !== undefined) rule.projectId = dto.projectId;
     if (dto.name !== undefined) rule.name = dto.name;
     if (dto.enabled !== undefined) rule.enabled = dto.enabled;
@@ -58,13 +77,22 @@ export class AutomationsService {
     if (dto.actions !== undefined) rule.actions = dto.actions;
 
     const em = await this.tenantConnections.getEntityManager();
-    return em.getRepository(AutomationRuleEntity).save(rule);
+    const saved = await em.getRepository(AutomationRuleEntity).save(rule);
+    await this.scheduler.syncRule(saved);
+    return saved;
   }
 
   async delete(id: string): Promise<void> {
     const rule = await this.findById(id);
     const em = await this.tenantConnections.getEntityManager();
     await em.getRepository(AutomationRuleEntity).remove(rule);
+    await this.scheduler.removeRule(id);
+  }
+
+  async runNow(id: string): Promise<{ queued: true }> {
+    const rule = await this.findById(id);
+    await this.scheduler.enqueueNow(rule);
+    return { queued: true };
   }
 
   async findExecutions(ruleId: string): Promise<AutomationLogEntity[]> {
