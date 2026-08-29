@@ -1,8 +1,9 @@
 import '@testing-library/jest-dom/vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { HotkeysContext } from '@/hooks/useHotkeys';
 import { IssueListPage } from './IssueListPage';
 
 const apiMocks = vi.hoisted(() => ({
@@ -28,8 +29,25 @@ const apiMocks = vi.hoisted(() => ({
         createdAt: '2026-08-26T12:00:00.000Z',
         updatedAt: '2026-08-26T12:00:00.000Z',
       },
+      {
+        id: 'issue-2',
+        projectId: 'project-1',
+        key: 'TEST-2',
+        summary: 'Second issue',
+        statusId: 'status-open',
+        priority: 'high',
+        assigneeId: null,
+        reporterId: 'user-1',
+        customFields: {},
+        labels: [],
+        sortOrder: 1000,
+        dueDate: null,
+        percentDone: 0,
+        createdAt: '2026-08-26T13:00:00.000Z',
+        updatedAt: '2026-08-26T13:00:00.000Z',
+      },
     ],
-    meta: { page: 1, perPage: 25, total: 1, totalPages: 1 },
+    meta: { page: 1, perPage: 25, total: 2, totalPages: 1 },
   },
 }));
 
@@ -97,17 +115,31 @@ Object.defineProperty(Element.prototype, 'scrollIntoView', {
   value: () => undefined,
 });
 
-function renderPage() {
+function LocationDisplay() {
+  const location = useLocation();
+  return (
+    <output data-testid="location">
+      {location.pathname}
+      {location.search}
+    </output>
+  );
+}
+
+function renderPage(initialEntry = '/projects/TEST/issues') {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
 
   const result = render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={['/projects/TEST/issues']}>
-        <Routes>
-          <Route path="/projects/:projectKey/issues" element={<IssueListPage />} />
-        </Routes>
+      <MemoryRouter initialEntries={[initialEntry]}>
+        <HotkeysContext.Provider value="list">
+          <LocationDisplay />
+          <Routes>
+            <Route path="/projects/:projectKey/issues" element={<IssueListPage />} />
+            <Route path="/issues/:issueKey" element={<div>Issue detail route</div>} />
+          </Routes>
+        </HotkeysContext.Provider>
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -204,5 +236,33 @@ describe('IssueListPage inline editing', () => {
       expect(screen.getByRole('alert')).toHaveTextContent('reverted');
       expect(screen.getByRole('button', { name: 'First issue' })).toBeInTheDocument();
     });
+  });
+
+  it('navigates and selects issues from the keyboard with a visible active row', async () => {
+    renderPage();
+
+    fireEvent.keyDown(document, { key: 'j' });
+    const firstRow = screen.getByRole('row', { name: /TEST-1 First issue/i });
+    await waitFor(() => expect(firstRow).toHaveFocus());
+    expect(firstRow).toHaveAttribute('data-keyboard-active', 'true');
+
+    fireEvent.keyDown(firstRow, { key: 'x' });
+    expect(screen.getByRole('checkbox', { name: 'Select TEST-1' })).toBeChecked();
+
+    fireEvent.keyDown(firstRow, { key: 'j' });
+    const secondRow = screen.getByRole('row', { name: /TEST-2 Second issue/i });
+    await waitFor(() => expect(secondRow).toHaveFocus());
+
+    fireEvent.keyDown(secondRow, { key: 'Enter' });
+    expect(screen.getByTestId('location')).toHaveTextContent('/issues/TEST-2');
+  });
+
+  it('opens and focuses issue creation from the create shortcut URL', async () => {
+    renderPage('/projects/TEST/issues?create=1');
+
+    const summaryInput = screen.getByLabelText('Summary');
+    expect(summaryInput).toBeInTheDocument();
+    await waitFor(() => expect(summaryInput).toHaveFocus());
+    expect(screen.getByTestId('location')).toHaveTextContent('/projects/TEST/issues');
   });
 });

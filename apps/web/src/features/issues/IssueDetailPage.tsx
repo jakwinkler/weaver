@@ -32,6 +32,14 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
+import { useHotkeys } from '@/hooks/useHotkeys';
+
+function openShortcutMenu(selector: string) {
+  const trigger = document.querySelector<HTMLButtonElement>(selector);
+  if (!trigger) return;
+  trigger.focus();
+  trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+}
 
 export function IssueDetailPage() {
   const { issueKey } = useParams<{ issueKey: string }>();
@@ -56,29 +64,6 @@ export function IssueDetailPage() {
   const [editingDesc, setEditingDesc] = useState(false);
   const [descJson, setDescJson] = useState<Record<string, unknown> | null>(null);
 
-  // Keyboard shortcuts: a = assignee picker, s = status transition menu
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement;
-      const tagName = target.tagName.toLowerCase();
-      const isInput = tagName === 'input' || tagName === 'textarea' || tagName === 'select';
-      if (isInput || target.isContentEditable) return;
-
-      if (e.key === 'a') {
-        e.preventDefault();
-        const trigger = document.querySelector<HTMLButtonElement>('[data-shortcut-assignee]');
-        trigger?.click();
-      } else if (e.key === 's') {
-        e.preventDefault();
-        const trigger = document.querySelector<HTMLButtonElement>('[data-shortcut-status]');
-        trigger?.click();
-      }
-    };
-
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, []);
-
   useEffect(() => {
     if (issue) {
       setSummary(issue.summary);
@@ -99,6 +84,56 @@ export function IssueDetailPage() {
     setEditingDesc(false);
     setDescJson(null);
   }, [descJson, updateIssue]);
+
+  const cancelIssueEdit = useCallback(() => {
+    if (issue) {
+      setSummary(issue.summary);
+      setPriority(issue.priority);
+      setLabels(issue.labels.join(', '));
+    }
+    setIsEditing(false);
+  }, [issue]);
+
+  const cancelDescriptionEdit = useCallback(() => {
+    setEditingDesc(false);
+    setDescJson(null);
+  }, []);
+
+  useHotkeys(
+    [
+      {
+        keys: 'e',
+        handler: () => setIsEditing(true),
+        enabled: canUpdate && !isEditing,
+      },
+      {
+        keys: 'a',
+        handler: () => openShortcutMenu('[data-shortcut-assignee]'),
+        enabled: canAssign,
+      },
+      {
+        keys: 's',
+        handler: () => openShortcutMenu('[data-shortcut-status]'),
+        enabled: canTransition,
+      },
+      {
+        keys: 'Escape',
+        handler: (event) => {
+          if (isEditing) {
+            event.preventDefault();
+            cancelIssueEdit();
+          } else if (editingDesc) {
+            event.preventDefault();
+            cancelDescriptionEdit();
+          }
+        },
+        preventDefault: false,
+        allowInEditable: true,
+        allowInInteractive: true,
+      },
+    ],
+    { context: 'detail' },
+  );
 
   const handleSave = async (e: FormEvent) => {
     e.preventDefault();
@@ -207,6 +242,7 @@ export function IssueDetailPage() {
                     <Input
                       id="editSummary"
                       type="text"
+                      autoFocus
                       required
                       value={summary}
                       onChange={(e) => setSummary(e.target.value)}

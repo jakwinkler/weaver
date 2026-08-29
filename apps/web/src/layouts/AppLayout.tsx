@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore, useThemeStore } from '@/stores';
 import {
@@ -44,6 +44,8 @@ import { cn } from '@/lib/utils';
 import { getNavigationEntries } from '@/plugins/plugin-slot-registry';
 import { getPluginIcon } from '@/plugins/plugin-icons';
 import { useWebSocket } from '@/hooks/useWebSocket';
+import { HotkeysContext, getHotkeyContext, useHotkeys } from '@/hooks/useHotkeys';
+import { ShortcutsDialog } from '@/components/ShortcutsDialog';
 
 const adminNavItems = [
   { to: '/admin/workflows', label: 'Workflows', icon: GitBranch },
@@ -74,9 +76,52 @@ export function AppLayout() {
   const theme = useThemeStore((s) => s.theme);
   const setTheme = useThemeStore((s) => s.setTheme);
   const [appsOpen, setAppsOpen] = useState(location.pathname.startsWith('/apps'));
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const pendingSearchFocus = useRef(false);
 
   // Initialize WebSocket connection for real-time updates
   useWebSocket();
+
+  useHotkeys(
+    [
+      { keys: '?', handler: () => setShortcutsOpen(true) },
+      {
+        keys: '/',
+        handler: () => {
+          const searchInput = document.querySelector<HTMLInputElement>('[data-shortcut-search]');
+          if (searchInput) {
+            searchInput.focus();
+            return;
+          }
+
+          pendingSearchFocus.current = true;
+          if (location.pathname !== '/search') navigate('/search');
+        },
+      },
+      {
+        keys: 'c',
+        handler: () => {
+          const projectMatch = location.pathname.match(/^\/projects\/([^/]+)/);
+          if (projectMatch) navigate(`/projects/${projectMatch[1]}/issues?create=1`);
+        },
+        enabled: /^\/projects\/[^/]+/.test(location.pathname),
+      },
+      { keys: 'g p', handler: () => navigate('/projects') },
+      { keys: 'g d', handler: () => navigate('/') },
+    ],
+    { context: 'global', sequenceTimeout: 500 },
+  );
+
+  useEffect(() => {
+    if (!pendingSearchFocus.current || location.pathname !== '/search') return;
+
+    const frame = requestAnimationFrame(() => {
+      const searchInput = document.querySelector<HTMLInputElement>('[data-shortcut-search]');
+      searchInput?.focus();
+      pendingSearchFocus.current = false;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [location.pathname]);
 
   const enabledPluginIds = (installedPlugins ?? []).filter((p) => p.enabled).map((p) => p.pluginId);
   const appTypePluginIds = new Set(
@@ -246,6 +291,8 @@ export function AppLayout() {
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/50" />
             <input
               type="text"
+              aria-label="Search issues, projects, and people"
+              data-shortcut-search
               placeholder="Search issues, projects, people..."
               className="w-full bg-white/10 py-1.5 pl-9 pr-4 text-sm text-white placeholder-white/50 border border-white/15 focus:bg-white/15 focus:outline-none focus:ring-1 focus:ring-white/30"
               onFocus={() => navigate('/search')}
@@ -336,9 +383,12 @@ export function AppLayout() {
 
         {/* Content */}
         <main className="flex-1 overflow-y-auto px-4 py-5 sm:px-6">
-          <Outlet />
+          <HotkeysContext.Provider value={getHotkeyContext(location.pathname)}>
+            <Outlet />
+          </HotkeysContext.Provider>
         </main>
       </div>
+      <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
     </div>
   );
 }

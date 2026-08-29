@@ -22,7 +22,6 @@ import { WebhooksPage } from '@/features/settings/WebhooksPage';
 import { ImportExportPage } from '@/features/settings/ImportExportPage';
 import { GanttChart } from '@/features/boards/GanttChart';
 import { CalendarView } from '@/features/boards/CalendarView';
-import { KeyboardShortcuts } from '@/features/shortcuts/KeyboardShortcuts';
 import { IssueTypesPage } from '@/features/admin/IssueTypesPage';
 import { RolesPage } from '@/features/admin/RolesPage';
 import { TeamsPage } from '@/features/admin/TeamsPage';
@@ -48,7 +47,6 @@ export function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <BrowserRouter>
-          <KeyboardShortcuts />
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />

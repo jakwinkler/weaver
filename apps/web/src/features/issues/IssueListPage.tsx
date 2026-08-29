@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, type FormEvent } from 'react';
+import { useState, useCallback, useEffect, useRef, type FormEvent } from 'react';
 import { useParams, Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -43,6 +43,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Table,
   TableHeader,
@@ -52,6 +53,7 @@ import {
   TableCell,
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
+import { useHotkeys } from '@/hooks/useHotkeys';
 import { buildReorderPayload, reorderIssueList } from './dragAndDrop';
 
 const UNASSIGNED_VALUE = '__unassigned__';
@@ -79,6 +81,7 @@ interface SortableIssueRowProps {
   issue: Issue;
   index: number;
   focused: boolean;
+  selected: boolean;
   canEdit: boolean;
   canReorder: boolean;
   canTransition: boolean;
@@ -92,11 +95,16 @@ interface SortableIssueRowProps {
     value: UpdateIssueDto[keyof UpdateIssueDto],
   ) => Promise<void>;
   onStatusUpdate: (issueKey: string, fromStatusId: string, toStatusId: string) => Promise<void>;
+  onSelectionChange: (issueId: string) => void;
+  onKeyboardFocus: (index: number) => void;
+  setRowRef: (issueId: string, node: HTMLTableRowElement | null) => void;
 }
 
 function SortableIssueRow({
   issue,
+  index,
   focused,
+  selected,
   canEdit,
   canReorder,
   canTransition,
@@ -106,6 +114,9 @@ function SortableIssueRow({
   getAssigneeName,
   onInlineUpdate,
   onStatusUpdate,
+  onSelectionChange,
+  onKeyboardFocus,
+  setRowRef,
 }: SortableIssueRowProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: issue.id,
@@ -115,11 +126,21 @@ function SortableIssueRow({
 
   return (
     <TableRow
-      ref={setNodeRef}
+      ref={(node) => {
+        setNodeRef(node);
+        setRowRef(issue.id, node);
+      }}
       style={{ transform: CSS.Transform.toString(transform), transition }}
       data-testid="issue-row"
+      tabIndex={focused ? 0 : -1}
+      data-keyboard-active={focused ? 'true' : 'false'}
+      aria-selected={selected}
+      onFocus={(event) => {
+        if (event.currentTarget === event.target) onKeyboardFocus(index);
+      }}
       className={cn(
-        'hover:bg-muted/50',
+        'hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset',
+        selected && 'bg-primary/5',
         focused && 'bg-accent ring-2 ring-primary/30 ring-inset',
         isDragging && 'relative z-10 bg-card opacity-35',
       )}
@@ -138,6 +159,13 @@ function SortableIssueRow({
         >
           <GripVertical className="h-4 w-4" aria-hidden="true" />
         </button>
+      </TableCell>
+      <TableCell className="w-10">
+        <Checkbox
+          aria-label={`Select ${issue.key}`}
+          checked={selected}
+          onCheckedChange={() => onSelectionChange(issue.id)}
+        />
       </TableCell>
       <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
         {issue.issueType ? (
@@ -402,44 +430,72 @@ export function IssueListPage() {
   const [startDate, setStartDate] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
+  const [selectedIssueIds, setSelectedIssueIds] = useState<Set<string>>(() => new Set());
+  const rowRefs = useRef(new Map<string, HTMLTableRowElement>());
+  const issues = localIssues ?? data?.data ?? [];
+  const issueKeys = issues.map((issue) => issue.key).join('|');
 
-  // Reset focused index when data or page changes
+  // Reset keyboard state when the visible result set changes.
   useEffect(() => {
     setFocusedIndex(-1);
+    setSelectedIssueIds(new Set());
     setLocalIssues(null);
-  }, [data, page]);
+  }, [data, page, perPage]);
 
-  // j/k/Enter keyboard navigation for issue list
   useEffect(() => {
-    const issues = localIssues ?? data?.data;
-    if (!issues || issues.length === 0) return;
+    const focusedIssue = issues[focusedIndex];
+    if (!focusedIssue) return;
+    const row = rowRefs.current.get(focusedIssue.id);
+    row?.focus({ preventScroll: true });
+    row?.scrollIntoView({ block: 'nearest' });
+  }, [focusedIndex, issueKeys]);
 
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement;
-      const tagName = target.tagName.toLowerCase();
-      const isInput = tagName === 'input' || tagName === 'textarea' || tagName === 'select';
-      if (isInput || target.isContentEditable) return;
+  useEffect(() => {
+    if (searchParams.get('create') !== '1') return;
+    setShowForm(true);
+    updateParams({ create: undefined });
+  }, [searchParams, updateParams]);
 
-      if (e.key === 'j') {
-        e.preventDefault();
-        setFocusedIndex((prev) => Math.min(prev + 1, issues.length - 1));
-      } else if (e.key === 'k') {
-        e.preventDefault();
-        setFocusedIndex((prev) => Math.max(prev - 1, 0));
-      } else if (e.key === 'Enter') {
-        setFocusedIndex((prev) => {
-          if (prev >= 0 && prev < issues.length) {
-            e.preventDefault();
-            navigate(`/issues/${issues[prev].key}`);
-          }
-          return prev;
-        });
-      }
-    };
+  const moveFocus = (delta: -1 | 1) => {
+    if (issues.length === 0) return;
+    setFocusedIndex((previous) => {
+      if (previous < 0) return 0;
+      return Math.max(0, Math.min(previous + delta, issues.length - 1));
+    });
+  };
 
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [data, localIssues, navigate]);
+  const toggleIssueSelection = (issueId: string) => {
+    setSelectedIssueIds((previous) => {
+      const next = new Set(previous);
+      if (next.has(issueId)) next.delete(issueId);
+      else next.add(issueId);
+      return next;
+    });
+  };
+
+  useHotkeys(
+    [
+      { keys: 'j', handler: () => moveFocus(1) },
+      { keys: 'k', handler: () => moveFocus(-1) },
+      {
+        keys: 'Enter',
+        handler: () => {
+          const focusedIssue = issues[focusedIndex];
+          if (focusedIssue) navigate(`/issues/${focusedIssue.key}`);
+        },
+        enabled: focusedIndex >= 0,
+      },
+      {
+        keys: 'x',
+        handler: () => {
+          const focusedIssue = issues[focusedIndex];
+          if (focusedIssue) toggleIssueSelection(focusedIssue.id);
+        },
+        enabled: focusedIndex >= 0,
+      },
+    ],
+    { context: 'list', ignoreInteractiveElements: true },
+  );
 
   const handleCreate = async (e: FormEvent) => {
     e.preventDefault();
@@ -536,6 +592,11 @@ export function IssueListPage() {
             <span>Issues</span>
           </div>
           <h1 className="mt-1 text-2xl font-bold text-foreground">Issues</h1>
+          {selectedIssueIds.size > 0 && (
+            <p className="mt-1 text-sm text-primary" aria-live="polite">
+              {selectedIssueIds.size} selected
+            </p>
+          )}
         </div>
         {canCreate && (
           <Button onClick={() => setShowForm(!showForm)}>
@@ -554,6 +615,7 @@ export function IssueListPage() {
                   <Input
                     id="issueSummary"
                     type="text"
+                    autoFocus
                     required
                     value={summary}
                     onChange={(e) => setSummary(e.target.value)}
@@ -657,6 +719,23 @@ export function IssueListPage() {
                 <TableHead className="w-10 px-2">
                   <span className="sr-only">Reorder</span>
                 </TableHead>
+                <TableHead className="w-10">
+                  <Checkbox
+                    aria-label="Select all issues on this page"
+                    checked={
+                      issues.length > 0 && issues.every((issue) => selectedIssueIds.has(issue.id))
+                        ? true
+                        : selectedIssueIds.size > 0
+                          ? 'indeterminate'
+                          : false
+                    }
+                    onCheckedChange={(checked) => {
+                      setSelectedIssueIds(
+                        checked ? new Set(issues.map((issue) => issue.id)) : new Set(),
+                      );
+                    }}
+                  />
+                </TableHead>
                 <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                   Type
                 </TableHead>
@@ -717,6 +796,7 @@ export function IssueListPage() {
                     issue={issue}
                     index={index}
                     focused={focusedIndex === index}
+                    selected={selectedIssueIds.has(issue.id)}
                     canEdit={canEdit}
                     canReorder={canReorder}
                     canTransition={canTransition}
@@ -726,13 +806,19 @@ export function IssueListPage() {
                     getAssigneeName={getAssigneeName}
                     onInlineUpdate={handleInlineUpdate}
                     onStatusUpdate={handleStatusUpdate}
+                    onSelectionChange={toggleIssueSelection}
+                    onKeyboardFocus={setFocusedIndex}
+                    setRowRef={(issueId, node) => {
+                      if (node) rowRefs.current.set(issueId, node);
+                      else rowRefs.current.delete(issueId);
+                    }}
                   />
                 ))}
               </SortableContext>
               {data?.data.length === 0 && (
                 <TableRow>
                   <TableCell
-                    colSpan={10}
+                    colSpan={11}
                     className="px-6 py-8 text-center text-sm text-muted-foreground"
                   >
                     No issues yet. Create your first issue to get started.
