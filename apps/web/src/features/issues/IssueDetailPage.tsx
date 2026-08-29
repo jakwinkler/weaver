@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, type FormEvent } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
   useIssue,
+  useIssueRecurrence,
   useUpdateIssue,
   useProject,
   useWorkflow,
@@ -10,11 +11,12 @@ import {
   useUsers,
   useHasPermission,
 } from '@/api';
-import type { IssuePriority } from '@weaver/shared';
+import type { IssuePriority, RecurrenceRule } from '@weaver/shared';
 import { IssueActivityTabs } from './IssueActivityTabs';
 import { PluginSlot } from '@/plugins';
 import { RichTextEditor, normalizeCommentBody } from '@/components/RichTextEditor';
-import { ChevronDown, Pencil, Check, X } from 'lucide-react';
+import { ChevronDown, Pencil, Check, X, Repeat2 } from 'lucide-react';
+import { RecurrencePicker } from '@/components/RecurrencePicker';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -31,6 +33,7 @@ import { cn } from '@/lib/utils';
 export function IssueDetailPage() {
   const { issueKey } = useParams<{ issueKey: string }>();
   const { data: issue, isLoading } = useIssue(issueKey!);
+  const { data: recurrenceHistory } = useIssueRecurrence(issueKey!);
   const updateIssue = useUpdateIssue(issueKey!);
   const transitionIssue = useTransitionIssue(issueKey!);
 
@@ -38,10 +41,7 @@ export function IssueDetailPage() {
   const { data: project } = useProject(projectKey);
   const workflowId = project?.workflowId || '';
   const { data: workflow } = useWorkflow(workflowId);
-  const { data: availableTransitions } = useWorkflowTransitions(
-    workflowId,
-    issue?.statusId || '',
-  );
+  const { data: availableTransitions } = useWorkflowTransitions(workflowId, issue?.statusId || '');
   const { data: users } = useUsers();
   const canUpdate = useHasPermission('issues.update');
   const canTransition = useHasPermission('issues.transition');
@@ -53,6 +53,7 @@ export function IssueDetailPage() {
   const [labels, setLabels] = useState('');
   const [editingDesc, setEditingDesc] = useState(false);
   const [descJson, setDescJson] = useState<Record<string, unknown> | null>(null);
+  const [recurrenceDraft, setRecurrenceDraft] = useState<RecurrenceRule | null>(null);
 
   // Keyboard shortcuts: a = assignee picker, s = status transition menu
   useEffect(() => {
@@ -82,6 +83,7 @@ export function IssueDetailPage() {
       setSummary(issue.summary);
       setPriority(issue.priority);
       setLabels(issue.labels.join(', '));
+      setRecurrenceDraft(issue.recurrenceRule);
     }
   }, [issue]);
 
@@ -117,6 +119,10 @@ export function IssueDetailPage() {
     await transitionIssue.mutateAsync(transitionId);
   };
 
+  const saveRecurrence = async () => {
+    await updateIssue.mutateAsync({ recurrenceRule: recurrenceDraft });
+  };
+
   // Helpers
   const getUserName = (userId: string | null | undefined) => {
     if (!userId) return null;
@@ -128,7 +134,14 @@ export function IssueDetailPage() {
     if (!userId) return '?';
     const user = users?.find((u) => u.id === userId);
     const name = user?.displayName || user?.email || '';
-    return name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2) || '?';
+    return (
+      name
+        .split(' ')
+        .map((n) => n[0])
+        .join('')
+        .toUpperCase()
+        .slice(0, 2) || '?'
+    );
   };
 
   const getStatusName = (statusId: string) => {
@@ -184,11 +197,7 @@ export function IssueDetailPage() {
                   {isEditing ? null : issue.summary}
                 </h1>
                 {canUpdate && (
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => setIsEditing(!isEditing)}
-                  >
+                  <Button variant="secondary" size="sm" onClick={() => setIsEditing(!isEditing)}>
                     {isEditing ? 'Cancel' : 'Edit'}
                   </Button>
                 )}
@@ -266,7 +275,10 @@ export function IssueDetailPage() {
                         <Button
                           size="sm"
                           variant="secondary"
-                          onClick={() => { setEditingDesc(false); setDescJson(null); }}
+                          onClick={() => {
+                            setEditingDesc(false);
+                            setDescJson(null);
+                          }}
                         >
                           <X className="h-3.5 w-3.5" />
                           Cancel
@@ -367,6 +379,84 @@ export function IssueDetailPage() {
           {/* Plugin Slots */}
           <PluginSlot name="issue-detail-sidebar" issueKey={issueKey!} />
 
+          {/* Recurrence */}
+          <Card>
+            <CardHeader className="pb-2 pt-4 px-4">
+              <CardTitle className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                <Repeat2 className="h-4 w-4" />
+                Recurrence
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 px-4 pb-4 pt-0">
+              {issue.recurrenceParentId ? (
+                <p className="text-sm text-muted-foreground">
+                  This is occurrence {issue.recurrenceOccurrence} in a recurring series.
+                  {recurrenceHistory?.[0] && (
+                    <>
+                      {' '}
+                      <Link
+                        to={`/issues/${recurrenceHistory[0].key}`}
+                        className="font-medium text-primary hover:underline"
+                      >
+                        Edit the series
+                      </Link>
+                    </>
+                  )}
+                </p>
+              ) : (
+                <>
+                  <RecurrencePicker
+                    value={recurrenceDraft}
+                    onChange={setRecurrenceDraft}
+                    disabled={!canUpdate || updateIssue.isPending}
+                    idPrefix="issue-recurrence"
+                  />
+                  {canUpdate &&
+                    JSON.stringify(recurrenceDraft) !== JSON.stringify(issue.recurrenceRule) && (
+                      <Button size="sm" onClick={saveRecurrence} disabled={updateIssue.isPending}>
+                        {updateIssue.isPending
+                          ? 'Saving...'
+                          : recurrenceDraft
+                            ? 'Save recurrence'
+                            : 'Stop recurrence'}
+                      </Button>
+                    )}
+                </>
+              )}
+
+              {recurrenceHistory && recurrenceHistory.length > 1 && (
+                <details className="border-t border-border pt-3">
+                  <summary className="cursor-pointer text-sm font-medium text-primary">
+                    View all occurrences ({recurrenceHistory.length})
+                  </summary>
+                  <ul className="mt-2 space-y-1.5">
+                    {recurrenceHistory.map((occurrence) => (
+                      <li key={occurrence.id}>
+                        <Link
+                          to={`/issues/${occurrence.key}`}
+                          className={cn(
+                            'text-sm hover:underline',
+                            occurrence.id === issue.id
+                              ? 'font-semibold text-foreground'
+                              : 'text-primary',
+                          )}
+                        >
+                          {occurrence.key}
+                          {occurrence.id === issue.id ? ' (current)' : ''}
+                        </Link>
+                        {(occurrence.startDate || occurrence.dueDate) && (
+                          <span className="ml-2 text-xs text-muted-foreground">
+                            {occurrence.startDate || occurrence.dueDate}
+                          </span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+            </CardContent>
+          </Card>
+
           {/* Details */}
           <Card>
             <CardHeader className="pb-2 pt-4 px-4">
@@ -404,7 +494,9 @@ export function IssueDetailPage() {
                 </div>
                 <div>
                   <dt className="text-xs text-muted-foreground">Reporter</dt>
-                  <dd className="mt-0.5 text-sm text-foreground">{getUserName(issue.reporterId)}</dd>
+                  <dd className="mt-0.5 text-sm text-foreground">
+                    {getUserName(issue.reporterId)}
+                  </dd>
                 </div>
                 <div>
                   <dt className="text-xs text-muted-foreground">Assignee</dt>
@@ -412,7 +504,10 @@ export function IssueDetailPage() {
                     {canAssign ? (
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <button data-shortcut-assignee className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm hover:bg-accent cursor-pointer">
+                          <button
+                            data-shortcut-assignee
+                            className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm hover:bg-accent cursor-pointer"
+                          >
                             {issue.assigneeId ? (
                               <>
                                 <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-[10px] font-medium text-primary">
@@ -441,7 +536,12 @@ export function IssueDetailPage() {
                               className={cn('gap-2', u.id === issue.assigneeId && 'bg-accent')}
                             >
                               <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-[10px] font-medium text-primary shrink-0">
-                                {(u.displayName || u.email).split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)}
+                                {(u.displayName || u.email)
+                                  .split(' ')
+                                  .map((n) => n[0])
+                                  .join('')
+                                  .toUpperCase()
+                                  .slice(0, 2)}
                               </span>
                               {u.displayName || u.email}
                             </DropdownMenuItem>
@@ -478,9 +578,7 @@ export function IssueDetailPage() {
                       <input
                         type="date"
                         value={issue.startDate || ''}
-                        onChange={(e) =>
-                          updateIssue.mutate({ startDate: e.target.value || null })
-                        }
+                        onChange={(e) => updateIssue.mutate({ startDate: e.target.value || null })}
                         className="rounded-md border border-input bg-background px-2 py-1 text-sm focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
                       />
                     ) : (
@@ -495,9 +593,7 @@ export function IssueDetailPage() {
                       <input
                         type="date"
                         value={issue.dueDate || ''}
-                        onChange={(e) =>
-                          updateIssue.mutate({ dueDate: e.target.value || null })
-                        }
+                        onChange={(e) => updateIssue.mutate({ dueDate: e.target.value || null })}
                         className="rounded-md border border-input bg-background px-2 py-1 text-sm focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
                       />
                     ) : (
@@ -514,9 +610,7 @@ export function IssueDetailPage() {
                       max="100"
                       step="5"
                       value={issue.percentDone ?? 0}
-                      onChange={(e) =>
-                        updateIssue.mutate({ percentDone: Number(e.target.value) })
-                      }
+                      onChange={(e) => updateIssue.mutate({ percentDone: Number(e.target.value) })}
                       disabled={!canUpdate}
                       className="h-2 w-24 cursor-pointer accent-primary disabled:opacity-50 disabled:cursor-not-allowed"
                     />

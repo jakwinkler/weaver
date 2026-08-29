@@ -135,10 +135,9 @@ export function useProjectIssues(params: UseProjectIssuesParams) {
   return useQuery({
     queryKey: ['issues', projectKey, { page, perPage, sort, ...activeFilters }],
     queryFn: async () => {
-      const res = await apiClient.get<PaginatedResponse<Issue>>(
-        `/projects/${projectKey}/issues`,
-        { params: { page, perPage, ...(sort ? { sort } : {}), ...activeFilters } },
-      );
+      const res = await apiClient.get<PaginatedResponse<Issue>>(`/projects/${projectKey}/issues`, {
+        params: { page, perPage, ...(sort ? { sort } : {}), ...activeFilters },
+      });
       return res.data;
     },
     enabled: !!projectKey,
@@ -150,6 +149,17 @@ export function useIssue(key: string) {
     queryKey: ['issue', key],
     queryFn: async () => {
       const res = await apiClient.get<Issue>(`/issues/${key}`);
+      return res.data;
+    },
+    enabled: !!key,
+  });
+}
+
+export function useIssueRecurrence(key: string) {
+  return useQuery({
+    queryKey: ['issueRecurrence', key],
+    queryFn: async () => {
+      const res = await apiClient.get<Issue[]>(`/issues/${key}/recurrence`);
       return res.data;
     },
     enabled: !!key,
@@ -178,6 +188,7 @@ export function useUpdateIssue(issueKey: string) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['issue', issueKey] });
+      queryClient.invalidateQueries({ queryKey: ['issueRecurrence'] });
       queryClient.invalidateQueries({ queryKey: ['issues'] });
     },
   });

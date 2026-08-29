@@ -12,9 +12,11 @@ import {
 import { ProjectEntity } from './project.entity';
 import { CommentEntity } from './comment.entity';
 import { IssueTypeEntity } from './issue-type.entity';
+import type { RecurrenceRule } from '@weaver/shared';
 
 @Index(['projectId'])
 @Index(['statusId'])
+@Index(['recurrenceParentId', 'recurrenceOccurrence'], { unique: true })
 @Entity({ name: 'issues' })
 export class IssueEntity {
   @PrimaryGeneratedColumn('uuid')
@@ -74,6 +76,15 @@ export class IssueEntity {
   @Column({ name: 'percent_done', type: 'int', default: 0 })
   percentDone!: number;
 
+  @Column({ name: 'recurrence_rule', type: 'jsonb', nullable: true })
+  recurrenceRule!: RecurrenceRule | null;
+
+  @Column({ name: 'recurrence_parent_id', type: 'uuid', nullable: true })
+  recurrenceParentId!: string | null;
+
+  @Column({ name: 'recurrence_occurrence', type: 'int', default: 0 })
+  recurrenceOccurrence!: number;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;
 
@@ -94,6 +105,13 @@ export class IssueEntity {
 
   @OneToMany(() => IssueEntity, (issue) => issue.parent)
   children!: IssueEntity[];
+
+  @ManyToOne(() => IssueEntity, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'recurrence_parent_id' })
+  recurrenceParent!: IssueEntity | null;
+
+  @OneToMany(() => IssueEntity, (issue) => issue.recurrenceParent)
+  recurrenceChildren!: IssueEntity[];
 
   @OneToMany(() => CommentEntity, (comment) => comment.issue)
   comments!: CommentEntity[];

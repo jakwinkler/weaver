@@ -53,7 +53,12 @@ export type UpdateUserDto = z.infer<typeof updateUserSchema>;
 
 export const createProjectSchema = z.object({
   name: z.string().min(1).max(255),
-  key: z.string().regex(PROJECT_KEY_REGEX, 'Project key must be 2-10 uppercase alphanumeric characters starting with a letter'),
+  key: z
+    .string()
+    .regex(
+      PROJECT_KEY_REGEX,
+      'Project key must be 2-10 uppercase alphanumeric characters starting with a letter',
+    ),
   description: z.string().max(5000).optional(),
 });
 export type CreateProjectDto = z.infer<typeof createProjectSchema>;
@@ -73,6 +78,39 @@ export type UpdateProjectDto = z.infer<typeof updateProjectSchema>;
 
 const dateStringSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD');
 
+export const recurrenceRuleSchema = z
+  .object({
+    frequency: z.enum(['daily', 'weekly', 'monthly']),
+    interval: z.number().int().min(1).max(365),
+    daysOfWeek: z
+      .array(z.number().int().min(0).max(6))
+      .min(1)
+      .max(7)
+      .refine((days) => new Set(days).size === days.length, 'Days of week must be unique')
+      .optional(),
+    dayOfMonth: z.number().int().min(1).max(31).optional(),
+    endDate: dateStringSchema.optional(),
+    maxOccurrences: z.number().int().min(1).max(1000).optional(),
+  })
+  .strict()
+  .superRefine((rule, ctx) => {
+    if (rule.daysOfWeek && rule.frequency !== 'weekly') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['daysOfWeek'],
+        message: 'Days of week are only valid for weekly recurrence',
+      });
+    }
+    if (rule.dayOfMonth !== undefined && rule.frequency !== 'monthly') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['dayOfMonth'],
+        message: 'Day of month is only valid for monthly recurrence',
+      });
+    }
+  });
+export type RecurrenceRule = z.infer<typeof recurrenceRuleSchema>;
+
 export const createIssueSchema = z.object({
   summary: z.string().min(1).max(500),
   description: z.record(z.unknown()).optional(),
@@ -86,6 +124,7 @@ export const createIssueSchema = z.object({
   startDate: dateStringSchema.optional(),
   dueDate: dateStringSchema.optional(),
   percentDone: z.number().int().min(0).max(100).default(0),
+  recurrenceRule: recurrenceRuleSchema.nullable().optional(),
 });
 export type CreateIssueDto = z.infer<typeof createIssueSchema>;
 
@@ -104,18 +143,26 @@ export const updateIssueSchema = z.object({
   startDate: dateStringSchema.nullable().optional(),
   dueDate: dateStringSchema.nullable().optional(),
   percentDone: z.number().int().min(0).max(100).optional(),
+  recurrenceRule: recurrenceRuleSchema.nullable().optional(),
 });
 export type UpdateIssueDto = z.infer<typeof updateIssueSchema>;
 
 export const reorderIssuesSchema = z.object({
-  issues: z.array(z.object({
-    id: z.string().uuid(),
-    sortOrder: z.number().int().min(0),
-  })).min(1).max(200),
+  issues: z
+    .array(
+      z.object({
+        id: z.string().uuid(),
+        sortOrder: z.number().int().min(0),
+      }),
+    )
+    .min(1)
+    .max(200),
 });
 export type ReorderIssuesDto = z.infer<typeof reorderIssuesSchema>;
 
-export const issueKeySchema = z.string().regex(ISSUE_KEY_REGEX, 'Invalid issue key format (e.g., WEB-123)');
+export const issueKeySchema = z
+  .string()
+  .regex(ISSUE_KEY_REGEX, 'Invalid issue key format (e.g., WEB-123)');
 
 // ── Pagination ──
 

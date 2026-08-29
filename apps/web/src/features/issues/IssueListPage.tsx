@@ -1,9 +1,18 @@
 import { useState, useCallback, useEffect, type FormEvent } from 'react';
 import { useParams, Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { useProjectIssues, useCreateIssue, useProject, useIssueTypes, useWorkflow, useHasPermission, useUpdateIssueDynamic } from '@/api';
-import type { IssuePriority, Issue, PaginatedResponse } from '@weaver/shared';
+import {
+  useProjectIssues,
+  useCreateIssue,
+  useProject,
+  useIssueTypes,
+  useWorkflow,
+  useHasPermission,
+  useUpdateIssueDynamic,
+} from '@/api';
+import type { IssuePriority, Issue, PaginatedResponse, RecurrenceRule } from '@weaver/shared';
 import { IssueTypeIcon } from '@/components/IconPicker';
+import { RecurrencePicker } from '@/components/RecurrencePicker';
 import { Pagination, getStoredPerPage } from '@/components/Pagination';
 import { SortableHeader, type SortDirection } from '@/components/SortableHeader';
 import { EditableCell } from '@/components/EditableCell';
@@ -22,6 +31,7 @@ import {
   TableCell,
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
+import { Repeat2 } from 'lucide-react';
 
 const PRIORITY_OPTIONS: InlineSelectOption[] = [
   { value: 'lowest', label: 'lowest' },
@@ -98,20 +108,19 @@ export function IssueListPage() {
   const handleInlineUpdate = async (issueKey: string, field: string, value: unknown) => {
     // Optimistic update
     const queryKeyPrefix = ['issues', projectKey];
-    const previousData = queryClient.getQueriesData<PaginatedResponse<Issue>>({ queryKey: queryKeyPrefix });
+    const previousData = queryClient.getQueriesData<PaginatedResponse<Issue>>({
+      queryKey: queryKeyPrefix,
+    });
 
-    queryClient.setQueriesData<PaginatedResponse<Issue>>(
-      { queryKey: queryKeyPrefix },
-      (old) => {
-        if (!old) return old;
-        return {
-          ...old,
-          data: old.data.map((issue) =>
-            issue.key === issueKey ? { ...issue, [field]: value } : issue,
-          ),
-        };
-      },
-    );
+    queryClient.setQueriesData<PaginatedResponse<Issue>>({ queryKey: queryKeyPrefix }, (old) => {
+      if (!old) return old;
+      return {
+        ...old,
+        data: old.data.map((issue) =>
+          issue.key === issueKey ? { ...issue, [field]: value } : issue,
+        ),
+      };
+    });
 
     try {
       await updateIssue.mutateAsync({ issueKey, [field]: value } as any);
@@ -131,6 +140,7 @@ export function IssueListPage() {
   const [priority, setPriority] = useState<IssuePriority>('medium');
   const [startDate, setStartDate] = useState('');
   const [dueDate, setDueDate] = useState('');
+  const [recurrenceRule, setRecurrenceRule] = useState<RecurrenceRule | null>(null);
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
 
   // Reset focused index when data or page changes
@@ -181,12 +191,14 @@ export function IssueListPage() {
       ...(issueTypeId ? { issueTypeId } : {}),
       ...(startDate ? { startDate } : {}),
       ...(dueDate ? { dueDate } : {}),
+      recurrenceRule,
     });
     setSummary('');
     setIssueTypeId('');
     setPriority('medium');
     setStartDate('');
     setDueDate('');
+    setRecurrenceRule(null);
     setShowForm(false);
   };
 
@@ -261,7 +273,9 @@ export function IssueListPage() {
                   >
                     <option value="">None</option>
                     {issueTypes?.map((t) => (
-                      <option key={t.id} value={t.id}>{t.name}</option>
+                      <option key={t.id} value={t.id}>
+                        {t.name}
+                      </option>
                     ))}
                   </select>
                 </div>
@@ -305,6 +319,14 @@ export function IssueListPage() {
                     className="mt-1"
                   />
                 </div>
+              </div>
+              <div className="mt-4 max-w-md rounded-md border border-border p-4">
+                <RecurrencePicker
+                  value={recurrenceRule}
+                  onChange={setRecurrenceRule}
+                  disabled={createIssue.isPending}
+                  idPrefix="create-recurrence"
+                />
               </div>
               {createIssue.isError && (
                 <p className="mt-2 text-sm text-red-600">Failed to create issue.</p>
@@ -388,10 +410,20 @@ export function IssueListPage() {
                       />
                       <span className="text-xs">{issue.issueType.name}</span>
                     </span>
-                  ) : '—'}
+                  ) : (
+                    '—'
+                  )}
                 </TableCell>
                 <TableCell className="whitespace-nowrap text-sm font-medium text-primary">
-                  <Link to={`/issues/${issue.key}`}>{issue.key}</Link>
+                  <span className="inline-flex items-center gap-1.5">
+                    <Link to={`/issues/${issue.key}`}>{issue.key}</Link>
+                    {(issue.recurrenceRule || issue.recurrenceParentId) && (
+                      <Repeat2
+                        className="h-3.5 w-3.5 text-muted-foreground"
+                        aria-label="Recurring issue"
+                      />
+                    )}
+                  </span>
                 </TableCell>
                 <TableCell className="text-sm text-foreground">
                   {canEdit ? (
@@ -458,7 +490,10 @@ export function IssueListPage() {
             ))}
             {data?.data.length === 0 && (
               <TableRow>
-                <TableCell colSpan={8} className="px-6 py-8 text-center text-sm text-muted-foreground">
+                <TableCell
+                  colSpan={8}
+                  className="px-6 py-8 text-center text-sm text-muted-foreground"
+                >
                   No issues yet. Create your first issue to get started.
                 </TableCell>
               </TableRow>
@@ -491,7 +526,12 @@ function PriorityBadge({ priority }: { priority: string }) {
   };
 
   return (
-    <span className={cn('inline-flex rounded-full px-2 py-0.5 text-xs font-medium', colors[priority] ?? 'bg-gray-100 text-gray-700')}>
+    <span
+      className={cn(
+        'inline-flex rounded-full px-2 py-0.5 text-xs font-medium',
+        colors[priority] ?? 'bg-gray-100 text-gray-700',
+      )}
+    >
       {priority}
     </span>
   );

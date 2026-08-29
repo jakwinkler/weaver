@@ -6,3 +6,4 @@ process.env.DATABASE_USER = 'weaver';
 process.env.DATABASE_PASSWORD = 'weaver_dev';
 process.env.DATABASE_NAME = 'weaver';
 process.env.JWT_SECRET = 'test-secret-key-for-e2e';
+process.env.RECURRENCE_SCHEDULER_ENABLED = 'false';

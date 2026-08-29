@@ -39,10 +39,7 @@ export class IssuesController {
 
   @Get('projects/:projectKey/issues')
   @RequirePermission('issues', 'read')
-  async findByProject(
-    @Param('projectKey') projectKey: string,
-    @Query() query: any,
-  ) {
+  async findByProject(@Param('projectKey') projectKey: string, @Query() query: any) {
     const params = parsePagination(query);
     const filters: Record<string, string | undefined> = {};
     if (query.statusId) filters.statusId = query.statusId;
@@ -58,9 +55,7 @@ export class IssuesController {
   @Patch('issues/reorder')
   @RequirePermission('issues', 'update')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async reorder(
-    @Body(new ZodValidationPipe(reorderIssuesSchema)) dto: any,
-  ) {
+  async reorder(@Body(new ZodValidationPipe(reorderIssuesSchema)) dto: any) {
     await this.issuesService.reorder(dto);
   }
 
@@ -68,6 +63,12 @@ export class IssuesController {
   @RequirePermission('issues', 'read')
   async findByKey(@Param('issueKey') issueKey: string) {
     return this.issuesService.findByKey(issueKey);
+  }
+
+  @Get('issues/:issueKey/recurrence')
+  @RequirePermission('issues', 'read')
+  async findRecurrence(@Param('issueKey') issueKey: string) {
+    return this.issuesService.findRecurrence(issueKey);
   }
 
   @Patch('issues/:issueKey')

@@ -9,6 +9,7 @@ import type {
   IssueLinkType,
   CustomFieldType,
 } from '../constants';
+import type { RecurrenceRule } from '../schemas';
 
 // ── Public Schema Types ──
 
@@ -115,6 +116,9 @@ export interface Issue {
   startDate?: string;
   dueDate?: string;
   percentDone: number;
+  recurrenceRule: RecurrenceRule | null;
+  recurrenceParentId: string | null;
+  recurrenceOccurrence: number;
   createdAt: Date;
   updatedAt: Date;
   issueType?: IssueType | null;

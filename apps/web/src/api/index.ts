@@ -9,6 +9,7 @@ export {
   useUpdateProject,
   useProjectIssues,
   useIssue,
+  useIssueRecurrence,
   useCreateIssue,
   useUpdateIssue,
   useUpdateIssueDynamic,
@@ -77,10 +78,7 @@ export {
   useMyPermissions,
   useHasPermission,
 } from './hooks-phase5';
-export {
-  useBulkUpdateIssues,
-  useBulkDeleteIssues,
-} from './hooks-phase6';
+export { useBulkUpdateIssues, useBulkDeleteIssues } from './hooks-phase6';
 export {
   useUsers,
   useUpdateUserRole,
