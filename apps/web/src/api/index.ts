@@ -63,9 +63,10 @@ export {
   useUninstallPlugin,
   useEnablePlugin,
   useDisablePlugin,
+  usePluginSettings,
   useUpdatePluginSettings,
 } from './hooks-phase4';
-export type { PluginManifest } from './hooks-phase4';
+export type { PluginManifest, PluginSettingDefinition, PluginSettingsSchema } from './hooks-phase4';
 export {
   useNotifications,
   useUnreadCount,

@@ -117,7 +117,7 @@ export class PluginRouteController {
       const reqUser = (req as any).user;
       const context = await this.contextFactory.create(
         pluginId,
-        installed.settings,
+        this.registry.mergeSettingsWithDefaults(pluginId, installed.settings),
         reqUser
           ? {
               id: reqUser.userId || reqUser.id,

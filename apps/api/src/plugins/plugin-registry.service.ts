@@ -3,6 +3,7 @@ import {
   Logger,
   NotFoundException,
   ConflictException,
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -14,6 +15,7 @@ import { TenantConnectionProvider } from '../core/tenant';
 import { CustomFieldDefinitionEntity } from '@weaver/db';
 import * as fs from 'fs';
 import * as path from 'path';
+import type { PluginSettingDefinition } from '@weaver/sdk';
 
 @Injectable()
 export class PluginRegistryService {
@@ -52,7 +54,10 @@ export class PluginRegistryService {
 
     // Call lifecycle hook
     try {
-      const context = await this.contextFactory.create(pluginId, {});
+      const context = await this.contextFactory.create(
+        pluginId,
+        this.mergeSettingsWithDefaults(pluginId, {}),
+      );
       const mod = await this.loader.getModule(pluginId);
 
       if (mod?.onInstall) {
@@ -87,7 +92,10 @@ export class PluginRegistryService {
         where: { tenantId: tenant.tenantId, pluginId },
       });
       if (installed) {
-        const context = await this.contextFactory.create(pluginId, installed.settings);
+        const context = await this.contextFactory.create(
+          pluginId,
+          this.mergeSettingsWithDefaults(pluginId, installed.settings),
+        );
         const mod = await this.loader.getModule(pluginId);
         if (mod?.onUninstall) {
           await mod.onUninstall(context);
@@ -129,8 +137,68 @@ export class PluginRegistryService {
     settings: Record<string, unknown>,
   ): Promise<InstalledPluginEntity> {
     const plugin = await this.findInstalled(pluginId);
-    plugin.settings = { ...plugin.settings, ...settings };
+
+    if (!this.isSettingsObject(settings)) {
+      throw new BadRequestException({
+        message: 'Invalid plugin settings',
+        errors: { settings: 'Settings must be an object' },
+      });
+    }
+
+    const manifest = this.loader.getManifest(pluginId);
+    const schema = manifest?.settings?.schema;
+    if (schema) {
+      const candidate = this.mergeSettingsWithDefaults(pluginId, {
+        ...plugin.settings,
+        ...settings,
+      });
+      const errors = this.validateSettings(schema, candidate, settings);
+      if (Object.keys(errors).length > 0) {
+        throw new BadRequestException({
+          message: 'Invalid plugin settings',
+          errors,
+        });
+      }
+    }
+
+    const storedSettings = { ...plugin.settings, ...settings };
+    for (const [key, definition] of Object.entries(schema ?? {})) {
+      if (!Object.prototype.hasOwnProperty.call(settings, key)) continue;
+
+      const submittedValue = settings[key];
+      const clearsOptionalValue =
+        !definition.required &&
+        (submittedValue === '' || submittedValue === null);
+      const matchesDefault =
+        definition.default !== undefined &&
+        Object.is(submittedValue, definition.default);
+
+      if (clearsOptionalValue || matchesDefault) {
+        delete storedSettings[key];
+      }
+    }
+
+    plugin.settings = storedSettings;
     return this.repo.save(plugin);
+  }
+
+  async getSettings(pluginId: string): Promise<Record<string, unknown>> {
+    const plugin = await this.findInstalled(pluginId);
+    return this.mergeSettingsWithDefaults(pluginId, plugin.settings);
+  }
+
+  mergeSettingsWithDefaults(
+    pluginId: string,
+    settings: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const schema = this.loader.getManifest(pluginId)?.settings?.schema ?? {};
+    const defaults = Object.fromEntries(
+      Object.entries(schema)
+        .filter(([, definition]) => definition.default !== undefined)
+        .map(([key, definition]) => [key, definition.default]),
+    );
+
+    return { ...defaults, ...settings };
   }
 
   async getInstalled(): Promise<InstalledPluginEntity[]> {
@@ -159,7 +227,10 @@ export class PluginRegistryService {
 
     // Call lifecycle hook
     try {
-      const context = await this.contextFactory.create(pluginId, plugin.settings);
+      const context = await this.contextFactory.create(
+        pluginId,
+        this.mergeSettingsWithDefaults(pluginId, plugin.settings),
+      );
       const mod = await this.loader.getModule(pluginId);
       if (enabled && mod?.onEnable) {
         await mod.onEnable(context);
@@ -171,5 +242,68 @@ export class PluginRegistryService {
     }
 
     return saved;
+  }
+
+  private isSettingsObject(settings: unknown): settings is Record<string, unknown> {
+    return settings !== null && typeof settings === 'object' && !Array.isArray(settings);
+  }
+
+  private validateSettings(
+    schema: Record<string, PluginSettingDefinition>,
+    effectiveSettings: Record<string, unknown>,
+    submittedSettings: Record<string, unknown>,
+  ): Record<string, string> {
+    const errors: Record<string, string> = {};
+
+    for (const key of Object.keys(submittedSettings)) {
+      if (!schema[key]) {
+        errors[key] = 'Unknown setting';
+      }
+    }
+
+    for (const [key, definition] of Object.entries(schema)) {
+      const value = effectiveSettings[key];
+      const label = definition.label || this.humanizeSettingKey(key);
+      const isMissing = value === undefined || value === null || value === '';
+
+      if (definition.required && isMissing) {
+        errors[key] = `${label} is required`;
+        continue;
+      }
+
+      if (isMissing) continue;
+
+      if (
+        (definition.type === 'string' || definition.type === 'textarea') &&
+        typeof value !== 'string'
+      ) {
+        errors[key] = `${label} must be a string`;
+      } else if (
+        definition.type === 'number' &&
+        (typeof value !== 'number' || !Number.isFinite(value))
+      ) {
+        errors[key] = `${label} must be a number`;
+      } else if (definition.type === 'boolean' && typeof value !== 'boolean') {
+        errors[key] = `${label} must be a boolean`;
+      } else if (
+        definition.type === 'select' &&
+        (typeof value !== 'string' || !definition.options?.includes(value))
+      ) {
+        errors[key] = `${label} must be one of: ${(definition.options ?? []).join(', ')}`;
+      }
+    }
+
+    return errors;
+  }
+
+  private humanizeSettingKey(key: string): string {
+    const spaced = key
+      .replace(
+        /([a-z0-9])([A-Z])/g,
+        (_match, before: string, uppercase: string) => `${before} ${uppercase.toLowerCase()}`,
+      )
+      .replace(/[_-]+/g, ' ')
+      .trim();
+    return spaced.charAt(0).toUpperCase() + spaced.slice(1);
   }
 }
