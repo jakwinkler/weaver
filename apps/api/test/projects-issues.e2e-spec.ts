@@ -229,6 +229,10 @@ describe('Projects & Issues (e2e)', () => {
         .expect(200);
       expect(res.body.summary).toBe('Updated first issue');
       expect(res.body.priority).toBe('highest');
+
+      const persisted = await authedRequest().get('/api/v1/issues/WEB-1').expect(200);
+      expect(persisted.body.summary).toBe('Updated first issue');
+      expect(persisted.body.priority).toBe('highest');
     });
 
     it('PATCH /issues/:key - should persist and clear a rich-text description', async () => {

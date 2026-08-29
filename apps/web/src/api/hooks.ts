@@ -196,6 +196,23 @@ export function useUpdateIssueDynamic() {
   });
 }
 
+export function useTransitionIssueDynamic() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ issueKey, transitionId }: { issueKey: string; transitionId: string }) => {
+      const res = await apiClient.post<Issue>(`/issues/${issueKey}/transition`, {
+        transitionId,
+      });
+      return res.data;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['issue', variables.issueKey] });
+      queryClient.invalidateQueries({ queryKey: ['issues'] });
+      queryClient.invalidateQueries({ queryKey: ['activity', variables.issueKey] });
+    },
+  });
+}
+
 export function useReorderIssues() {
   const queryClient = useQueryClient();
   return useMutation({

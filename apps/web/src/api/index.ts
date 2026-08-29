@@ -12,6 +12,7 @@ export {
   useCreateIssue,
   useUpdateIssue,
   useUpdateIssueDynamic,
+  useTransitionIssueDynamic,
   useReorderIssues,
 } from './hooks';
 export {

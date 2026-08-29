@@ -24,6 +24,7 @@ export function EditableCell({
   const [draft, setDraft] = useState(value);
   const [saving, setSaving] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const savingRef = useRef(false);
 
   useEffect(() => {
     setDraft(value);
@@ -37,12 +38,16 @@ export function EditableCell({
   }, [editing]);
 
   const commit = useCallback(async () => {
+    if (savingRef.current) return;
+
     const trimmed = draft.trim();
     if (trimmed === value || trimmed === '') {
       setDraft(value);
       setEditing(false);
       return;
     }
+
+    savingRef.current = true;
     setSaving(true);
     try {
       await onSave(trimmed);
@@ -51,19 +56,36 @@ export function EditableCell({
       setDraft(value);
       setEditing(false);
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   }, [draft, value, onSave]);
 
+  const getAdjacentEditable = (
+    current: HTMLInputElement,
+    reverse: boolean,
+  ): HTMLElement | undefined => {
+    const scope = current.closest('tr, [role="row"]') || current.parentElement?.parentElement;
+    if (!scope) return undefined;
+
+    const editableElements = Array.from(
+      scope.querySelectorAll<HTMLElement>('[data-inline-editable-focus]'),
+    ).filter((element) => !element.hasAttribute('disabled'));
+    const currentIndex = editableElements.indexOf(current);
+    return editableElements[currentIndex + (reverse ? -1 : 1)];
+  };
+
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      commit();
+      void commit();
     } else if (e.key === 'Escape') {
       setDraft(value);
       setEditing(false);
     } else if (e.key === 'Tab') {
-      commit();
+      e.preventDefault();
+      const nextEditable = getAdjacentEditable(e.currentTarget, e.shiftKey);
+      void commit().then(() => nextEditable?.focus());
     }
   };
 
@@ -80,28 +102,33 @@ export function EditableCell({
       <div className="flex items-center gap-1">
         <Input
           ref={inputRef}
+          data-inline-editable-focus
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          onBlur={commit}
+          onBlur={() => void commit()}
           onKeyDown={handleKeyDown}
           disabled={saving}
           className={cn('h-7 text-sm', inputClassName)}
         />
-        {saving && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+        {saving && (
+          <Loader2 aria-label="Saving" className="h-3 w-3 animate-spin text-muted-foreground" />
+        )}
       </div>
     );
   }
 
   return (
-    <span
+    <button
+      type="button"
+      data-inline-editable-focus
       className={cn(
-        'cursor-pointer rounded px-1 py-0.5 text-sm text-foreground hover:bg-muted/80',
+        'block w-full cursor-pointer rounded border-0 bg-transparent px-1 py-0.5 text-left text-sm text-foreground hover:bg-muted/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
         className,
       )}
       onClick={() => setEditing(true)}
       title="Click to edit"
     >
       {value || <span className="text-muted-foreground">{placeholder || '-'}</span>}
-    </span>
+    </button>
   );
 }
