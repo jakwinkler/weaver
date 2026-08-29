@@ -27,7 +27,12 @@ export interface PluginManifest {
     projectViews?: PluginProjectViewDefinition[];
   };
   routes?: PluginRouteDefinition[];
-  migrations?: string[];
+  migrations?: Array<string | PluginMigration>;
+}
+
+export interface PluginMigration {
+  version: string;
+  sql: string;
 }
 
 export interface PluginProjectViewDefinition {
