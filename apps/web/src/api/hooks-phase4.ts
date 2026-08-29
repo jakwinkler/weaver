@@ -39,6 +39,9 @@ export interface PluginManifest {
   type?: 'app' | 'widget' | 'feature' | 'integration';
   scope?: 'tenant' | 'project';
   permissions: string[];
+  settings?: {
+    schema: PluginSettingsSchema;
+  };
   ui?: {
     slots?: PluginUISlot[];
     navigation?: PluginNavigationItem[];
@@ -46,6 +49,17 @@ export interface PluginManifest {
     projectViews?: PluginProjectViewDefinition[];
   };
 }
+
+export interface PluginSettingDefinition {
+  type: 'string' | 'number' | 'boolean' | 'select' | 'textarea';
+  label?: string;
+  required?: boolean;
+  default?: unknown;
+  description?: string;
+  options?: string[];
+}
+
+export type PluginSettingsSchema = Record<string, PluginSettingDefinition>;
 
 interface InstalledPlugin {
   id: string;
@@ -132,15 +146,34 @@ export function useDisablePlugin() {
   });
 }
 
-export function useUpdatePluginSettings() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ pluginId, settings }: { pluginId: string; settings: Record<string, unknown> }) => {
-      const res = await apiClient.patch<InstalledPlugin>('/plugins/settings', { pluginId, settings });
+export function usePluginSettings(pluginId: string, enabled = true) {
+  return useQuery({
+    queryKey: ['plugins', 'settings', pluginId],
+    queryFn: async () => {
+      const res = await apiClient.get<Record<string, unknown>>('/plugins/settings', {
+        params: { pluginId },
+      });
       return res.data;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['plugins'] });
+    enabled: enabled && Boolean(pluginId),
+  });
+}
+
+export function useUpdatePluginSettings(pluginId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (settings: Record<string, unknown>) => {
+      const res = await apiClient.patch<InstalledPlugin>('/plugins/settings', {
+        pluginId,
+        settings,
+      });
+      return res.data;
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['plugins', 'installed'] }),
+        queryClient.invalidateQueries({ queryKey: ['plugins', 'settings', pluginId] }),
+      ]);
     },
   });
 }

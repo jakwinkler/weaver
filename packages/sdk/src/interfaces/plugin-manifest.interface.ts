@@ -44,7 +44,8 @@ export interface PluginDeclaredPermission {
 }
 
 export interface PluginSettingDefinition {
-  type: 'string' | 'number' | 'boolean' | 'select';
+  type: 'string' | 'number' | 'boolean' | 'select' | 'textarea';
+  label?: string;
   required?: boolean;
   default?: unknown;
   description?: string;

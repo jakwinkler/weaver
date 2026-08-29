@@ -5,6 +5,7 @@ import {
   Patch,
   Delete,
   Body,
+  Query,
   HttpCode,
   HttpStatus,
   UseGuards,
@@ -80,5 +81,10 @@ export class PluginsController {
     @Body('settings') settings: Record<string, unknown>,
   ) {
     return this.registry.updateSettings(pluginId, settings);
+  }
+
+  @Get('settings')
+  async getSettings(@Query('pluginId') pluginId: string) {
+    return this.registry.getSettings(pluginId);
   }
 }
