@@ -1,0 +1,29 @@
+{
+  "name": "{{pluginId}}",
+  "version": "1.0.0",
+  "private": true,
+  "description": "{{displayName}} plugin for Weaver",
+  "main": "{{mainEntrypoint}}",
+  "scripts": {
+    "dev": "weaver dev",
+    "build": "weaver build",
+    "validate": "weaver validate",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "@tanstack/react-query": "^5.0.0",
+    "react": "^18.0.0 || ^19.0.0",
+    "react-dom": "^18.0.0 || ^19.0.0",
+    "zustand": "^5.0.0"
+  },
+  "devDependencies": {
+    "@module-federation/vite": "^1.21.0",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "@weaver/cli": "^0.0.1",
+    "@weaver/sdk": "^0.0.1",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.7"
+  }
+}
