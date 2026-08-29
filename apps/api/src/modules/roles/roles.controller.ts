@@ -16,6 +16,7 @@ import {
   RequirePermission,
 } from '../../core/auth';
 import { RolesService } from './roles.service';
+import { Audit } from '../audit';
 
 @Controller('roles')
 @UseGuards(JwtAuthGuard, PermissionGuard)
@@ -34,6 +35,7 @@ export class RolesController {
 
   @Post()
   @RequirePermission('admin', 'manage_roles')
+  @Audit({ action: 'role.created', resource: 'role' })
   async create(
     @Body() dto: { name: string; permissions: Record<string, unknown> },
   ) {
@@ -42,6 +44,7 @@ export class RolesController {
 
   @Patch(':id')
   @RequirePermission('admin', 'manage_roles')
+  @Audit({ action: 'role.updated', resource: 'role', captureBefore: true })
   async update(
     @Param('id') id: string,
     @Body() dto: Partial<{ name: string; permissions: Record<string, unknown> }>,
@@ -51,6 +54,7 @@ export class RolesController {
 
   @Delete(':id')
   @RequirePermission('admin', 'manage_roles')
+  @Audit({ action: 'role.deleted', resource: 'role', captureBefore: true })
   @HttpCode(HttpStatus.NO_CONTENT)
   async delete(@Param('id') id: string) {
     await this.rolesService.delete(id);
@@ -58,6 +62,11 @@ export class RolesController {
 
   @Post('seed')
   @RequirePermission('admin', 'manage_roles')
+  @Audit({
+    action: 'role.defaults_seeded',
+    resource: 'role',
+    resourceId: () => 'defaults',
+  })
   async seedDefaults() {
     await this.rolesService.seedDefaults();
     return { message: 'Default roles seeded' };

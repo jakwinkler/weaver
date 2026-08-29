@@ -16,6 +16,7 @@ import { updateUserSchema } from '@weaver/shared';
 import { JwtAuthGuard, AdminGuard, CurrentUser, RequestUser } from '../../core/auth';
 import { ZodValidationPipe } from '../../common';
 import { UsersService } from './users.service';
+import { Audit } from '../audit';
 
 @Controller('users')
 @UseGuards(JwtAuthGuard)
@@ -59,6 +60,12 @@ export class UsersController {
 
   @Patch(':userId/role')
   @UseGuards(AdminGuard)
+  @Audit({
+    action: 'user.role_changed',
+    resource: 'user',
+    captureBefore: true,
+    resourceId: ({ request }) => String(request.params.userId),
+  })
   async updateRole(
     @Param('userId') userId: string,
     @Body() body: { role: string },

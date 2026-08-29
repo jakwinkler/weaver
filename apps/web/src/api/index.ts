@@ -82,6 +82,8 @@ export {
   useBulkDeleteIssues,
 } from './hooks-phase6';
 export {
+  useAuditLog,
+  downloadAuditLog,
   useUsers,
   useUpdateUserRole,
   useCreateIssueType,
@@ -100,7 +102,12 @@ export {
   useUpdateCustomField,
   useDeleteTeam,
 } from './hooks-admin';
-export type { TenantUser, TeamMember } from './hooks-admin';
+export type {
+  AuditLogEntry,
+  AuditLogFilters,
+  TenantUser,
+  TeamMember,
+} from './hooks-admin';
 export {
   usePluginPermissions,
   useProjectMembers,

@@ -32,6 +32,7 @@ import { DashboardPage } from '@/features/dashboard/DashboardPage';
 import { ProfilePage } from '@/features/profile/ProfilePage';
 import { PublicProjectPage } from '@/features/projects/PublicProjectPage';
 import { SystemSettingsPage } from '@/features/settings/SystemSettingsPage';
+import { AuditLogPage } from '@/features/admin/AuditLogPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -80,6 +81,7 @@ export function App() {
                   <Route path="/admin/roles" element={<RolesPage />} />
                   <Route path="/admin/teams" element={<TeamsPage />} />
                   <Route path="/admin/users" element={<UsersPage />} />
+                  <Route path="/admin/audit-log" element={<AuditLogPage />} />
                   <Route path="/settings/custom-fields" element={<CustomFieldsPage />} />
                   <Route path="/settings/plugins" element={<PluginsPage />} />
                   <Route path="/settings/webhooks" element={<WebhooksPage />} />

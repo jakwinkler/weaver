@@ -11,6 +11,7 @@ export { BoardEntity } from './board.entity';
 export { SprintEntity } from './sprint.entity';
 export { CommentEntity } from './comment.entity';
 export { ActivityLogEntity } from './activity-log.entity';
+export { AuditLogEntity } from './audit-log.entity';
 export { RoleEntity } from './role.entity';
 export { CustomFieldDefinitionEntity } from './custom-field-definition.entity';
 export { NotificationEntity } from './notification.entity';

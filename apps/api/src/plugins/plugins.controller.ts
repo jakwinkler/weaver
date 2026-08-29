@@ -12,6 +12,7 @@ import {
 import { JwtAuthGuard } from '../core/auth';
 import { PluginRegistryService } from './plugin-registry.service';
 import { PluginLoaderService } from './plugin-loader.service';
+import { Audit } from '../modules/audit';
 
 @Controller('plugins')
 @UseGuards(JwtAuthGuard)
@@ -54,27 +55,56 @@ export class PluginsController {
   }
 
   @Post('install')
+  @Audit({
+    action: 'plugin.installed',
+    resource: 'plugin',
+    resourceId: ({ request }) => request.body.pluginId,
+  })
   async install(@Body('pluginId') pluginId: string) {
     return this.registry.install(pluginId);
   }
 
   @Post('uninstall')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @Audit({
+    action: 'plugin.uninstalled',
+    resource: 'plugin',
+    captureBefore: true,
+    resourceId: ({ request }) => request.body.pluginId,
+  })
   async uninstall(@Body('pluginId') pluginId: string) {
     return this.registry.uninstall(pluginId);
   }
 
   @Post('enable')
+  @Audit({
+    action: 'plugin.enabled',
+    resource: 'plugin',
+    captureBefore: true,
+    resourceId: ({ request }) => request.body.pluginId,
+  })
   async enable(@Body('pluginId') pluginId: string) {
     return this.registry.enable(pluginId);
   }
 
   @Post('disable')
+  @Audit({
+    action: 'plugin.disabled',
+    resource: 'plugin',
+    captureBefore: true,
+    resourceId: ({ request }) => request.body.pluginId,
+  })
   async disable(@Body('pluginId') pluginId: string) {
     return this.registry.disable(pluginId);
   }
 
   @Patch('settings')
+  @Audit({
+    action: 'plugin.settings_updated',
+    resource: 'plugin',
+    captureBefore: true,
+    resourceId: ({ request }) => request.body.pluginId,
+  })
   async updateSettings(
     @Body('pluginId') pluginId: string,
     @Body('settings') settings: Record<string, unknown>,
