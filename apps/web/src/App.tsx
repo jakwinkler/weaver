@@ -30,6 +30,7 @@ import { IssueTypesPage } from '@/features/admin/IssueTypesPage';
 import { RolesPage } from '@/features/admin/RolesPage';
 import { TeamsPage } from '@/features/admin/TeamsPage';
 import { UsersPage } from '@/features/admin/UsersPage';
+import { AutomationsPage } from '@/features/admin/AutomationsPage';
 import { PluginPage } from '@/plugins/PluginPage';
 import { DashboardPage } from '@/features/dashboard/DashboardPage';
 import { ProfilePage } from '@/features/profile/ProfilePage';
@@ -94,6 +95,7 @@ export function App() {
                   <Route path="/admin/roles" element={<RolesPage />} />
                   <Route path="/admin/teams" element={<TeamsPage />} />
                   <Route path="/admin/users" element={<UsersPage />} />
+                  <Route path="/admin/automations" element={<AutomationsPage />} />
                   <Route path="/settings/custom-fields" element={<CustomFieldsPage />} />
                   <Route path="/settings/plugins" element={<PluginsPage />} />
                   <Route path="/settings/webhooks" element={<WebhooksPage />} />

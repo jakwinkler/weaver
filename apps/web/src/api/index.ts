@@ -131,6 +131,22 @@ export {
 } from './hooks-profile';
 export { useTenantSettings, useUpdateTenantSettings, useTestSmtp } from './hooks-settings';
 export {
+  useAutomations,
+  useCreateAutomation,
+  useUpdateAutomation,
+  useDeleteAutomation,
+  useAutomationLog,
+} from './hooks-automations';
+export type {
+  AutomationAction,
+  AutomationCondition,
+  AutomationExecution,
+  AutomationRule,
+  AutomationRuleInput,
+  AutomationSettableField,
+  AutomationTrigger,
+} from './hooks-automations';
+export {
   usePublicProjects,
   usePublicProject,
   usePublicProjectIssues,

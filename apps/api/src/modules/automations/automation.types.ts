@@ -16,7 +16,14 @@ export const AUTOMATION_SETTABLE_FIELDS = [
 ] as const;
 
 const eventTriggerSchema = z.object({
-  type: z.enum(['issue.created', 'sprint.started']),
+  type: z.enum([
+    'issue.created',
+    'issue.status_changed',
+    'issue.assigned',
+    'comment.created',
+    'sprint.started',
+    'sprint.completed',
+  ]),
 });
 
 const issueUpdatedTriggerSchema = z.object({
@@ -49,6 +56,16 @@ export const automationConditionSchema = z
       field: z.string().min(1).max(100),
     }),
     z.object({
+      type: z.literal('field_not_equals'),
+      field: z.string().min(1).max(100),
+      value: z.unknown(),
+    }),
+    z.object({
+      type: z.literal('field_contains'),
+      field: z.string().min(1).max(100),
+      value: z.unknown(),
+    }),
+    z.object({
       type: z.literal('status_category'),
       value: z.enum(['todo', 'in_progress', 'done']),
     }),
@@ -59,7 +76,7 @@ export const automationConditionSchema = z
   ])
   .superRefine((condition, context) => {
     if (
-      condition.type === 'field_equals' &&
+      ['field_equals', 'field_not_equals', 'field_contains'].includes(condition.type) &&
       !Object.prototype.hasOwnProperty.call(condition, 'value')
     ) {
       context.addIssue({

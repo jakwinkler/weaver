@@ -16,8 +16,12 @@ export class AutomationConditionEvaluatorService {
     switch (condition.type) {
       case 'field_equals':
         return this.valuesEqual(this.readField(issue, condition.field), condition.value);
+      case 'field_not_equals':
+        return !this.valuesEqual(this.readField(issue, condition.field), condition.value);
       case 'field_empty':
         return this.isEmpty(this.readField(issue, condition.field));
+      case 'field_contains':
+        return this.contains(this.readField(issue, condition.field), condition.value);
       case 'status_category': {
         const em = await this.tenantConnections.getEntityManager();
         const status = await em
@@ -72,6 +76,16 @@ export class AutomationConditionEvaluatorService {
       typeof expected === 'object'
     ) {
       return JSON.stringify(actual) === JSON.stringify(expected);
+    }
+    return false;
+  }
+
+  private contains(actual: unknown, expected: unknown): boolean {
+    if (typeof actual === 'string' && typeof expected === 'string') {
+      return actual.toLocaleLowerCase().includes(expected.toLocaleLowerCase());
+    }
+    if (Array.isArray(actual)) {
+      return actual.some((value) => this.valuesEqual(value, expected));
     }
     return false;
   }

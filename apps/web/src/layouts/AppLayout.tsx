@@ -33,6 +33,7 @@ import {
   Sun,
   Moon,
   Cog,
+  Bot,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getNavigationEntries } from '@/plugins/plugin-slot-registry';
@@ -48,6 +49,7 @@ const adminNavItems = [
   { to: '/admin/roles', label: 'Roles & Permissions', icon: Shield },
   { to: '/admin/teams', label: 'Teams', icon: UsersRound },
   { to: '/admin/users', label: 'Users', icon: Users },
+  { to: '/admin/automations', label: 'Automations', icon: Bot },
   { to: '/settings/plugins', label: 'Plugins', icon: Plug },
   { to: '/settings/webhooks', label: 'Webhooks', icon: Webhook },
   { to: '/settings/general', label: 'System Settings', icon: Cog },

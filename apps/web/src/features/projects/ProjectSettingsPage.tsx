@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, type FormEvent } from 'react';
 import { useParams } from 'react-router-dom';
+import { useAuthStore } from '@/stores';
 import {
   useProject,
   useUpdateProject,
@@ -16,7 +17,18 @@ import {
   getAttachmentUrl,
 } from '@/api';
 import type { TenantUser } from '@/api';
-import { Settings, Users, Tag, FileText, Plus, Trash2, X, Upload, ToggleLeft } from 'lucide-react';
+import {
+  Settings,
+  Users,
+  Tag,
+  FileText,
+  Plus,
+  Trash2,
+  X,
+  Upload,
+  ToggleLeft,
+  Bot,
+} from 'lucide-react';
 import {
   useProjectPlugins,
   useEnableProjectPlugin,
@@ -40,6 +52,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
+import { AutomationsPage } from '@/features/admin/AutomationsPage';
 
 export function ProjectIcon({
   iconAttachmentId,
@@ -73,13 +86,14 @@ export function ProjectIcon({
   );
 }
 
-type Tab = 'general' | 'members' | 'issue-types' | 'custom-fields' | 'features';
+type Tab = 'general' | 'members' | 'issue-types' | 'custom-fields' | 'features' | 'automations';
 
 const MEMBER_ROLES = ['lead', 'member', 'viewer'] as const;
 
 export function ProjectSettingsPage() {
   const { projectKey } = useParams<{ projectKey: string }>();
   const [activeTab, setActiveTab] = useState<Tab>('general');
+  const isAdmin = useAuthStore((state) => state.isAdmin());
 
   if (!projectKey) return null;
 
@@ -99,6 +113,9 @@ export function ProjectSettingsPage() {
               { key: 'issue-types', label: 'Issue Types', icon: Tag },
               { key: 'custom-fields', label: 'Custom Fields', icon: FileText },
               { key: 'features', label: 'Features', icon: ToggleLeft },
+              ...(isAdmin
+                ? [{ key: 'automations', label: 'Automations', icon: Bot } as const]
+                : []),
             ] as const
           ).map(({ key, label, icon: Icon }) => (
             <TabsTrigger key={key} value={key} className="flex flex-1 items-center gap-1.5">
@@ -123,9 +140,24 @@ export function ProjectSettingsPage() {
         <TabsContent value="features">
           <FeaturesTab projectKey={projectKey} />
         </TabsContent>
+        {isAdmin && (
+          <TabsContent value="automations">
+            <ProjectAutomationsTab projectKey={projectKey} />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );
+}
+
+function ProjectAutomationsTab({ projectKey }: { projectKey: string }) {
+  const { data: project, isLoading } = useProject(projectKey);
+
+  if (isLoading || !project) {
+    return <div className="py-8 text-center text-muted-foreground">Loading automations...</div>;
+  }
+
+  return <AutomationsPage projectId={project.id} projectKey={project.key} embedded />;
 }
 
 function GeneralTab({ projectKey }: { projectKey: string }) {

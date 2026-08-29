@@ -23,6 +23,23 @@ describe('automation schemas', () => {
       field: 'assigneeId',
     });
     expect(scheduleRule.trigger.type).toBe('schedule');
+
+    for (const type of [
+      'issue.created',
+      'issue.status_changed',
+      'issue.assigned',
+      'comment.created',
+      'sprint.started',
+      'sprint.completed',
+    ]) {
+      expect(
+        createAutomationRuleSchema.safeParse({
+          name: `${type} rule`,
+          trigger: { type },
+          actions: [{ type: 'add_label', label: 'automated' }],
+        }).success,
+      ).toBe(true);
+    }
   });
 
   it('requires actions and values for field comparisons and updates', () => {
@@ -47,5 +64,21 @@ describe('automation schemas', () => {
     expect(updateAutomationRuleSchema.parse({ enabled: false })).toEqual({
       enabled: false,
     });
+  });
+
+  it('accepts the visual builder condition operators', () => {
+    const result = createAutomationRuleSchema.safeParse({
+      name: 'Builder conditions',
+      trigger: { type: 'issue.created' },
+      conditions: [
+        { type: 'field_equals', field: 'priority', value: 'high' },
+        { type: 'field_not_equals', field: 'assigneeId', value: 'user-1' },
+        { type: 'field_empty', field: 'dueDate' },
+        { type: 'field_contains', field: 'labels', value: 'urgent' },
+      ],
+      actions: [{ type: 'add_label', label: 'automated' }],
+    });
+
+    expect(result.success).toBe(true);
   });
 });

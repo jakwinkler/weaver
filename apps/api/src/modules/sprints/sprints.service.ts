@@ -185,7 +185,12 @@ export class SprintsService {
       sprint.endDate = new Date().toISOString().split('T')[0];
     }
 
-    return repo.save(sprint);
+    const saved = await repo.save(sprint);
+    await this.eventDispatcher.emit('sprint.completed', {
+      sprintId: saved.id,
+      projectId: saved.projectId,
+    });
+    return saved;
   }
 
   async addIssues(id: string, issueIds: string[], userId: string): Promise<void> {
