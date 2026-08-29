@@ -27,9 +27,14 @@ export interface PluginManifest {
     projectViews?: PluginProjectViewDefinition[];
   };
   routes?: PluginRouteDefinition[];
-  migrations?: string[];
+  migrations?: Array<string | PluginMigration>;
   /** Runtime URL for the compiled client remote. Added by the API response. */
   clientBundle?: string;
+}
+
+export interface PluginMigration {
+  version: string;
+  sql: string;
 }
 
 export interface PluginProjectViewDefinition {

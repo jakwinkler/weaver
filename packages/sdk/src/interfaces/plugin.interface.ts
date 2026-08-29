@@ -7,6 +7,9 @@ export interface WeaverPlugin {
   /** Called when plugin is first installed for a tenant */
   onInstall?(context: PluginContext): Promise<void>;
 
+  /** Called when an installed plugin has a newer manifest version */
+  onUpgrade?(fromVersion: string, toVersion: string, context: PluginContext): Promise<void>;
+
   /** Called when plugin is enabled for a tenant */
   onEnable?(context: PluginContext): Promise<void>;
 
@@ -56,10 +59,16 @@ export interface ConditionRegistry {
   register(name: string, evaluator: ConditionEvaluator): void;
 }
 
-export type ConditionEvaluator = (params: Record<string, unknown>, context: PluginContext) => Promise<boolean>;
+export type ConditionEvaluator = (
+  params: Record<string, unknown>,
+  context: PluginContext,
+) => Promise<boolean>;
 
 export interface PostFunctionRegistry {
   register(name: string, fn: PostFunction): void;
 }
 
-export type PostFunction = (params: Record<string, unknown>, context: PluginContext) => Promise<void>;
+export type PostFunction = (
+  params: Record<string, unknown>,
+  context: PluginContext,
+) => Promise<void>;
