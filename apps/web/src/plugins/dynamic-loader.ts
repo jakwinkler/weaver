@@ -1,42 +1,62 @@
 import React, { type ComponentType } from 'react';
-
-type PluginImporter = () => Promise<Record<string, unknown>>;
-
-const pluginImporters: Record<string, PluginImporter> = {
-  '@weaver/plugin-checklist': () => import('@weaver/plugin-checklist'),
-  '@weaver/plugin-timer': () => import('@weaver/plugin-timer'),
-  '@weaver/plugin-time-reports': () => import('@weaver/plugin-time-reports'),
-  '@weaver/plugin-relations': () => import('@weaver/plugin-relations'),
-};
+import { loadRemote, registerRemotes } from '@module-federation/enhanced/runtime';
+import { getPluginRemoteName, PLUGIN_REMOTE_MODULE } from '@weaver/sdk';
+import { API_BASE_URL } from '@/api/client';
 
 const componentCache = new Map<string, ComponentType<any>>();
+const registeredRemotes = new Map<string, string>();
+
+function absoluteBundleUrl(clientBundle: string): string {
+  return new URL(clientBundle, API_BASE_URL).toString();
+}
+
+function registerPluginRemote(pluginId: string, clientBundle: string): string {
+  const remoteName = getPluginRemoteName(pluginId);
+  const entry = absoluteBundleUrl(clientBundle);
+  const previousEntry = registeredRemotes.get(remoteName);
+
+  if (previousEntry !== entry) {
+    registerRemotes(
+      [{ name: remoteName, entry, type: 'module' }],
+      previousEntry ? { force: true } : undefined,
+    );
+    registeredRemotes.set(remoteName, entry);
+  }
+
+  return remoteName;
+}
 
 export function getPluginComponent(
   pluginId: string,
   componentName: string,
+  clientBundle?: string,
 ): ComponentType<any> | null {
-  const cacheKey = `${pluginId}::${componentName}`;
+  if (!clientBundle) return null;
 
-  if (componentCache.has(cacheKey)) {
-    return componentCache.get(cacheKey)!;
-  }
-
-  const importer = pluginImporters[pluginId];
-  if (!importer) {
-    return null;
-  }
+  const cacheKey = `${pluginId}::${clientBundle}::${componentName}`;
+  const cached = componentCache.get(cacheKey);
+  if (cached) return cached;
 
   const LazyComponent = React.lazy(async () => {
-    const mod = await importer();
-    const Component = mod[componentName] as ComponentType<any> | undefined;
+    const remoteName = registerPluginRemote(pluginId, clientBundle);
+    const remoteModule = (await loadRemote(`${remoteName}/${PLUGIN_REMOTE_MODULE}`)) as Record<
+      string,
+      unknown
+    > | null;
+    const Component = remoteModule?.[componentName] as ComponentType<any> | undefined;
+
     if (!Component) {
-      throw new Error(
-        `Component "${componentName}" not found in plugin "${pluginId}"`,
-      );
+      throw new Error(`Component "${componentName}" not found in plugin "${pluginId}"`);
     }
+
     return { default: Component };
   });
 
   componentCache.set(cacheKey, LazyComponent);
   return LazyComponent;
+}
+
+export function clearPluginLoaderCache(): void {
+  componentCache.clear();
+  registeredRemotes.clear();
 }

@@ -4,6 +4,8 @@ import { useInstalledPlugins, useAvailablePlugins, useMyPermissions } from '@/ap
 import { getPageEntry } from './plugin-slot-registry';
 import { createPluginContext } from './plugin-context';
 import { Puzzle } from 'lucide-react';
+import { PluginErrorBoundary } from './PluginErrorBoundary';
+import { PluginLoading } from './PluginLoading';
 
 export function PluginPage() {
   const location = useLocation();
@@ -63,14 +65,10 @@ export function PluginPage() {
   const pluginContext = createPluginContext(entry.pluginId);
 
   return (
-    <Suspense
-      fallback={
-        <div className="flex items-center justify-center py-20">
-          <p className="text-sm text-muted-foreground">Loading plugin...</p>
-        </div>
-      }
-    >
-      <Component pluginContext={pluginContext} />
-    </Suspense>
+    <PluginErrorBoundary pluginId={entry.pluginId}>
+      <Suspense fallback={<PluginLoading />}>
+        <Component pluginContext={pluginContext} />
+      </Suspense>
+    </PluginErrorBoundary>
   );
 }

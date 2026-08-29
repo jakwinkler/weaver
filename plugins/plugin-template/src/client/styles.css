@@ -1,0 +1,21 @@
+.weaver-plugin-template {
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.75rem;
+  background: hsl(var(--card));
+  color: hsl(var(--card-foreground));
+  padding: 1.5rem;
+}
+
+.weaver-plugin-template h1 {
+  margin: 0.25rem 0 0.75rem;
+  font-size: 1.5rem;
+  font-weight: 650;
+}
+
+.weaver-plugin-template__eyebrow {
+  color: hsl(var(--muted-foreground));
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}

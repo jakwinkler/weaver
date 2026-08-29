@@ -39,6 +39,7 @@ export interface PluginManifest {
   type?: 'app' | 'widget' | 'feature' | 'integration';
   scope?: 'tenant' | 'project';
   permissions: string[];
+  clientBundle?: string;
   ui?: {
     slots?: PluginUISlot[];
     navigation?: PluginNavigationItem[];
@@ -135,8 +136,17 @@ export function useDisablePlugin() {
 export function useUpdatePluginSettings() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ pluginId, settings }: { pluginId: string; settings: Record<string, unknown> }) => {
-      const res = await apiClient.patch<InstalledPlugin>('/plugins/settings', { pluginId, settings });
+    mutationFn: async ({
+      pluginId,
+      settings,
+    }: {
+      pluginId: string;
+      settings: Record<string, unknown>;
+    }) => {
+      const res = await apiClient.patch<InstalledPlugin>('/plugins/settings', {
+        pluginId,
+        settings,
+      });
       return res.data;
     },
     onSuccess: () => {
