@@ -9,6 +9,7 @@ import {
   STATUS_CATEGORIES,
   ISSUE_LINK_TYPES,
   CUSTOM_FIELD_TYPES,
+  API_KEY_SCOPES,
   PROJECT_KEY_REGEX,
   ISSUE_KEY_REGEX,
   DEFAULT_PAGE_SIZE,
@@ -41,6 +42,19 @@ export const refreshTokenSchema = z.object({
 });
 export type RefreshTokenDto = z.infer<typeof refreshTokenSchema>;
 
+export const createApiKeySchema = z.object({
+  name: z.string().trim().min(1).max(255),
+  scopes: z
+    .array(z.enum(API_KEY_SCOPES))
+    .min(1, 'Select at least one scope')
+    .max(API_KEY_SCOPES.length)
+    .refine((scopes) => new Set(scopes).size === scopes.length, {
+      message: 'Scopes must be unique',
+    }),
+  expiresAt: z.coerce.date().nullable().optional(),
+});
+export type CreateApiKeyDto = z.infer<typeof createApiKeySchema>;
+
 // ── User Schemas ──
 
 export const updateUserSchema = z.object({
@@ -53,7 +67,12 @@ export type UpdateUserDto = z.infer<typeof updateUserSchema>;
 
 export const createProjectSchema = z.object({
   name: z.string().min(1).max(255),
-  key: z.string().regex(PROJECT_KEY_REGEX, 'Project key must be 2-10 uppercase alphanumeric characters starting with a letter'),
+  key: z
+    .string()
+    .regex(
+      PROJECT_KEY_REGEX,
+      'Project key must be 2-10 uppercase alphanumeric characters starting with a letter',
+    ),
   description: z.string().max(5000).optional(),
 });
 export type CreateProjectDto = z.infer<typeof createProjectSchema>;
@@ -108,14 +127,21 @@ export const updateIssueSchema = z.object({
 export type UpdateIssueDto = z.infer<typeof updateIssueSchema>;
 
 export const reorderIssuesSchema = z.object({
-  issues: z.array(z.object({
-    id: z.string().uuid(),
-    sortOrder: z.number().int().min(0),
-  })).min(1).max(200),
+  issues: z
+    .array(
+      z.object({
+        id: z.string().uuid(),
+        sortOrder: z.number().int().min(0),
+      }),
+    )
+    .min(1)
+    .max(200),
 });
 export type ReorderIssuesDto = z.infer<typeof reorderIssuesSchema>;
 
-export const issueKeySchema = z.string().regex(ISSUE_KEY_REGEX, 'Invalid issue key format (e.g., WEB-123)');
+export const issueKeySchema = z
+  .string()
+  .regex(ISSUE_KEY_REGEX, 'Invalid issue key format (e.g., WEB-123)');
 
 // ── Pagination ──
 

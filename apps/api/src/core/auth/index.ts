@@ -1,7 +1,9 @@
 export { AuthModule } from './auth.module';
 export { AuthService } from './auth.service';
 export type { JwtPayload } from './auth.service';
-export { JwtAuthGuard } from './jwt-auth.guard';
+export { JwtAuthGuard, JwtOnlyAuthGuard } from './jwt-auth.guard';
+export { ApiKeyGuard } from './api-key.guard';
+export { ApiKeyRateLimitGuard } from './api-key-rate-limit.guard';
 export { AdminGuard } from './admin.guard';
 export { OptionalAuthGuard } from './optional-auth.guard';
 export { PermissionGuard } from './permission.guard';

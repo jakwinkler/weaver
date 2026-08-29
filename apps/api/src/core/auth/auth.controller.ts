@@ -1,16 +1,8 @@
-import {
-  Controller,
-  Post,
-  Get,
-  Body,
-  Res,
-  UseGuards,
-  BadRequestException,
-} from '@nestjs/common';
+import { Controller, Post, Get, Body, Res, UseGuards, BadRequestException } from '@nestjs/common';
 import { Response } from 'express';
 import { registerSchema, loginSchema } from '@weaver/shared';
 import { AuthService } from './auth.service';
-import { JwtAuthGuard } from './jwt-auth.guard';
+import { JwtAuthGuard, JwtOnlyAuthGuard } from './jwt-auth.guard';
 import { CurrentUser, RequestUser } from './current-user.decorator';
 
 const COOKIE_OPTIONS = {
@@ -48,7 +40,7 @@ export class AuthController {
   }
 
   @Post('refresh')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtOnlyAuthGuard)
   async refresh(@CurrentUser() user: RequestUser, @Res() res: Response) {
     const data = await this.authService.refreshToken(user.userId);
     res.cookie('weaver_token', data.accessToken, COOKIE_OPTIONS);
