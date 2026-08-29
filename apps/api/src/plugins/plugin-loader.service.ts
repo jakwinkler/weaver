@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/commo
 import type { PluginManifest } from '@weaver/sdk';
 import * as fs from 'fs';
 import * as path from 'path';
+import { parsePluginManifest } from './plugin-manifest.schema';
 
 @Injectable()
 export class PluginLoaderService implements OnModuleInit, OnModuleDestroy {
@@ -93,7 +94,7 @@ export class PluginLoaderService implements OnModuleInit, OnModuleDestroy {
 
       try {
         const raw = fs.readFileSync(manifestPath, 'utf-8');
-        const manifest: PluginManifest = JSON.parse(raw);
+        const manifest: PluginManifest = parsePluginManifest(JSON.parse(raw));
         this.manifests.set(manifest.id, manifest);
         this.pluginDirs.set(manifest.id, entry.name);
         this.logger.log(`Loaded plugin manifest: ${manifest.id} v${manifest.version}`);

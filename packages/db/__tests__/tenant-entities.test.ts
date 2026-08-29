@@ -138,6 +138,41 @@ describe('Tenant Schema Entities', () => {
     });
   });
 
+  describe('TimeEntryEntity', () => {
+    it('should expose backward-compatible plugin source, interval, lock, and update columns', () => {
+      const columns = storage.columns
+        .filter((c) => c.target === TimeEntryEntity)
+        .map((c) => c.propertyName);
+
+      expect(columns).toEqual(
+        expect.arrayContaining([
+          'startedAt',
+          'endedAt',
+          'source',
+          'sourcePluginId',
+          'sourceReference',
+          'lockedAt',
+          'lockReason',
+          'updatedAt',
+        ]),
+      );
+    });
+
+    it('should enforce unique plugin source references when both values are present', () => {
+      const index = storage.indices.find(
+        (candidate) =>
+          candidate.target === TimeEntryEntity &&
+          candidate.unique === true &&
+          candidate.columns?.includes('sourcePluginId') &&
+          candidate.columns?.includes('sourceReference'),
+      );
+
+      expect(index).toBeDefined();
+      expect(index?.where).toContain('source_plugin_id');
+      expect(index?.where).toContain('source_reference');
+    });
+  });
+
   describe('CommentEntity', () => {
     it('should have ManyToOne relation to issue', () => {
       const relations = storage.relations

@@ -23,6 +23,7 @@ import {
   TimeEntryEntity,
   AttachmentEntity,
   ProjectPluginEntity,
+  runAutomaticTimeCoreMigration,
 } from '@weaver/db';
 import { requireTenantContext } from './tenant.context';
 
@@ -76,6 +77,7 @@ export class TenantConnectionProvider {
     });
 
     await ds.initialize();
+    await runAutomaticTimeCoreMigration(ds, schemaName);
     this.connections.set(schemaName, ds);
     return ds;
   }

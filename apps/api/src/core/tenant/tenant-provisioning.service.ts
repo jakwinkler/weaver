@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import { runAutomaticTimeCoreMigration } from '@weaver/db';
 import { TenantConnectionProvider, TENANT_ENTITIES } from './tenant-connection.provider';
 import { ConfigService } from '@nestjs/config';
 
@@ -34,6 +35,7 @@ export class TenantProvisioningService {
     });
 
     await tempDs.initialize();
+    await runAutomaticTimeCoreMigration(tempDs, schemaName);
     await tempDs.destroy();
 
     // Create GIN index for custom fields

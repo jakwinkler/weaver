@@ -74,6 +74,11 @@ export class PluginsController {
     return this.registry.disable(pluginId);
   }
 
+  @Post('upgrade')
+  async upgrade(@Body('pluginId') pluginId: string) {
+    return this.registry.upgrade(pluginId);
+  }
+
   @Patch('settings')
   async updateSettings(
     @Body('pluginId') pluginId: string,

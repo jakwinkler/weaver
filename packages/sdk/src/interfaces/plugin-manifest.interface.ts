@@ -1,3 +1,5 @@
+import type { PluginCoreCapability } from './plugin-context.interface';
+
 export interface PluginManifest {
   id: string;
   name: string;
@@ -12,9 +14,11 @@ export interface PluginManifest {
     client?: string;
   };
   permissions: string[];
+  requires?: PluginRequirements;
+  companion?: PluginCompanionMetadata;
   declaredPermissions?: PluginDeclaredPermission[];
   settings?: {
-    schema: Record<string, PluginSettingDefinition>;
+    schema?: Record<string, PluginSettingDefinition>;
   };
   events?: {
     subscribes?: string[];
@@ -27,7 +31,24 @@ export interface PluginManifest {
     projectViews?: PluginProjectViewDefinition[];
   };
   routes?: PluginRouteDefinition[];
-  migrations?: string[];
+  migrations?: Array<string | PluginMigrationDefinition>;
+}
+
+export interface PluginRequirements {
+  coreCapabilities?: PluginCoreCapability[];
+  plugins?: Array<{ id: string; minimumVersion?: string }>;
+}
+
+export interface PluginCompanionMetadata {
+  platform: 'macos' | 'windows' | 'linux';
+  downloadArtifact: string;
+  minimumVersion: string;
+  pairingRoute: string;
+}
+
+export interface PluginMigrationDefinition {
+  version: string;
+  path: string;
 }
 
 export interface PluginProjectViewDefinition {

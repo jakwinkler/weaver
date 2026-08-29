@@ -18,6 +18,7 @@ export function TimerWidgetWrapper({ pluginContext, issueKey }: TimerWidgetWrapp
     await pluginContext.coreApi.post(`/issues/${issueKey}/time-entries`, {
       minutes,
       description,
+      source: 'timer',
     });
   };
 

@@ -9,12 +9,14 @@ import { PluginContextFactory } from './plugin-context.factory';
 import { PluginEventBridgeService } from './plugin-event-bridge.service';
 import { PluginsController } from './plugins.controller';
 import { PluginRouteController } from './plugin-route.controller';
+import { TimeTrackingModule } from '../modules/time-tracking';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([InstalledPluginEntity]),
     TenantModule,
     EventsModule,
+    TimeTrackingModule,
   ],
   controllers: [PluginsController, PluginRouteController],
   providers: [

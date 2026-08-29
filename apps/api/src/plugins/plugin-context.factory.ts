@@ -1,36 +1,62 @@
-import { Injectable, Logger } from '@nestjs/common';
-import type { PluginContext, RequestOptions } from '@weaver/sdk';
+import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import type {
+  PluginContext,
+  PluginCoreCapability,
+  PluginIssueCandidate,
+  PluginIssueCandidateFilters,
+  RequestOptions,
+} from '@weaver/sdk';
+import { InstalledPluginEntity } from '@weaver/db';
+import type { EntityManager, Repository } from 'typeorm';
 import { TenantConnectionProvider, requireTenantContext } from '../core/tenant';
 import { EventDispatcherService } from '../modules/events';
+import { TimeTrackingService } from '../modules/time-tracking/time-tracking.service';
+import { PluginLoaderService } from './plugin-loader.service';
 
 @Injectable()
 export class PluginContextFactory {
   constructor(
     private readonly tenantConnections: TenantConnectionProvider,
     private readonly eventDispatcher: EventDispatcherService,
+    private readonly loader: PluginLoaderService,
+    @InjectRepository(InstalledPluginEntity)
+    private readonly installedPlugins: Repository<InstalledPluginEntity>,
+    private readonly timeTracking: TimeTrackingService,
   ) {}
 
   async create(
     pluginId: string,
     settings: Record<string, unknown>,
     user?: { id: string; email: string; displayName: string },
+    options?: {
+      manager?: EntityManager;
+      capabilityState?: { installed: boolean; enabled: boolean };
+    },
   ): Promise<PluginContext> {
     const tenant = requireTenantContext();
-    const em = await this.tenantConnections.getEntityManager();
+    const em = options?.manager ?? (await this.tenantConnections.getEntityManager());
 
     // Ensure raw SQL queries run in the tenant schema
-    const runInSchema = async <T>(fn: () => Promise<T>): Promise<T> => {
-      await em.query(`SET search_path TO "${tenant.schemaName}", public`);
-      return fn();
+    const runInSchema = async <T>(fn: (manager: EntityManager) => Promise<T>): Promise<T> => {
+      if (options?.manager) {
+        await em.query(`SET LOCAL search_path TO "${tenant.schemaName}", public`);
+        return fn(em);
+      }
+
+      return em.transaction(async (manager) => {
+        await manager.query(`SET LOCAL search_path TO "${tenant.schemaName}", public`);
+        return fn(manager);
+      });
     };
 
     return {
       db: {
         query: async (sql: string, params?: unknown[]) => {
-          return runInSchema(() => em.query(sql, params));
+          return runInSchema((manager) => manager.query(sql, params));
         },
         runMigration: async (sql: string) => {
-          return runInSchema(() => em.query(sql));
+          return runInSchema((manager) => manager.query(sql));
         },
       },
       http: {
@@ -47,41 +73,40 @@ export class PluginContextFactory {
       },
       events: {
         emit: async (event: string, data: unknown) => {
-          Logger.log(
-            `Plugin ${pluginId} emitted event: ${event}`,
-            'PluginContext',
-          );
-          await this.eventDispatcher.emit(
-            event,
-            data as Record<string, unknown>,
-          );
+          Logger.log(`Plugin ${pluginId} emitted event: ${event}`, 'PluginContext');
+          await this.eventDispatcher.emit(event, data as Record<string, unknown>);
         },
       },
       settings,
       api: {
         issues: {
           get: async (key: string) =>
-            runInSchema(() =>
-              em.query(`SELECT * FROM issues WHERE key = $1`, [key]),
+            runInSchema((manager) =>
+              manager.query(`SELECT * FROM issues WHERE key = $1`, [key]),
             ).then((r) => r[0]),
+          findCandidates: async (filters: PluginIssueCandidateFilters = {}) => {
+            await this.assertCapability(pluginId, 'issue-candidates', options?.capabilityState);
+            const userId = this.requireUserId(pluginId, user);
+            return this.findIssueCandidates(runInSchema, userId, filters);
+          },
           update: async (key: string, data: Record<string, unknown>) => {
             const sets = Object.entries(data)
               .map(([k], i) => `"${k}" = $${i + 2}`)
               .join(', ');
-            return runInSchema(() =>
-              em.query(
-                `UPDATE issues SET ${sets} WHERE key = $1 RETURNING *`,
-                [key, ...Object.values(data)],
-              ),
+            return runInSchema((manager) =>
+              manager.query(`UPDATE issues SET ${sets} WHERE key = $1 RETURNING *`, [
+                key,
+                ...Object.values(data),
+              ]),
             ).then((r) => r[0]);
           },
           addComment: async (key: string, body: string) => {
-            const issue = await runInSchema(() =>
-              em.query(`SELECT id FROM issues WHERE key = $1`, [key]),
+            const issue = await runInSchema((manager) =>
+              manager.query(`SELECT id FROM issues WHERE key = $1`, [key]),
             );
             if (!issue[0]) return null;
-            return runInSchema(() =>
-              em.query(
+            return runInSchema((manager) =>
+              manager.query(
                 `INSERT INTO comments (issue_id, author_id, body) VALUES ($1, $2, $3) RETURNING *`,
                 [
                   issue[0].id,
@@ -102,10 +127,10 @@ export class PluginContextFactory {
         },
         projects: {
           get: async (key: string) =>
-            runInSchema(() =>
-              em.query(`SELECT * FROM projects WHERE key = $1`, [key]),
+            runInSchema((manager) =>
+              manager.query(`SELECT * FROM projects WHERE key = $1`, [key]),
             ).then((r) => r[0]),
-          list: async () => runInSchema(() => em.query(`SELECT * FROM projects`)),
+          list: async () => runInSchema((manager) => manager.query(`SELECT * FROM projects`)),
         },
         users: {
           get: async (id: string) => {
@@ -115,18 +140,21 @@ export class PluginContextFactory {
           list: async () => [],
         },
         activityLog: {
-          create: async (issueKey: string, dto: {
-            action: string;
-            fieldName?: string | null;
-            oldValue?: string | null;
-            newValue?: string | null;
-          }) => {
-            const issue = await runInSchema(() =>
-              em.query(`SELECT id FROM issues WHERE key = $1`, [issueKey]),
+          create: async (
+            issueKey: string,
+            dto: {
+              action: string;
+              fieldName?: string | null;
+              oldValue?: string | null;
+              newValue?: string | null;
+            },
+          ) => {
+            const issue = await runInSchema((manager) =>
+              manager.query(`SELECT id FROM issues WHERE key = $1`, [issueKey]),
             );
             if (!issue[0]) return null;
-            const result = await runInSchema(() =>
-              em.query(
+            const result = await runInSchema((manager) =>
+              manager.query(
                 `INSERT INTO activity_logs (issue_id, user_id, action, field_name, old_value, new_value)
                  VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
                 [
@@ -151,8 +179,8 @@ export class PluginContextFactory {
             options?: Record<string, unknown>;
             required?: boolean;
           }) => {
-            const existing = await runInSchema(() =>
-              em.query(
+            const existing = await runInSchema((manager) =>
+              manager.query(
                 `SELECT id FROM custom_field_definitions WHERE slug = $1 AND entity_type = $2`,
                 [definition.slug, definition.entityType],
               ),
@@ -160,8 +188,8 @@ export class PluginContextFactory {
             if (existing.length > 0) {
               return existing[0];
             }
-            const result = await runInSchema(() =>
-              em.query(
+            const result = await runInSchema((manager) =>
+              manager.query(
                 `INSERT INTO custom_field_definitions (name, slug, field_type, entity_type, plugin_id, options, required)
                VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)
                RETURNING *`,
@@ -179,36 +207,50 @@ export class PluginContextFactory {
             return result[0];
           },
           unregisterAll: async () => {
-            await runInSchema(() =>
-              em.query(
-                `DELETE FROM custom_field_definitions WHERE plugin_id = $1`,
-                [pluginId],
-              ),
+            await runInSchema((manager) =>
+              manager.query(`DELETE FROM custom_field_definitions WHERE plugin_id = $1`, [
+                pluginId,
+              ]),
             );
+          },
+        },
+        timeEntries: {
+          createBatch: async (request) => {
+            await this.assertCapability(pluginId, 'time-entries', options?.capabilityState);
+            const userId = this.requireUserId(pluginId, user);
+            return this.timeTracking.createBatch(pluginId, request, userId);
+          },
+          update: async (id, changes) => {
+            await this.assertCapability(pluginId, 'time-entries', options?.capabilityState);
+            const userId = this.requireUserId(pluginId, user);
+            return this.timeTracking.updatePluginEntry(pluginId, id, changes, userId);
+          },
+          delete: async (id) => {
+            await this.assertCapability(pluginId, 'time-entries', options?.capabilityState);
+            const userId = this.requireUserId(pluginId, user);
+            return this.timeTracking.deletePluginEntry(pluginId, id, userId);
+          },
+          list: async (filters = {}) => {
+            await this.assertCapability(pluginId, 'time-entries', options?.capabilityState);
+            const userId = this.requireUserId(pluginId, user);
+            return this.timeTracking.listPluginEntries(pluginId, filters, userId);
+          },
+          getLockState: async (ids) => {
+            await this.assertCapability(pluginId, 'time-entries', options?.capabilityState);
+            const userId = this.requireUserId(pluginId, user);
+            return this.timeTracking.getPluginLockState(pluginId, ids, userId);
           },
         },
       },
       logger: {
         info: (msg: string, meta?: Record<string, unknown>) =>
-          Logger.log(
-            `[${pluginId}] ${msg}`,
-            meta ? JSON.stringify(meta) : '',
-          ),
+          Logger.log(`[${pluginId}] ${msg}`, meta ? JSON.stringify(meta) : ''),
         warn: (msg: string, meta?: Record<string, unknown>) =>
-          Logger.warn(
-            `[${pluginId}] ${msg}`,
-            meta ? JSON.stringify(meta) : '',
-          ),
+          Logger.warn(`[${pluginId}] ${msg}`, meta ? JSON.stringify(meta) : ''),
         error: (msg: string, meta?: Record<string, unknown>) =>
-          Logger.error(
-            `[${pluginId}] ${msg}`,
-            meta ? JSON.stringify(meta) : '',
-          ),
+          Logger.error(`[${pluginId}] ${msg}`, meta ? JSON.stringify(meta) : ''),
         debug: (msg: string, meta?: Record<string, unknown>) =>
-          Logger.debug(
-            `[${pluginId}] ${msg}`,
-            meta ? JSON.stringify(meta) : '',
-          ),
+          Logger.debug(`[${pluginId}] ${msg}`, meta ? JSON.stringify(meta) : ''),
       },
       tenant: {
         id: tenant.tenantId,
@@ -217,6 +259,95 @@ export class PluginContextFactory {
       },
       user,
     };
+  }
+
+  private async assertCapability(
+    pluginId: string,
+    capability: PluginCoreCapability,
+    capabilityState?: { installed: boolean; enabled: boolean },
+  ): Promise<void> {
+    const manifest = this.loader.getManifest(pluginId);
+    if (!manifest?.requires?.coreCapabilities?.includes(capability)) {
+      throw new ForbiddenException(
+        `Plugin ${pluginId} has not declared the ${capability} capability`,
+      );
+    }
+
+    if (capabilityState) {
+      if (capabilityState.installed && capabilityState.enabled) return;
+      throw new ForbiddenException(`Plugin ${pluginId} is not installed and enabled`);
+    }
+
+    const tenant = requireTenantContext();
+    const installed = await this.installedPlugins.findOne({
+      where: { tenantId: tenant.tenantId, pluginId },
+    });
+    if (!installed?.enabled) {
+      throw new ForbiddenException(`Plugin ${pluginId} is not installed and enabled`);
+    }
+  }
+
+  private requireUserId(pluginId: string, user?: { id: string }): string {
+    if (!user?.id) {
+      throw new ForbiddenException(`Plugin ${pluginId} requires an interactive user context`);
+    }
+    return user.id;
+  }
+
+  private async findIssueCandidates(
+    runInSchema: <T>(fn: (manager: EntityManager) => Promise<T>) => Promise<T>,
+    userId: string,
+    filters: PluginIssueCandidateFilters,
+  ): Promise<PluginIssueCandidate[]> {
+    const parameters: unknown[] = [userId];
+    const clauses = ['status.is_terminal = false'];
+    if (filters.includeUnassigned) {
+      clauses.push('(issue.assignee_id = $1 OR issue.assignee_id IS NULL)');
+    } else {
+      clauses.push('issue.assignee_id = $1');
+    }
+    if (filters.projectKeys?.length) {
+      parameters.push(filters.projectKeys);
+      clauses.push(`project.key = ANY($${parameters.length}::text[])`);
+    }
+    if (filters.issueKeys?.length) {
+      parameters.push(filters.issueKeys);
+      clauses.push(`issue.key = ANY($${parameters.length}::text[])`);
+    }
+    if (filters.updatedSince) {
+      parameters.push(filters.updatedSince);
+      clauses.push(`issue.updated_at >= $${parameters.length}::timestamptz`);
+    }
+    parameters.push(Math.min(Math.max(filters.limit ?? 100, 1), 200));
+
+    const rows = await runInSchema((manager) =>
+      manager.query(
+        `SELECT issue.id,
+                issue.key,
+                issue.summary,
+                project.key AS "projectKey",
+                status.category AS "statusCategory",
+                issue.assignee_id AS "assigneeId",
+                issue.updated_at AS "updatedAt"
+           FROM issues issue
+           JOIN projects project ON project.id = issue.project_id
+           JOIN workflow_statuses status ON status.id = issue.status_id
+          WHERE ${clauses.join(' AND ')}
+          ORDER BY issue.updated_at DESC
+          LIMIT $${parameters.length}`,
+        parameters,
+      ),
+    );
+
+    return rows.map((row: Record<string, unknown>) => ({
+      id: row.id as string,
+      key: row.key as string,
+      summary: row.summary as string,
+      projectKey: row.projectKey as string,
+      statusCategory: row.statusCategory as string,
+      assigneeId: (row.assigneeId as string | null) ?? null,
+      updatedAt: new Date(row.updatedAt as string | Date).toISOString(),
+    }));
   }
 
   private async makeRequest(

@@ -18,6 +18,7 @@ import { TimeTrackingService } from './time-tracking.service';
 const createTimeEntrySchema = z.object({
   minutes: z.number().int().min(1),
   description: z.string().max(500).optional(),
+  source: z.enum(['manual', 'timer']).optional(),
 });
 
 const updateTimeEntrySchema = createTimeEntrySchema.partial();
