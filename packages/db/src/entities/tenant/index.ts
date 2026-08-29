@@ -19,3 +19,5 @@ export { SavedFilterEntity } from './saved-filter.entity';
 export { TimeEntryEntity } from './time-entry.entity';
 export { AttachmentEntity } from './attachment.entity';
 export { ProjectPluginEntity } from './project-plugin.entity';
+export { AutomationRuleEntity } from './automation-rule.entity';
+export { AutomationLogEntity } from './automation-log.entity';

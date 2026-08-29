@@ -16,6 +16,7 @@ import {
 } from '@weaver/shared';
 import { TenantConnectionProvider } from '../../core/tenant';
 import { In, MoreThanOrEqual } from 'typeorm';
+import { EventDispatcherService } from '../events';
 
 interface ReportIssueState {
   member: boolean;
@@ -33,7 +34,10 @@ interface ReportContext {
 
 @Injectable()
 export class SprintsService {
-  constructor(private readonly tenantConnections: TenantConnectionProvider) {}
+  constructor(
+    private readonly tenantConnections: TenantConnectionProvider,
+    private readonly eventDispatcher: EventDispatcherService,
+  ) {}
 
   async create(projectId: string, dto: CreateSprintDto): Promise<SprintEntity> {
     const em = await this.tenantConnections.getEntityManager();
@@ -156,7 +160,12 @@ export class SprintsService {
       })),
     };
 
-    return repo.save(sprint);
+    const saved = await repo.save(sprint);
+    await this.eventDispatcher.emit('sprint.started', {
+      sprintId: saved.id,
+      projectId: saved.projectId,
+    });
+    return saved;
   }
 
   async complete(id: string): Promise<SprintEntity> {

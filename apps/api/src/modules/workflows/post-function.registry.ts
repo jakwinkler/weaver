@@ -47,11 +47,16 @@ export class PostFunctionRegistry {
   }
 
   async executeAll(
-    postFunctions: Array<{ type: string; params: Record<string, unknown> }>,
+    postFunctions: Array<{
+      type: string;
+      params?: Record<string, unknown>;
+      [key: string]: unknown;
+    }>,
     context: PostFunctionContext,
   ): Promise<void> {
     for (const pf of postFunctions) {
-      await this.execute(pf.type, context, pf.params);
+      const { type, params, ...flatParams } = pf;
+      await this.execute(type, context, params ?? flatParams);
     }
   }
 

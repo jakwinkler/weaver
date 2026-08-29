@@ -47,11 +47,16 @@ export class ConditionEvaluatorRegistry {
   }
 
   async evaluateAll(
-    conditions: Array<{ type: string; params: Record<string, unknown> }>,
+    conditions: Array<{
+      type: string;
+      params?: Record<string, unknown>;
+      [key: string]: unknown;
+    }>,
     context: ConditionContext,
   ): Promise<boolean> {
     for (const condition of conditions) {
-      const result = await this.evaluate(condition.type, context, condition.params);
+      const { type, params, ...flatParams } = condition;
+      const result = await this.evaluate(type, context, params ?? flatParams);
       if (!result) return false;
     }
     return true;

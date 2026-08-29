@@ -47,7 +47,10 @@ export class WeaverGateway implements OnGatewayConnection, OnGatewayDisconnect {
       client.data.userId = payload.sub;
       client.data.tenantId = payload.tenantId;
 
-      await client.join(this.tenantRoom(payload.tenantId));
+      await client.join([
+        this.tenantRoom(payload.tenantId),
+        this.userRoom(payload.tenantId, payload.sub),
+      ]);
 
       this.logger.log(`Client connected: ${client.id} (user: ${payload.sub})`);
     } catch {
@@ -103,12 +106,8 @@ export class WeaverGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.server.to(this.projectRoom(tenantId, projectKey)).emit(event, data);
   }
 
-  emitToUser(userId: string, event: string, data: unknown) {
-    for (const [, socket] of this.server.sockets.sockets) {
-      if (socket.data.userId === userId) {
-        socket.emit(event, data);
-      }
-    }
+  emitToUser(tenantId: string, userId: string, event: string, data: unknown) {
+    this.server.to(this.userRoom(tenantId, userId)).emit(event, data);
   }
 
   private getTenantId(client: Socket): string | undefined {
@@ -121,5 +120,9 @@ export class WeaverGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   private projectRoom(tenantId: string, projectKey: string): string {
     return `${this.tenantRoom(tenantId)}:project:${projectKey}`;
+  }
+
+  private userRoom(tenantId: string, userId: string): string {
+    return `tenant:${tenantId}:user:${userId}`;
   }
 }
