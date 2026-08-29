@@ -136,6 +136,15 @@ export class CommentsService {
     const issue = await em.getRepository(IssueEntity).findOneBy({ id: comment.issueId });
     const issueKey = issue?.key ?? 'UNKNOWN';
 
+    if (issue) {
+      this.eventDispatcher.emit('comment.updated', {
+        commentId: saved.id,
+        issueKey: issue.key,
+        projectKey: issue.key.split('-')[0],
+        userId: updaterId ?? null,
+      });
+    }
+
     for (const mentionedUserId of newMentions) {
       if (oldMentions.has(mentionedUserId)) continue; // already mentioned
       if (updaterId && mentionedUserId === updaterId) continue; // skip self-mentions
