@@ -2,6 +2,7 @@ import { useState, useCallback, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useProjects, useCreateProject, useHasPermission } from '@/api';
 import { RichTextEditor, serializeDoc } from '@/components/RichTextEditor';
+import { extractPlainText } from '@/lib/richText';
 import { ProjectIcon } from './ProjectSettingsPage';
 import { Pagination, getStoredPerPage } from '@/components/Pagination';
 import { SortableHeader, type SortDirection } from '@/components/SortableHeader';
@@ -195,7 +196,11 @@ export function ProjectsPage() {
               <TableRow key={project.id} className="hover:bg-muted/50">
                 <TableCell className="whitespace-nowrap">
                   <Link to={`/projects/${project.key}`} className="flex items-center gap-3">
-                    <ProjectIcon iconAttachmentId={project.iconAttachmentId} projectKey={project.key} size="sm" />
+                    <ProjectIcon
+                      iconAttachmentId={project.iconAttachmentId}
+                      projectKey={project.key}
+                      size="sm"
+                    />
                     <div>
                       <span className="text-sm font-medium text-primary">{project.key}</span>
                       <span className="ml-2 text-sm text-foreground">{project.name}</span>
@@ -203,7 +208,9 @@ export function ProjectsPage() {
                   </Link>
                 </TableCell>
                 <TableCell className="text-sm text-muted-foreground">
-                  {project.description || '-'}
+                  <span className="line-clamp-2">
+                    {extractPlainText(project.description) || '-'}
+                  </span>
                 </TableCell>
                 <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
                   {project.issueCounter}

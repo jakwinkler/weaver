@@ -18,20 +18,22 @@ Currently descriptions and comments are stored as TipTap JSON objects but render
 
 ### Frontend
 
-- [x] **Create RichTextRenderer component** — `RichTextEditor` with `editable={false}` serves as the renderer. Supports headings, bold, italic, code, links, lists, blockquotes, images, code blocks via StarterKit + extensions. _Files: `apps/web/src/components/RichTextEditor.tsx`_
-- [x] **Render issue descriptions** — Replaced raw `JSON.stringify` in IssueDetailPage with `RichTextEditor editable={false}`. Click-to-edit (pencil icon on hover) switches to full RichTextEditor with Save/Cancel buttons. _Files: `apps/web/src/features/issues/IssueDetailPage.tsx`_
-- [x] **Render comments** — CommentsSection already uses `RichTextEditor editable={false}` for each comment body with `normalizeCommentBody()`. _Files: `apps/web/src/features/issues/CommentsSection.tsx`_
+- [x] **Create RichTextRenderer component** — Dedicated read-only wrapper renders normalized TipTap documents and refreshes when query content changes. Supports headings, bold, italic, code, links, lists, blockquotes, images, and code blocks via StarterKit plus extensions. _Files: `apps/web/src/components/RichTextEditor.tsx`, `apps/web/src/lib/richText.ts`_
+- [x] **Render issue descriptions** — IssueDetailPage uses `RichTextRenderer`; click-to-edit switches to the full editor with Save/Cancel buttons. _Files: `apps/web/src/features/issues/IssueDetailPage.tsx`_
+- [x] **Render comments** — Comments and all-activity entries use `RichTextRenderer` with legacy body normalization. _Files: `apps/web/src/features/issues/CommentsSection.tsx`, `apps/web/src/features/issues/IssueActivityTabs.tsx`_
 - [x] **Comment editor** — CommentsSection already uses RichTextEditor with toolbar for new comments (with draft persistence). _Files: `apps/web/src/features/issues/CommentsSection.tsx`_
-- [x] **Render project descriptions** — ProjectDetailPage already uses RichTextEditor read-only with click-to-edit (pencil icon). _Files: `apps/web/src/features/projects/ProjectDetailPage.tsx`_
-- [x] **Add image support** — Image extension configured, supports paste & drop upload via `/attachments/upload` and `/attachments/upload/generic`. _Files: `apps/web/src/components/RichTextEditor.tsx`_
+- [x] **Render project descriptions** — Authenticated project detail and settings pages render rich text. Project-list and public-page summaries extract readable text instead of exposing stored JSON or private attachment URLs. _Files: `apps/web/src/features/projects/ProjectDetailPage.tsx`, `apps/web/src/features/projects/ProjectSettingsPage.tsx`, `apps/web/src/features/projects/ProjectsPage.tsx`, `apps/web/src/features/projects/PublicProjectPage.tsx`_
+- [x] **Add image support** — Image extension supports paste and drop upload via `/issues/:issueKey/attachments` and `/attachments/upload`. _Files: `apps/web/src/components/RichTextEditor.tsx`_
 - [x] **Add toolbar** — Full toolbar: Bold, Italic, Strikethrough, H1/H2/H3, Bullet/Ordered List, Blockquote, Code Block, Link, Image. _Files: `apps/web/src/components/RichTextEditor.tsx`_
-- [x] **Empty state** — Placeholder text via TipTap Placeholder extension ("Add a description..." / "Write a comment..." / "Write something..."). Issue description shows "Click to add a description..." when empty. _Files: `apps/web/src/components/RichTextEditor.tsx`, `apps/web/src/features/issues/IssueDetailPage.tsx`_
+- [x] **Empty state** — Placeholder text via TipTap Placeholder extension. Empty and whitespace-only documents are detected consistently, descriptions can be cleared to `null`, and the issue page restores "Click to add a description...". _Files: `apps/web/src/lib/richText.ts`, `apps/web/src/features/issues/IssueDetailPage.tsx`, `packages/shared/src/schemas/index.ts`_
 
 ### Tests
 
-- [x] **Visual check: TipTap JSON renders** — No JSON blobs visible anywhere. Descriptions and comments render formatted text.
-- [x] **E2E: create comment with rich text** — Covered in existing `permissions.e2e-spec.ts` and `phase3.e2e-spec.ts` — POST comment with TipTap JSON body, GET returns same structure.
-- [x] **E2E: update description with rich text** — Covered in existing `projects-issues.e2e-spec.ts` — PATCH issue description with JSON, verify persistence.
+- [x] **Visual check: TipTap JSON renders** — Local browser acceptance covers project list/detail, issue detail, comments, empty state, pasted image upload, and a direct raw-JSON visibility check.
+- [x] **Component: rich-text rendering** — Vitest verifies heading, bold, link, list, and code-block output, plus read-only refresh behavior. _Files: `apps/web/src/components/RichTextRenderer.test.tsx`_
+- [x] **Unit: normalization and empty state** — Vitest covers stored JSON strings, legacy text, malformed content, readable extraction, non-text content, and empty serialization. _Files: `apps/web/src/lib/richText.test.ts`_
+- [x] **E2E: create comment with rich text** — Existing API suites POST comment bodies as TipTap JSON and verify the returned structure.
+- [x] **E2E: update description with rich text** — Focused API e2e persists, refetches, and clears a formatted TipTap description. _Files: `apps/api/test/projects-issues.e2e-spec.ts`_
 
 ## Acceptance Criteria
 
