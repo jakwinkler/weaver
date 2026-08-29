@@ -58,6 +58,7 @@ describe('Public Schema Entities', () => {
       expect(columnNames).toContain('displayName');
       expect(columnNames).toContain('passwordHash');
       expect(columnNames).toContain('authProvider');
+      expect(columnNames).toContain('authProviders');
     });
 
     it('should have unique index on email', () => {

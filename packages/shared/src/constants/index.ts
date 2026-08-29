@@ -16,7 +16,7 @@ export type TenantPlan = (typeof TENANT_PLANS)[number];
 export const TENANT_ROLES = ['owner', 'admin', 'member', 'viewer'] as const;
 export type TenantRole = (typeof TENANT_ROLES)[number];
 
-export const AUTH_PROVIDERS = ['local', 'google', 'saml', 'oidc'] as const;
+export const AUTH_PROVIDERS = ['local', 'google', 'github', 'saml', 'oidc'] as const;
 export type AuthProvider = (typeof AUTH_PROVIDERS)[number];
 
 export const ISSUE_LINK_TYPES = [

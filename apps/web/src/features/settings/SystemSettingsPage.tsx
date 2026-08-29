@@ -6,7 +6,10 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Settings, Mail, X } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Textarea } from '@/components/ui/textarea';
+import { Settings, Mail, ShieldCheck, X } from 'lucide-react';
+import type { TenantSettings } from '@weaver/shared';
 
 const COMMON_TIMEZONES = [
   'UTC',
@@ -29,7 +32,7 @@ const COMMON_TIMEZONES = [
   'Pacific/Auckland',
 ];
 
-type Tab = 'general' | 'email';
+type Tab = 'general' | 'email' | 'sso';
 
 export function SystemSettingsPage() {
   const [activeTab, setActiveTab] = useState<Tab>('general');
@@ -53,6 +56,10 @@ export function SystemSettingsPage() {
             <Mail className="h-4 w-4" />
             Email
           </TabsTrigger>
+          <TabsTrigger value="sso" className="flex items-center gap-1.5">
+            <ShieldCheck className="h-4 w-4" />
+            SSO
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="general">
@@ -60,6 +67,9 @@ export function SystemSettingsPage() {
         </TabsContent>
         <TabsContent value="email">
           <EmailTab />
+        </TabsContent>
+        <TabsContent value="sso">
+          <SsoTab />
         </TabsContent>
       </Tabs>
     </div>
@@ -364,5 +374,250 @@ function EmailTab() {
         </form>
       </CardContent>
     </Card>
+  );
+}
+
+const EMPTY_SSO: TenantSettings['sso'] = {
+  google: { enabled: true },
+  github: { enabled: true },
+  saml: { enabled: false, idpUrl: '', cert: '' },
+  oidc: {
+    enabled: false,
+    discoveryUrl: '',
+    clientId: '',
+    clientSecret: '',
+  },
+};
+
+function SsoTab() {
+  const { data: settings, isLoading } = useTenantSettings();
+  const updateSettings = useUpdateTenantSettings();
+  const [sso, setSso] = useState<TenantSettings['sso']>(EMPTY_SSO);
+  const [initialized, setInitialized] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    if (settings && !initialized) {
+      setSso(settings.sso ?? EMPTY_SSO);
+      setInitialized(true);
+    }
+  }, [settings, initialized]);
+
+  const save = async (event: FormEvent) => {
+    event.preventDefault();
+    setSaved(false);
+    await updateSettings.mutateAsync({ sso });
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  const readCertificate = async (file: File | undefined) => {
+    if (!file) return;
+    const cert = await file.text();
+    setSso((current) => ({
+      ...current,
+      saml: { ...current.saml, cert },
+    }));
+  };
+
+  if (isLoading) {
+    return <div className="py-8 text-center text-muted-foreground">Loading...</div>;
+  }
+
+  return (
+    <form onSubmit={save} className="space-y-5">
+      <Card>
+        <CardContent className="space-y-5 pt-6">
+          <div>
+            <h2 className="font-semibold text-foreground">Social sign-in</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Control which social providers members can use for this organization.
+            </p>
+          </div>
+          <ProviderToggle
+            label="Google"
+            description="Allow members to use their Google account."
+            checked={sso.google.enabled}
+            onCheckedChange={(enabled) =>
+              setSso((current) => ({ ...current, google: { enabled } }))
+            }
+          />
+          <ProviderToggle
+            label="GitHub"
+            description="Allow members to use their GitHub account."
+            checked={sso.github.enabled}
+            onCheckedChange={(enabled) =>
+              setSso((current) => ({ ...current, github: { enabled } }))
+            }
+          />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="space-y-4 pt-6">
+          <ProviderToggle
+            label="SAML 2.0"
+            description="Connect an enterprise identity provider using signed SAML assertions."
+            checked={sso.saml.enabled}
+            onCheckedChange={(enabled) =>
+              setSso((current) => ({
+                ...current,
+                saml: { ...current.saml, enabled },
+              }))
+            }
+          />
+          <div>
+            <Label htmlFor="saml-idp-url" className="mb-1 block">
+              Identity provider sign-in URL
+            </Label>
+            <Input
+              id="saml-idp-url"
+              type="url"
+              required={sso.saml.enabled}
+              disabled={!sso.saml.enabled}
+              value={sso.saml.idpUrl}
+              onChange={(event) =>
+                setSso((current) => ({
+                  ...current,
+                  saml: { ...current.saml, idpUrl: event.target.value },
+                }))
+              }
+              placeholder="https://idp.example.com/sso/saml"
+            />
+          </div>
+          <div>
+            <Label htmlFor="saml-cert" className="mb-1 block">
+              Identity provider certificate
+            </Label>
+            <Input
+              type="file"
+              accept=".cer,.crt,.pem,text/plain,application/x-x509-ca-cert"
+              disabled={!sso.saml.enabled}
+              onChange={(event) => void readCertificate(event.target.files?.[0])}
+              className="mb-2"
+            />
+            <Textarea
+              id="saml-cert"
+              required={sso.saml.enabled}
+              disabled={!sso.saml.enabled}
+              value={sso.saml.cert}
+              onChange={(event) =>
+                setSso((current) => ({
+                  ...current,
+                  saml: { ...current.saml, cert: event.target.value },
+                }))
+              }
+              placeholder="-----BEGIN CERTIFICATE-----"
+              rows={6}
+              className="font-mono text-xs"
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="space-y-4 pt-6">
+          <ProviderToggle
+            label="OpenID Connect"
+            description="Connect Microsoft Entra ID, Okta, or another OIDC provider."
+            checked={sso.oidc.enabled}
+            onCheckedChange={(enabled) =>
+              setSso((current) => ({
+                ...current,
+                oidc: { ...current.oidc, enabled },
+              }))
+            }
+          />
+          <div>
+            <Label htmlFor="oidc-discovery-url" className="mb-1 block">
+              Discovery URL
+            </Label>
+            <Input
+              id="oidc-discovery-url"
+              type="url"
+              required={sso.oidc.enabled}
+              disabled={!sso.oidc.enabled}
+              value={sso.oidc.discoveryUrl}
+              onChange={(event) =>
+                setSso((current) => ({
+                  ...current,
+                  oidc: { ...current.oidc, discoveryUrl: event.target.value },
+                }))
+              }
+              placeholder="https://login.example.com/.well-known/openid-configuration"
+            />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <Label htmlFor="oidc-client-id" className="mb-1 block">
+                Client ID
+              </Label>
+              <Input
+                id="oidc-client-id"
+                required={sso.oidc.enabled}
+                disabled={!sso.oidc.enabled}
+                value={sso.oidc.clientId}
+                onChange={(event) =>
+                  setSso((current) => ({
+                    ...current,
+                    oidc: { ...current.oidc, clientId: event.target.value },
+                  }))
+                }
+              />
+            </div>
+            <div>
+              <Label htmlFor="oidc-client-secret" className="mb-1 block">
+                Client secret
+              </Label>
+              <Input
+                id="oidc-client-secret"
+                type="password"
+                required={sso.oidc.enabled}
+                disabled={!sso.oidc.enabled}
+                value={sso.oidc.clientSecret}
+                onChange={(event) =>
+                  setSso((current) => ({
+                    ...current,
+                    oidc: { ...current.oidc, clientSecret: event.target.value },
+                  }))
+                }
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="flex items-center gap-3">
+        <Button type="submit" disabled={updateSettings.isPending}>
+          {updateSettings.isPending ? 'Saving...' : 'Save SSO Settings'}
+        </Button>
+        {saved && <span className="text-sm text-green-600">SSO settings saved!</span>}
+        {updateSettings.isError && (
+          <span className="text-sm text-destructive">Failed to save SSO settings.</span>
+        )}
+      </div>
+    </form>
+  );
+}
+
+function ProviderToggle({
+  label,
+  description,
+  checked,
+  onCheckedChange,
+}: {
+  label: string;
+  description: string;
+  checked: boolean;
+  onCheckedChange: (checked: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <div>
+        <Label className="text-sm font-medium">{label}</Label>
+        <p className="text-xs text-muted-foreground">{description}</p>
+      </div>
+      <Switch checked={checked} onCheckedChange={onCheckedChange} aria-label={`Enable ${label}`} />
+    </div>
   );
 }
