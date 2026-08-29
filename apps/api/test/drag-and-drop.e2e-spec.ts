@@ -38,15 +38,13 @@ describe('Drag & Drop / Reorder (e2e)', () => {
     connections = app.get(TenantConnectionProvider);
 
     // 1. Register owner
-    const registerRes = await request(app.getHttpServer())
-      .post('/api/v1/auth/register')
-      .send({
-        email: 'dnd-owner@test.com',
-        password: 'password123',
-        displayName: 'DnD Owner',
-        orgName: 'DnD Test Org',
-        orgSlug: 'dnd-test-org',
-      });
+    const registerRes = await request(app.getHttpServer()).post('/api/v1/auth/register').send({
+      email: 'dnd-owner@test.com',
+      password: 'password123',
+      displayName: 'DnD Owner',
+      orgName: 'DnD Test Org',
+      orgSlug: 'dnd-test-org',
+    });
 
     ownerToken = registerRes.body.accessToken;
     tenantId = registerRes.body.tenant.id;
@@ -59,10 +57,9 @@ describe('Drag & Drop / Reorder (e2e)', () => {
        VALUES (gen_random_uuid(), $1, $2, $3, 'local', NOW(), NOW())`,
       ['dnd-viewer@test.com', 'DnD Viewer', passwordHash],
     );
-    const [viewerUser] = await dataSource.query(
-      `SELECT id FROM public.users WHERE email = $1`,
-      ['dnd-viewer@test.com'],
-    );
+    const [viewerUser] = await dataSource.query(`SELECT id FROM public.users WHERE email = $1`, [
+      'dnd-viewer@test.com',
+    ]);
     await dataSource.query(
       `INSERT INTO public.tenant_memberships (tenant_id, user_id, role, created_at)
        VALUES ($1, $2, 'viewer', NOW())`,
@@ -75,10 +72,9 @@ describe('Drag & Drop / Reorder (e2e)', () => {
        VALUES (gen_random_uuid(), $1, $2, $3, 'local', NOW(), NOW())`,
       ['dnd-member@test.com', 'DnD Member', passwordHash],
     );
-    const [memberUser] = await dataSource.query(
-      `SELECT id FROM public.users WHERE email = $1`,
-      ['dnd-member@test.com'],
-    );
+    const [memberUser] = await dataSource.query(`SELECT id FROM public.users WHERE email = $1`, [
+      'dnd-member@test.com',
+    ]);
     await dataSource.query(
       `INSERT INTO public.tenant_memberships (tenant_id, user_id, role, created_at)
        VALUES ($1, $2, 'member', NOW())`,
@@ -105,9 +101,7 @@ describe('Drag & Drop / Reorder (e2e)', () => {
 
     // 6. Get workflow statuses
     const workflowId = projectRes.body.workflowId;
-    const workflowRes = await asOwner()
-      .get(`/api/v1/workflows/${workflowId}`)
-      .expect(200);
+    const workflowRes = await asOwner().get(`/api/v1/workflows/${workflowId}`).expect(200);
     statuses = workflowRes.body.statuses;
 
     // 7. Create 3 issues
@@ -134,18 +128,14 @@ describe('Drag & Drop / Reorder (e2e)', () => {
   });
 
   afterAll(async () => {
-    await dataSource.query(
-      `DROP SCHEMA IF EXISTS "tenant_dnd_test_org" CASCADE`,
-    );
+    await dataSource.query(`DROP SCHEMA IF EXISTS "tenant_dnd_test_org" CASCADE`);
     await dataSource.query(
       `DELETE FROM public.tenant_memberships WHERE tenant_id IN (SELECT id FROM public.tenants WHERE slug = 'dnd-test-org')`,
     );
     await dataSource.query(
       `DELETE FROM public.installed_plugins WHERE tenant_id IN (SELECT id FROM public.tenants WHERE slug = 'dnd-test-org')`,
     );
-    await dataSource.query(
-      `DELETE FROM public.tenants WHERE slug = 'dnd-test-org'`,
-    );
+    await dataSource.query(`DELETE FROM public.tenants WHERE slug = 'dnd-test-org'`);
     await dataSource.query(
       `DELETE FROM public.users WHERE email IN ('dnd-owner@test.com', 'dnd-viewer@test.com', 'dnd-member@test.com')`,
     );
@@ -192,6 +182,17 @@ describe('Drag & Drop / Reorder (e2e)', () => {
   // Reorder Issues
   // =========================================
   describe('Reorder Issues', () => {
+    it('new issues receive stable ascending sort orders', async () => {
+      const res = await asOwner().get('/api/v1/projects/DND/issues?sort=sortOrder').expect(200);
+
+      expect(res.body.data.map((issue: any) => issue.key)).toEqual([
+        issueKey1,
+        issueKey2,
+        issueKey3,
+      ]);
+      expect(res.body.data.map((issue: any) => issue.sortOrder)).toEqual([0, 1000, 2000]);
+    });
+
     it('PATCH /issues/reorder — updates sortOrder for multiple issues', async () => {
       await asOwner()
         .patch('/api/v1/issues/reorder')
@@ -205,21 +206,27 @@ describe('Drag & Drop / Reorder (e2e)', () => {
         .expect(204);
 
       // Verify order
-      const res = await asOwner()
-        .get('/api/v1/projects/DND/issues?sort=sortOrder')
-        .expect(200);
+      const res = await asOwner().get('/api/v1/projects/DND/issues?sort=sortOrder').expect(200);
 
       const keys = res.body.data.map((i: any) => i.key);
       expect(keys).toEqual([issueKey2, issueKey3, issueKey1]);
+    });
+
+    it('uses sortOrder for the default project issue listing', async () => {
+      const res = await asOwner().get('/api/v1/projects/DND/issues').expect(200);
+
+      expect(res.body.data.map((issue: any) => issue.key)).toEqual([
+        issueKey2,
+        issueKey3,
+        issueKey1,
+      ]);
     });
 
     it('PATCH /issues/reorder — 404 for non-existent issue', async () => {
       await asOwner()
         .patch('/api/v1/issues/reorder')
         .send({
-          issues: [
-            { id: '00000000-0000-0000-0000-000000000000', sortOrder: 1000 },
-          ],
+          issues: [{ id: '00000000-0000-0000-0000-000000000000', sortOrder: 1000 }],
         })
         .expect(404);
     });
@@ -239,9 +246,7 @@ describe('Drag & Drop / Reorder (e2e)', () => {
         .expect(200);
 
       // Verify
-      const res = await asOwner()
-        .get(`/api/v1/issues/${issueKey1}`)
-        .expect(200);
+      const res = await asOwner().get(`/api/v1/issues/${issueKey1}`).expect(200);
       expect(res.body.statusId).toBe(inProgressStatus.id);
     });
 
@@ -255,9 +260,7 @@ describe('Drag & Drop / Reorder (e2e)', () => {
         .expect(200);
 
       // Check activity log
-      const activityRes = await asOwner()
-        .get(`/api/v1/issues/${issueKey2}/activity`)
-        .expect(200);
+      const activityRes = await asOwner().get(`/api/v1/issues/${issueKey2}/activity`).expect(200);
       const moveActivity = activityRes.body.find(
         (a: any) => a.action === 'updated' && a.fieldName === 'status',
       );
@@ -281,26 +284,16 @@ describe('Drag & Drop / Reorder (e2e)', () => {
     });
 
     it('PATCH /issues/:key — assign issue to sprint via sprintId', async () => {
-      await asOwner()
-        .patch(`/api/v1/issues/${issueKey3}`)
-        .send({ sprintId })
-        .expect(200);
+      await asOwner().patch(`/api/v1/issues/${issueKey3}`).send({ sprintId }).expect(200);
 
-      const res = await asOwner()
-        .get(`/api/v1/issues/${issueKey3}`)
-        .expect(200);
+      const res = await asOwner().get(`/api/v1/issues/${issueKey3}`).expect(200);
       expect(res.body.sprintId).toBe(sprintId);
     });
 
     it('PATCH /issues/:key — remove issue from sprint (null)', async () => {
-      await asOwner()
-        .patch(`/api/v1/issues/${issueKey3}`)
-        .send({ sprintId: null })
-        .expect(200);
+      await asOwner().patch(`/api/v1/issues/${issueKey3}`).send({ sprintId: null }).expect(200);
 
-      const res = await asOwner()
-        .get(`/api/v1/issues/${issueKey3}`)
-        .expect(200);
+      const res = await asOwner().get(`/api/v1/issues/${issueKey3}`).expect(200);
       expect(res.body.sprintId).toBeNull();
     });
   });

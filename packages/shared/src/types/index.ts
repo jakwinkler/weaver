@@ -107,7 +107,7 @@ export interface Issue {
   assigneeId?: string;
   reporterId: string;
   customFields: Record<string, unknown>;
-  sprintId?: string;
+  sprintId?: string | null;
   parentId?: string;
   epicId?: string;
   labels: string[];

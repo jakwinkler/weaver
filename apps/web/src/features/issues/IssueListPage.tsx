@@ -1,7 +1,35 @@
 import { useState, useCallback, useEffect, type FormEvent } from 'react';
 import { useParams, Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { useProjectIssues, useCreateIssue, useProject, useIssueTypes, useWorkflow, useHasPermission, useUpdateIssueDynamic } from '@/api';
+import {
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { GripVertical } from 'lucide-react';
+import {
+  useProjectIssues,
+  useCreateIssue,
+  useProject,
+  useIssueTypes,
+  useWorkflow,
+  useHasPermission,
+  useUpdateIssueDynamic,
+  useReorderIssues,
+} from '@/api';
 import type { IssuePriority, Issue, PaginatedResponse } from '@weaver/shared';
 import { IssueTypeIcon } from '@/components/IconPicker';
 import { Pagination, getStoredPerPage } from '@/components/Pagination';
@@ -22,6 +50,7 @@ import {
   TableCell,
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
+import { buildReorderPayload, reorderIssueList } from './dragAndDrop';
 
 const PRIORITY_OPTIONS: InlineSelectOption[] = [
   { value: 'lowest', label: 'lowest' },
@@ -40,6 +69,140 @@ function parseSortParam(sort: string | null): { field: string | null; direction:
 function buildSortParam(field: string | null, direction: SortDirection): string | undefined {
   if (!field || !direction) return undefined;
   return direction === 'desc' ? `-${field}` : field;
+}
+
+interface SortableIssueRowProps {
+  issue: Issue;
+  index: number;
+  focused: boolean;
+  canEdit: boolean;
+  canReorder: boolean;
+  statusOptions: InlineSelectOption[];
+  getStatusInfo: (statusId: string) => { name: string; color: string };
+  onInlineUpdate: (issueKey: string, field: string, value: unknown) => Promise<void>;
+}
+
+function SortableIssueRow({
+  issue,
+  focused,
+  canEdit,
+  canReorder,
+  statusOptions,
+  getStatusInfo,
+  onInlineUpdate,
+}: SortableIssueRowProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: issue.id,
+    disabled: !canReorder,
+    data: { issue },
+  });
+
+  return (
+    <TableRow
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      data-testid="issue-row"
+      className={cn(
+        'hover:bg-muted/50',
+        focused && 'bg-accent ring-2 ring-primary/30 ring-inset',
+        isDragging && 'relative z-10 bg-card opacity-35',
+      )}
+    >
+      <TableCell className="w-10 px-2">
+        <button
+          type="button"
+          {...attributes}
+          {...listeners}
+          disabled={!canReorder}
+          aria-label={
+            canReorder ? `Reorder ${issue.key}` : 'Clear column sorting to reorder issues'
+          }
+          title={canReorder ? `Reorder ${issue.key}` : 'Clear column sorting to reorder issues'}
+          className="flex h-8 w-8 cursor-grab items-center justify-center text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-25"
+        >
+          <GripVertical className="h-4 w-4" aria-hidden="true" />
+        </button>
+      </TableCell>
+      <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
+        {issue.issueType ? (
+          <span className="inline-flex items-center gap-1.5" title={issue.issueType.name}>
+            <IssueTypeIcon
+              icon={issue.issueType.icon}
+              iconColor={issue.issueType.iconColor}
+              iconAttachmentId={issue.issueType.iconAttachmentId}
+            />
+            <span className="text-xs">{issue.issueType.name}</span>
+          </span>
+        ) : (
+          '—'
+        )}
+      </TableCell>
+      <TableCell className="whitespace-nowrap text-sm font-medium text-primary">
+        <Link to={`/issues/${issue.key}`}>{issue.key}</Link>
+      </TableCell>
+      <TableCell className="text-sm text-foreground">
+        {canEdit ? (
+          <EditableCell
+            value={issue.summary}
+            onSave={(val) => onInlineUpdate(issue.key, 'summary', val)}
+          />
+        ) : (
+          <Link to={`/issues/${issue.key}`}>{issue.summary}</Link>
+        )}
+      </TableCell>
+      <TableCell className="whitespace-nowrap">
+        <InlineSelect
+          value={issue.priority}
+          options={PRIORITY_OPTIONS}
+          onSave={(val) => onInlineUpdate(issue.key, 'priority', val)}
+          editable={canEdit}
+          renderValue={(val) => <PriorityBadge priority={val} />}
+        />
+      </TableCell>
+      <TableCell className="whitespace-nowrap">
+        <InlineSelect
+          value={issue.statusId}
+          options={statusOptions}
+          onSave={(val) => onInlineUpdate(issue.key, 'statusId', val)}
+          editable={canEdit}
+          renderValue={(val, opt) => {
+            const info = opt
+              ? { name: opt.label, color: opt.color || '#6b7280' }
+              : getStatusInfo(val);
+            return (
+              <span
+                className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium text-white"
+                style={{ backgroundColor: info.color }}
+              >
+                {info.name}
+              </span>
+            );
+          }}
+        />
+      </TableCell>
+      <TableCell className="whitespace-nowrap">
+        <InlineDatePicker
+          value={issue.dueDate || null}
+          onSave={(val) => onInlineUpdate(issue.key, 'dueDate', val)}
+          editable={canEdit}
+        />
+      </TableCell>
+      <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
+        {issue.createdAt ? new Date(issue.createdAt).toLocaleDateString() : '-'}
+      </TableCell>
+      <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
+        <div className="flex items-center gap-2">
+          <div className="h-1.5 w-16 rounded-full bg-muted/50">
+            <div
+              className="h-1.5 rounded-full bg-primary"
+              style={{ width: `${issue.percentDone ?? 0}%` }}
+            />
+          </div>
+          <span className="text-xs">{issue.percentDone ?? 0}%</span>
+        </div>
+      </TableCell>
+    </TableRow>
+  );
 }
 
 export function IssueListPage() {
@@ -75,14 +238,24 @@ export function IssueListPage() {
     projectKey: projectKey!,
     page,
     perPage,
-    sort: buildSortParam(sortField, sortDirection),
+    sort: buildSortParam(sortField, sortDirection) ?? 'sortOrder',
   });
   const createIssue = useCreateIssue(projectKey!);
   const updateIssue = useUpdateIssueDynamic();
+  const reorderIssues = useReorderIssues();
   const { data: issueTypes } = useIssueTypes();
   const { data: workflow } = useWorkflow(project?.workflowId || '');
   const canCreate = useHasPermission('issues.create');
   const canEdit = useHasPermission('issues.update');
+  const canReorder = canEdit && !sortParam;
+
+  const [localIssues, setLocalIssues] = useState<Issue[] | null>(null);
+  const [activeIssue, setActiveIssue] = useState<Issue | null>(null);
+  const [reorderError, setReorderError] = useState<string | null>(null);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   const statusOptions: InlineSelectOption[] = (workflow?.statuses || []).map((s: any) => ({
     value: s.id,
@@ -98,20 +271,19 @@ export function IssueListPage() {
   const handleInlineUpdate = async (issueKey: string, field: string, value: unknown) => {
     // Optimistic update
     const queryKeyPrefix = ['issues', projectKey];
-    const previousData = queryClient.getQueriesData<PaginatedResponse<Issue>>({ queryKey: queryKeyPrefix });
+    const previousData = queryClient.getQueriesData<PaginatedResponse<Issue>>({
+      queryKey: queryKeyPrefix,
+    });
 
-    queryClient.setQueriesData<PaginatedResponse<Issue>>(
-      { queryKey: queryKeyPrefix },
-      (old) => {
-        if (!old) return old;
-        return {
-          ...old,
-          data: old.data.map((issue) =>
-            issue.key === issueKey ? { ...issue, [field]: value } : issue,
-          ),
-        };
-      },
-    );
+    queryClient.setQueriesData<PaginatedResponse<Issue>>({ queryKey: queryKeyPrefix }, (old) => {
+      if (!old) return old;
+      return {
+        ...old,
+        data: old.data.map((issue) =>
+          issue.key === issueKey ? { ...issue, [field]: value } : issue,
+        ),
+      };
+    });
 
     try {
       await updateIssue.mutateAsync({ issueKey, [field]: value } as any);
@@ -136,11 +308,12 @@ export function IssueListPage() {
   // Reset focused index when data or page changes
   useEffect(() => {
     setFocusedIndex(-1);
+    setLocalIssues(null);
   }, [data, page]);
 
   // j/k/Enter keyboard navigation for issue list
   useEffect(() => {
-    const issues = data?.data;
+    const issues = localIssues ?? data?.data;
     if (!issues || issues.length === 0) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -168,7 +341,7 @@ export function IssueListPage() {
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [data, navigate]);
+  }, [data, localIssues, navigate]);
 
   const handleCreate = async (e: FormEvent) => {
     e.preventDefault();
@@ -201,6 +374,48 @@ export function IssueListPage() {
   const handleSort = (field: string, direction: SortDirection) => {
     const sort = buildSortParam(field, direction);
     updateParams({ sort, page: undefined });
+  };
+
+  const handleDragStart = (event: DragStartEvent) => {
+    const issue = event.active.data.current?.issue as Issue | undefined;
+    setReorderError(null);
+    setActiveIssue(issue ?? null);
+    setLocalIssues([...(data?.data ?? [])]);
+  };
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    setActiveIssue(null);
+    const { active, over } = event;
+    const currentIssues = localIssues ?? data?.data ?? [];
+
+    if (!over || active.id === over.id) {
+      setLocalIssues(null);
+      return;
+    }
+
+    const reordered = reorderIssueList(
+      currentIssues,
+      active.id as string,
+      over.id as string,
+      (page - 1) * perPage,
+    );
+    setLocalIssues(reordered);
+
+    try {
+      await reorderIssues.mutateAsync({ issues: buildReorderPayload(reordered) });
+    } catch {
+      setReorderError(
+        'The issue order could not be saved. The latest server state has been reloaded.',
+      );
+    } finally {
+      await queryClient.invalidateQueries({ queryKey: ['issues', projectKey] });
+      setLocalIssues(null);
+    }
+  };
+
+  const handleDragCancel = () => {
+    setActiveIssue(null);
+    setLocalIssues(null);
   };
 
   if (isLoading) {
@@ -261,7 +476,9 @@ export function IssueListPage() {
                   >
                     <option value="">None</option>
                     {issueTypes?.map((t) => (
-                      <option key={t.id} value={t.id}>{t.name}</option>
+                      <option key={t.id} value={t.id}>
+                        {t.name}
+                      </option>
                     ))}
                   </select>
                 </div>
@@ -319,153 +536,118 @@ export function IssueListPage() {
         </Card>
       )}
 
-      <div className="overflow-hidden rounded-lg border border-border bg-card">
-        <Table>
-          <TableHeader className="bg-muted/50">
-            <TableRow>
-              <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                Type
-              </TableHead>
-              <SortableHeader
-                label="Key"
-                field="key"
-                currentSort={sortField}
-                currentDirection={sortDirection}
-                onSort={handleSort}
-              />
-              <SortableHeader
-                label="Summary"
-                field="summary"
-                currentSort={sortField}
-                currentDirection={sortDirection}
-                onSort={handleSort}
-              />
-              <SortableHeader
-                label="Priority"
-                field="priority"
-                currentSort={sortField}
-                currentDirection={sortDirection}
-                onSort={handleSort}
-              />
-              <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                Status
-              </TableHead>
-              <SortableHeader
-                label="Due Date"
-                field="dueDate"
-                currentSort={sortField}
-                currentDirection={sortDirection}
-                onSort={handleSort}
-              />
-              <SortableHeader
-                label="Created"
-                field="createdAt"
-                currentSort={sortField}
-                currentDirection={sortDirection}
-                onSort={handleSort}
-              />
-              <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                % Done
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {data?.data.map((issue, index) => (
-              <TableRow
-                key={issue.id}
-                className={cn(
-                  'hover:bg-muted/50',
-                  focusedIndex === index && 'bg-accent ring-2 ring-primary/30 ring-inset',
-                )}
-              >
-                <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
-                  {issue.issueType ? (
-                    <span className="inline-flex items-center gap-1.5" title={issue.issueType.name}>
-                      <IssueTypeIcon
-                        icon={issue.issueType.icon}
-                        iconColor={issue.issueType.iconColor}
-                        iconAttachmentId={issue.issueType.iconAttachmentId}
-                      />
-                      <span className="text-xs">{issue.issueType.name}</span>
-                    </span>
-                  ) : '—'}
-                </TableCell>
-                <TableCell className="whitespace-nowrap text-sm font-medium text-primary">
-                  <Link to={`/issues/${issue.key}`}>{issue.key}</Link>
-                </TableCell>
-                <TableCell className="text-sm text-foreground">
-                  {canEdit ? (
-                    <EditableCell
-                      value={issue.summary}
-                      onSave={(val) => handleInlineUpdate(issue.key, 'summary', val)}
-                    />
-                  ) : (
-                    <Link to={`/issues/${issue.key}`}>{issue.summary}</Link>
-                  )}
-                </TableCell>
-                <TableCell className="whitespace-nowrap">
-                  <InlineSelect
-                    value={issue.priority}
-                    options={PRIORITY_OPTIONS}
-                    onSave={(val) => handleInlineUpdate(issue.key, 'priority', val)}
-                    editable={canEdit}
-                    renderValue={(val) => <PriorityBadge priority={val} />}
-                  />
-                </TableCell>
-                <TableCell className="whitespace-nowrap">
-                  <InlineSelect
-                    value={issue.statusId}
-                    options={statusOptions}
-                    onSave={(val) => handleInlineUpdate(issue.key, 'statusId', val)}
-                    editable={canEdit}
-                    renderValue={(val, opt) => {
-                      const info = opt
-                        ? { name: opt.label, color: opt.color || '#6b7280' }
-                        : getStatusInfo(val);
-                      return (
-                        <span
-                          className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium text-white"
-                          style={{ backgroundColor: info.color }}
-                        >
-                          {info.name}
-                        </span>
-                      );
-                    }}
-                  />
-                </TableCell>
-                <TableCell className="whitespace-nowrap">
-                  <InlineDatePicker
-                    value={issue.dueDate || null}
-                    onSave={(val) => handleInlineUpdate(issue.key, 'dueDate', val)}
-                    editable={canEdit}
-                  />
-                </TableCell>
-                <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
-                  {issue.createdAt ? new Date(issue.createdAt).toLocaleDateString() : '-'}
-                </TableCell>
-                <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
-                  <div className="flex items-center gap-2">
-                    <div className="h-1.5 w-16 rounded-full bg-muted/50">
-                      <div
-                        className="h-1.5 rounded-full bg-primary"
-                        style={{ width: `${issue.percentDone ?? 0}%` }}
-                      />
-                    </div>
-                    <span className="text-xs">{issue.percentDone ?? 0}%</span>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-            {data?.data.length === 0 && (
+      {reorderError && (
+        <p
+          role="alert"
+          className="mb-4 border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
+          {reorderError}
+        </p>
+      )}
+
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onDragCancel={handleDragCancel}
+      >
+        <div className="overflow-hidden rounded-lg border border-border bg-card">
+          <Table>
+            <TableHeader className="bg-muted/50">
               <TableRow>
-                <TableCell colSpan={8} className="px-6 py-8 text-center text-sm text-muted-foreground">
-                  No issues yet. Create your first issue to get started.
-                </TableCell>
+                <TableHead className="w-10 px-2">
+                  <span className="sr-only">Reorder</span>
+                </TableHead>
+                <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  Type
+                </TableHead>
+                <SortableHeader
+                  label="Key"
+                  field="key"
+                  currentSort={sortField}
+                  currentDirection={sortDirection}
+                  onSort={handleSort}
+                />
+                <SortableHeader
+                  label="Summary"
+                  field="summary"
+                  currentSort={sortField}
+                  currentDirection={sortDirection}
+                  onSort={handleSort}
+                />
+                <SortableHeader
+                  label="Priority"
+                  field="priority"
+                  currentSort={sortField}
+                  currentDirection={sortDirection}
+                  onSort={handleSort}
+                />
+                <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  Status
+                </TableHead>
+                <SortableHeader
+                  label="Due Date"
+                  field="dueDate"
+                  currentSort={sortField}
+                  currentDirection={sortDirection}
+                  onSort={handleSort}
+                />
+                <SortableHeader
+                  label="Created"
+                  field="createdAt"
+                  currentSort={sortField}
+                  currentDirection={sortDirection}
+                  onSort={handleSort}
+                />
+                <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  % Done
+                </TableHead>
               </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </div>
+            </TableHeader>
+            <TableBody>
+              <SortableContext
+                items={(localIssues ?? data?.data ?? []).map((issue) => issue.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                {(localIssues ?? data?.data ?? []).map((issue, index) => (
+                  <SortableIssueRow
+                    key={issue.id}
+                    issue={issue}
+                    index={index}
+                    focused={focusedIndex === index}
+                    canEdit={canEdit}
+                    canReorder={canReorder}
+                    statusOptions={statusOptions}
+                    getStatusInfo={getStatusInfo}
+                    onInlineUpdate={handleInlineUpdate}
+                  />
+                ))}
+              </SortableContext>
+              {data?.data.length === 0 && (
+                <TableRow>
+                  <TableCell
+                    colSpan={9}
+                    className="px-6 py-8 text-center text-sm text-muted-foreground"
+                  >
+                    No issues yet. Create your first issue to get started.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </div>
+
+        <DragOverlay>
+          {activeIssue ? (
+            <div className="flex w-[min(36rem,80vw)] items-center gap-3 border border-primary/40 bg-card px-4 py-3 shadow-lg">
+              <GripVertical className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+              <span className="text-sm font-medium text-primary">{activeIssue.key}</span>
+              <span className="truncate text-sm text-foreground">{activeIssue.summary}</span>
+            </div>
+          ) : null}
+        </DragOverlay>
+      </DndContext>
 
       {data && (
         <Pagination
@@ -491,7 +673,12 @@ function PriorityBadge({ priority }: { priority: string }) {
   };
 
   return (
-    <span className={cn('inline-flex rounded-full px-2 py-0.5 text-xs font-medium', colors[priority] ?? 'bg-gray-100 text-gray-700')}>
+    <span
+      className={cn(
+        'inline-flex rounded-full px-2 py-0.5 text-xs font-medium',
+        colors[priority] ?? 'bg-gray-100 text-gray-700',
+      )}
+    >
       {priority}
     </span>
   );
