@@ -1,0 +1,20 @@
+{
+  "id": "{{pluginId}}",
+  "name": "{{displayName}}",
+  "version": "1.0.0",
+  "description": "A Weaver plugin created with @weaver/cli",
+  "author": "{{author}}",
+  "icon": "puzzle",
+  "type": "{{type}}",
+  "scope": "{{scope}}",
+  "entrypoints": "{{entrypoints}}",
+  "permissions": ["{{pluginSlug}}.view"],
+  "declaredPermissions": [
+    {
+      "key": "{{pluginSlug}}.view",
+      "label": "View {{displayName}}",
+      "description": "Access the {{displayName}} plugin"
+    }
+  ],
+  "{{manifestExtensions}}": "{{manifestExtensions}}"
+}

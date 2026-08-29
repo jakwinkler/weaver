@@ -1,0 +1,44 @@
+{
+  "name": "@weaver/cli",
+  "version": "0.0.1",
+  "description": "Command-line tools for developing Weaver plugins",
+  "license": "MIT",
+  "bin": {
+    "weaver": "bin/weaver.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "bin",
+    "dist",
+    "templates"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist coverage",
+    "test": "jest --runInBand",
+    "prepack": "pnpm run build"
+  },
+  "dependencies": {
+    "commander": "^11.1.0"
+  },
+  "devDependencies": {
+    "@module-federation/vite": "^1.21.0",
+    "@types/jest": "^29.5.14",
+    "@types/node": "^22.10.5",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "@weaver/config": "workspace:*",
+    "@weaver/sdk": "workspace:*",
+    "jest": "^29.7.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "ts-jest": "^29.2.5",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.7"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
