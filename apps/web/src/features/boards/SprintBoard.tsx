@@ -65,9 +65,18 @@ function formatDate(date: Date | string | undefined): string {
 }
 
 function SprintActions({ sprint }: { sprint: Sprint }) {
+  const { projectKey } = useParams<{ projectKey: string }>();
   const startSprint = useStartSprint(sprint.id);
   const completeSprint = useCompleteSprint(sprint.id);
   const canManage = useHasPermission('sprints.manage');
+
+  if (sprint.status === 'completed') {
+    return (
+      <Button asChild size="sm" variant="outline" className="text-xs">
+        <Link to={`/projects/${projectKey}/reports/sprint/${sprint.id}`}>Report</Link>
+      </Button>
+    );
+  }
 
   if (!canManage) return null;
 
@@ -528,14 +537,19 @@ export function SprintBoard() {
             Drag issues between the backlog and active or planned sprints.
           </p>
         </div>
-        {canCreateSprint && (
-          <Button
-            onClick={() => setShowCreateForm(!showCreateForm)}
-            variant={showCreateForm ? 'outline' : 'default'}
-          >
-            {showCreateForm ? 'Cancel' : 'New Sprint'}
+        <div className="flex items-center gap-2">
+          <Button asChild variant="outline">
+            <Link to={`/projects/${projectKey}/reports/velocity`}>Velocity</Link>
           </Button>
-        )}
+          {canCreateSprint && (
+            <Button
+              onClick={() => setShowCreateForm(!showCreateForm)}
+              variant={showCreateForm ? 'outline' : 'default'}
+            >
+              {showCreateForm ? 'Cancel' : 'New Sprint'}
+            </Button>
+          )}
+        </div>
       </div>
 
       {showCreateForm && (

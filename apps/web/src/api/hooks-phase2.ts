@@ -7,6 +7,9 @@ import type {
   Board,
   BoardIssuesResponse,
   Sprint,
+  BurndownDataPoint,
+  SprintSummary,
+  SprintVelocity,
   Comment,
   ActivityLog,
   IssueType,
@@ -193,6 +196,41 @@ export function useCompleteSprint(id: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sprints'] });
     },
+  });
+}
+
+export function useSprintBurndown(id: string) {
+  return useQuery({
+    queryKey: ['sprint-report', id, 'burndown'],
+    queryFn: async () => {
+      const res = await apiClient.get<BurndownDataPoint[]>(`/sprints/${id}/burndown`);
+      return res.data;
+    },
+    enabled: !!id,
+  });
+}
+
+export function useSprintSummary(id: string) {
+  return useQuery({
+    queryKey: ['sprint-report', id, 'summary'],
+    queryFn: async () => {
+      const res = await apiClient.get<SprintSummary>(`/sprints/${id}/summary`);
+      return res.data;
+    },
+    enabled: !!id,
+  });
+}
+
+export function useSprintVelocity(projectKey: string, limit = 10) {
+  return useQuery({
+    queryKey: ['sprint-report', projectKey, 'velocity', limit],
+    queryFn: async () => {
+      const res = await apiClient.get<SprintVelocity[]>(`/projects/${projectKey}/velocity`, {
+        params: { limit },
+      });
+      return res.data;
+    },
+    enabled: !!projectKey,
   });
 }
 

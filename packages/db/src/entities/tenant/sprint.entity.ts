@@ -7,6 +7,7 @@ import {
   JoinColumn,
 } from 'typeorm';
 import { ProjectEntity } from './project.entity';
+import type { SprintInitialScope } from '@weaver/shared';
 
 @Entity({ name: 'sprints' })
 export class SprintEntity {
@@ -33,6 +34,9 @@ export class SprintEntity {
 
   @Column({ type: 'int', nullable: true })
   capacity!: number | null;
+
+  @Column({ name: 'initial_scope', type: 'jsonb', nullable: true })
+  initialScope!: SprintInitialScope | null;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;
