@@ -34,6 +34,13 @@ export interface User {
   updatedAt: Date;
 }
 
+export interface AuthResponse<TUser = User> {
+  accessToken: string;
+  refreshToken: string;
+  user: TUser;
+  tenantId: string;
+}
+
 export interface TenantMembership {
   tenantId: string;
   userId: string;

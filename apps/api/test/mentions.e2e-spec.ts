@@ -43,7 +43,7 @@ describe('Mentions (e2e)', () => {
       });
 
     tokenA = resA.body.accessToken;
-    tenantId = resA.body.tenant?.id ?? resA.body.tenantId;
+    tenantId = resA.body.tenantId;
     userAId = resA.body.user.id;
 
     // Register User B (separate tenant, then add to tenant A)

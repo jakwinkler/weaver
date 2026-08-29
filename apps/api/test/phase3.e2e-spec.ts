@@ -35,7 +35,7 @@ describe('Phase 3: Custom Fields, Search, Saved Filters, Time Tracking (e2e)', (
       });
 
     accessToken = res.body.accessToken;
-    tenantId = res.body.tenant.id;
+    tenantId = res.body.tenantId;
   });
 
   afterAll(async () => {

@@ -11,16 +11,10 @@ import type {
   UpdateIssueDto,
   ReorderIssuesDto,
   PaginatedResponse,
+  AuthResponse,
 } from '@weaver/shared';
 
 // ── Auth ──
-
-interface AuthResponse {
-  accessToken: string;
-  refreshToken?: string;
-  user: User;
-  tenantId: string;
-}
 
 export function useLogin() {
   return useMutation({

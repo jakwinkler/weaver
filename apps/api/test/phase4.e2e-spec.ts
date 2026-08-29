@@ -35,7 +35,7 @@ describe('Phase 4: Plugin System (e2e)', () => {
       });
 
     accessToken = res.body.accessToken;
-    tenantId = res.body.tenant.id;
+    tenantId = res.body.tenantId;
   });
 
   afterAll(async () => {

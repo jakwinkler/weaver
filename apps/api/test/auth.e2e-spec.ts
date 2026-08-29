@@ -6,11 +6,15 @@ import { AppModule } from '../src/app.module';
 import { TenantConnectionProvider } from '../src/core/tenant';
 
 describe('Auth (e2e)', () => {
+  const UUID_PATTERN =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
   let app: INestApplication;
   let dataSource: DataSource;
   let connections: TenantConnectionProvider;
   let accessToken: string;
   let refreshToken: string;
+  let tenantId: string;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -53,11 +57,21 @@ describe('Auth (e2e)', () => {
       expect(res.body.user.email).toBe('auth-test@example.com');
       expect(res.body.user.displayName).toBe('Auth Test User');
       expect(res.body.user.passwordHash).toBeUndefined();
-      expect(res.body.tenant.slug).toBe('auth-test-org');
-      expect(res.body.tenant.schemaName).toBe('tenant_auth_test_org');
+      expect(res.body.tenantId).toMatch(UUID_PATTERN);
+      expect(res.body.tenant).toBeUndefined();
+
+      const [tenant] = await dataSource.query(
+        `SELECT slug, schema_name AS "schemaName" FROM public.tenants WHERE id = $1`,
+        [res.body.tenantId],
+      );
+      expect(tenant).toEqual({
+        slug: 'auth-test-org',
+        schemaName: 'tenant_auth_test_org',
+      });
 
       accessToken = res.body.accessToken;
       refreshToken = res.body.refreshToken;
+      tenantId = res.body.tenantId;
     });
 
     it('should reject duplicate email', async () => {
@@ -100,6 +114,10 @@ describe('Auth (e2e)', () => {
       expect(res.body.accessToken).toBeDefined();
       expect(res.body.refreshToken).toBeDefined();
       expect(res.body.user.email).toBe('auth-test@example.com');
+      expect(res.body.user.passwordHash).toBeUndefined();
+      expect(res.body.tenantId).toBe(tenantId);
+      expect(res.body.tenantId).toMatch(UUID_PATTERN);
+      expect(res.body.tenant).toBeUndefined();
 
       accessToken = res.body.accessToken;
     });
