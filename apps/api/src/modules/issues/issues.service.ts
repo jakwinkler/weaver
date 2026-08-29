@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IssueEntity, WorkflowStatusEntity, ActivityLogEntity, SprintEntity } from '@weaver/db';
 import { UserEntity } from '@weaver/db';
@@ -14,6 +14,8 @@ import { ProjectsService } from '../projects';
 import { WorkflowsService } from '../workflows';
 import { EventDispatcherService } from '../events';
 import { PaginationParams, paginate } from '../../common';
+import { getTenantContext } from '../../core/tenant';
+import { MailService } from '../mail';
 
 export interface IssueFilters {
   statusId?: string;
@@ -27,6 +29,8 @@ export interface IssueFilters {
 
 @Injectable()
 export class IssuesService {
+  private readonly logger = new Logger(IssuesService.name);
+
   constructor(
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
@@ -34,6 +38,7 @@ export class IssuesService {
     private readonly projectsService: ProjectsService,
     private readonly workflowsService: WorkflowsService,
     private readonly eventDispatcher: EventDispatcherService,
+    private readonly mailService: MailService,
   ) {}
 
   private async resolveUserName(userId: string | null): Promise<string | null> {
@@ -104,6 +109,10 @@ export class IssuesService {
       assigneeId: saved.assigneeId,
       userId: reporterId,
     });
+
+    if (saved.assigneeId) {
+      await this.sendAssignmentEmail(saved, saved.assigneeId, reporterId, project.name);
+    }
 
     return saved;
   }
@@ -289,6 +298,11 @@ export class IssuesService {
         previousAssigneeId,
         userId: userId ?? null,
       });
+
+      if (saved.assigneeId) {
+        const project = await this.projectsService.findByKey(issueKey.split('-')[0]);
+        await this.sendAssignmentEmail(saved, saved.assigneeId, userId ?? null, project.name);
+      }
     }
 
     // Emit issue.moved event if status or sprint changed
@@ -304,6 +318,21 @@ export class IssuesService {
         toSprint: saved.sprintId ?? null,
         userId: userId ?? null,
       });
+    }
+
+    if (statusChanged) {
+      const [oldStatus, newStatus, project] = await Promise.all([
+        this.resolveStatusName(em, previousStatusId),
+        this.resolveStatusName(em, saved.statusId),
+        this.projectsService.findByKey(issueKey.split('-')[0]),
+      ]);
+      await this.sendStatusChangeEmails(
+        saved,
+        oldStatus ?? previousStatusId,
+        newStatus ?? saved.statusId,
+        userId ?? null,
+        project.name,
+      );
     }
 
     return saved;
@@ -393,6 +422,15 @@ export class IssuesService {
       userId,
     });
 
+    const project = await this.projectsService.findByKey(issueKey.split('-')[0]);
+    await this.sendStatusChangeEmails(
+      saved,
+      oldStatusName ?? oldStatusId,
+      newStatusName ?? transition.toStatusId,
+      userId,
+      project.name,
+    );
+
     return saved;
   }
 
@@ -407,5 +445,74 @@ export class IssuesService {
       projectKey: issueKey.split('-')[0],
       userId,
     });
+  }
+
+  private async sendAssignmentEmail(
+    issue: IssueEntity,
+    assigneeId: string,
+    actorId: string | null,
+    projectName: string,
+  ): Promise<void> {
+    const tenantId = getTenantContext()?.tenantId;
+    if (!tenantId) return;
+
+    try {
+      await this.mailService.enqueueNotification({
+        tenantId,
+        userId: assigneeId,
+        preference: 'emailOnAssign',
+        template: 'issue-assigned',
+        context: {
+          actorName: (await this.resolveUserName(actorId)) ?? 'Someone',
+          issueKey: issue.key,
+          issueSummary: issue.summary,
+          projectName,
+          issueUrl: this.mailService.issueUrl(issue.key),
+        },
+      });
+    } catch (error) {
+      this.logger.warn(`Unable to prepare assignment email for ${issue.key}: ${String(error)}`);
+    }
+  }
+
+  private async sendStatusChangeEmails(
+    issue: IssueEntity,
+    oldStatus: string,
+    newStatus: string,
+    actorId: string | null,
+    projectName: string,
+  ): Promise<void> {
+    const tenantId = getTenantContext()?.tenantId;
+    if (!tenantId) return;
+
+    const recipients = [
+      ...new Set([issue.assigneeId, issue.reporterId].filter(Boolean)),
+    ] as string[];
+    if (recipients.length === 0) return;
+
+    try {
+      const actorName = (await this.resolveUserName(actorId)) ?? 'Someone';
+      await Promise.all(
+        recipients.map((userId) =>
+          this.mailService.enqueueNotification({
+            tenantId,
+            userId,
+            preference: 'emailOnStatusChange',
+            template: 'issue-status-changed',
+            context: {
+              actorName,
+              issueKey: issue.key,
+              issueSummary: issue.summary,
+              projectName,
+              oldStatus,
+              newStatus,
+              issueUrl: this.mailService.issueUrl(issue.key),
+            },
+          }),
+        ),
+      );
+    } catch (error) {
+      this.logger.warn(`Unable to prepare status email for ${issue.key}: ${String(error)}`);
+    }
   }
 }

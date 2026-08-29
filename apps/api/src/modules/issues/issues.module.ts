@@ -6,9 +6,16 @@ import { IssuesService } from './issues.service';
 import { ProjectsModule } from '../projects';
 import { WorkflowsModule } from '../workflows';
 import { EventsModule } from '../events';
+import { MailModule } from '../mail';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([UserEntity]), ProjectsModule, WorkflowsModule, EventsModule],
+  imports: [
+    TypeOrmModule.forFeature([UserEntity]),
+    ProjectsModule,
+    WorkflowsModule,
+    EventsModule,
+    MailModule,
+  ],
   controllers: [IssuesController],
   providers: [IssuesService],
   exports: [IssuesService],

@@ -239,3 +239,23 @@ export const updateTenantSettingsSchema = z.object({
   smtp: smtpSettingsSchema.nullable().optional(),
 });
 export type UpdateTenantSettingsDto = z.infer<typeof updateTenantSettingsSchema>;
+
+export const testSmtpSettingsSchema = z
+  .object({
+    smtp: smtpSettingsSchema.optional(),
+  })
+  .strict();
+
+// ── Notification Preferences Schema ──
+
+export const notificationPreferencesSchema = z
+  .object({
+    emailOnAssign: z.boolean().default(true),
+    emailOnMention: z.boolean().default(true),
+    emailOnComment: z.boolean().default(true),
+    emailOnStatusChange: z.boolean().default(true),
+  })
+  .strict();
+
+export const updateNotificationPreferencesSchema = notificationPreferencesSchema.partial().strict();
+export type UpdateNotificationPreferencesDto = z.infer<typeof updateNotificationPreferencesSchema>;

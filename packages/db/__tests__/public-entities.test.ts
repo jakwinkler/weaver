@@ -58,6 +58,7 @@ describe('Public Schema Entities', () => {
       expect(columnNames).toContain('displayName');
       expect(columnNames).toContain('passwordHash');
       expect(columnNames).toContain('authProvider');
+      expect(columnNames).toContain('notificationPreferences');
     });
 
     it('should have unique index on email', () => {
@@ -92,9 +93,7 @@ describe('Public Schema Entities', () => {
     });
 
     it('should have relations to tenant and user', () => {
-      const relations = storage.relations.filter(
-        (r) => r.target === TenantMembershipEntity,
-      );
+      const relations = storage.relations.filter((r) => r.target === TenantMembershipEntity);
       expect(relations.length).toBe(2);
       const targetNames = relations.map((r) => r.propertyName);
       expect(targetNames).toContain('tenant');

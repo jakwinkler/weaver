@@ -3,6 +3,11 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { UserEntity, TenantMembershipEntity } from '@weaver/db';
 import { UpdateUserDto } from '@weaver/shared';
+import {
+  DEFAULT_NOTIFICATION_PREFERENCES,
+  type NotificationPreferences,
+  type UpdateNotificationPreferencesDto,
+} from '@weaver/shared';
 import { AttachmentsService } from '../attachments/attachments.service';
 
 const VALID_ROLES = ['owner', 'admin', 'member', 'viewer'];
@@ -38,6 +43,24 @@ export class UsersService {
     const saved = await this.userRepo.save(user);
     const { passwordHash, ...rest } = saved;
     return rest;
+  }
+
+  async updateNotificationPreferences(
+    id: string,
+    dto: UpdateNotificationPreferencesDto,
+  ): Promise<NotificationPreferences> {
+    const user = await this.userRepo.findOneBy({ id });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    user.notificationPreferences = {
+      ...DEFAULT_NOTIFICATION_PREFERENCES,
+      ...(user.notificationPreferences ?? {}),
+      ...dto,
+    };
+    const saved = await this.userRepo.save(user);
+    return saved.notificationPreferences;
   }
 
   async uploadAvatar(

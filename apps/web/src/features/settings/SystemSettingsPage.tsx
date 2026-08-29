@@ -38,9 +38,7 @@ export function SystemSettingsPage() {
     <div>
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-foreground">System Settings</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Configure your organization settings
-        </p>
+        <p className="mt-1 text-sm text-muted-foreground">Configure your organization settings</p>
       </div>
 
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as Tab)} className="mb-6">
@@ -127,7 +125,9 @@ function GeneralTab() {
             className="block w-full max-w-sm border border-input bg-background px-3 py-2 text-sm shadow-sm focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
           >
             {COMMON_TIMEZONES.map((tz) => (
-              <option key={tz} value={tz}>{tz}</option>
+              <option key={tz} value={tz}>
+                {tz}
+              </option>
             ))}
           </select>
         </div>
@@ -155,7 +155,8 @@ function GeneralTab() {
         <div>
           <Label className="mb-1 block">Allowed Registration Domains</Label>
           <p className="mb-2 text-xs text-muted-foreground">
-            If set, only users with email addresses from these domains can register. Leave empty to allow all.
+            If set, only users with email addresses from these domains can register. Leave empty to
+            allow all.
           </p>
           <div className="flex gap-2">
             <Input
@@ -250,7 +251,15 @@ function EmailTab() {
 
   const handleTest = async () => {
     try {
-      await testSmtp.mutateAsync();
+      await testSmtp.mutateAsync({
+        host: host.trim(),
+        port,
+        secure,
+        user,
+        pass,
+        fromName,
+        fromEmail,
+      });
     } catch {
       // error shown via testSmtp.isError
     }
@@ -275,11 +284,7 @@ function EmailTab() {
             </div>
             <div>
               <Label className="mb-1 block">Port</Label>
-              <Input
-                type="number"
-                value={port}
-                onChange={(e) => setPort(Number(e.target.value))}
-              />
+              <Input type="number" value={port} onChange={(e) => setPort(Number(e.target.value))} />
             </div>
           </div>
 
