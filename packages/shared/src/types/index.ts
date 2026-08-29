@@ -242,6 +242,7 @@ export interface BoardIssuesResponse {
   board: Board;
   issues: Issue[];
   groups: BoardIssueGroup[];
+  columnPointTotals: Record<string, number>;
 }
 
 export interface Sprint {

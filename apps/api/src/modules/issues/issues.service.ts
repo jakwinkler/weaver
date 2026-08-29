@@ -190,6 +190,7 @@ export class IssuesService {
       'startDate',
       'dueDate',
       'percentDone',
+      'storyPoints',
     ]);
   }
 
@@ -237,6 +238,7 @@ export class IssuesService {
     const previousDueDate = issue.dueDate;
     const previousSummary = issue.summary;
     const previousPercentDone = issue.percentDone;
+    const previousStoryPoints = issue.storyPoints;
 
     // Handle nullable fields explicitly
     if (dto.assigneeId !== undefined) issue.assigneeId = dto.assigneeId ?? null;
@@ -323,6 +325,13 @@ export class IssuesService {
           field: 'percentDone',
           oldVal: String(previousPercentDone),
           newVal: String(dto.percentDone),
+        });
+      }
+      if (dto.storyPoints !== undefined && (dto.storyPoints ?? null) !== previousStoryPoints) {
+        trackedChanges.push({
+          field: 'storyPoints',
+          oldVal: previousStoryPoints === null ? null : String(previousStoryPoints),
+          newVal: dto.storyPoints === null ? null : String(dto.storyPoints),
         });
       }
 

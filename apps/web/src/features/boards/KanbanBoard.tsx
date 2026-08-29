@@ -135,7 +135,14 @@ function IssueCardContent({ issue }: { issue: Issue }) {
       <p className="text-sm font-medium text-foreground">{issue.summary}</p>
       <div className="mt-2 flex items-center justify-between">
         <span className="text-xs font-medium text-primary">{issue.key}</span>
-        <PriorityBadge priority={issue.priority} />
+        <div className="flex items-center gap-1.5">
+          {issue.storyPoints !== null && issue.storyPoints !== undefined && (
+            <Badge variant="secondary" className="rounded-full px-2 py-0.5 text-xs font-medium">
+              {issue.storyPoints} pts
+            </Badge>
+          )}
+          <PriorityBadge priority={issue.priority} />
+        </div>
       </div>
       {issue.assigneeId && (
         <div className="mt-2 flex items-center gap-1">
@@ -238,6 +245,7 @@ function DroppableColumn({
   });
 
   const issueIds = column.issues.map((i) => i.id);
+  const pointTotal = column.issues.reduce((total, issue) => total + (issue.storyPoints ?? 0), 0);
 
   return (
     <div
@@ -255,7 +263,9 @@ function DroppableColumn({
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="h-3 w-3 rounded-full" style={{ backgroundColor: column.color }} />
-          <h3 className="text-sm font-semibold text-foreground">{column.name}</h3>
+          <h3 className="text-sm font-semibold text-foreground">
+            {column.name} <span className="text-muted-foreground">({pointTotal} pts)</span>
+          </h3>
         </div>
         <span
           className={cn(

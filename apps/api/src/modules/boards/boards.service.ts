@@ -63,10 +63,16 @@ export class BoardsService {
       order: { sortOrder: 'ASC', createdAt: 'DESC' },
     });
 
+    const columnPointTotals = issues.reduce<Record<string, number>>((totals, issue) => {
+      totals[issue.statusId] = (totals[issue.statusId] ?? 0) + (issue.storyPoints ?? 0);
+      return totals;
+    }, {});
+
     return {
       board,
       issues,
       groups: await this.groupIssues(issues, board.config),
+      columnPointTotals,
     };
   }
 

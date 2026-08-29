@@ -70,7 +70,10 @@ vi.mock('@/api', () => ({
 
 vi.mock('@/api/hooks-phase2', () => ({
   useBoards: () => ({ data: [board], isLoading: false, refetch: vi.fn() }),
-  useBoardIssues: () => ({ data: { board, issues, groups: [] }, isLoading: false }),
+  useBoardIssues: () => ({
+    data: { board, issues, groups: [], columnPointTotals: {} },
+    isLoading: false,
+  }),
   useCreateBoard: () => ({ mutateAsync: vi.fn(), isError: false, isPending: false }),
   useUpdateBoard: () => ({ mutateAsync: vi.fn(), isError: false, isPending: false }),
 }));

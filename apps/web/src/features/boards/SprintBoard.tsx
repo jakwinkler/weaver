@@ -236,6 +236,11 @@ function PlanningIssueCard({
         <span className="mr-2 text-xs font-semibold text-primary">{issue.key}</span>
         <span className="text-sm text-foreground">{issue.summary}</span>
       </Link>
+      {issue.storyPoints !== null && issue.storyPoints !== undefined && (
+        <Badge variant="outline" className="shrink-0 rounded-full text-xs font-normal">
+          {issue.storyPoints} pt{issue.storyPoints === 1 ? '' : 's'}
+        </Badge>
+      )}
       <Badge variant="outline" className="shrink-0 rounded-full text-xs font-normal">
         {issue.priority}
       </Badge>
@@ -278,6 +283,7 @@ function SprintPlanningContainer({
   canEdit: boolean;
 }) {
   const containerId = sprint?.id ?? BACKLOG_ID;
+  const committedPoints = issues.reduce((total, issue) => total + (issue.storyPoints ?? 0), 0);
   const isCompleted = sprint?.status === 'completed';
   const acceptsDrops = canEdit && !isCompleted;
   const { setNodeRef } = useDroppable({
@@ -305,6 +311,13 @@ function SprintPlanningContainer({
             <span className="text-xs text-muted-foreground">
               {issues.length} issue{issues.length === 1 ? '' : 's'}
             </span>
+            {sprint && (
+              <span className="text-xs font-medium text-foreground">
+                {sprint.capacity === null || sprint.capacity === undefined
+                  ? `${committedPoints} pts committed`
+                  : `${committedPoints} / ${sprint.capacity} pts`}
+              </span>
+            )}
           </div>
           {sprint?.goal && <p className="mt-1 text-sm text-muted-foreground">{sprint.goal}</p>}
           {sprint ? (

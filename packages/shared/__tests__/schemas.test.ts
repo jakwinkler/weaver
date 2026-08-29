@@ -206,6 +206,11 @@ describe('updateIssueSchema', () => {
     });
     expect(result.success).toBe(true);
   });
+
+  it('should accept setting and clearing story points', () => {
+    expect(updateIssueSchema.safeParse({ storyPoints: 8 }).success).toBe(true);
+    expect(updateIssueSchema.safeParse({ storyPoints: null }).success).toBe(true);
+  });
 });
 
 describe('sprint planning schemas', () => {

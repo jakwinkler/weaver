@@ -179,6 +179,7 @@ export function useUpdateIssue(issueKey: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['issue', issueKey] });
       queryClient.invalidateQueries({ queryKey: ['issues'] });
+      queryClient.invalidateQueries({ queryKey: ['sprints'] });
     },
   });
 }
@@ -192,6 +193,7 @@ export function useUpdateIssueDynamic() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['issues'] });
+      queryClient.invalidateQueries({ queryKey: ['sprints'] });
     },
   });
 }

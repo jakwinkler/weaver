@@ -40,6 +40,7 @@ const board: Board = {
 const boardIssues: BoardIssuesResponse = {
   board,
   issues: [highIssue, lowIssue],
+  columnPointTotals: { [statusId]: 0 },
   groups: [
     { key: 'priority:high', value: 'high', label: 'High', issues: [highIssue] },
     { key: 'priority:low', value: 'low', label: 'Low', issues: [lowIssue] },

@@ -24,6 +24,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { StoryPointsField } from '@/components/StoryPointsField';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   DropdownMenu,
@@ -441,6 +442,18 @@ export function IssueDetailPage() {
                     ) : (
                       <PriorityBadge priority={issue.priority} />
                     )}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">Story Points</dt>
+                  <dd className="mt-1">
+                    <StoryPointsField
+                      value={issue.storyPoints}
+                      onChange={async (storyPoints) => {
+                        await updateIssue.mutateAsync({ storyPoints });
+                      }}
+                      disabled={!canUpdate}
+                    />
                   </dd>
                 </div>
                 <div>
