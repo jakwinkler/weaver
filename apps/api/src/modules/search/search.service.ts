@@ -1,5 +1,6 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { IssueEntity, WorkflowStatusEntity } from '@weaver/db';
+import { PaginatedResponse } from '@weaver/shared';
 import { TenantConnectionProvider } from '../../core/tenant';
 
 interface WqlToken {
@@ -22,7 +23,7 @@ export class SearchService {
     page?: number;
     perPage?: number;
     sort?: string;
-  }): Promise<{ data: IssueEntity[]; total: number; page: number; perPage: number }> {
+  }): Promise<PaginatedResponse<IssueEntity>> {
     const page = query.page ?? 1;
     const perPage = query.perPage ?? 50;
     const em = await this.tenantConnections.getEntityManager();
@@ -50,7 +51,15 @@ export class SearchService {
 
     const [data, total] = await qb.getManyAndCount();
 
-    return { data, total, page, perPage };
+    return {
+      data,
+      meta: {
+        page,
+        perPage,
+        total,
+        totalPages: Math.ceil(total / perPage),
+      },
+    };
   }
 
   private parseWql(wql: string): ParsedWql {
