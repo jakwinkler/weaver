@@ -1,14 +1,26 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { IssueEntity, WorkflowStatusEntity, ActivityLogEntity, SprintEntity } from '@weaver/db';
+import {
+  ActivityLogEntity,
+  AttachmentEntity,
+  CommentEntity,
+  IssueEntity,
+  IssueLinkEntity,
+  SprintEntity,
+  TimeEntryEntity,
+  WorkflowStatusEntity,
+} from '@weaver/db';
 import { UserEntity } from '@weaver/db';
 import {
+  BulkIssueUpdatesDto,
   CreateIssueDto,
   UpdateIssueDto,
   ReorderIssuesDto,
   PaginatedResponse,
 } from '@weaver/shared';
-import { Repository, In } from 'typeorm';
+import { EntityManager, Repository, In } from 'typeorm';
+import { promises as fs } from 'fs';
+import * as path from 'path';
 import { TenantConnectionProvider } from '../../core/tenant';
 import { ProjectsService } from '../projects';
 import { WorkflowsService } from '../workflows';
@@ -336,6 +348,260 @@ export class IssuesService {
     }
 
     return saved;
+  }
+
+  async bulkUpdate(
+    issueIds: string[],
+    updates: BulkIssueUpdatesDto,
+    userId: string,
+  ): Promise<IssueEntity[]> {
+    this.validateBulkRequest(issueIds, updates);
+    const uniqueIssueIds = [...new Set(issueIds)];
+    const em = await this.tenantConnections.getEntityManager();
+
+    const updatedIssues = await em.transaction(async (manager) => {
+      const issueRepo = manager.getRepository(IssueEntity);
+      const issues = await issueRepo.find({ where: { id: In(uniqueIssueIds) } });
+      if (issues.length !== uniqueIssueIds.length) {
+        throw new NotFoundException('One or more issues were not found');
+      }
+
+      const previousValues = new Map(
+        issues.map((issue) => [
+          issue.id,
+          {
+            statusId: issue.statusId,
+            assigneeId: issue.assigneeId,
+            priority: issue.priority,
+            sprintId: issue.sprintId,
+            labels: [...issue.labels],
+          },
+        ]),
+      );
+
+      for (const issue of issues) {
+        if (updates.statusId !== undefined) issue.statusId = updates.statusId;
+        if (updates.assigneeId !== undefined) issue.assigneeId = updates.assigneeId;
+        if (updates.priority !== undefined) issue.priority = updates.priority;
+        if (updates.sprintId !== undefined) issue.sprintId = updates.sprintId;
+        if (updates.labels !== undefined) issue.labels = [...updates.labels];
+      }
+
+      const savedIssues = await issueRepo.save(issues);
+      const activityEntries = await this.buildBulkActivityEntries(
+        manager,
+        savedIssues,
+        previousValues,
+        updates,
+        userId,
+      );
+      if (activityEntries.length > 0) {
+        await manager.getRepository(ActivityLogEntity).save(activityEntries);
+      }
+
+      return savedIssues;
+    });
+
+    await this.eventDispatcher.emit('issue.bulk_updated', {
+      issueIds: updatedIssues.map((issue) => issue.id),
+      issueKeys: updatedIssues.map((issue) => issue.key),
+      projectKeys: [...new Set(updatedIssues.map((issue) => issue.key.split('-')[0]))],
+      updates,
+      count: updatedIssues.length,
+      userId,
+    });
+
+    return updatedIssues;
+  }
+
+  async bulkDelete(issueIds: string[], userId: string): Promise<{ count: number }> {
+    this.validateBulkRequest(issueIds);
+    const uniqueIssueIds = [...new Set(issueIds)];
+    const em = await this.tenantConnections.getEntityManager();
+
+    const deleted = await em.transaction(async (manager) => {
+      const issueRepo = manager.getRepository(IssueEntity);
+      const issues = await issueRepo.find({ where: { id: In(uniqueIssueIds) } });
+      if (issues.length !== uniqueIssueIds.length) {
+        throw new NotFoundException('One or more issues were not found');
+      }
+
+      const attachments = await manager.getRepository(AttachmentEntity).find({
+        where: { issueId: In(uniqueIssueIds) },
+        select: ['storageKey'],
+      });
+
+      await manager
+        .getRepository(IssueLinkEntity)
+        .createQueryBuilder()
+        .delete()
+        .where('source_issue_id IN (:...issueIds)', { issueIds: uniqueIssueIds })
+        .orWhere('target_issue_id IN (:...issueIds)', { issueIds: uniqueIssueIds })
+        .execute();
+      await manager.getRepository(CommentEntity).delete({ issueId: In(uniqueIssueIds) });
+      await manager.getRepository(TimeEntryEntity).delete({ issueId: In(uniqueIssueIds) });
+      await manager.getRepository(ActivityLogEntity).delete({ issueId: In(uniqueIssueIds) });
+      await manager.getRepository(AttachmentEntity).delete({ issueId: In(uniqueIssueIds) });
+
+      await issueRepo.update({ parentId: In(uniqueIssueIds) }, { parentId: null });
+      await issueRepo.update({ epicId: In(uniqueIssueIds) }, { epicId: null });
+      await issueRepo.delete({ id: In(uniqueIssueIds) });
+
+      return {
+        issues,
+        attachmentStorageKeys: attachments.map((attachment) => attachment.storageKey),
+      };
+    });
+
+    await this.deleteAttachmentFiles(deleted.attachmentStorageKeys);
+    await this.eventDispatcher.emit('issue.bulk_deleted', {
+      issueIds: deleted.issues.map((issue) => issue.id),
+      issueKeys: deleted.issues.map((issue) => issue.key),
+      projectKeys: [...new Set(deleted.issues.map((issue) => issue.key.split('-')[0]))],
+      count: deleted.issues.length,
+      userId,
+    });
+
+    return { count: deleted.issues.length };
+  }
+
+  private validateBulkRequest(issueIds: string[], updates?: BulkIssueUpdatesDto): void {
+    if (issueIds.length === 0) {
+      throw new BadRequestException('At least one issue is required');
+    }
+    if (issueIds.length > 100) {
+      throw new BadRequestException('Bulk operations are limited to 100 issues');
+    }
+    if (updates && Object.keys(updates).length === 0) {
+      throw new BadRequestException('At least one bulk update field is required');
+    }
+  }
+
+  private async buildBulkActivityEntries(
+    manager: EntityManager,
+    issues: IssueEntity[],
+    previousValues: Map<
+      string,
+      {
+        statusId: string;
+        assigneeId: string | null;
+        priority: string;
+        sprintId: string | null;
+        labels: string[];
+      }
+    >,
+    updates: BulkIssueUpdatesDto,
+    userId: string,
+  ): Promise<ActivityLogEntity[]> {
+    const statusIds = new Set<string>();
+    const sprintIds = new Set<string>();
+    const assigneeIds = new Set<string>();
+
+    for (const previous of previousValues.values()) {
+      if (previous.statusId) statusIds.add(previous.statusId);
+      if (previous.sprintId) sprintIds.add(previous.sprintId);
+      if (previous.assigneeId) assigneeIds.add(previous.assigneeId);
+    }
+    if (updates.statusId) statusIds.add(updates.statusId);
+    if (updates.sprintId) sprintIds.add(updates.sprintId);
+    if (updates.assigneeId) assigneeIds.add(updates.assigneeId);
+
+    const [statuses, sprints, users] = await Promise.all([
+      statusIds.size > 0
+        ? manager.getRepository(WorkflowStatusEntity).find({ where: { id: In([...statusIds]) } })
+        : [],
+      sprintIds.size > 0
+        ? manager.getRepository(SprintEntity).find({ where: { id: In([...sprintIds]) } })
+        : [],
+      assigneeIds.size > 0 ? this.userRepo.find({ where: { id: In([...assigneeIds]) } }) : [],
+    ]);
+    const statusNames = new Map<string, string>(statuses.map((status) => [status.id, status.name]));
+    const sprintNames = new Map<string, string>(sprints.map((sprint) => [sprint.id, sprint.name]));
+    const userNames = new Map<string, string>(
+      users.map((user) => [user.id, user.displayName || user.email || user.id]),
+    );
+    const activityRepo = manager.getRepository(ActivityLogEntity);
+    const entries: ActivityLogEntity[] = [];
+
+    const addEntry = (
+      issue: IssueEntity,
+      fieldName: string,
+      oldValue: string | null,
+      newValue: string | null,
+    ) => {
+      if (oldValue === newValue) return;
+      entries.push(
+        activityRepo.create({
+          issueId: issue.id,
+          userId,
+          action: 'bulk_updated',
+          fieldName,
+          oldValue,
+          newValue,
+        }),
+      );
+    };
+
+    for (const issue of issues) {
+      const previous = previousValues.get(issue.id)!;
+      if (updates.statusId !== undefined) {
+        addEntry(
+          issue,
+          'status',
+          statusNames.get(previous.statusId) ?? previous.statusId,
+          statusNames.get(issue.statusId) ?? issue.statusId,
+        );
+      }
+      if (updates.assigneeId !== undefined) {
+        addEntry(
+          issue,
+          'assignee',
+          previous.assigneeId ? (userNames.get(previous.assigneeId) ?? previous.assigneeId) : null,
+          issue.assigneeId ? (userNames.get(issue.assigneeId) ?? issue.assigneeId) : null,
+        );
+      }
+      if (updates.priority !== undefined) {
+        addEntry(issue, 'priority', previous.priority, issue.priority);
+      }
+      if (updates.sprintId !== undefined) {
+        addEntry(
+          issue,
+          'sprint',
+          previous.sprintId ? (sprintNames.get(previous.sprintId) ?? previous.sprintId) : null,
+          issue.sprintId ? (sprintNames.get(issue.sprintId) ?? issue.sprintId) : null,
+        );
+      }
+      if (updates.labels !== undefined) {
+        addEntry(
+          issue,
+          'labels',
+          previous.labels.length > 0 ? previous.labels.join(', ') : null,
+          issue.labels.length > 0 ? issue.labels.join(', ') : null,
+        );
+      }
+    }
+
+    return entries;
+  }
+
+  private async deleteAttachmentFiles(storageKeys: string[]): Promise<void> {
+    const uploadDirectory = path.resolve('/tmp/weaver-uploads');
+    await Promise.all(
+      storageKeys.map(async (storageKey) => {
+        const filePath = path.resolve(uploadDirectory, storageKey);
+        if (!filePath.startsWith(`${uploadDirectory}${path.sep}`)) {
+          this.logger.warn(`Skipped unsafe attachment path: ${storageKey}`);
+          return;
+        }
+        try {
+          await fs.unlink(filePath);
+        } catch (error: any) {
+          if (error?.code !== 'ENOENT') {
+            this.logger.warn(`Failed to delete attachment file ${storageKey}: ${error}`);
+          }
+        }
+      }),
+    );
   }
 
   async reorder(dto: ReorderIssuesDto, userId: string): Promise<void> {

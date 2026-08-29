@@ -26,6 +26,7 @@ import {
   useProject,
   useIssueTypes,
   useWorkflow,
+  useSprints,
   useHasPermission,
   useUpdateIssueDynamic,
   useReorderIssues,
@@ -39,6 +40,7 @@ import { SortableHeader, type SortDirection } from '@/components/SortableHeader'
 import { EditableCell } from '@/components/EditableCell';
 import { InlineSelect, type InlineSelectOption } from '@/components/InlineSelect';
 import { InlineDatePicker } from '@/components/InlineDatePicker';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -55,6 +57,12 @@ import {
 import { cn } from '@/lib/utils';
 import { useHotkeys } from '@/hooks/useHotkeys';
 import { buildReorderPayload, reorderIssueList } from './dragAndDrop';
+import { BulkActionBar } from './BulkActionBar';
+import {
+  getPageSelectionState,
+  setCurrentPageSelection,
+  toggleIssueSelection as toggleIssueSelectionInRange,
+} from './issueSelection';
 
 const UNASSIGNED_VALUE = '__unassigned__';
 
@@ -82,6 +90,7 @@ interface SortableIssueRowProps {
   index: number;
   focused: boolean;
   selected: boolean;
+  canBulkSelect: boolean;
   canEdit: boolean;
   canReorder: boolean;
   canTransition: boolean;
@@ -95,7 +104,7 @@ interface SortableIssueRowProps {
     value: UpdateIssueDto[keyof UpdateIssueDto],
   ) => Promise<void>;
   onStatusUpdate: (issueKey: string, fromStatusId: string, toStatusId: string) => Promise<void>;
-  onSelectionChange: (issueId: string) => void;
+  onSelectionChange: (issueId: string, index: number, rangeSelection?: boolean) => void;
   onKeyboardFocus: (index: number) => void;
   setRowRef: (issueId: string, node: HTMLTableRowElement | null) => void;
 }
@@ -105,6 +114,7 @@ function SortableIssueRow({
   index,
   focused,
   selected,
+  canBulkSelect,
   canEdit,
   canReorder,
   canTransition,
@@ -160,13 +170,15 @@ function SortableIssueRow({
           <GripVertical className="h-4 w-4" aria-hidden="true" />
         </button>
       </TableCell>
-      <TableCell className="w-10">
-        <Checkbox
-          aria-label={`Select ${issue.key}`}
-          checked={selected}
-          onCheckedChange={() => onSelectionChange(issue.id)}
-        />
-      </TableCell>
+      {canBulkSelect && (
+        <TableCell className="w-10">
+          <Checkbox
+            aria-label={`Select ${issue.key}`}
+            checked={selected}
+            onClick={(event) => onSelectionChange(issue.id, index, event.shiftKey)}
+          />
+        </TableCell>
+      )}
       <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
         {issue.issueType ? (
           <span className="inline-flex items-center gap-1.5" title={issue.issueType.name}>
@@ -309,10 +321,13 @@ export function IssueListPage() {
   const transitionIssue = useTransitionIssueDynamic();
   const { data: issueTypes } = useIssueTypes();
   const { data: workflow } = useWorkflow(project?.workflowId || '');
+  const { data: sprints } = useSprints(project?.id || '');
   const { data: users } = useUsers();
   const canCreate = useHasPermission('issues.create');
   const canEdit = useHasPermission('issues.update');
   const canTransition = useHasPermission('issues.transition');
+  const canDelete = useHasPermission('issues.delete');
+  const canBulkSelect = canEdit || canDelete;
   const canReorder = canEdit && !sortParam;
 
   const [localIssues, setLocalIssues] = useState<Issue[] | null>(null);
@@ -431,16 +446,50 @@ export function IssueListPage() {
   const [dueDate, setDueDate] = useState('');
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
   const [selectedIssueIds, setSelectedIssueIds] = useState<Set<string>>(() => new Set());
+  const lastSelectedIndex = useRef<number | null>(null);
   const rowRefs = useRef(new Map<string, HTMLTableRowElement>());
   const issues = localIssues ?? data?.data ?? [];
   const issueKeys = issues.map((issue) => issue.key).join('|');
 
+  const clearSelection = useCallback(() => {
+    setSelectedIssueIds(new Set());
+    lastSelectedIndex.current = null;
+  }, []);
+
+  const handleIssueSelection = useCallback(
+    (issueId: string, index: number, rangeSelection = false) => {
+      const orderedIssueIds = data?.data.map((issue) => issue.id) ?? [];
+      setSelectedIssueIds((current) =>
+        toggleIssueSelectionInRange(
+          current,
+          orderedIssueIds,
+          issueId,
+          lastSelectedIndex.current,
+          rangeSelection,
+        ),
+      );
+      lastSelectedIndex.current = index;
+    },
+    [data?.data],
+  );
+
+  const handleSelectAll = useCallback(
+    (selected: boolean) => {
+      const currentPageIssueIds = data?.data.map((issue) => issue.id) ?? [];
+      setSelectedIssueIds((current) =>
+        setCurrentPageSelection(current, currentPageIssueIds, selected),
+      );
+      lastSelectedIndex.current = null;
+    },
+    [data?.data],
+  );
+
   // Reset keyboard state when the visible result set changes.
   useEffect(() => {
     setFocusedIndex(-1);
-    setSelectedIssueIds(new Set());
+    clearSelection();
     setLocalIssues(null);
-  }, [data, page, perPage]);
+  }, [clearSelection, data, page, perPage, projectKey, sortParam]);
 
   useEffect(() => {
     const focusedIssue = issues[focusedIndex];
@@ -464,15 +513,6 @@ export function IssueListPage() {
     });
   };
 
-  const toggleIssueSelection = (issueId: string) => {
-    setSelectedIssueIds((previous) => {
-      const next = new Set(previous);
-      if (next.has(issueId)) next.delete(issueId);
-      else next.add(issueId);
-      return next;
-    });
-  };
-
   useHotkeys(
     [
       { keys: 'j', handler: () => moveFocus(1) },
@@ -489,9 +529,9 @@ export function IssueListPage() {
         keys: 'x',
         handler: () => {
           const focusedIssue = issues[focusedIndex];
-          if (focusedIssue) toggleIssueSelection(focusedIssue.id);
+          if (focusedIssue) handleIssueSelection(focusedIssue.id, focusedIndex);
         },
-        enabled: focusedIndex >= 0,
+        enabled: canBulkSelect && focusedIndex >= 0,
       },
     ],
     { context: 'list', ignoreInteractiveElements: true },
@@ -529,6 +569,12 @@ export function IssueListPage() {
     const sort = buildSortParam(field, direction);
     updateParams({ sort, page: undefined });
   };
+
+  const currentPageIssueIds = data?.data.map((issue) => issue.id) ?? [];
+  const { allSelected, someSelected } = getPageSelectionState(
+    selectedIssueIds,
+    currentPageIssueIds,
+  );
 
   const handleDragStart = (event: DragStartEvent) => {
     const issue = event.active.data.current?.issue as Issue | undefined;
@@ -705,6 +751,24 @@ export function IssueListPage() {
         </p>
       )}
 
+      {canBulkSelect && (
+        <BulkActionBar
+          selectedIssueIds={[...selectedIssueIds]}
+          statusOptions={statusOptions}
+          assigneeOptions={(users || []).map((user) => ({
+            value: user.id,
+            label: user.displayName || user.email,
+          }))}
+          sprintOptions={(sprints || []).map((sprint) => ({
+            value: sprint.id,
+            label: sprint.name,
+          }))}
+          canUpdate={canEdit}
+          canDelete={canDelete}
+          onClearSelection={clearSelection}
+        />
+      )}
+
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
@@ -719,23 +783,15 @@ export function IssueListPage() {
                 <TableHead className="w-10 px-2">
                   <span className="sr-only">Reorder</span>
                 </TableHead>
-                <TableHead className="w-10">
-                  <Checkbox
-                    aria-label="Select all issues on this page"
-                    checked={
-                      issues.length > 0 && issues.every((issue) => selectedIssueIds.has(issue.id))
-                        ? true
-                        : selectedIssueIds.size > 0
-                          ? 'indeterminate'
-                          : false
-                    }
-                    onCheckedChange={(checked) => {
-                      setSelectedIssueIds(
-                        checked ? new Set(issues.map((issue) => issue.id)) : new Set(),
-                      );
-                    }}
-                  />
-                </TableHead>
+                {canBulkSelect && (
+                  <TableHead className="w-10">
+                    <Checkbox
+                      aria-label="Select all issues on this page"
+                      checked={allSelected ? true : someSelected ? 'indeterminate' : false}
+                      onCheckedChange={(checked) => handleSelectAll(checked === true)}
+                    />
+                  </TableHead>
+                )}
                 <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                   Type
                 </TableHead>
@@ -797,6 +853,7 @@ export function IssueListPage() {
                     index={index}
                     focused={focusedIndex === index}
                     selected={selectedIssueIds.has(issue.id)}
+                    canBulkSelect={canBulkSelect}
                     canEdit={canEdit}
                     canReorder={canReorder}
                     canTransition={canTransition}
@@ -806,7 +863,7 @@ export function IssueListPage() {
                     getAssigneeName={getAssigneeName}
                     onInlineUpdate={handleInlineUpdate}
                     onStatusUpdate={handleStatusUpdate}
-                    onSelectionChange={toggleIssueSelection}
+                    onSelectionChange={handleIssueSelection}
                     onKeyboardFocus={setFocusedIndex}
                     setRowRef={(issueId, node) => {
                       if (node) rowRefs.current.set(issueId, node);
@@ -818,7 +875,7 @@ export function IssueListPage() {
               {data?.data.length === 0 && (
                 <TableRow>
                   <TableCell
-                    colSpan={11}
+                    colSpan={canBulkSelect ? 11 : 10}
                     className="px-6 py-8 text-center text-sm text-muted-foreground"
                   >
                     No issues yet. Create your first issue to get started.

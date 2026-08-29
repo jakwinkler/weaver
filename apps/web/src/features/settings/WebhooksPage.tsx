@@ -17,7 +17,9 @@ import { cn } from '@/lib/utils';
 const EVENT_EXAMPLES: Record<string, Record<string, unknown>> = {
   'issue.created': { issueKey: 'PROJ-42', projectKey: 'PROJ', summary: 'Fix login bug', priority: 'high', assigneeId: 'user-uuid' },
   'issue.updated': { issueKey: 'PROJ-42', fields: { summary: 'Updated title', priority: 'medium' } },
+  'issue.bulk_updated': { issueIds: ['issue-uuid-1', 'issue-uuid-2'], issueKeys: ['PROJ-42', 'PROJ-43'], updates: { priority: 'high' }, count: 2 },
   'issue.deleted': { issueKey: 'PROJ-42' },
+  'issue.bulk_deleted': { issueIds: ['issue-uuid-1', 'issue-uuid-2'], issueKeys: ['PROJ-42', 'PROJ-43'], count: 2 },
   'issue.status_changed': { issueKey: 'PROJ-42', projectKey: 'PROJ', fromStatus: 'status-uuid-1', toStatus: 'status-uuid-2' },
   'issue.assigned': { issueKey: 'PROJ-42', assigneeId: 'new-user-uuid', previousAssigneeId: 'old-user-uuid' },
   'comment.added': { issueKey: 'PROJ-42', commentId: 'comment-uuid', authorId: 'user-uuid' },
