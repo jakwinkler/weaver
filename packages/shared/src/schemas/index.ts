@@ -5,6 +5,7 @@ import {
   TENANT_ROLES,
   AUTH_PROVIDERS,
   BOARD_TYPES,
+  BOARD_SWIMLANE_FIELDS,
   SPRINT_STATUSES,
   STATUS_CATEGORIES,
   ISSUE_LINK_TYPES,
@@ -222,12 +223,27 @@ export type CreateCommentDto = z.infer<typeof createCommentSchema>;
 
 // ── Board Schema ──
 
+export const boardConfigSchema = z
+  .object({
+    swimlaneField: z.enum(BOARD_SWIMLANE_FIELDS).optional(),
+    wipLimits: z.record(z.string().uuid(), z.number().int().min(1).max(9999)).optional(),
+  })
+  .strict();
+export type BoardConfigDto = z.infer<typeof boardConfigSchema>;
+
 export const createBoardSchema = z.object({
   name: z.string().min(1).max(255),
   type: z.enum(BOARD_TYPES),
-  config: z.record(z.unknown()).default({}),
+  config: boardConfigSchema.default({}),
 });
 export type CreateBoardDto = z.infer<typeof createBoardSchema>;
+
+export const updateBoardSchema = z.object({
+  name: z.string().min(1).max(255).optional(),
+  type: z.enum(BOARD_TYPES).optional(),
+  config: boardConfigSchema.optional(),
+});
+export type UpdateBoardDto = z.infer<typeof updateBoardSchema>;
 
 // ── Sprint Schema ──
 

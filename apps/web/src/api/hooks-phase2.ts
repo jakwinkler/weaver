@@ -5,12 +5,14 @@ import type {
   WorkflowStatus,
   WorkflowTransition,
   Board,
+  BoardIssuesResponse,
   Sprint,
   Comment,
   ActivityLog,
   IssueType,
   CreateWorkflowDto,
   CreateBoardDto,
+  UpdateBoardDto,
   CreateSprintDto,
   CreateCommentDto,
 } from '@weaver/shared';
@@ -95,6 +97,17 @@ export function useBoard(id: string) {
   });
 }
 
+export function useBoardIssues(id: string) {
+  return useQuery({
+    queryKey: ['boardIssues', id],
+    queryFn: async () => {
+      const res = await apiClient.get<BoardIssuesResponse>(`/boards/${id}/issues`);
+      return res.data;
+    },
+    enabled: !!id,
+  });
+}
+
 export function useCreateBoard(projectId: string) {
   const queryClient = useQueryClient();
   return useMutation({
@@ -106,6 +119,23 @@ export function useCreateBoard(projectId: string) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['boards', projectId] });
+    },
+  });
+}
+
+export function useUpdateBoard(id: string, projectId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: UpdateBoardDto) => {
+      const res = await apiClient.patch<Board>(`/boards/${id}`, data);
+      return res.data;
+    },
+    onSuccess: (board) => {
+      queryClient.setQueryData<Board>(['board', id], board);
+      queryClient.setQueryData<Board[]>(['boards', projectId], (boards) =>
+        boards?.map((current) => (current.id === board.id ? board : current)),
+      );
+      queryClient.invalidateQueries({ queryKey: ['boardIssues', id] });
     },
   });
 }

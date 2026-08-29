@@ -2,6 +2,7 @@ import type {
   IssuePriority,
   StatusCategory,
   BoardType,
+  BoardSwimlaneField,
   SprintStatus,
   TenantPlan,
   TenantRole,
@@ -221,8 +222,26 @@ export interface Board {
   projectId: string;
   name: string;
   type: BoardType;
-  config: Record<string, unknown>;
+  config: BoardConfig;
   createdAt: Date;
+}
+
+export interface BoardConfig {
+  swimlaneField?: BoardSwimlaneField;
+  wipLimits?: Record<string, number>;
+}
+
+export interface BoardIssueGroup {
+  key: string;
+  value: string | null;
+  label: string;
+  issues: Issue[];
+}
+
+export interface BoardIssuesResponse {
+  board: Board;
+  issues: Issue[];
+  groups: BoardIssueGroup[];
 }
 
 export interface Sprint {

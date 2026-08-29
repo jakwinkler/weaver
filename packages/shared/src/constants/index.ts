@@ -7,6 +7,9 @@ export type StatusCategory = (typeof STATUS_CATEGORIES)[number];
 export const BOARD_TYPES = ['kanban', 'scrum'] as const;
 export type BoardType = (typeof BOARD_TYPES)[number];
 
+export const BOARD_SWIMLANE_FIELDS = ['none', 'assignee', 'priority', 'epic'] as const;
+export type BoardSwimlaneField = (typeof BOARD_SWIMLANE_FIELDS)[number];
+
 export const SPRINT_STATUSES = ['planned', 'active', 'completed'] as const;
 export type SprintStatus = (typeof SPRINT_STATUSES)[number];
 
@@ -20,8 +23,15 @@ export const AUTH_PROVIDERS = ['local', 'google', 'saml', 'oidc'] as const;
 export type AuthProvider = (typeof AUTH_PROVIDERS)[number];
 
 export const ISSUE_LINK_TYPES = [
-  'blocks', 'is_blocked_by', 'relates_to', 'duplicates', 'is_duplicated_by',
-  'causes', 'is_caused_by', 'clones', 'is_cloned_from',
+  'blocks',
+  'is_blocked_by',
+  'relates_to',
+  'duplicates',
+  'is_duplicated_by',
+  'causes',
+  'is_caused_by',
+  'clones',
+  'is_cloned_from',
 ] as const;
 export type IssueLinkType = (typeof ISSUE_LINK_TYPES)[number];
 
