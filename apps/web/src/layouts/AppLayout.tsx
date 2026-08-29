@@ -1,7 +1,13 @@
 import { useState } from 'react';
 import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore, useThemeStore } from '@/stores';
-import { useProjects, useUnreadCount, useInstalledPlugins, useAvailablePlugins, useMyPermissions } from '@/api';
+import {
+  useProjects,
+  useUnreadCount,
+  useInstalledPlugins,
+  useAvailablePlugins,
+  useMyPermissions,
+} from '@/api';
 import { ProjectIcon } from '@/features/projects/ProjectSettingsPage';
 import { UserAvatar } from '@/components/UserAvatar';
 import { Button } from '@/components/ui/button';
@@ -15,6 +21,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import {
   Search,
   Bell,
@@ -33,6 +40,7 @@ import {
   Sun,
   Moon,
   Cog,
+  Menu,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getNavigationEntries } from '@/plugins/plugin-slot-registry';
@@ -68,20 +76,21 @@ export function AppLayout() {
   const theme = useThemeStore((s) => s.theme);
   const setTheme = useThemeStore((s) => s.setTheme);
   const [appsOpen, setAppsOpen] = useState(location.pathname.startsWith('/apps'));
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   // Initialize WebSocket connection for real-time updates
   useWebSocket();
 
-  const enabledPluginIds = (installedPlugins ?? [])
-    .filter((p) => p.enabled)
-    .map((p) => p.pluginId);
+  const enabledPluginIds = (installedPlugins ?? []).filter((p) => p.enabled).map((p) => p.pluginId);
   const appTypePluginIds = new Set(
     (availablePlugins ?? []).filter((p) => p.type === 'app').map((p) => p.id),
   );
   const navEntries = getNavigationEntries(availablePlugins ?? [], enabledPluginIds)
     .filter((entry) => appTypePluginIds.has(entry.pluginId))
-    .filter((entry) =>
-      permissions.includes('*') || entry.requiredPermissions.every((perm) => permissions.includes(perm)),
+    .filter(
+      (entry) =>
+        permissions.includes('*') ||
+        entry.requiredPermissions.every((perm) => permissions.includes(perm)),
     );
 
   const handleLogout = () => {
@@ -92,7 +101,7 @@ export function AppLayout() {
   return (
     <div className="flex h-screen bg-muted/50">
       {/* Sidebar */}
-      <aside className="relative z-10 flex w-64 flex-col bg-slate-900 text-white">
+      <aside className="relative z-10 hidden w-64 flex-col bg-slate-900 text-white md:flex">
         <div className="flex h-14 items-center border-b border-white/10 px-5">
           <Link to="/" className="text-xl font-bold text-white">
             Weaver
@@ -111,11 +120,16 @@ export function AppLayout() {
                   to={`/projects/${project.key}`}
                   className={cn(
                     'flex items-center rounded-md px-2 py-1.5 text-sm text-white/80 hover:bg-white/10 hover:text-white',
-                    location.pathname.includes(`/projects/${project.key}`) && 'bg-white/15 text-white font-medium',
+                    location.pathname.includes(`/projects/${project.key}`) &&
+                      'bg-white/15 text-white font-medium',
                   )}
                 >
                   <span className="mr-2">
-                    <ProjectIcon iconAttachmentId={project.iconAttachmentId} projectKey={project.key} size="sm" />
+                    <ProjectIcon
+                      iconAttachmentId={project.iconAttachmentId}
+                      projectKey={project.key}
+                      size="sm"
+                    />
                   </span>
                   {project.name}
                 </Link>
@@ -221,24 +235,55 @@ export function AppLayout() {
       {/* Main area */}
       <div className="relative flex flex-1 flex-col overflow-hidden">
         {/* Top bar */}
-        <header className="flex h-14 items-center justify-between bg-slate-900 px-6">
+        <header className="flex h-14 items-center justify-between gap-2 bg-slate-900 px-3 sm:px-6">
           {/* Search bar */}
-          <div className="relative w-full max-w-md">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/50" />
-            <input
-              type="text"
-              placeholder="Search issues, projects, people..."
-              className="w-full bg-white/10 py-1.5 pl-9 pr-4 text-sm text-white placeholder-white/50 border border-white/15 focus:bg-white/15 focus:outline-none focus:ring-1 focus:ring-white/30"
-              onFocus={() => navigate('/search')}
-              readOnly
-            />
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="shrink-0 text-white/80 hover:bg-white/10 hover:text-white md:hidden"
+              onClick={() => setMobileNavOpen(true)}
+              aria-label="Open navigation menu"
+              aria-expanded={mobileNavOpen}
+              aria-controls="mobile-navigation"
+            >
+              <Menu className="h-5 w-5" />
+            </Button>
+            <Link to="/" className="shrink-0 text-lg font-bold text-white md:hidden">
+              Weaver
+            </Link>
+            <div className="relative hidden w-full max-w-md sm:block">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/50" />
+              <input
+                type="text"
+                placeholder="Search issues, projects, people..."
+                className="w-full bg-white/10 py-1.5 pl-9 pr-4 text-sm text-white placeholder-white/50 border border-white/15 focus:bg-white/15 focus:outline-none focus:ring-1 focus:ring-white/30"
+                onFocus={() => navigate('/search')}
+                readOnly
+              />
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-white/80 hover:bg-white/10 hover:text-white sm:hidden"
+              onClick={() => navigate('/search')}
+              aria-label="Search"
+            >
+              <Search className="h-5 w-5" />
+            </Button>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1 sm:gap-3">
             {/* Notification bell */}
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" className="relative text-white/80 hover:text-white hover:bg-white/10" onClick={() => navigate('/search')}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="relative text-white/80 hover:text-white hover:bg-white/10"
+                  onClick={() => navigate('/search')}
+                  aria-label="Notifications"
+                >
                   <Bell className="h-5 w-5" />
                   {unreadCount != null && unreadCount > 0 && (
                     <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-white">
@@ -256,23 +301,34 @@ export function AppLayout() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="text-white/80 hover:text-white hover:bg-white/10"
-                  onClick={() => setTheme(theme === 'dark' ? 'light' : theme === 'light' ? 'dark' : 'dark')}
+                  className="hidden text-white/80 hover:text-white hover:bg-white/10 sm:inline-flex"
+                  onClick={() =>
+                    setTheme(theme === 'dark' ? 'light' : theme === 'light' ? 'dark' : 'dark')
+                  }
+                  aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
                 >
                   {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>{theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}</TooltipContent>
+              <TooltipContent>
+                {theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+              </TooltipContent>
             </Tooltip>
 
-            <Separator orientation="vertical" className="h-6 bg-white/20" />
+            <Separator orientation="vertical" className="hidden h-6 bg-white/20 sm:block" />
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="gap-2 text-white/80 hover:text-white hover:bg-white/10">
+                <Button
+                  variant="ghost"
+                  className="gap-2 text-white/80 hover:text-white hover:bg-white/10"
+                  aria-label="Account menu"
+                >
                   <UserAvatar user={user} size="sm" />
-                  <span className="text-sm">{user?.displayName || user?.email}</span>
-                  <ChevronDown className="h-3 w-3" />
+                  <span className="hidden text-sm lg:inline">
+                    {user?.displayName || user?.email}
+                  </span>
+                  <ChevronDown className="hidden h-3 w-3 lg:block" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
@@ -291,8 +347,146 @@ export function AppLayout() {
           </div>
         </header>
 
+        <Dialog open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
+          <DialogContent
+            id="mobile-navigation"
+            className="!left-0 !top-0 !h-screen !w-[min(86vw,320px)] !max-w-none !translate-x-0 !translate-y-0 !grid-rows-[auto_minmax(0,1fr)] !gap-0 !rounded-none border-y-0 border-l-0 border-r border-white/10 bg-slate-900 p-0 text-white data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left"
+          >
+            <DialogTitle className="border-b border-white/10 px-5 py-[18px] text-xl">
+              Weaver
+            </DialogTitle>
+            <DialogDescription className="sr-only">
+              Projects and administration navigation
+            </DialogDescription>
+            <nav
+              className="min-h-0 flex-1 overflow-y-auto px-3 py-4"
+              aria-label="Primary navigation"
+            >
+              <h3 className="mb-2 px-2 text-xs font-semibold uppercase tracking-wider text-white/50">
+                Projects
+              </h3>
+              <ul className="space-y-1">
+                {projectsData?.data.map((project) => (
+                  <li key={project.id} className="flex items-center gap-1">
+                    <Link
+                      to={`/projects/${project.key}`}
+                      onClick={() => setMobileNavOpen(false)}
+                      className={cn(
+                        'flex min-w-0 flex-1 items-center rounded-md px-2 py-2 text-sm text-white/80 hover:bg-white/10 hover:text-white',
+                        location.pathname.includes(`/projects/${project.key}`) &&
+                          'bg-white/15 font-medium text-white',
+                      )}
+                    >
+                      <span className="mr-2 shrink-0">
+                        <ProjectIcon
+                          iconAttachmentId={project.iconAttachmentId}
+                          projectKey={project.key}
+                          size="sm"
+                        />
+                      </span>
+                      <span className="truncate">{project.name}</span>
+                    </Link>
+                    <Link
+                      to={`/projects/${project.key}/settings`}
+                      onClick={() => setMobileNavOpen(false)}
+                      className="rounded p-2 text-white/60 hover:bg-white/10 hover:text-white"
+                      aria-label={`${project.name} settings`}
+                    >
+                      <Settings className="h-4 w-4" />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+
+              {navEntries.length > 0 && (
+                <div className="mt-6">
+                  <button
+                    type="button"
+                    onClick={() => setAppsOpen(!appsOpen)}
+                    className="flex w-full items-center gap-1 px-2 py-1 text-xs font-semibold uppercase tracking-wider text-white/50 hover:text-white"
+                  >
+                    {appsOpen ? (
+                      <ChevronDown className="h-3 w-3" />
+                    ) : (
+                      <ChevronRight className="h-3 w-3" />
+                    )}
+                    Apps
+                  </button>
+                  {appsOpen && (
+                    <ul className="mt-1 space-y-1">
+                      {navEntries.map((entry) => {
+                        const Icon = getPluginIcon(entry.icon);
+                        const isActive = location.pathname.startsWith(entry.path);
+                        return (
+                          <li key={entry.path}>
+                            <Link
+                              to={entry.path}
+                              onClick={() => setMobileNavOpen(false)}
+                              className={cn(
+                                'flex items-center gap-2 rounded-md px-2 py-2 text-sm',
+                                isActive
+                                  ? 'bg-white/15 font-medium text-white'
+                                  : 'text-white/70 hover:bg-white/10 hover:text-white',
+                              )}
+                            >
+                              <Icon className="h-4 w-4" />
+                              {entry.label}
+                            </Link>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+              )}
+
+              {isAdmin && (
+                <div className="mt-6">
+                  <button
+                    type="button"
+                    onClick={() => setAdminOpen(!adminOpen)}
+                    className="flex w-full items-center gap-1 px-2 py-1 text-xs font-semibold uppercase tracking-wider text-white/50 hover:text-white"
+                  >
+                    {adminOpen ? (
+                      <ChevronDown className="h-3 w-3" />
+                    ) : (
+                      <ChevronRight className="h-3 w-3" />
+                    )}
+                    Administration
+                  </button>
+                  {adminOpen && (
+                    <ul className="mt-1 space-y-1">
+                      {adminNavItems.map((item) => {
+                        const Icon = item.icon;
+                        const isActive = location.pathname === item.to;
+                        return (
+                          <li key={item.to}>
+                            <Link
+                              to={item.to}
+                              onClick={() => setMobileNavOpen(false)}
+                              className={cn(
+                                'flex items-center gap-2 rounded-md px-2 py-2 text-sm',
+                                isActive
+                                  ? 'bg-white/15 font-medium text-white'
+                                  : 'text-white/70 hover:bg-white/10 hover:text-white',
+                              )}
+                            >
+                              <Icon className="h-4 w-4" />
+                              {item.label}
+                            </Link>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </nav>
+          </DialogContent>
+        </Dialog>
+
         {/* Content */}
-        <main className="flex-1 overflow-y-auto px-6 py-5">
+        <main className="min-w-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
           <Outlet />
         </main>
       </div>

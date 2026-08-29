@@ -1,4 +1,11 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import {
+  createBrowserRouter,
+  createRoutesFromElements,
+  Navigate,
+  Outlet,
+  Route,
+  RouterProvider,
+} from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
@@ -32,6 +39,7 @@ import { DashboardPage } from '@/features/dashboard/DashboardPage';
 import { ProfilePage } from '@/features/profile/ProfilePage';
 import { PublicProjectPage } from '@/features/projects/PublicProjectPage';
 import { SystemSettingsPage } from '@/features/settings/SystemSettingsPage';
+import { PublicForm } from '@/features/forms/PublicForm';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -43,55 +51,66 @@ const queryClient = new QueryClient({
   },
 });
 
+function RouterRoot() {
+  return (
+    <>
+      <KeyboardShortcuts />
+      <Outlet />
+    </>
+  );
+}
+
+const router = createBrowserRouter(
+  createRoutesFromElements(
+    <Route element={<RouterRoot />}>
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/register" element={<RegisterPage />} />
+      <Route path="/public/:tenantSlug/projects/:projectKey" element={<PublicProjectPage />} />
+      <Route path="/public/:tenantSlug/forms/:formSlug" element={<PublicForm />} />
+
+      <Route element={<ProtectedRoute />}>
+        <Route element={<AppLayout />}>
+          <Route path="/" element={<DashboardPage />} />
+          <Route path="/projects" element={<ProjectsPage />} />
+          <Route path="/projects/:projectKey" element={<ProjectDetailPage />} />
+          <Route path="/projects/:projectKey/settings" element={<ProjectSettingsPage />} />
+          <Route path="/projects/:projectKey/issues" element={<IssueListPage />} />
+          <Route path="/issues/:issueKey" element={<IssueDetailPage />} />
+          <Route path="/projects/:projectKey/board" element={<KanbanBoard />} />
+          <Route path="/projects/:projectKey/sprints" element={<SprintBoard />} />
+          <Route path="/projects/:projectKey/gantt" element={<GanttChart />} />
+          <Route path="/projects/:projectKey/calendar" element={<CalendarView />} />
+          <Route path="/search" element={<SearchPage />} />
+          <Route path="/profile" element={<ProfilePage />} />
+
+          <Route path="/apps/*" element={<PluginPage />} />
+
+          <Route element={<AdminRoute />}>
+            <Route path="/admin/workflows" element={<WorkflowListPage />} />
+            <Route path="/workflows/:workflowId" element={<WorkflowEditor />} />
+            <Route path="/admin/issue-types" element={<IssueTypesPage />} />
+            <Route path="/admin/roles" element={<RolesPage />} />
+            <Route path="/admin/teams" element={<TeamsPage />} />
+            <Route path="/admin/users" element={<UsersPage />} />
+            <Route path="/settings/custom-fields" element={<CustomFieldsPage />} />
+            <Route path="/settings/plugins" element={<PluginsPage />} />
+            <Route path="/settings/webhooks" element={<WebhooksPage />} />
+            <Route path="/settings/import-export" element={<ImportExportPage />} />
+            <Route path="/settings/general" element={<SystemSettingsPage />} />
+          </Route>
+        </Route>
+      </Route>
+
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Route>,
+  ),
+);
+
 export function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <BrowserRouter>
-          <KeyboardShortcuts />
-          <Routes>
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/register" element={<RegisterPage />} />
-            <Route path="/public/:tenantSlug/projects/:projectKey" element={<PublicProjectPage />} />
-
-            <Route element={<ProtectedRoute />}>
-              <Route element={<AppLayout />}>
-                <Route path="/" element={<DashboardPage />} />
-                <Route path="/projects" element={<ProjectsPage />} />
-                <Route path="/projects/:projectKey" element={<ProjectDetailPage />} />
-                <Route path="/projects/:projectKey/settings" element={<ProjectSettingsPage />} />
-                <Route path="/projects/:projectKey/issues" element={<IssueListPage />} />
-                <Route path="/issues/:issueKey" element={<IssueDetailPage />} />
-                <Route path="/projects/:projectKey/board" element={<KanbanBoard />} />
-                <Route path="/projects/:projectKey/sprints" element={<SprintBoard />} />
-                <Route path="/projects/:projectKey/gantt" element={<GanttChart />} />
-                <Route path="/projects/:projectKey/calendar" element={<CalendarView />} />
-                <Route path="/search" element={<SearchPage />} />
-                <Route path="/profile" element={<ProfilePage />} />
-
-                {/* Plugin app pages */}
-                <Route path="/apps/*" element={<PluginPage />} />
-
-                {/* Admin routes */}
-                <Route element={<AdminRoute />}>
-                  <Route path="/admin/workflows" element={<WorkflowListPage />} />
-                  <Route path="/workflows/:workflowId" element={<WorkflowEditor />} />
-                  <Route path="/admin/issue-types" element={<IssueTypesPage />} />
-                  <Route path="/admin/roles" element={<RolesPage />} />
-                  <Route path="/admin/teams" element={<TeamsPage />} />
-                  <Route path="/admin/users" element={<UsersPage />} />
-                  <Route path="/settings/custom-fields" element={<CustomFieldsPage />} />
-                  <Route path="/settings/plugins" element={<PluginsPage />} />
-                  <Route path="/settings/webhooks" element={<WebhooksPage />} />
-                  <Route path="/settings/import-export" element={<ImportExportPage />} />
-                  <Route path="/settings/general" element={<SystemSettingsPage />} />
-                </Route>
-              </Route>
-            </Route>
-
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </BrowserRouter>
+        <RouterProvider router={router} />
       </TooltipProvider>
     </QueryClientProvider>
   );

@@ -23,6 +23,8 @@ import {
   TimeEntryEntity,
   AttachmentEntity,
   ProjectPluginEntity,
+  FormEntity,
+  FormSubmissionEntity,
 } from '@weaver/db';
 import { requireTenantContext } from './tenant.context';
 
@@ -48,6 +50,8 @@ export const TENANT_ENTITIES = [
   TimeEntryEntity,
   AttachmentEntity,
   ProjectPluginEntity,
+  FormEntity,
+  FormSubmissionEntity,
 ];
 
 @Injectable()

@@ -80,6 +80,57 @@ export interface Project {
   updatedAt: Date;
 }
 
+export type FormFieldType = 'text' | 'textarea' | 'select' | 'email';
+
+export type FormFieldMapping = 'summary' | 'description' | 'labels' | 'custom-field';
+
+export interface FormFieldDefinition {
+  id: string;
+  type: FormFieldType;
+  label: string;
+  required: boolean;
+  mapping: FormFieldMapping;
+  placeholder?: string;
+  options?: string[];
+  customFieldKey?: string;
+}
+
+export interface FormIssueDefaults {
+  issueTypeId?: string;
+  priority?: IssuePriority;
+  labels: string[];
+}
+
+export interface Form {
+  id: string;
+  projectId: string;
+  name: string;
+  slug: string;
+  description?: string | null;
+  fields: FormFieldDefinition[];
+  issueDefaults: FormIssueDefaults;
+  active: boolean;
+  createdBy: string;
+  createdAt: Date;
+  updatedAt: Date;
+  tenantSlug?: string;
+}
+
+export interface PublicForm {
+  name: string;
+  description?: string | null;
+  fields: FormFieldDefinition[];
+  captchaSiteKey?: string;
+}
+
+export interface FormSubmission {
+  id: string;
+  formId: string;
+  issueId?: string | null;
+  issueKey: string;
+  submittedAt: Date;
+}
+
 export interface TenantSettings {
   timezone: string;
   theme: 'light' | 'dark' | 'system';

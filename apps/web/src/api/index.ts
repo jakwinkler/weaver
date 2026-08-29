@@ -77,10 +77,7 @@ export {
   useMyPermissions,
   useHasPermission,
 } from './hooks-phase5';
-export {
-  useBulkUpdateIssues,
-  useBulkDeleteIssues,
-} from './hooks-phase6';
+export { useBulkUpdateIssues, useBulkDeleteIssues } from './hooks-phase6';
 export {
   useUsers,
   useUpdateUserRole,
@@ -125,7 +122,16 @@ export {
   usePublicProject,
   usePublicProjectIssues,
   usePublicProjectBoard,
+  usePublicForm,
+  useSubmitPublicForm,
 } from './hooks-public';
+export {
+  useForms,
+  useCreateForm,
+  useUpdateForm,
+  useDeleteForm,
+  useFormSubmissions,
+} from './hooks-forms';
 export type {
   DashboardData,
   DashboardStats,
