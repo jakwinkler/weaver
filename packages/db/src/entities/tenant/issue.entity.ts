@@ -12,6 +12,7 @@ import {
 import { ProjectEntity } from './project.entity';
 import { CommentEntity } from './comment.entity';
 import { IssueTypeEntity } from './issue-type.entity';
+import { WorkflowStatusEntity } from './workflow-status.entity';
 
 @Index(['projectId'])
 @Index(['statusId'])
@@ -90,6 +91,10 @@ export class IssueEntity {
   @ManyToOne(() => IssueTypeEntity, { nullable: true })
   @JoinColumn({ name: 'issue_type_id' })
   issueType!: IssueTypeEntity | null;
+
+  @ManyToOne(() => WorkflowStatusEntity)
+  @JoinColumn({ name: 'status_id' })
+  status!: WorkflowStatusEntity;
 
   @ManyToOne(() => IssueEntity, { nullable: true })
   @JoinColumn({ name: 'parent_id' })

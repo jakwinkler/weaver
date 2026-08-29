@@ -271,6 +271,7 @@ function ProjectViewNav({ projectKey, currentPath }: { projectKey: string; curre
 
   const viewLinks = [
     { label: 'Issues', path: 'issues' },
+    { label: 'Roadmap', path: 'roadmap' },
     ...dynamicViews.map((v) => ({ label: v.label, path: v.viewPath })),
   ];
 

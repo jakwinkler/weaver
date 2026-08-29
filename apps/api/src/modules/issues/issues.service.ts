@@ -18,6 +18,8 @@ import {
   UpdateIssueDto,
   ReorderIssuesDto,
   PaginatedResponse,
+  RoadmapEpic,
+  RoadmapStatus,
 } from '@weaver/shared';
 import { EntityManager, Repository, In } from 'typeorm';
 import { promises as fs } from 'fs';
@@ -34,7 +36,6 @@ export interface IssueFilters {
   statusId?: string;
   assigneeId?: string;
   priority?: string;
-  issueTypeId?: string;
   issueTypeId?: string;
   startDateFrom?: string;
   startDateTo?: string;
@@ -192,6 +193,115 @@ export class IssuesService {
       'percentDone',
       'storyPoints',
     ]);
+  }
+
+  async findEpicsByProject(projectKey: string): Promise<RoadmapEpic[]> {
+    const project = await this.projectsService.findByKey(projectKey);
+    const em = await this.tenantConnections.getEntityManager();
+    const issueRepo = em.getRepository(IssueEntity);
+
+    const epics = await issueRepo
+      .createQueryBuilder('issue')
+      .innerJoinAndSelect('issue.issueType', 'issueType')
+      .leftJoinAndSelect('issue.status', 'status')
+      .where('issue.projectId = :projectId', { projectId: project.id })
+      .andWhere('issueType.slug = :epicSlug', { epicSlug: 'epic' })
+      .orderBy('issue.startDate', 'ASC', 'NULLS LAST')
+      .addOrderBy('issue.key', 'ASC')
+      .getMany();
+
+    if (epics.length === 0) return [];
+
+    const epicIds = epics.map((epic) => epic.id);
+    const [children, links] = await Promise.all([
+      issueRepo
+        .createQueryBuilder('issue')
+        .leftJoinAndSelect('issue.status', 'status')
+        .where('issue.projectId = :projectId', { projectId: project.id })
+        .andWhere('issue.epicId IN (:...epicIds)', { epicIds })
+        .orderBy('issue.sortOrder', 'ASC')
+        .addOrderBy('issue.key', 'ASC')
+        .getMany(),
+      em.getRepository(IssueLinkEntity).find({
+        where: { sourceIssueId: In(epicIds), linkType: 'blocks' },
+        order: { createdAt: 'ASC' },
+      }),
+    ]);
+
+    const epicIdSet = new Set(epicIds);
+    const childrenByEpic = new Map<string, IssueEntity[]>();
+    for (const child of children) {
+      if (!child.epicId) continue;
+      const epicChildren = childrenByEpic.get(child.epicId) ?? [];
+      epicChildren.push(child);
+      childrenByEpic.set(child.epicId, epicChildren);
+    }
+
+    const blockingByEpic = new Map<string, string[]>();
+    for (const link of links) {
+      if (!epicIdSet.has(link.targetIssueId)) continue;
+      const targets = blockingByEpic.get(link.sourceIssueId) ?? [];
+      targets.push(link.targetIssueId);
+      blockingByEpic.set(link.sourceIssueId, targets);
+    }
+
+    return epics.map((epic) => {
+      const epicChildren = childrenByEpic.get(epic.id) ?? [];
+      const completedChildren = epicChildren.filter((child) => child.status?.isTerminal);
+      const totalStoryPoints = epicChildren.reduce(
+        (total, child) => total + (child.storyPoints ?? 0),
+        0,
+      );
+      const completedStoryPoints = completedChildren.reduce(
+        (total, child) => total + (child.storyPoints ?? 0),
+        0,
+      );
+      const childStartDates = epicChildren
+        .map((child) => child.startDate)
+        .filter((date): date is string => Boolean(date));
+      const childDueDates = epicChildren
+        .map((child) => child.dueDate)
+        .filter((date): date is string => Boolean(date));
+      const derivedStartDate = childStartDates.sort()[0] ?? null;
+      const derivedDueDate = childDueDates.sort().at(-1) ?? null;
+
+      return {
+        id: epic.id,
+        key: epic.key,
+        summary: epic.summary,
+        statusId: epic.statusId,
+        status: this.toRoadmapStatus(epic.status),
+        startDate: epic.startDate ?? derivedStartDate,
+        dueDate: epic.dueDate ?? derivedDueDate,
+        childIssueCount: epicChildren.length,
+        completedChildCount: completedChildren.length,
+        totalStoryPoints,
+        completedStoryPoints,
+        progress: epicChildren.length === 0 ? 0 : completedChildren.length / epicChildren.length,
+        pointsProgress: totalStoryPoints === 0 ? 0 : completedStoryPoints / totalStoryPoints,
+        blockingEpicIds: blockingByEpic.get(epic.id) ?? [],
+        children: epicChildren.map((child) => ({
+          id: child.id,
+          key: child.key,
+          summary: child.summary,
+          statusId: child.statusId,
+          status: this.toRoadmapStatus(child.status),
+          startDate: child.startDate,
+          dueDate: child.dueDate,
+          storyPoints: child.storyPoints,
+        })),
+      };
+    });
+  }
+
+  private toRoadmapStatus(status: WorkflowStatusEntity): RoadmapStatus {
+    return {
+      id: status.id,
+      name: status.name,
+      category: status.category,
+      color: status.color,
+      isTerminal: status.isTerminal,
+    };
   }
 
   async findBacklog(

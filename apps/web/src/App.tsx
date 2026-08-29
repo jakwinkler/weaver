@@ -14,6 +14,7 @@ import { IssueDetailPage } from '@/features/issues/IssueDetailPage';
 import { KanbanBoard } from '@/features/boards/KanbanBoard';
 import { SprintBoard } from '@/features/boards/SprintBoard';
 import { BacklogView } from '@/features/boards/BacklogView';
+import { RoadmapView } from '@/features/boards/RoadmapView';
 import { SprintReportPage } from '@/features/reports/SprintReportPage';
 import { VelocityPage } from '@/features/reports/VelocityPage';
 import { WorkflowEditor } from '@/features/workflows/WorkflowEditor';
@@ -71,6 +72,7 @@ export function App() {
                 <Route path="/projects/:projectKey/board" element={<KanbanBoard />} />
                 <Route path="/projects/:projectKey/sprints" element={<SprintBoard />} />
                 <Route path="/projects/:projectKey/backlog" element={<BacklogView />} />
+                <Route path="/projects/:projectKey/roadmap" element={<RoadmapView />} />
                 <Route
                   path="/projects/:projectKey/reports/sprint/:sprintId"
                   element={<SprintReportPage />}
