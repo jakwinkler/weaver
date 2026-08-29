@@ -156,6 +156,7 @@ export class TenantProvisioningService {
           'issues.create': true, 'issues.read': true, 'issues.update': true,
           'issues.transition': true, 'issues.assign': true,
           'comments.create': true, 'comments.read': true, 'comments.update': true,
+          'pages.create': true, 'pages.read': true, 'pages.update': true,
           'sprints.read': true, 'custom_fields.read': true,
           'timer.allow': true,
         },
@@ -165,7 +166,7 @@ export class TenantProvisioningService {
         name: 'viewer',
         permissions: {
           'projects.read': true, 'issues.read': true,
-          'comments.read': true, 'sprints.read': true,
+          'comments.read': true, 'pages.read': true, 'sprints.read': true,
         },
         isSystem: true,
       },

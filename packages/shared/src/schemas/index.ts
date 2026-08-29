@@ -69,6 +69,28 @@ export const updateProjectSchema = z.object({
 });
 export type UpdateProjectDto = z.infer<typeof updateProjectSchema>;
 
+// ── Wiki Page Schemas ──
+
+const emptyRichTextDocument = { type: 'doc', content: [] };
+
+export const createPageSchema = z.object({
+  title: z.string().trim().min(1).max(255),
+  body: z.record(z.unknown()).default(emptyRichTextDocument),
+  parentId: z.string().uuid().nullable().optional(),
+  sortOrder: z.number().int().optional(),
+});
+export type CreatePageDto = z.infer<typeof createPageSchema>;
+
+export const updatePageSchema = z.object({
+  title: z.string().trim().min(1).max(255).optional(),
+  body: z.record(z.unknown()).optional(),
+  parentId: z.string().uuid().nullable().optional(),
+  sortOrder: z.number().int().optional(),
+}).refine((value) => Object.keys(value).length > 0, {
+  message: 'At least one page field is required',
+});
+export type UpdatePageDto = z.infer<typeof updatePageSchema>;
+
 // ── Issue Schemas ──
 
 const dateStringSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD');

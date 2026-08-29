@@ -32,6 +32,7 @@ import { DashboardPage } from '@/features/dashboard/DashboardPage';
 import { ProfilePage } from '@/features/profile/ProfilePage';
 import { PublicProjectPage } from '@/features/projects/PublicProjectPage';
 import { SystemSettingsPage } from '@/features/settings/SystemSettingsPage';
+import { WikiPage } from '@/features/wiki/WikiPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -66,6 +67,7 @@ export function App() {
                 <Route path="/projects/:projectKey/sprints" element={<SprintBoard />} />
                 <Route path="/projects/:projectKey/gantt" element={<GanttChart />} />
                 <Route path="/projects/:projectKey/calendar" element={<CalendarView />} />
+                <Route path="/projects/:projectKey/wiki" element={<WikiPage />} />
                 <Route path="/search" element={<SearchPage />} />
                 <Route path="/profile" element={<ProfilePage />} />
 

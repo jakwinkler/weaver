@@ -9,6 +9,7 @@ import {
 import { IssueEntity } from './issue.entity';
 import { BoardEntity } from './board.entity';
 import { SprintEntity } from './sprint.entity';
+import { PageEntity } from './page.entity';
 
 @Entity({ name: 'projects' })
 export class ProjectEntity {
@@ -56,4 +57,7 @@ export class ProjectEntity {
 
   @OneToMany(() => SprintEntity, (sprint) => sprint.project)
   sprints!: SprintEntity[];
+
+  @OneToMany(() => PageEntity, (page) => page.project)
+  pages!: PageEntity[];
 }

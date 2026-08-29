@@ -80,6 +80,41 @@ export interface Project {
   updatedAt: Date;
 }
 
+export interface Page {
+  id: string;
+  projectId: string;
+  title: string;
+  slug: string;
+  body: Record<string, unknown>;
+  parentId: string | null;
+  sortOrder: number;
+  createdBy: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface PageTreeNode {
+  id: string;
+  title: string;
+  slug: string;
+  parentId: string | null;
+  sortOrder: number;
+  children: PageTreeNode[];
+}
+
+export interface PageVersion {
+  id: string;
+  pageId: string;
+  title: string;
+  slug: string;
+  body: Record<string, unknown>;
+  parentId: string | null;
+  sortOrder: number;
+  createdBy: string;
+  authorDisplayName: string;
+  createdAt: Date;
+}
+
 export interface TenantSettings {
   timezone: string;
   theme: 'light' | 'dark' | 'system';

@@ -133,3 +133,14 @@ export type {
   DashboardActivity,
   DashboardProject,
 } from './hooks-dashboard';
+export {
+  usePages,
+  usePageTree,
+  usePage,
+  usePageSearch,
+  usePageHistory,
+  useCreatePage,
+  useUpdatePage,
+  useDeletePage,
+  useRestorePage,
+} from './hooks-wiki';

@@ -34,6 +34,7 @@ interface RichTextEditorProps {
   onChange?: (json: Record<string, unknown>) => void;
   placeholder?: string;
   editable?: boolean;
+  editorClassName?: string;
 }
 
 export function normalizeCommentBody(body: unknown): Record<string, unknown> | null {
@@ -95,6 +96,7 @@ export function RichTextEditor({
   onChange,
   placeholder = 'Write something...',
   editable = true,
+  editorClassName,
 }: RichTextEditorProps) {
   const issueUpload = useUploadAttachment(issueKey || '__noop__');
   const genericUpload = useGenericUploadAttachment();
@@ -184,9 +186,10 @@ export function RichTextEditor({
     },
     editorProps: {
       attributes: {
-        class: editable
+        class: `${editable
           ? 'prose prose-sm max-w-none focus:outline-none min-h-[80px] px-3 py-2'
-          : 'prose prose-sm max-w-none',
+          : 'prose prose-sm max-w-none'} ${editorClassName ?? ''}`,
+        'aria-label': placeholder,
       },
       handlePaste: (_view, event) => {
         const items = event.clipboardData?.items;
@@ -231,7 +234,7 @@ export function RichTextEditor({
   const contentKey = JSON.stringify(content);
   const initialContentRef = useRef(contentKey);
   useEffect(() => {
-    if (!editor || !editable) return;
+    if (!editor) return;
     if (initialContentRef.current !== contentKey) {
       initialContentRef.current = contentKey;
       if (content === null) {
@@ -243,7 +246,7 @@ export function RichTextEditor({
         }
       }
     }
-  }, [contentKey, editor, editable, content]);
+  }, [contentKey, editor, content]);
 
   if (!editor) return null;
 
