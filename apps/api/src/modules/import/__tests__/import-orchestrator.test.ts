@@ -1,4 +1,9 @@
-import { filterSelectedProjects, selectIssueKey } from '../import-orchestrator.service';
+import {
+  filterSelectedProjects,
+  getSprintReconciliationTarget,
+  reconcileExistingIssueSprint,
+  selectIssueKey,
+} from '../import-orchestrator.service';
 
 describe('Jira import project selection', () => {
   const projects = [
@@ -44,6 +49,37 @@ describe('Jira issue key preservation', () => {
       key: 'NEW-4',
       nextCounter: 4,
       preserved: false,
+    });
+  });
+});
+
+describe('Jira sprint reconciliation', () => {
+  const importedSprints = new Map([['9001', 'local-sprint-id']]);
+
+  it('repairs an existing issue when its Jira sprint was imported on a retry', () => {
+    expect(getSprintReconciliationTarget('9001', importedSprints, null)).toBe('local-sprint-id');
+  });
+
+  it('does not update an issue that already has the imported sprint', () => {
+    expect(getSprintReconciliationTarget('9001', importedSprints, 'local-sprint-id')).toBeNull();
+  });
+
+  it('does not clear an existing sprint when Jira has no imported sprint mapping', () => {
+    expect(getSprintReconciliationTarget('missing', importedSprints, 'existing-sprint')).toBeNull();
+    expect(getSprintReconciliationTarget(null, importedSprints, 'existing-sprint')).toBeNull();
+  });
+
+  it('updates a previously imported issue when a retry recovers its Jira sprint', async () => {
+    const repository = {
+      findOneBy: jest.fn().mockResolvedValue({ id: 'local-issue-id', sprintId: null }),
+      update: jest.fn().mockResolvedValue(undefined),
+    };
+
+    await expect(
+      reconcileExistingIssueSprint(repository, 'local-issue-id', '9001', importedSprints),
+    ).resolves.toBe(true);
+    expect(repository.update).toHaveBeenCalledWith('local-issue-id', {
+      sprintId: 'local-sprint-id',
     });
   });
 });

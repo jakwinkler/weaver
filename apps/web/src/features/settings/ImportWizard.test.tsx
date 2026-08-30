@@ -67,6 +67,7 @@ describe('ImportWizard project selection', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
 
     expect(screen.getByText(/Every unspecified Jira project will be skipped/)).toBeTruthy();
+    expect(screen.getByText(/recovered sprint assignments are repaired/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Start Jira import' }));
 
     await waitFor(() => {

@@ -1,4 +1,15 @@
-import { filterSelectedProjects, ImportOrchestrator, selectIssueKey } from '@weaver/jira-import';
+import {
+  filterSelectedProjects,
+  getSprintReconciliationTarget,
+  ImportOrchestrator,
+  reconcileExistingIssueSprint,
+  selectIssueKey,
+} from '@weaver/jira-import';
 
-export { filterSelectedProjects, selectIssueKey };
+export {
+  filterSelectedProjects,
+  getSprintReconciliationTarget,
+  reconcileExistingIssueSprint,
+  selectIssueKey,
+};
 export class ImportOrchestratorService extends ImportOrchestrator {}

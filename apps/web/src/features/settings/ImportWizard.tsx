@@ -303,8 +303,8 @@ export function ImportWizard() {
                 <div>
                   <h3 className="font-medium text-foreground">Review the import</h3>
                   <p className="text-sm text-muted-foreground">
-                    Existing items from this Jira instance will be skipped if you run the import
-                    again.
+                    Existing items from this Jira instance are reused when you run the import again.
+                    Missing items are imported, and recovered sprint assignments are repaired.
                   </p>
                 </div>
                 <dl className="grid gap-3 border border-border p-4 text-sm sm:grid-cols-2">

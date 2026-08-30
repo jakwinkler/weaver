@@ -74,6 +74,12 @@ export interface JiraSprint {
   originBoardId?: number;
 }
 
+export interface JiraBoard {
+  id: number | string;
+  name?: string;
+  type?: string;
+}
+
 export interface JiraProjectDetails extends JiraProjectSummary {
   description?: string;
   issueTypes?: JiraIssueType[];

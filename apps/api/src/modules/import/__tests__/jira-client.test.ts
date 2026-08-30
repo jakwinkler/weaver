@@ -89,6 +89,50 @@ describe('JiraClient', () => {
     expect(projects.map((project) => project.key)).toEqual(['ONE', 'TWO']);
     expect(String(fetchMock.mock.calls[1][0])).toContain('startAt=1');
   });
+
+  it('loads sprints from Scrum boards and skips Kanban boards', async () => {
+    const fetchMock = jest.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes('/rest/agile/1.0/board?')) {
+        return jsonResponse({
+          isLast: true,
+          values: [
+            { id: 84, name: 'GRSHOP Scrum', type: 'scrum' },
+            { id: 10144, name: 'GRSHOP Kanban', type: 'kanban' },
+          ],
+        });
+      }
+      if (url.includes('/rest/agile/1.0/board/84/sprint')) {
+        return jsonResponse({
+          isLast: true,
+          values: [{ id: 9001, name: 'Recent work', state: 'closed', originBoardId: 84 }],
+        });
+      }
+      return new Response(
+        JSON.stringify({
+          errorMessages: ['The board does not support sprints'],
+          errors: {},
+        }),
+        {
+          status: 400,
+          statusText: 'Bad Request',
+          headers: { 'Content-Type': 'application/json' },
+        },
+      );
+    });
+    const client = new JiraClient(fetchMock as typeof fetch);
+
+    const sprints = await client.getSprints(cloudConfig, 'GRSHOP');
+
+    expect(sprints).toEqual([
+      { id: 9001, name: 'Recent work', state: 'closed', originBoardId: 84 },
+    ]);
+    const requestedUrls = fetchMock.mock.calls.map(([url]) => String(url));
+    expect(requestedUrls[0]).toContain('projectKeyOrId=GRSHOP&type=scrum');
+    expect(requestedUrls).not.toContain(
+      'https://example.atlassian.net/rest/agile/1.0/board/10144/sprint?startAt=0&maxResults=50',
+    );
+  });
 });
 
 function jsonResponse(body: unknown): Response {
