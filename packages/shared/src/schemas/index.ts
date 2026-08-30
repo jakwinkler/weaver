@@ -102,15 +102,139 @@ export const createPageSchema = z.object({
 });
 export type CreatePageDto = z.infer<typeof createPageSchema>;
 
-export const updatePageSchema = z.object({
-  title: z.string().trim().min(1).max(255).optional(),
-  body: z.record(z.unknown()).optional(),
-  parentId: z.string().uuid().nullable().optional(),
-  sortOrder: z.number().int().optional(),
-}).refine((value) => Object.keys(value).length > 0, {
-  message: 'At least one page field is required',
-});
+export const updatePageSchema = z
+  .object({
+    title: z.string().trim().min(1).max(255).optional(),
+    body: z.record(z.unknown()).optional(),
+    parentId: z.string().uuid().nullable().optional(),
+    sortOrder: z.number().int().optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, {
+    message: 'At least one page field is required',
+  });
 export type UpdatePageDto = z.infer<typeof updatePageSchema>;
+
+// ── External Intake Form Schemas ──
+
+export const formFieldSchema = z
+  .object({
+    id: z
+      .string()
+      .min(1)
+      .max(64)
+      .regex(/^[a-zA-Z0-9_-]+$/, 'Field ID contains invalid characters'),
+    type: z.enum(['text', 'textarea', 'select', 'email']),
+    label: z.string().trim().min(1).max(120),
+    required: z.boolean().default(false),
+    mapping: z.enum(['summary', 'description', 'labels', 'custom-field']),
+    placeholder: z.string().max(200).optional(),
+    options: z.array(z.string().trim().min(1).max(120)).max(50).optional(),
+    customFieldKey: z
+      .string()
+      .trim()
+      .min(1)
+      .max(100)
+      .regex(/^[a-zA-Z0-9_.-]+$/)
+      .optional(),
+  })
+  .superRefine((field, ctx) => {
+    if (field.type === 'select' && (!field.options || field.options.length === 0)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['options'],
+        message: 'Select fields require at least one option',
+      });
+    }
+    if (field.mapping === 'custom-field' && !field.customFieldKey) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['customFieldKey'],
+        message: 'Custom field mappings require a key',
+      });
+    }
+  });
+
+const formFieldsSchema = z
+  .array(formFieldSchema)
+  .min(1)
+  .max(30)
+  .superRefine((fields, ctx) => {
+    const ids = new Set<string>();
+    const singularMappings = new Set<string>();
+
+    fields.forEach((field, index) => {
+      if (ids.has(field.id)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [index, 'id'],
+          message: 'Field IDs must be unique',
+        });
+      }
+      ids.add(field.id);
+
+      if (field.mapping !== 'custom-field') {
+        if (singularMappings.has(field.mapping)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [index, 'mapping'],
+            message: `Only one field can map to ${field.mapping}`,
+          });
+        }
+        singularMappings.add(field.mapping);
+      }
+    });
+
+    if (!fields.some((field) => field.mapping === 'summary')) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'A form must include a field mapped to issue summary',
+      });
+    }
+  });
+
+export const formIssueDefaultsSchema = z.object({
+  issueTypeId: z.string().uuid().optional(),
+  priority: z.enum(ISSUE_PRIORITIES).optional(),
+  labels: z.array(z.string().trim().min(1).max(50)).max(50).default([]),
+});
+
+const formSlugSchema = z
+  .string()
+  .min(2)
+  .max(100)
+  .regex(
+    /^[a-z0-9]+(?:-[a-z0-9]+)*$/,
+    'Slug must contain lowercase letters, numbers, and single hyphens',
+  );
+
+export const createFormSchema = z.object({
+  name: z.string().trim().min(1).max(255),
+  slug: formSlugSchema,
+  description: z.string().max(2000).nullable().optional(),
+  fields: formFieldsSchema,
+  issueDefaults: formIssueDefaultsSchema.default({ labels: [] }),
+  active: z.boolean().default(true),
+});
+export type CreateFormDto = z.infer<typeof createFormSchema>;
+
+export const updateFormSchema = z.object({
+  name: z.string().trim().min(1).max(255).optional(),
+  slug: formSlugSchema.optional(),
+  description: z.string().max(2000).nullable().optional(),
+  fields: formFieldsSchema.optional(),
+  issueDefaults: formIssueDefaultsSchema.optional(),
+  active: z.boolean().optional(),
+});
+export type UpdateFormDto = z.infer<typeof updateFormSchema>;
+
+export const publicFormSubmissionSchema = z.object({
+  values: z
+    .record(z.string().max(10_000))
+    .refine((values) => Object.keys(values).length <= 30, 'Too many submitted fields'),
+  website: z.string().max(500).optional(),
+  recaptchaToken: z.string().max(4096).optional(),
+});
+export type PublicFormSubmissionDto = z.infer<typeof publicFormSubmissionSchema>;
 
 // ── Issue Schemas ──
 

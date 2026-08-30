@@ -40,6 +40,7 @@ import { PublicProjectPage } from '@/features/projects/PublicProjectPage';
 import { SystemSettingsPage } from '@/features/settings/SystemSettingsPage';
 import { EmailUnsubscribePage } from '@/features/notifications/EmailUnsubscribePage';
 import { WikiPage } from '@/features/wiki/WikiPage';
+import { PublicForm } from '@/features/forms/PublicForm';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -66,6 +67,7 @@ export function App() {
               path="/public/:tenantSlug/projects/:projectKey"
               element={<PublicProjectPage />}
             />
+            <Route path="/public/:tenantSlug/forms/:formSlug" element={<PublicForm />} />
 
             <Route element={<ProtectedRoute />}>
               <Route element={<AppLayout />}>

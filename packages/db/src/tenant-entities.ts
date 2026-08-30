@@ -6,6 +6,8 @@ import {
   BoardEntity,
   CommentEntity,
   CustomFieldDefinitionEntity,
+  FormEntity,
+  FormSubmissionEntity,
   ImportJobEntity,
   ImportRecordEntity,
   IssueEntity,
@@ -56,4 +58,6 @@ export const TENANT_ENTITIES = [
   ImportRecordEntity,
   PageEntity,
   PageVersionEntity,
+  FormEntity,
+  FormSubmissionEntity,
 ] as const;

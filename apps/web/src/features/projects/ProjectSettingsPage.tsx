@@ -28,6 +28,7 @@ import {
   Upload,
   ToggleLeft,
   Bot,
+  FileInput,
 } from 'lucide-react';
 import {
   useProjectPlugins,
@@ -53,6 +54,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
 import { AutomationsPage } from '@/features/admin/AutomationsPage';
+import { FormBuilder } from '@/features/forms/FormBuilder';
 
 export function ProjectIcon({
   iconAttachmentId,
@@ -86,7 +88,14 @@ export function ProjectIcon({
   );
 }
 
-type Tab = 'general' | 'members' | 'issue-types' | 'custom-fields' | 'features' | 'automations';
+type Tab =
+  | 'general'
+  | 'members'
+  | 'issue-types'
+  | 'custom-fields'
+  | 'features'
+  | 'automations'
+  | 'forms';
 
 const MEMBER_ROLES = ['lead', 'member', 'viewer'] as const;
 
@@ -94,8 +103,17 @@ export function ProjectSettingsPage() {
   const { projectKey } = useParams<{ projectKey: string }>();
   const [activeTab, setActiveTab] = useState<Tab>('general');
   const isAdmin = useAuthStore((state) => state.isAdmin());
+  const [formsDirty, setFormsDirty] = useState(false);
 
   if (!projectKey) return null;
+
+  const changeTab = (nextTab: Tab) => {
+    if (activeTab === 'forms' && nextTab !== 'forms' && formsDirty) {
+      if (!confirm('Discard your unsaved form changes?')) return;
+      setFormsDirty(false);
+    }
+    setActiveTab(nextTab);
+  };
 
   return (
     <div>
@@ -104,8 +122,25 @@ export function ProjectSettingsPage() {
         <p className="mt-1 text-sm text-muted-foreground">Manage settings for {projectKey}</p>
       </div>
 
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as Tab)} className="mb-6">
-        <TabsList className="w-full">
+      <Tabs value={activeTab} onValueChange={(v) => changeTab(v as Tab)} className="mb-6">
+        <Label htmlFor="project-settings-section" className="sr-only">
+          Settings section
+        </Label>
+        <select
+          id="project-settings-section"
+          value={activeTab}
+          onChange={(event) => changeTab(event.target.value as Tab)}
+          className="block h-10 w-full border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring md:hidden"
+        >
+          <option value="general">General</option>
+          <option value="members">Members</option>
+          <option value="issue-types">Issue Types</option>
+          <option value="custom-fields">Custom Fields</option>
+          <option value="features">Features</option>
+          {isAdmin && <option value="automations">Automations</option>}
+          <option value="forms">Forms</option>
+        </select>
+        <TabsList className="hidden w-full md:inline-flex">
           {(
             [
               { key: 'general', label: 'General', icon: Settings },
@@ -116,6 +151,7 @@ export function ProjectSettingsPage() {
               ...(isAdmin
                 ? [{ key: 'automations', label: 'Automations', icon: Bot } as const]
                 : []),
+              { key: 'forms', label: 'Forms', icon: FileInput },
             ] as const
           ).map(({ key, label, icon: Icon }) => (
             <TabsTrigger key={key} value={key} className="flex flex-1 items-center gap-1.5">
@@ -145,6 +181,9 @@ export function ProjectSettingsPage() {
             <ProjectAutomationsTab projectKey={projectKey} />
           </TabsContent>
         )}
+        <TabsContent value="forms">
+          <FormBuilder projectKey={projectKey} onDirtyChange={setFormsDirty} />
+        </TabsContent>
       </Tabs>
     </div>
   );

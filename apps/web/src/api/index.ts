@@ -158,9 +158,18 @@ export {
   usePublicProject,
   usePublicProjectIssues,
   usePublicProjectBoard,
+  usePublicForm,
+  useSubmitPublicForm,
 } from './hooks-public';
 export { useBacklog, useMoveIssueToSprint, useSprintStats } from './hooks-backlog';
 export type { UseBacklogParams } from './hooks-backlog';
+export {
+  useForms,
+  useCreateForm,
+  useUpdateForm,
+  useDeleteForm,
+  useFormSubmissions,
+} from './hooks-forms';
 export type {
   DashboardData,
   DashboardStats,

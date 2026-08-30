@@ -25,3 +25,5 @@ export { ImportJobEntity } from './import-job.entity';
 export { ImportRecordEntity } from './import-record.entity';
 export { PageEntity } from './page.entity';
 export { PageVersionEntity } from './page-version.entity';
+export { FormEntity } from './form.entity';
+export { FormSubmissionEntity } from './form-submission.entity';
