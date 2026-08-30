@@ -10,7 +10,14 @@ export const apiClient = axios.create({
   withCredentials: true,
 });
 
-const AUTH_PATHS = ['/auth/login', '/auth/register'];
+const AUTH_PATHS = [
+  '/auth/login',
+  '/auth/register',
+  '/auth/session',
+  '/auth/oauth-context',
+  '/auth/select-organization',
+  '/auth/oauth-organizations',
+];
 
 apiClient.interceptors.request.use((config) => {
   const isAuthRoute = AUTH_PATHS.some((p) => config.url?.includes(p));

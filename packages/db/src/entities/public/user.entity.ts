@@ -34,6 +34,9 @@ export class UserEntity {
   @Column({ name: 'auth_provider', length: 20, default: 'local' })
   authProvider!: string;
 
+  @Column({ name: 'auth_providers', type: 'simple-array', default: 'local' })
+  authProviders!: string[];
+
   @Column({ name: 'avatar_url', type: 'varchar', nullable: true })
   avatarUrl!: string | null;
 

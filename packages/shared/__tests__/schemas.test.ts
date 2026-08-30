@@ -11,6 +11,7 @@ import {
   issueKeySchema,
   notificationPreferencesSchema,
   updateNotificationPreferencesSchema,
+  updateTenantSettingsSchema,
 } from '../src/schemas';
 
 describe('registerSchema', () => {
@@ -324,5 +325,29 @@ describe('issueKeySchema', () => {
     expect(issueKeySchema.safeParse('WEB').success).toBe(false);
     expect(issueKeySchema.safeParse('WEB-').success).toBe(false);
     expect(issueKeySchema.safeParse('W-1').success).toBe(false);
+  });
+});
+
+describe('updateTenantSettingsSchema', () => {
+  it('accepts complete social, SAML, and OIDC settings', () => {
+    const result = updateTenantSettingsSchema.safeParse({
+      sso: {
+        google: { enabled: true },
+        github: { enabled: false },
+        saml: {
+          enabled: true,
+          idpUrl: 'https://idp.example.com/saml',
+          cert: 'certificate',
+        },
+        oidc: {
+          enabled: true,
+          discoveryUrl: 'https://login.example.com',
+          clientId: 'client-id',
+          clientSecret: 'client-secret',
+        },
+      },
+    });
+
+    expect(result.success).toBe(true);
   });
 });

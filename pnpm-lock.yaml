@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 50029)
+Total output lines: 7226
+
 Warning: truncated output (original token count: 132900)
 Total output lines: 15124
 
@@ -2538,10 +2541,7 @@ packages:
       react: ^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc
     peerDependenciesMeta:
       '@types/react':
-        optional: true
-
-  '@radix-ui/react-use-controllable-state@1.2.2':
-    resolution: {…82900 tokens truncated…1.4': {}
+       …29 tokens truncated….4': {}
 
   '@types/ms@2.1.0': {}
 
@@ -7223,4 +7223,5 @@ packages:
       '@types/react': 18.3.28
       react: 19.2.4
       use-sync-external-store: 1.6.0(react@19.2.4)
+
 

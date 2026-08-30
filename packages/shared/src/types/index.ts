@@ -30,6 +30,7 @@ export interface User {
   displayName: string;
   passwordHash?: string;
   authProvider: AuthProvider;
+  authProviders: AuthProvider[];
   avatarUrl?: string;
   notificationPreferences?: NotificationPreferences;
   createdAt: Date;
@@ -140,6 +141,25 @@ export interface TenantSettings {
     fromName: string;
     fromEmail: string;
   } | null;
+  sso: {
+    google: {
+      enabled: boolean;
+    };
+    github: {
+      enabled: boolean;
+    };
+    saml: {
+      enabled: boolean;
+      idpUrl: string;
+      cert: string;
+    };
+    oidc: {
+      enabled: boolean;
+      discoveryUrl: string;
+      clientId: string;
+      clientSecret: string;
+    };
+  };
 }
 
 export interface Issue {

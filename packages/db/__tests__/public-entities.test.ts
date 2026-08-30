@@ -58,6 +58,7 @@ describe('Public Schema Entities', () => {
       expect(columnNames).toContain('displayName');
       expect(columnNames).toContain('passwordHash');
       expect(columnNames).toContain('authProvider');
+      expect(columnNames).toContain('authProviders');
       expect(columnNames).toContain('notificationPreferences');
     });
 

@@ -9,6 +9,7 @@ import {
   API_KEY_PREFIX,
   DEFAULT_PAGE_SIZE,
   MAX_PAGE_SIZE,
+  AUTH_PROVIDERS,
 } from '../src/constants';
 
 describe('constants', () => {
@@ -30,6 +31,10 @@ describe('constants', () => {
 
   it('should define tenant roles', () => {
     expect(TENANT_ROLES).toEqual(['owner', 'admin', 'member', 'viewer']);
+  });
+
+  it('should define all authentication providers', () => {
+    expect(AUTH_PROVIDERS).toEqual(['local', 'google', 'github', 'saml', 'oidc']);
   });
 
   it('should have correct API key prefix', () => {

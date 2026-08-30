@@ -42,6 +42,21 @@ export const refreshTokenSchema = z.object({
 });
 export type RefreshTokenDto = z.infer<typeof refreshTokenSchema>;
 
+export const selectOrganizationSchema = z.object({
+  tenantId: z.string().uuid(),
+});
+export type SelectOrganizationDto = z.infer<typeof selectOrganizationSchema>;
+
+export const createOAuthOrganizationSchema = z.object({
+  orgName: z.string().min(1).max(255),
+  orgSlug: z
+    .string()
+    .min(2)
+    .max(63)
+    .regex(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/),
+});
+export type CreateOAuthOrganizationDto = z.infer<typeof createOAuthOrganizationSchema>;
+
 // ── User Schemas ──
 
 export const updateUserSchema = z.object({
@@ -286,11 +301,32 @@ export const smtpSettingsSchema = z.object({
   fromEmail: z.string().email(),
 });
 
+export const ssoSettingsSchema = z.object({
+  google: z.object({
+    enabled: z.boolean(),
+  }),
+  github: z.object({
+    enabled: z.boolean(),
+  }),
+  saml: z.object({
+    enabled: z.boolean(),
+    idpUrl: z.string().max(2048),
+    cert: z.string().max(20000),
+  }),
+  oidc: z.object({
+    enabled: z.boolean(),
+    discoveryUrl: z.string().max(2048),
+    clientId: z.string().max(1024),
+    clientSecret: z.string().max(4096),
+  }),
+});
+
 export const updateTenantSettingsSchema = z.object({
   timezone: z.string().min(1).max(100).optional(),
   theme: z.enum(['light', 'dark', 'system']).optional(),
   allowedDomains: z.array(z.string().min(1).max(255)).optional(),
   smtp: smtpSettingsSchema.nullable().optional(),
+  sso: ssoSettingsSchema.optional(),
 });
 export type UpdateTenantSettingsDto = z.infer<typeof updateTenantSettingsSchema>;
 
