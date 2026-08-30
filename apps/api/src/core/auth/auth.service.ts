@@ -9,7 +9,13 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Raw, Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { UserEntity, TenantMembershipEntity } from '@weaver/db';
-import { RegisterDto, LoginDto, CreateOAuthOrganizationDto, AuthProvider } from '@weaver/shared';
+import type {
+  AuthProvider,
+  AuthResponse,
+  CreateOAuthOrganizationDto,
+  LoginDto,
+  RegisterDto,
+} from '@weaver/shared';
 import { TenantService, TenantProvisioningService } from '../tenant';
 
 export interface JwtPayload {
@@ -46,6 +52,8 @@ const BCRYPT_ROUNDS = 10;
 const ACCESS_TOKEN_EXPIRY = '15m';
 const REFRESH_TOKEN_EXPIRY = '7d';
 
+type SanitizedUser = Omit<UserEntity, 'passwordHash'>;
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -58,7 +66,7 @@ export class AuthService {
     private readonly tenantProvisioningService: TenantProvisioningService,
   ) {}
 
-  async register(dto: RegisterDto) {
+  async register(dto: RegisterDto): Promise<AuthResponse<SanitizedUser>> {
     const email = this.normalizeEmail(dto.email);
     const existing = await this.findUserByEmail(email);
     if (existing) {
@@ -108,11 +116,11 @@ export class AuthService {
       accessToken,
       refreshToken,
       user: this.sanitizeUser(user),
-      tenant,
+      tenantId: tenant.id,
     };
   }
 
-  async login(dto: LoginDto) {
+  async login(dto: LoginDto): Promise<AuthResponse<SanitizedUser>> {
     const user = await this.validateUser(dto.email, dto.password);
 
     const membership = await this.membershipRepo.findOneBy({
@@ -356,7 +364,7 @@ export class AuthService {
     return this.sanitizeUser(user);
   }
 
-  private sanitizeUser(user: UserEntity) {
+  private sanitizeUser(user: UserEntity): SanitizedUser {
     const { passwordHash, ...rest } = user;
     return rest;
   }

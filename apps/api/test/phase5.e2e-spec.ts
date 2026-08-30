@@ -33,7 +33,7 @@ describe('Phase 5: Real-Time, Notifications, Webhooks, RBAC, Teams (e2e)', () =>
     });
 
     accessToken = res.body.accessToken;
-    tenantId = res.body.tenant.id;
+    tenantId = res.body.tenantId;
   });
 
   afterAll(async () => {

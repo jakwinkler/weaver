@@ -47,7 +47,7 @@ describe('Drag & Drop / Reorder (e2e)', () => {
     });
 
     ownerToken = registerRes.body.accessToken;
-    tenantId = registerRes.body.tenant.id;
+    tenantId = registerRes.body.tenantId;
 
     // 2. Create viewer user
     const passwordHash = await bcrypt.hash('password123', 10);
