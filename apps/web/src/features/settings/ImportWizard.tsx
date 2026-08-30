@@ -14,6 +14,11 @@ import { Label } from '@/components/ui/label';
 import { ImportProgress } from './ImportProgress';
 
 const STEPS = ['Source', 'Credentials', 'Connect', 'Projects', 'Review'];
+const ACTIVE_IMPORT_STORAGE_KEY = 'weaver:active-jira-import-id';
+
+function getStoredImportId(): string | null {
+  return window.sessionStorage.getItem(ACTIVE_IMPORT_STORAGE_KEY);
+}
 
 export function ImportWizard() {
   const [step, setStep] = useState(1);
@@ -25,7 +30,7 @@ export function ImportWizard() {
   const [projects, setProjects] = useState<JiraProjectSummary[]>([]);
   const [importAll, setImportAll] = useState(true);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
-  const [importId, setImportId] = useState<string | null>(null);
+  const [importId, setImportId] = useState<string | null>(getStoredImportId);
   const discover = useDiscoverJiraProjects();
   const startImport = useStartJiraImport();
 
@@ -59,6 +64,7 @@ export function ImportWizard() {
       ...(importAll ? {} : { projectKeys: [...selectedKeys] }),
     });
     setSecret('');
+    window.sessionStorage.setItem(ACTIVE_IMPORT_STORAGE_KEY, job.id);
     setImportId(job.id);
   };
 
@@ -76,6 +82,7 @@ export function ImportWizard() {
     setImportAll(true);
     setSelectedKeys(new Set());
     setImportId(null);
+    window.sessionStorage.removeItem(ACTIVE_IMPORT_STORAGE_KEY);
     setSecret('');
     discover.reset();
     startImport.reset();
