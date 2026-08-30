@@ -25,6 +25,7 @@
     "@node-saml/passport-saml": "^5.1.0",
     "@types/multer": "^2.0.0",
     "@weaver/db": "workspace:*",
+    "@weaver/jira-import": "workspace:*",
     "@weaver/sdk": "workspace:^",
     "@weaver/shared": "workspace:*",
     "bcrypt": "^5.1.1",

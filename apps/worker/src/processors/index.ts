@@ -11,3 +11,4 @@ export {
   createScheduledAutomationProcessor,
   type ScheduledAutomationJobData,
 } from './automation.processor';
+export { processImport } from './import.processor';

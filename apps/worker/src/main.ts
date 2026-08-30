@@ -7,6 +7,7 @@ import {
   processNotification,
 } from './processors/notifications.processor';
 import { createScheduledAutomationProcessor } from './processors/automation.processor';
+import { processImport } from './processors/import.processor';
 
 const connection = {
   host: config.redis.host,
@@ -47,6 +48,12 @@ function createWorkers(): void {
     },
   );
   workers.push(scheduledAutomationsWorker);
+
+  const importsWorker = new Worker(config.queues.imports.name, processImport, {
+    connection,
+    concurrency: config.queues.imports.concurrency,
+  });
+  workers.push(importsWorker);
 
   for (const worker of workers) {
     worker.on('completed', (job) => {

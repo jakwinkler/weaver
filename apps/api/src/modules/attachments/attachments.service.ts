@@ -5,7 +5,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
 
-const UPLOAD_DIR = '/tmp/weaver-uploads';
+const UPLOAD_DIR = process.env.UPLOAD_DIR || '/tmp/weaver-uploads';
 
 @Injectable()
 export class AttachmentsService {

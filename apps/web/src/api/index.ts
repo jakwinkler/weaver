@@ -148,6 +148,12 @@ export type {
   AutomationTrigger,
 } from './hooks-automations';
 export {
+  useDiscoverJiraProjects,
+  useStartJiraImport,
+  useImportStatus,
+  useCancelImport,
+} from './hooks-import';
+export {
   usePublicProjects,
   usePublicProject,
   usePublicProjectIssues,

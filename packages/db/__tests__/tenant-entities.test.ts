@@ -19,6 +19,8 @@ import {
   SavedFilterEntity,
   TimeEntryEntity,
   AttachmentEntity,
+  ImportJobEntity,
+  ImportRecordEntity,
 } from '../src/entities/tenant';
 
 describe('Tenant Schema Entities', () => {
@@ -43,6 +45,8 @@ describe('Tenant Schema Entities', () => {
     ['SavedFilterEntity', SavedFilterEntity, 'saved_filters'],
     ['TimeEntryEntity', TimeEntryEntity, 'time_entries'],
     ['AttachmentEntity', AttachmentEntity, 'attachments'],
+    ['ImportJobEntity', ImportJobEntity, 'import_jobs'],
+    ['ImportRecordEntity', ImportRecordEntity, 'import_records'],
   ];
 
   it.each(entityCases)('%s should be registered with table name %s', (_name, entity, tableName) => {

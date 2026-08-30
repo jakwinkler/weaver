@@ -5,7 +5,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { MemoryRouter, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { AppLayout } from './AppLayout';
+import { adminNavItems, AppLayout } from './AppLayout';
 
 const storeMocks = vi.hoisted(() => ({
   logout: vi.fn(),
@@ -151,5 +151,18 @@ describe('AppLayout responsive shell', () => {
     expect(sidebar).toHaveClass('hidden', 'md:flex');
     expect(screen.getByRole('link', { name: 'Weaver home mobile' })).toHaveClass('md:hidden');
     expect(screen.getByRole('main')).toHaveClass('px-4', 'sm:px-6');
+  });
+});
+
+describe('AppLayout admin navigation', () => {
+  it('links administrators to the Jira import wizard', () => {
+    expect(adminNavItems).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          to: '/settings/import-export',
+          label: 'Import / Export',
+        }),
+      ]),
+    );
   });
 });

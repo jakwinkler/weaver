@@ -27,6 +27,7 @@ import {
   UsersRound,
   Plug,
   Webhook,
+  FileUp,
   Settings,
   LogOut,
   User,
@@ -42,7 +43,7 @@ import { useWebSocket } from '@/hooks/useWebSocket';
 import { HotkeysContext, getHotkeyContext, useHotkeys } from '@/hooks/useHotkeys';
 import { ShortcutsDialog } from '@/components/ShortcutsDialog';
 
-const adminNavItems = [
+export const adminNavItems = [
   { to: '/admin/workflows', label: 'Workflows', icon: GitBranch },
   { to: '/admin/issue-types', label: 'Issue Types', icon: Tags },
   { to: '/settings/custom-fields', label: 'Custom Fields', icon: Settings },
@@ -52,6 +53,7 @@ const adminNavItems = [
   { to: '/admin/automations', label: 'Automations', icon: Bot },
   { to: '/settings/plugins', label: 'Plugins', icon: Plug },
   { to: '/settings/webhooks', label: 'Webhooks', icon: Webhook },
+  { to: '/settings/import-export', label: 'Import / Export', icon: FileUp },
   { to: '/settings/general', label: 'System Settings', icon: Cog },
 ];
 

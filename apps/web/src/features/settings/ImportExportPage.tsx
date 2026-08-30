@@ -13,6 +13,7 @@ import {
   TableRow,
   TableCell,
 } from '@/components/ui/table';
+import { ImportWizard } from './ImportWizard';
 
 interface ParsedIssue {
   summary: string;
@@ -226,6 +227,10 @@ export function ImportExportPage() {
   return (
     <div>
       <h1 className="mb-6 text-2xl font-bold text-foreground">Import / Export</h1>
+
+      <ImportWizard />
+
+      <h2 className="mb-4 text-lg font-semibold text-foreground">File import and export</h2>
 
       {/* Project selector */}
       <div className="mb-6 space-y-1.5">
