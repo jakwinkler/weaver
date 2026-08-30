@@ -10,6 +10,7 @@ import {
   STATUS_CATEGORIES,
   ISSUE_LINK_TYPES,
   CUSTOM_FIELD_TYPES,
+  API_KEY_SCOPES,
   PROJECT_KEY_REGEX,
   ISSUE_KEY_REGEX,
   DEFAULT_PAGE_SIZE,
@@ -56,6 +57,19 @@ export const createOAuthOrganizationSchema = z.object({
     .regex(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/),
 });
 export type CreateOAuthOrganizationDto = z.infer<typeof createOAuthOrganizationSchema>;
+
+export const createApiKeySchema = z.object({
+  name: z.string().trim().min(1).max(255),
+  scopes: z
+    .array(z.enum(API_KEY_SCOPES))
+    .min(1, 'Select at least one scope')
+    .max(API_KEY_SCOPES.length)
+    .refine((scopes) => new Set(scopes).size === scopes.length, {
+      message: 'Scopes must be unique',
+    }),
+  expiresAt: z.coerce.date().nullable().optional(),
+});
+export type CreateApiKeyDto = z.infer<typeof createApiKeySchema>;
 
 // ── User Schemas ──
 

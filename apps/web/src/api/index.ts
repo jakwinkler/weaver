@@ -129,7 +129,11 @@ export {
   useUpdateProfile,
   useUploadAvatar,
   useUpdateNotificationPreferences,
+  useApiKeys,
+  useCreateApiKey,
+  useDeleteApiKey,
 } from './hooks-profile';
+export type { CreateApiKeyInput } from './hooks-profile';
 export { useTenantSettings, useUpdateTenantSettings, useTestSmtp } from './hooks-settings';
 export {
   useAutomations,

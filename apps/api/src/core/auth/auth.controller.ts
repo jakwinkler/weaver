@@ -18,7 +18,7 @@ import {
   selectOrganizationSchema,
 } from '@weaver/shared';
 import { AuthService, OAuthIdentity } from './auth.service';
-import { JwtAuthGuard } from './jwt-auth.guard';
+import { JwtAuthGuard, JwtOnlyAuthGuard } from './jwt-auth.guard';
 import { CurrentUser, RequestUser } from './current-user.decorator';
 import { GitHubOAuthGuard, GoogleOAuthGuard } from './oauth.guard';
 import { SamlAuthGuard } from './saml.guard';
@@ -67,7 +67,7 @@ export class AuthController {
   }
 
   @Post('refresh')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtOnlyAuthGuard)
   async refresh(@CurrentUser() user: RequestUser, @Res() res: Response) {
     const data = await this.authService.refreshToken(user.userId);
     res.cookie('weaver_token', data.accessToken, COOKIE_OPTIONS);

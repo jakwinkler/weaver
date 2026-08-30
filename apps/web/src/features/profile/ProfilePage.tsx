@@ -13,6 +13,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ApiKeysTab } from './ApiKeysTab';
 
 const EMAIL_PREFERENCES: Array<{
   key: NotificationPreferenceKey;
@@ -110,89 +112,106 @@ export function ProfilePage() {
   }
 
   return (
-    <div className="mx-auto max-w-lg space-y-8 py-8">
+    <div className="mx-auto max-w-4xl space-y-8 py-8">
       <h1 className="text-2xl font-bold">Profile</h1>
 
-      <div className="flex flex-col items-center gap-4">
-        <div className="group relative">
-          <UserAvatar user={profile} size="lg" />
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50 opacity-0 transition-opacity group-hover:opacity-100"
-          >
-            <Camera className="h-6 w-6 text-white" />
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={handleAvatarUpload}
-          />
-        </div>
-        {uploadAvatar.isPending && <p className="text-sm text-muted-foreground">Uploading...</p>}
-      </div>
+      <Tabs defaultValue="account" className="space-y-6">
+        <TabsList>
+          <TabsTrigger value="account">Account</TabsTrigger>
+          <TabsTrigger value="api-keys">API Keys</TabsTrigger>
+        </TabsList>
 
-      <div className="space-y-4">
-        <div className="space-y-2">
-          <Label htmlFor="displayName">Display name</Label>
-          <Input
-            id="displayName"
-            value={displayName}
-            onChange={(e) => {
-              setDisplayName(e.target.value);
-              setDirty(true);
-            }}
-            placeholder="Your display name"
-          />
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="email">Email</Label>
-          <Input id="email" value={profile?.email || ''} readOnly className="bg-muted" />
-        </div>
-
-        <Button onClick={handleSave} disabled={!dirty || updateProfile.isPending}>
-          {updateProfile.isPending ? 'Saving...' : 'Save'}
-        </Button>
-      </div>
-
-      <section
-        aria-labelledby="email-notifications-heading"
-        className="space-y-4 border-t border-border pt-8"
-      >
-        <div>
-          <h2 id="email-notifications-heading" className="text-lg font-semibold">
-            Email notifications
-          </h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Choose which activity reaches your inbox.
-          </p>
-        </div>
-
-        <div className="divide-y divide-border border border-border">
-          {EMAIL_PREFERENCES.map((preference) => (
-            <div key={preference.key} className="flex items-center justify-between gap-6 p-4">
-              <div>
-                <Label htmlFor={preference.key}>{preference.label}</Label>
-                <p className="mt-1 text-sm text-muted-foreground">{preference.description}</p>
-              </div>
-              <Switch
-                id={preference.key}
-                aria-label={preference.label}
-                checked={notificationPreferences[preference.key]}
-                disabled={updateNotificationPreferences.isPending}
-                onCheckedChange={(checked) => handlePreferenceChange(preference.key, checked)}
+        <TabsContent value="account" className="max-w-lg space-y-8">
+          <div className="flex flex-col items-center gap-4">
+            <div className="group relative">
+              <UserAvatar user={profile} size="lg" />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                aria-label="Upload profile picture"
+              >
+                <Camera className="h-6 w-6 text-white" />
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleAvatarUpload}
               />
             </div>
-          ))}
-        </div>
-        {updateNotificationPreferences.isError && (
-          <p className="text-sm text-destructive">
-            Could not save your email preference. Please try again.
-          </p>
-        )}
-      </section>
+            {uploadAvatar.isPending && (
+              <p className="text-sm text-muted-foreground">Uploading...</p>
+            )}
+          </div>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="displayName">Display name</Label>
+              <Input
+                id="displayName"
+                value={displayName}
+                onChange={(e) => {
+                  setDisplayName(e.target.value);
+                  setDirty(true);
+                }}
+                placeholder="Your display name"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <Input id="email" value={profile?.email || ''} readOnly className="bg-muted" />
+            </div>
+
+            <Button onClick={handleSave} disabled={!dirty || updateProfile.isPending}>
+              {updateProfile.isPending ? 'Saving...' : 'Save'}
+            </Button>
+          </div>
+
+          <section
+            aria-labelledby="email-notifications-heading"
+            className="space-y-4 border-t border-border pt-8"
+          >
+            <div>
+              <h2 id="email-notifications-heading" className="text-lg font-semibold">
+                Email notifications
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Choose which activity reaches your inbox.
+              </p>
+            </div>
+
+            <div className="divide-y divide-border border border-border">
+              {EMAIL_PREFERENCES.map((preference) => (
+                <div key={preference.key} className="flex items-center justify-between gap-6 p-4">
+                  <div>
+                    <Label htmlFor={preference.key}>{preference.label}</Label>
+                    <p className="mt-1 text-sm text-muted-foreground">{preference.description}</p>
+                  </div>
+                  <Switch
+                    id={preference.key}
+                    aria-label={preference.label}
+                    checked={notificationPreferences[preference.key]}
+                    disabled={updateNotificationPreferences.isPending}
+                    onCheckedChange={(checked) => handlePreferenceChange(preference.key, checked)}
+                  />
+                </div>
+              ))}
+            </div>
+            {updateNotificationPreferences.isError && (
+              <p className="text-sm text-destructive">
+                Could not save your email preference. Please try again.
+              </p>
+            )}
+          </section>
+        </TabsContent>
+
+        <TabsContent value="api-keys">
+          <ApiKeysTab />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

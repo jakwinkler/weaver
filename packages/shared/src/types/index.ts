@@ -9,6 +9,7 @@ import type {
   AuthProvider,
   IssueLinkType,
   CustomFieldType,
+  ApiKeyScope,
 } from '../constants';
 
 export * from './import';
@@ -93,14 +94,16 @@ export interface TenantMembership {
 
 export interface ApiKey {
   id: string;
-  tenantId: string;
-  userId: string;
   name: string;
-  keyHash: string;
-  scopes: string[];
-  expiresAt?: Date;
-  lastUsedAt?: Date;
-  createdAt: Date;
+  maskedKey: string;
+  scopes: ApiKeyScope[];
+  expiresAt: string | null;
+  lastUsedAt: string | null;
+  createdAt: string;
+}
+
+export interface CreatedApiKey extends ApiKey {
+  key: string;
 }
 
 export interface InstalledPlugin {

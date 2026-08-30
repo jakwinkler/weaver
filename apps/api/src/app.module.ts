@@ -31,6 +31,7 @@ import { AutomationsModule } from './modules/automations';
 import { ImportModule } from './modules/import';
 import { PagesModule } from './modules/pages';
 import { FormsModule } from './modules/forms';
+import { ApiKeysModule } from './modules/api-keys';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -70,6 +71,7 @@ import { HealthController } from './health.controller';
     ImportModule,
     PagesModule,
     FormsModule,
+    ApiKeysModule,
   ],
   controllers: [HealthController],
 })

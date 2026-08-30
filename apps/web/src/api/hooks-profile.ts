@@ -1,6 +1,18 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from './client';
-import type { NotificationPreferences, User } from '@weaver/shared';
+import type {
+  ApiKey,
+  ApiKeyScope,
+  CreatedApiKey,
+  NotificationPreferences,
+  User,
+} from '@weaver/shared';
+
+export interface CreateApiKeyInput {
+  name: string;
+  scopes: ApiKeyScope[];
+  expiresAt?: string | null;
+}
 
 export function useProfile() {
   return useQuery({
@@ -57,6 +69,41 @@ export function useUpdateNotificationPreferences() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['profile'] });
       qc.invalidateQueries({ queryKey: ['currentUser'] });
+    },
+  });
+}
+
+export function useApiKeys() {
+  return useQuery({
+    queryKey: ['apiKeys'],
+    queryFn: async () => {
+      const res = await apiClient.get<ApiKey[]>('/api-keys');
+      return res.data;
+    },
+  });
+}
+
+export function useCreateApiKey() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: CreateApiKeyInput) => {
+      const res = await apiClient.post<CreatedApiKey>('/api-keys', data);
+      return res.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['apiKeys'] });
+    },
+  });
+}
+
+export function useDeleteApiKey() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      await apiClient.delete(`/api-keys/${id}`);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['apiKeys'] });
     },
   });
 }

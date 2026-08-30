@@ -48,6 +48,8 @@ export const CUSTOM_FIELD_TYPES = [
 export type CustomFieldType = (typeof CUSTOM_FIELD_TYPES)[number];
 
 export const API_KEY_PREFIX = 'wvr_';
+export const API_KEY_SCOPES = ['read', 'write', 'admin'] as const;
+export type ApiKeyScope = (typeof API_KEY_SCOPES)[number];
 
 export const DEFAULT_PAGE_SIZE = 50;
 export const MAX_PAGE_SIZE = 200;

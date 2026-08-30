@@ -1,8 +1,10 @@
+import { createHash } from 'crypto';
 import { Injectable, NestMiddleware, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Request, Response, NextFunction } from 'express';
-import { TenantEntity } from '@weaver/db';
+import { ApiKeyEntity, TenantEntity } from '@weaver/db';
+import { API_KEY_PREFIX } from '@weaver/shared';
 import { tenantStorage } from './tenant.context';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -11,9 +13,7 @@ function decodeTenantFromCookie(req: Request): string | undefined {
   const token = req.cookies?.weaver_token;
   if (!token) return undefined;
   try {
-    const payload = JSON.parse(
-      Buffer.from(token.split('.')[1], 'base64url').toString(),
-    );
+    const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString());
     if (payload.tenantId && UUID_RE.test(payload.tenantId)) {
       return payload.tenantId;
     }
@@ -28,6 +28,8 @@ export class TenantMiddleware implements NestMiddleware {
   constructor(
     @InjectRepository(TenantEntity)
     private readonly tenantRepo: Repository<TenantEntity>,
+    @InjectRepository(ApiKeyEntity)
+    private readonly apiKeyRepo: Repository<ApiKeyEntity>,
   ) {}
 
   async use(req: Request, _res: Response, next: NextFunction) {
@@ -37,7 +39,7 @@ export class TenantMiddleware implements NestMiddleware {
       return;
     }
 
-    const tenantId = this.resolveTenantId(req);
+    const tenantId = await this.resolveTenantId(req);
 
     if (!tenantId) {
       next();
@@ -49,16 +51,23 @@ export class TenantMiddleware implements NestMiddleware {
       throw new BadRequestException(`Tenant not found: ${tenantId}`);
     }
 
-    tenantStorage.run(
-      { tenantId: tenant.id, schemaName: tenant.schemaName },
-      () => next(),
-    );
+    tenantStorage.run({ tenantId: tenant.id, schemaName: tenant.schemaName }, () => next());
   }
 
-  private resolveTenantId(req: Request): string | undefined {
-    // Priority: X-Tenant-ID header > JWT cookie > subdomain
+  private async resolveTenantId(req: Request): Promise<string | undefined> {
+    // Priority: X-Tenant-ID header > API key > JWT cookie > subdomain
     const fromHeader = req.headers['x-tenant-id'] as string | undefined;
     if (fromHeader && UUID_RE.test(fromHeader)) return fromHeader;
+
+    const apiKey = req.headers.authorization?.match(/^Bearer\s+(\S+)$/i)?.[1];
+    if (apiKey?.startsWith(API_KEY_PREFIX)) {
+      const keyHash = createHash('sha256').update(apiKey).digest('hex');
+      const storedKey = await this.apiKeyRepo.findOne({
+        select: { tenantId: true },
+        where: { keyHash },
+      });
+      if (storedKey) return storedKey.tenantId;
+    }
 
     // Extract tenantId from JWT cookie (for browser requests like <img src>)
     const fromCookie = decodeTenantFromCookie(req);
