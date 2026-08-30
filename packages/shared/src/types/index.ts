@@ -573,7 +573,15 @@ export interface TimeEntry {
   issueId: string;
   userId: string;
   minutes: number;
-  description?: string;
+  description: string | null;
   loggedAt: Date;
+  startedAt: Date | null;
+  endedAt: Date | null;
+  source: 'manual' | 'timer' | 'plugin';
+  sourcePluginId: string | null;
+  sourceReference: string | null;
+  lockedAt: Date | null;
+  lockReason: string | null;
   createdAt: Date;
+  updatedAt: Date;
 }

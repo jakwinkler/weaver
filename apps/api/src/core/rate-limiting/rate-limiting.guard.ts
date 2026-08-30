@@ -4,6 +4,7 @@ import {
   ExecutionContext,
   HttpException,
   HttpStatus,
+  OnModuleDestroy,
   SetMetadata,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
@@ -18,15 +19,23 @@ interface RateLimitEntry {
 }
 
 @Injectable()
-export class RateLimitingGuard implements CanActivate {
+export class RateLimitingGuard implements CanActivate, OnModuleDestroy {
   private readonly store = new Map<string, RateLimitEntry>();
   private readonly DEFAULT_AUTHENTICATED_LIMIT = 1000;
   private readonly DEFAULT_UNAUTHENTICATED_LIMIT = 30;
   private readonly DEFAULT_WINDOW_MS = 60_000;
+  private readonly cleanupInterval: ReturnType<typeof setInterval>;
 
   constructor(private readonly reflector: Reflector) {
     // Clean up stale entries every 5 minutes
-    setInterval(() => this.cleanup(), 5 * 60_000);
+    this.cleanupInterval = setInterval(() => this.cleanup(), 5 * 60_000);
+    if (typeof this.cleanupInterval === 'object') {
+      this.cleanupInterval.unref?.();
+    }
+  }
+
+  onModuleDestroy(): void {
+    clearInterval(this.cleanupInterval);
   }
 
   canActivate(context: ExecutionContext): boolean {

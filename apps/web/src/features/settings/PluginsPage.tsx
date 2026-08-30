@@ -187,6 +187,21 @@ export function PluginsPage() {
 
   const isLoading = availableLoading || installedLoading;
 
+  const uninstall = (pluginId: string) => {
+    const manifest = available?.find((candidate) => candidate.id === pluginId);
+    const deletesPrivateData = manifest?.uninstall?.deletesPrivateData === true;
+    if (
+      deletesPrivateData &&
+      !window.confirm(
+        manifest.uninstall?.confirmationMessage ??
+          `Uninstalling ${manifest.name} permanently deletes its private plugin data. Official Weaver records are preserved. Continue?`,
+      )
+    ) {
+      return;
+    }
+    uninstallPlugin.mutate({ pluginId, confirmDataDeletion: deletesPrivateData });
+  };
+
   if (isLoading) {
     return (
       <div>
@@ -305,7 +320,7 @@ export function PluginsPage() {
                           <Button
                             variant="destructive"
                             size="sm"
-                            onClick={() => uninstallPlugin.mutate(plugin.pluginId)}
+                            onClick={() => uninstall(plugin.pluginId)}
                             disabled={uninstallPlugin.isPending}
                           >
                             Uninstall

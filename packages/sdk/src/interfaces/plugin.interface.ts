@@ -13,6 +13,9 @@ export interface WeaverPlugin {
   /** Called when plugin is enabled for a tenant */
   onEnable?(context: PluginContext): Promise<void>;
 
+  /** Called inside an atomic migration when an installed plugin version advances */
+  onUpgrade?(fromVersion: string, toVersion: string, context: PluginContext): Promise<void>;
+
   /** Called when plugin is disabled for a tenant */
   onDisable?(context: PluginContext): Promise<void>;
 

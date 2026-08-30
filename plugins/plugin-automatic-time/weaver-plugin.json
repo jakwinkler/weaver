@@ -1,0 +1,136 @@
+{
+  "id": "@weaver/plugin-automatic-time",
+  "name": "Automatic Time",
+  "version": "0.1.0",
+  "description": "Review private activity drafts and explicitly release them as official Weaver time",
+  "author": "Weaver",
+  "icon": "clock",
+  "type": "app",
+  "scope": "tenant",
+  "enabledByDefault": false,
+  "uninstall": {
+    "deletesPrivateData": true,
+    "confirmationMessage": "Uninstalling Automatic Time permanently deletes private drafts, correction memory, settings, and paired devices. Official time entries are preserved. Continue?"
+  },
+  "entrypoints": {
+    "server": "src/server/index.ts",
+    "client": "src/client/index.ts"
+  },
+  "permissions": ["automatic-time.view", "automatic-time.manage-drafts", "automatic-time.release"],
+  "declaredPermissions": [
+    {
+      "key": "automatic-time.view",
+      "label": "View private time drafts",
+      "description": "View only your own Automatic Time drafts and daily review"
+    },
+    {
+      "key": "automatic-time.manage-drafts",
+      "label": "Manage private time drafts",
+      "description": "Assign, edit, hide, and delete only your own drafts"
+    },
+    {
+      "key": "automatic-time.release",
+      "label": "Release official time",
+      "description": "Explicitly release reviewed drafts as official Weaver time entries"
+    }
+  ],
+  "requires": {
+    "coreCapabilities": ["issue-candidates", "time-entries"]
+  },
+  "events": {
+    "subscribes": [
+      "issue.created",
+      "issue.updated",
+      "issue.deleted",
+      "project.created",
+      "project.updated",
+      "project.deleted",
+      "time.locked"
+    ],
+    "emits": ["automatic-time.draft_corrected", "automatic-time.day_released"]
+  },
+  "ui": {
+    "navigation": [
+      {
+        "label": "Drafts",
+        "icon": "clock",
+        "path": "/apps/automatic-time/drafts",
+        "requiredPermissions": ["automatic-time.view"]
+      }
+    ],
+    "pages": [
+      {
+        "path": "/apps/automatic-time/drafts",
+        "component": "AutomaticTimeDraftsPageWrapper",
+        "requiredPermissions": ["automatic-time.view"]
+      },
+      {
+        "path": "/apps/automatic-time/review",
+        "component": "AutomaticTimeReviewPageWrapper",
+        "requiredPermissions": ["automatic-time.view", "automatic-time.release"]
+      }
+    ]
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/issue-candidates",
+      "handler": "listIssueCandidates",
+      "requiredPermissions": ["automatic-time.manage-drafts"]
+    },
+    {
+      "method": "GET",
+      "path": "/drafts",
+      "handler": "listDrafts",
+      "requiredPermissions": ["automatic-time.view"]
+    },
+    {
+      "method": "PATCH",
+      "path": "/drafts/:draftId",
+      "handler": "editDraft",
+      "requiredPermissions": ["automatic-time.manage-drafts"]
+    },
+    {
+      "method": "POST",
+      "path": "/drafts/:draftId/assign",
+      "handler": "assignDraft",
+      "requiredPermissions": ["automatic-time.manage-drafts"]
+    },
+    {
+      "method": "POST",
+      "path": "/drafts/:draftId/hide",
+      "handler": "hideDraft",
+      "requiredPermissions": ["automatic-time.manage-drafts"]
+    },
+    {
+      "method": "DELETE",
+      "path": "/drafts/:draftId",
+      "handler": "deleteDraft",
+      "requiredPermissions": ["automatic-time.manage-drafts"]
+    },
+    {
+      "method": "GET",
+      "path": "/review/:localDate",
+      "handler": "getDailyReview",
+      "requiredPermissions": ["automatic-time.view"]
+    },
+    {
+      "method": "POST",
+      "path": "/review/:localDate/release",
+      "handler": "releaseDay",
+      "requiredPermissions": ["automatic-time.release"]
+    },
+    {
+      "method": "POST",
+      "path": "/test/fixtures/drafts",
+      "handler": "loadSyntheticDraftFixtures",
+      "requiredPermissions": ["automatic-time.manage-drafts"]
+    }
+  ],
+  "migrations": [
+    {
+      "version": "0.1.0",
+      "path": "migrations/001_create_automatic_time_tables.sql"
+    }
+  ]
+}

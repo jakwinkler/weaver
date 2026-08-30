@@ -21,7 +21,7 @@ export function formatTime(totalMinutes: number): string {
 interface TimeEntryData {
   id: string;
   minutes: number;
-  description?: string;
+  description: string | null;
   loggedAt: string | Date;
 }
 

@@ -8,6 +8,7 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  BadRequestException,
   UseGuards,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../core/auth';
@@ -81,7 +82,17 @@ export class PluginsController {
     captureBefore: true,
     resourceId: ({ request }) => request.body.pluginId,
   })
-  async uninstall(@Body('pluginId') pluginId: string) {
+  async uninstall(
+    @Body('pluginId') pluginId: string,
+    @Body('confirmDataDeletion') confirmDataDeletion?: boolean,
+  ) {
+    const manifest = this.loader.getManifest(pluginId);
+    if (manifest?.uninstall?.deletesPrivateData && confirmDataDeletion !== true) {
+      throw new BadRequestException(
+        manifest.uninstall.confirmationMessage ??
+          `Uninstalling ${manifest.name} deletes its private plugin data and requires confirmation`,
+      );
+    }
     return this.registry.uninstall(pluginId);
   }
 
@@ -105,6 +116,17 @@ export class PluginsController {
   })
   async disable(@Body('pluginId') pluginId: string) {
     return this.registry.disable(pluginId);
+  }
+
+  @Post('upgrade')
+  @Audit({
+    action: 'plugin.upgraded',
+    resource: 'plugin',
+    captureBefore: true,
+    resourceId: ({ request }) => request.body.pluginId,
+  })
+  async upgrade(@Body('pluginId') pluginId: string) {
+    return this.registry.upgrade(pluginId);
   }
 
   @Patch('settings')

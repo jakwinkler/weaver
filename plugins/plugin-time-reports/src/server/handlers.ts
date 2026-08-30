@@ -2,9 +2,11 @@ import type { PluginRequest, PluginResponse, PluginContext } from '@weaver/sdk';
 
 const VALID_GROUP_BY = ['project', 'user', 'issue'] as const;
 
-function buildReportQuery(
-  query: Record<string, string>,
-): { sql: string; params: unknown[]; groupBy: string } {
+function buildReportQuery(query: Record<string, string>): {
+  sql: string;
+  params: unknown[];
+  groupBy: string;
+} {
   const { projectKey, userId, dateFrom, dateTo, groupBy = 'project' } = query;
   const safeGroupBy = VALID_GROUP_BY.includes(groupBy as any) ? groupBy : 'project';
 
@@ -42,8 +44,8 @@ function buildReportQuery(
       orderBy = 'total_minutes DESC';
       break;
     case 'issue':
-      selectFields = `i.key AS issue_key, i.title AS issue_title`;
-      groupByClause = `GROUP BY i.id, i.key, i.title`;
+      selectFields = `i.key AS issue_key, i.summary AS issue_title`;
+      groupByClause = `GROUP BY i.id, i.key, i.summary`;
       orderBy = 'total_minutes DESC';
       break;
     default: // project
@@ -53,9 +55,7 @@ function buildReportQuery(
       break;
   }
 
-  const userJoin = safeGroupBy === 'user'
-    ? `LEFT JOIN users u ON u.id = te.user_id`
-    : '';
+  const userJoin = safeGroupBy === 'user' ? `LEFT JOIN users u ON u.id = te.user_id` : '';
 
   const sql = `
     SELECT ${selectFields},
@@ -73,9 +73,12 @@ function buildReportQuery(
   return { sql, params, groupBy: safeGroupBy };
 }
 
-export async function getReport(req: PluginRequest, context: PluginContext): Promise<PluginResponse> {
+export async function getReport(
+  req: PluginRequest,
+  context: PluginContext,
+): Promise<PluginResponse> {
   const { sql, params, groupBy } = buildReportQuery(req.query);
-  const rows = await context.db.query(sql, params) as any[];
+  const rows = (await context.db.query(sql, params)) as any[];
 
   const totalMinutes = rows.reduce((sum, r) => sum + r.total_minutes, 0);
   const totalEntries = rows.reduce((sum, r) => sum + r.entry_count, 0);
@@ -90,9 +93,12 @@ export async function getReport(req: PluginRequest, context: PluginContext): Pro
   };
 }
 
-export async function exportCsv(req: PluginRequest, context: PluginContext): Promise<PluginResponse> {
+export async function exportCsv(
+  req: PluginRequest,
+  context: PluginContext,
+): Promise<PluginResponse> {
   const { sql, params, groupBy } = buildReportQuery(req.query);
-  const rows = await context.db.query(sql, params) as any[];
+  const rows = (await context.db.query(sql, params)) as any[];
 
   const totalMinutes = rows.reduce((sum: number, r: any) => sum + r.total_minutes, 0);
   const totalEntries = rows.reduce((sum: number, r: any) => sum + r.entry_count, 0);
@@ -103,15 +109,18 @@ export async function exportCsv(req: PluginRequest, context: PluginContext): Pro
   switch (groupBy) {
     case 'user':
       headerLine = 'User,Total Hours,Entry Count';
-      formatRow = (r) => `"${csvEscape(r.label)}",${(r.total_minutes / 60).toFixed(2)},${r.entry_count}`;
+      formatRow = (r) =>
+        `"${csvEscape(r.label)}",${(r.total_minutes / 60).toFixed(2)},${r.entry_count}`;
       break;
     case 'issue':
       headerLine = 'Issue Key,Issue Title,Total Hours,Entry Count';
-      formatRow = (r) => `"${csvEscape(r.issue_key)}","${csvEscape(r.issue_title)}",${(r.total_minutes / 60).toFixed(2)},${r.entry_count}`;
+      formatRow = (r) =>
+        `"${csvEscape(r.issue_key)}","${csvEscape(r.issue_title)}",${(r.total_minutes / 60).toFixed(2)},${r.entry_count}`;
       break;
     default:
       headerLine = 'Project Key,Project Name,Total Hours,Entry Count';
-      formatRow = (r) => `"${csvEscape(r.project_key)}","${csvEscape(r.project_name)}",${(r.total_minutes / 60).toFixed(2)},${r.entry_count}`;
+      formatRow = (r) =>
+        `"${csvEscape(r.project_key)}","${csvEscape(r.project_name)}",${(r.total_minutes / 60).toFixed(2)},${r.entry_count}`;
       break;
   }
 
@@ -129,7 +138,10 @@ export async function exportCsv(req: PluginRequest, context: PluginContext): Pro
   };
 }
 
-export async function listSavedReports(_req: PluginRequest, context: PluginContext): Promise<PluginResponse> {
+export async function listSavedReports(
+  _req: PluginRequest,
+  context: PluginContext,
+): Promise<PluginResponse> {
   if (!context.user?.id) {
     return { status: 401, body: { message: 'Authentication required' } };
   }
@@ -142,7 +154,10 @@ export async function listSavedReports(_req: PluginRequest, context: PluginConte
   return { status: 200, body: rows };
 }
 
-export async function saveReport(req: PluginRequest, context: PluginContext): Promise<PluginResponse> {
+export async function saveReport(
+  req: PluginRequest,
+  context: PluginContext,
+): Promise<PluginResponse> {
   if (!context.user?.id) {
     return { status: 401, body: { message: 'Authentication required' } };
   }
@@ -169,7 +184,10 @@ export async function saveReport(req: PluginRequest, context: PluginContext): Pr
   return { status: 201, body: (rows as any[])[0] };
 }
 
-export async function deleteSavedReport(req: PluginRequest, context: PluginContext): Promise<PluginResponse> {
+export async function deleteSavedReport(
+  req: PluginRequest,
+  context: PluginContext,
+): Promise<PluginResponse> {
   if (!context.user?.id) {
     return { status: 401, body: { message: 'Authentication required' } };
   }
@@ -185,10 +203,10 @@ export async function deleteSavedReport(req: PluginRequest, context: PluginConte
     return { status: 404, body: { message: 'Saved report not found' } };
   }
 
-  await context.db.query(
-    'DELETE FROM saved_time_reports WHERE id = $1 AND created_by = $2',
-    [reportId, context.user.id],
-  );
+  await context.db.query('DELETE FROM saved_time_reports WHERE id = $1 AND created_by = $2', [
+    reportId,
+    context.user.id,
+  ]);
 
   return { status: 204, body: null };
 }

@@ -481,6 +481,7 @@ export const createTimeEntrySchema = z.object({
   minutes: z.number().int().min(1),
   description: z.string().max(500).optional(),
   loggedAt: z.coerce.date().optional(),
+  source: z.enum(['manual', 'timer']).optional(),
 });
 export type CreateTimeEntryDto = z.infer<typeof createTimeEntrySchema>;
 

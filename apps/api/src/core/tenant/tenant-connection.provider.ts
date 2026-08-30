@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
-import { TENANT_ENTITIES as DATABASE_TENANT_ENTITIES } from '@weaver/db';
+import {
+  runAutomaticTimeCoreMigration,
+  TENANT_ENTITIES as DATABASE_TENANT_ENTITIES,
+} from '@weaver/db';
 import { requireTenantContext } from './tenant.context';
 
 export const TENANT_ENTITIES = [...DATABASE_TENANT_ENTITIES];
@@ -32,6 +35,7 @@ export class TenantConnectionProvider {
     });
 
     await ds.initialize();
+    await runAutomaticTimeCoreMigration(ds, schemaName);
     this.connections.set(schemaName, ds);
     return ds;
   }

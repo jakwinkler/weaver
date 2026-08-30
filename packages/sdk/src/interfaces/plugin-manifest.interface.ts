@@ -1,3 +1,5 @@
+import type { PluginCoreCapability } from './plugin-context.interface';
+
 export interface PluginManifest {
   id: string;
   name: string;
@@ -7,14 +9,18 @@ export interface PluginManifest {
   icon?: string;
   type?: 'app' | 'widget' | 'feature' | 'integration';
   scope?: 'tenant' | 'project';
+  enabledByDefault?: boolean;
+  uninstall?: PluginUninstallMetadata;
   entrypoints: {
     server?: string;
     client?: string;
   };
   permissions: string[];
+  requires?: PluginRequirements;
+  companion?: PluginCompanionMetadata;
   declaredPermissions?: PluginDeclaredPermission[];
   settings?: {
-    schema: Record<string, PluginSettingDefinition>;
+    schema?: Record<string, PluginSettingDefinition>;
   };
   events?: {
     subscribes?: string[];
@@ -34,7 +40,25 @@ export interface PluginManifest {
 
 export interface PluginMigration {
   version: string;
-  sql: string;
+  sql?: string;
+  path?: string;
+}
+
+export interface PluginUninstallMetadata {
+  deletesPrivateData: boolean;
+  confirmationMessage?: string;
+}
+
+export interface PluginRequirements {
+  coreCapabilities?: PluginCoreCapability[];
+  plugins?: Array<{ id: string; minimumVersion?: string }>;
+}
+
+export interface PluginCompanionMetadata {
+  platform: 'macos' | 'windows' | 'linux';
+  downloadArtifact: string;
+  minimumVersion: string;
+  pairingRoute: string;
 }
 
 export interface PluginProjectViewDefinition {

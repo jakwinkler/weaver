@@ -10,9 +10,15 @@ import { PluginEventBridgeService } from './plugin-event-bridge.service';
 import { PluginsController } from './plugins.controller';
 import { PluginRouteController } from './plugin-route.controller';
 import { PluginAssetsController } from './plugin-assets.controller';
+import { TimeTrackingModule } from '../modules/time-tracking';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([InstalledPluginEntity]), TenantModule, EventsModule],
+  imports: [
+    TypeOrmModule.forFeature([InstalledPluginEntity]),
+    TenantModule,
+    EventsModule,
+    TimeTrackingModule,
+  ],
   controllers: [PluginsController, PluginRouteController, PluginAssetsController],
   providers: [
     PluginLoaderService,

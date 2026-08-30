@@ -3,6 +3,12 @@ import { loadRemote, registerRemotes } from '@module-federation/enhanced/runtime
 import { getPluginRemoteName, PLUGIN_REMOTE_MODULE } from '@weaver/sdk';
 import { API_BASE_URL } from '@/api/client';
 
+type PluginImporter = () => Promise<Record<string, unknown>>;
+
+const pluginImporters: Record<string, PluginImporter> = {
+  '@weaver/plugin-automatic-time': () => import('@weaver/plugin-automatic-time'),
+};
+
 const componentCache = new Map<string, ComponentType<any>>();
 const registeredRemotes = new Map<string, string>();
 
@@ -31,18 +37,19 @@ export function getPluginComponent(
   componentName: string,
   clientBundle?: string,
 ): ComponentType<any> | null {
-  if (!clientBundle) return null;
+  const importer = pluginImporters[pluginId];
+  if (!clientBundle && !importer) return null;
 
-  const cacheKey = `${pluginId}::${clientBundle}::${componentName}`;
+  const cacheKey = `${pluginId}::${clientBundle ?? 'workspace'}::${componentName}`;
   const cached = componentCache.get(cacheKey);
   if (cached) return cached;
 
   const LazyComponent = React.lazy(async () => {
-    const remoteName = registerPluginRemote(pluginId, clientBundle);
-    const remoteModule = (await loadRemote(`${remoteName}/${PLUGIN_REMOTE_MODULE}`)) as Record<
-      string,
-      unknown
-    > | null;
+    const remoteModule = importer
+      ? await importer()
+      : ((await loadRemote(
+          `${registerPluginRemote(pluginId, clientBundle!)}/${PLUGIN_REMOTE_MODULE}`,
+        )) as Record<string, unknown> | null);
     const Component = remoteModule?.[componentName] as ComponentType<any> | undefined;
 
     if (!Component) {

@@ -38,6 +38,11 @@ export interface PluginManifest {
   icon?: string;
   type?: 'app' | 'widget' | 'feature' | 'integration';
   scope?: 'tenant' | 'project';
+  enabledByDefault?: boolean;
+  uninstall?: {
+    deletesPrivateData: boolean;
+    confirmationMessage?: string;
+  };
   permissions: string[];
   clientBundle?: string;
   settings?: {
@@ -112,8 +117,14 @@ export function useInstallPlugin() {
 export function useUninstallPlugin() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (pluginId: string) => {
-      await apiClient.post('/plugins/uninstall', { pluginId });
+    mutationFn: async ({
+      pluginId,
+      confirmDataDeletion = false,
+    }: {
+      pluginId: string;
+      confirmDataDeletion?: boolean;
+    }) => {
+      await apiClient.post('/plugins/uninstall', { pluginId, confirmDataDeletion });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['plugins'] });

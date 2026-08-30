@@ -48,6 +48,7 @@ export interface PluginEventEmitter {
 export interface PluginCoreApi {
   issues: {
     get(key: string): Promise<unknown>;
+    findCandidates(filters?: PluginIssueCandidateFilters): Promise<PluginIssueCandidate[]>;
     update(key: string, data: Record<string, unknown>): Promise<unknown>;
     addComment(key: string, body: string): Promise<unknown>;
   };
@@ -71,13 +72,101 @@ export interface PluginCoreApi {
     unregisterAll(): Promise<void>;
   };
   activityLog: {
-    create(issueKey: string, dto: {
-      action: string;
-      fieldName?: string | null;
-      oldValue?: string | null;
-      newValue?: string | null;
-    }): Promise<unknown>;
+    create(
+      issueKey: string,
+      dto: {
+        action: string;
+        fieldName?: string | null;
+        oldValue?: string | null;
+        newValue?: string | null;
+      },
+    ): Promise<unknown>;
   };
+  timeEntries: {
+    createBatch(request: PluginTimeEntryBatchRequest): Promise<PluginTimeEntryBatchResult>;
+    update(id: string, changes: PluginTimeEntryChanges): Promise<PluginTimeEntry>;
+    delete(id: string): Promise<void>;
+    list(filters?: PluginTimeEntryFilters): Promise<PluginTimeEntry[]>;
+    getLockState(ids: string[]): Promise<PluginTimeEntryLockState[]>;
+  };
+}
+
+export type PluginCoreCapability = 'issue-candidates' | 'time-entries';
+
+export interface PluginIssueCandidateFilters {
+  projectKeys?: string[];
+  issueKeys?: string[];
+  updatedSince?: string;
+  includeUnassigned?: boolean;
+  limit?: number;
+}
+
+export interface PluginIssueCandidate {
+  id: string;
+  key: string;
+  summary: string;
+  projectKey: string;
+  statusCategory: string;
+  assigneeId: string | null;
+  updatedAt: string;
+}
+
+export interface PluginTimeEntryBatchItem {
+  issueKey: string;
+  sourceReference: string;
+  minutes: number;
+  description?: string;
+  startedAt?: string;
+  endedAt?: string;
+  loggedAt?: string;
+}
+
+export interface PluginTimeEntryBatchRequest {
+  entries: PluginTimeEntryBatchItem[];
+}
+
+export interface PluginTimeEntryBatchResult {
+  entries: PluginTimeEntry[];
+  created: number;
+}
+
+export interface PluginTimeEntryChanges {
+  minutes?: number;
+  description?: string | null;
+  startedAt?: string | null;
+  endedAt?: string | null;
+}
+
+export interface PluginTimeEntryFilters {
+  issueKeys?: string[];
+  sourceReferences?: string[];
+  loggedFrom?: string;
+  loggedTo?: string;
+}
+
+export interface PluginTimeEntry {
+  id: string;
+  issueId: string;
+  userId: string;
+  minutes: number;
+  description: string | null;
+  loggedAt: Date;
+  startedAt: Date | null;
+  endedAt: Date | null;
+  source: 'manual' | 'timer' | 'plugin';
+  sourcePluginId: string | null;
+  sourceReference: string | null;
+  lockedAt: Date | null;
+  lockReason: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface PluginTimeEntryLockState {
+  id: string;
+  locked: boolean;
+  lockedAt: Date | null;
+  lockReason: string | null;
 }
 
 export interface PluginLogger {
