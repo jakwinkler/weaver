@@ -110,6 +110,12 @@ export class IssuesController {
     return this.issuesService.findByKey(issueKey);
   }
 
+  @Get('issues/:issueKey/recurrence')
+  @RequirePermission('issues', 'read')
+  async findRecurrence(@Param('issueKey') issueKey: string) {
+    return this.issuesService.findRecurrence(issueKey);
+  }
+
   @Patch('issues/:issueKey')
   @RequirePermission('issues', 'update')
   async update(

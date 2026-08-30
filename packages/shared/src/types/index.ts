@@ -11,6 +11,7 @@ import type {
   CustomFieldType,
   ApiKeyScope,
 } from '../constants';
+import type { RecurrenceRule } from '../schemas';
 
 export * from './import';
 
@@ -274,6 +275,9 @@ export interface Issue {
   dueDate?: string;
   percentDone: number;
   storyPoints?: number | null;
+  recurrenceRule: RecurrenceRule | null;
+  recurrenceParentId: string | null;
+  recurrenceOccurrence: number;
   createdAt: Date;
   updatedAt: Date;
   issueType?: IssueType | null;

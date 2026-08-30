@@ -254,6 +254,39 @@ export type PublicFormSubmissionDto = z.infer<typeof publicFormSubmissionSchema>
 
 const dateStringSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD');
 
+export const recurrenceRuleSchema = z
+  .object({
+    frequency: z.enum(['daily', 'weekly', 'monthly']),
+    interval: z.number().int().min(1).max(365),
+    daysOfWeek: z
+      .array(z.number().int().min(0).max(6))
+      .min(1)
+      .max(7)
+      .refine((days) => new Set(days).size === days.length, 'Days of week must be unique')
+      .optional(),
+    dayOfMonth: z.number().int().min(1).max(31).optional(),
+    endDate: dateStringSchema.optional(),
+    maxOccurrences: z.number().int().min(1).max(1000).optional(),
+  })
+  .strict()
+  .superRefine((rule, ctx) => {
+    if (rule.daysOfWeek && rule.frequency !== 'weekly') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['daysOfWeek'],
+        message: 'Days of week are only valid for weekly recurrence',
+      });
+    }
+    if (rule.dayOfMonth !== undefined && rule.frequency !== 'monthly') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['dayOfMonth'],
+        message: 'Day of month is only valid for monthly recurrence',
+      });
+    }
+  });
+export type RecurrenceRule = z.infer<typeof recurrenceRuleSchema>;
+
 export const createIssueSchema = z.object({
   summary: z.string().min(1).max(500),
   description: z.record(z.unknown()).optional(),
@@ -268,6 +301,7 @@ export const createIssueSchema = z.object({
   dueDate: dateStringSchema.optional(),
   percentDone: z.number().int().min(0).max(100).default(0),
   storyPoints: z.number().int().min(0).max(100).nullable().optional(),
+  recurrenceRule: recurrenceRuleSchema.nullable().optional(),
 });
 export type CreateIssueDto = z.infer<typeof createIssueSchema>;
 
@@ -287,6 +321,7 @@ export const updateIssueSchema = z.object({
   dueDate: dateStringSchema.nullable().optional(),
   percentDone: z.number().int().min(0).max(100).optional(),
   storyPoints: z.number().int().min(0).max(100).nullable().optional(),
+  recurrenceRule: recurrenceRuleSchema.nullable().optional(),
 });
 export type UpdateIssueDto = z.infer<typeof updateIssueSchema>;
 

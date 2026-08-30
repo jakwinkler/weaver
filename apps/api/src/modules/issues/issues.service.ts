@@ -43,6 +43,11 @@ export interface IssueFilters {
   dueDateTo?: string;
 }
 
+interface RecurrenceInstanceOptions {
+  parentId: string;
+  occurrence: number;
+}
+
 @Injectable()
 export class IssuesService {
   private readonly logger = new Logger(IssuesService.name);
@@ -77,7 +82,12 @@ export class IssuesService {
     return sprint?.name || sprintId;
   }
 
-  async create(projectKey: string, dto: CreateIssueDto, reporterId: string): Promise<IssueEntity> {
+  async create(
+    projectKey: string,
+    dto: CreateIssueDto,
+    reporterId: string,
+    recurrence?: RecurrenceInstanceOptions,
+  ): Promise<IssueEntity> {
     const project = await this.projectsService.findByKey(projectKey);
     const em = await this.tenantConnections.getEntityManager();
 
@@ -116,6 +126,9 @@ export class IssuesService {
       dueDate: dto.dueDate ?? null,
       percentDone: dto.percentDone ?? 0,
       storyPoints: dto.storyPoints ?? null,
+      recurrenceRule: dto.recurrenceRule ?? null,
+      recurrenceParentId: recurrence?.parentId ?? null,
+      recurrenceOccurrence: recurrence?.occurrence ?? 0,
     });
 
     const saved = await repo.save(issue);
@@ -144,6 +157,17 @@ export class IssuesService {
       throw new NotFoundException(`Issue "${issueKey}" not found`);
     }
     return issue;
+  }
+
+  async findRecurrence(issueKey: string): Promise<IssueEntity[]> {
+    const issue = await this.findByKey(issueKey);
+    const em = await this.tenantConnections.getEntityManager();
+    const rootId = issue.recurrenceParentId ?? issue.id;
+
+    return em.getRepository(IssueEntity).find({
+      where: [{ id: rootId }, { recurrenceParentId: rootId }],
+      order: { recurrenceOccurrence: 'ASC', createdAt: 'ASC' },
+    });
   }
 
   async findByProject(
@@ -368,6 +392,7 @@ export class IssuesService {
     if (dto.dueDate !== undefined) issue.dueDate = dto.dueDate ?? null;
     if (dto.percentDone !== undefined) issue.percentDone = dto.percentDone;
     if (dto.storyPoints !== undefined) issue.storyPoints = dto.storyPoints ?? null;
+    if (dto.recurrenceRule !== undefined) issue.recurrenceRule = dto.recurrenceRule ?? null;
 
     const saved = await repo.save(issue);
 

@@ -21,7 +21,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useQueryClient } from '@tanstack/react-query';
-import { ChevronDown, ChevronRight, GripVertical } from 'lucide-react';
+import { ChevronDown, ChevronRight, GripVertical, Repeat2 } from 'lucide-react';
 import {
   useProject,
   useWorkflow,
@@ -132,7 +132,15 @@ function PriorityBadge({ priority }: { priority: string }) {
 function IssueCardContent({ issue }: { issue: Issue }) {
   return (
     <>
-      <p className="text-sm font-medium text-foreground">{issue.summary}</p>
+      <div className="flex items-start gap-2">
+        <p className="flex-1 text-sm font-medium text-foreground">{issue.summary}</p>
+        {(issue.recurrenceRule || issue.recurrenceParentId) && (
+          <Repeat2
+            className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground"
+            aria-label="Recurring issue"
+          />
+        )}
+      </div>
       <div className="mt-2 flex items-center justify-between">
         <span className="text-xs font-medium text-primary">{issue.key}</span>
         <div className="flex items-center gap-1.5">

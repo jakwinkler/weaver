@@ -11,6 +11,7 @@ export {
   useRoadmapEpics,
   useResizeRoadmapEpic,
   useIssue,
+  useIssueRecurrence,
   useCreateIssue,
   useUpdateIssue,
   useUpdateIssueDynamic,

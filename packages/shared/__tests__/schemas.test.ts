@@ -9,6 +9,7 @@ import {
   paginationSchema,
   createWorkflowStatusSchema,
   issueKeySchema,
+  recurrenceRuleSchema,
   notificationPreferencesSchema,
   updateNotificationPreferencesSchema,
   updateTenantSettingsSchema,
@@ -222,6 +223,36 @@ describe('sprint planning schemas', () => {
   it('accepts optional sprint capacity and rejects negative capacity', () => {
     expect(createSprintSchema.safeParse({ name: 'Sprint 1', capacity: 20 }).success).toBe(true);
     expect(createSprintSchema.safeParse({ name: 'Sprint 1', capacity: -1 }).success).toBe(false);
+  });
+});
+
+describe('recurrenceRuleSchema', () => {
+  it.each([
+    { frequency: 'daily', interval: 2 },
+    { frequency: 'weekly', interval: 1, daysOfWeek: [1, 3, 5] },
+    { frequency: 'monthly', interval: 1, dayOfMonth: 31, maxOccurrences: 12 },
+  ])('accepts a valid $frequency rule', (rule) => {
+    expect(recurrenceRuleSchema.safeParse(rule).success).toBe(true);
+  });
+
+  it('rejects duplicate or out-of-range weekdays', () => {
+    expect(
+      recurrenceRuleSchema.safeParse({
+        frequency: 'weekly',
+        interval: 1,
+        daysOfWeek: [1, 1, 7],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('rejects frequency-specific fields on other frequencies', () => {
+    expect(
+      recurrenceRuleSchema.safeParse({
+        frequency: 'daily',
+        interval: 1,
+        dayOfMonth: 15,
+      }).success,
+    ).toBe(false);
   });
 });
 

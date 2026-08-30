@@ -192,6 +192,17 @@ export function useIssue(key: string) {
   });
 }
 
+export function useIssueRecurrence(key: string) {
+  return useQuery({
+    queryKey: ['issueRecurrence', key],
+    queryFn: async () => {
+      const res = await apiClient.get<Issue[]>(`/issues/${key}/recurrence`);
+      return res.data;
+    },
+    enabled: !!key,
+  });
+}
+
 export function useCreateIssue(projectKey: string) {
   const queryClient = useQueryClient();
   return useMutation({
@@ -215,6 +226,7 @@ export function useUpdateIssue(issueKey: string) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['issue', issueKey] });
+      queryClient.invalidateQueries({ queryKey: ['issueRecurrence'] });
       queryClient.invalidateQueries({ queryKey: ['issues'] });
       queryClient.invalidateQueries({ queryKey: ['sprints'] });
     },

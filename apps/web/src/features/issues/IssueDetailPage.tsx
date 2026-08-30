@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, type FormEvent } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
   useIssue,
+  useIssueRecurrence,
   useUpdateIssue,
   useProject,
   useWorkflow,
@@ -10,7 +11,7 @@ import {
   useUsers,
   useHasPermission,
 } from '@/api';
-import type { IssuePriority } from '@weaver/shared';
+import type { IssuePriority, RecurrenceRule } from '@weaver/shared';
 import { IssueActivityTabs } from './IssueActivityTabs';
 import { PluginSlot } from '@/plugins';
 import {
@@ -19,7 +20,8 @@ import {
   normalizeCommentBody,
 } from '@/components/RichTextEditor';
 import { isRichTextEmpty } from '@/lib/richText';
-import { ChevronDown, Pencil, Check, X } from 'lucide-react';
+import { ChevronDown, Pencil, Check, Repeat2, X } from 'lucide-react';
+import { RecurrencePicker } from '@/components/RecurrencePicker';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -45,6 +47,7 @@ function openShortcutMenu(selector: string) {
 export function IssueDetailPage() {
   const { issueKey } = useParams<{ issueKey: string }>();
   const { data: issue, isLoading } = useIssue(issueKey!);
+  const { data: recurrenceHistory } = useIssueRecurrence(issueKey!);
   const updateIssue = useUpdateIssue(issueKey!);
   const transitionIssue = useTransitionIssue(issueKey!);
 
@@ -64,12 +67,14 @@ export function IssueDetailPage() {
   const [labels, setLabels] = useState('');
   const [editingDesc, setEditingDesc] = useState(false);
   const [descJson, setDescJson] = useState<Record<string, unknown> | null>(null);
+  const [recurrenceDraft, setRecurrenceDraft] = useState<RecurrenceRule | null>(null);
 
   useEffect(() => {
     if (issue) {
       setSummary(issue.summary);
       setPriority(issue.priority);
       setLabels(issue.labels.join(', '));
+      setRecurrenceDraft(issue.recurrenceRule);
     }
   }, [issue]);
 
@@ -151,6 +156,10 @@ export function IssueDetailPage() {
 
   const handleTransition = async (transitionId: string) => {
     await transitionIssue.mutateAsync(transitionId);
+  };
+
+  const saveRecurrence = async () => {
+    await updateIssue.mutateAsync({ recurrenceRule: recurrenceDraft });
   };
 
   // Helpers
@@ -408,6 +417,84 @@ export function IssueDetailPage() {
 
           {/* Plugin Slots */}
           <PluginSlot name="issue-detail-sidebar" issueKey={issueKey!} />
+
+          {/* Recurrence */}
+          <Card>
+            <CardHeader className="pb-2 pt-4 px-4">
+              <CardTitle className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                <Repeat2 className="h-4 w-4" />
+                Recurrence
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 px-4 pb-4 pt-0">
+              {issue.recurrenceParentId ? (
+                <p className="text-sm text-muted-foreground">
+                  This is occurrence {issue.recurrenceOccurrence} in a recurring series.
+                  {recurrenceHistory?.[0] && (
+                    <>
+                      {' '}
+                      <Link
+                        to={`/issues/${recurrenceHistory[0].key}`}
+                        className="font-medium text-primary hover:underline"
+                      >
+                        Edit the series
+                      </Link>
+                    </>
+                  )}
+                </p>
+              ) : (
+                <>
+                  <RecurrencePicker
+                    value={recurrenceDraft}
+                    onChange={setRecurrenceDraft}
+                    disabled={!canUpdate || updateIssue.isPending}
+                    idPrefix="issue-recurrence"
+                  />
+                  {canUpdate &&
+                    JSON.stringify(recurrenceDraft) !== JSON.stringify(issue.recurrenceRule) && (
+                      <Button size="sm" onClick={saveRecurrence} disabled={updateIssue.isPending}>
+                        {updateIssue.isPending
+                          ? 'Saving...'
+                          : recurrenceDraft
+                            ? 'Save recurrence'
+                            : 'Stop recurrence'}
+                      </Button>
+                    )}
+                </>
+              )}
+
+              {recurrenceHistory && recurrenceHistory.length > 1 && (
+                <details className="border-t border-border pt-3">
+                  <summary className="cursor-pointer text-sm font-medium text-primary">
+                    View all occurrences ({recurrenceHistory.length})
+                  </summary>
+                  <ul className="mt-2 space-y-1.5">
+                    {recurrenceHistory.map((occurrence) => (
+                      <li key={occurrence.id}>
+                        <Link
+                          to={`/issues/${occurrence.key}`}
+                          className={cn(
+                            'text-sm hover:underline',
+                            occurrence.id === issue.id
+                              ? 'font-semibold text-foreground'
+                              : 'text-primary',
+                          )}
+                        >
+                          {occurrence.key}
+                          {occurrence.id === issue.id ? ' (current)' : ''}
+                        </Link>
+                        {(occurrence.startDate || occurrence.dueDate) && (
+                          <span className="ml-2 text-xs text-muted-foreground">
+                            {occurrence.startDate || occurrence.dueDate}
+                          </span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+            </CardContent>
+          </Card>
 
           {/* Details */}
           <Card>

@@ -7,6 +7,7 @@ import { ProjectsModule } from '../projects';
 import { WorkflowsModule } from '../workflows';
 import { EventsModule } from '../events';
 import { MailModule } from '../mail';
+import { RecurrenceService } from './recurrence.service';
 
 @Module({
   imports: [
@@ -17,7 +18,7 @@ import { MailModule } from '../mail';
     MailModule,
   ],
   controllers: [IssuesController],
-  providers: [IssuesService],
-  exports: [IssuesService],
+  providers: [IssuesService, RecurrenceService],
+  exports: [IssuesService, RecurrenceService],
 })
 export class IssuesModule {}
