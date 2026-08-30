@@ -37,6 +37,7 @@ import {
   Cog,
   Bot,
   Menu,
+  FileClock,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getNavigationEntries } from '@/plugins/plugin-slot-registry';
@@ -53,6 +54,7 @@ export const adminNavItems = [
   { to: '/admin/teams', label: 'Teams', icon: UsersRound },
   { to: '/admin/users', label: 'Users', icon: Users },
   { to: '/admin/automations', label: 'Automations', icon: Bot },
+  { to: '/admin/audit-log', label: 'Audit Log', icon: FileClock },
   { to: '/settings/plugins', label: 'Plugins', icon: Plug },
   { to: '/settings/webhooks', label: 'Webhooks', icon: Webhook },
   { to: '/settings/import-export', label: 'Import / Export', icon: FileUp },

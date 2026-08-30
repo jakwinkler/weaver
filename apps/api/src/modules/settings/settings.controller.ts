@@ -4,6 +4,7 @@ import { JwtAuthGuard, AdminGuard, CurrentUser, RequestUser } from '../../core/a
 import { ZodValidationPipe } from '../../common';
 import { TenantService } from '../../core/tenant/tenant.service';
 import { MailService } from '../mail/mail.service';
+import { Audit } from '../audit';
 
 @Controller('settings')
 @UseGuards(JwtAuthGuard, AdminGuard)
@@ -19,6 +20,12 @@ export class SettingsController {
   }
 
   @Patch()
+  @Audit({
+    action: 'settings.updated',
+    resource: 'settings',
+    captureBefore: true,
+    resourceId: ({ request }) => request.user?.tenantId,
+  })
   async updateSettings(
     @CurrentUser() user: RequestUser,
     @Body(new ZodValidationPipe(updateTenantSettingsSchema)) dto: any,
@@ -27,6 +34,11 @@ export class SettingsController {
   }
 
   @Post('smtp/test')
+  @Audit({
+    action: 'settings.smtp_tested',
+    resource: 'settings',
+    resourceId: ({ request }) => request.user?.tenantId,
+  })
   async testSmtp(
     @CurrentUser() user: RequestUser,
     @Body(new ZodValidationPipe(testSmtpSettingsSchema)) body: any,

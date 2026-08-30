@@ -1,5 +1,6 @@
 import {
   ActivityLogEntity,
+  AuditLogEntity,
   AutomationLogEntity,
   AutomationRuleEntity,
   AttachmentEntity,
@@ -44,6 +45,7 @@ export const TENANT_ENTITIES = [
   SprintEntity,
   CommentEntity,
   ActivityLogEntity,
+  AuditLogEntity,
   AutomationRuleEntity,
   AutomationLogEntity,
   RoleEntity,

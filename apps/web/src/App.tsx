@@ -41,6 +41,7 @@ import { SystemSettingsPage } from '@/features/settings/SystemSettingsPage';
 import { EmailUnsubscribePage } from '@/features/notifications/EmailUnsubscribePage';
 import { WikiPage } from '@/features/wiki/WikiPage';
 import { PublicForm } from '@/features/forms/PublicForm';
+import { AuditLogPage } from '@/features/admin/AuditLogPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -104,6 +105,7 @@ export function App() {
                   <Route path="/admin/teams" element={<TeamsPage />} />
                   <Route path="/admin/users" element={<UsersPage />} />
                   <Route path="/admin/automations" element={<AutomationsPage />} />
+                  <Route path="/admin/audit-log" element={<AuditLogPage />} />
                   <Route path="/settings/custom-fields" element={<CustomFieldsPage />} />
                   <Route path="/settings/plugins" element={<PluginsPage />} />
                   <Route path="/settings/webhooks" element={<WebhooksPage />} />

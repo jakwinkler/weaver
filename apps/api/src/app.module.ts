@@ -32,6 +32,7 @@ import { ImportModule } from './modules/import';
 import { PagesModule } from './modules/pages';
 import { FormsModule } from './modules/forms';
 import { ApiKeysModule } from './modules/api-keys';
+import { AuditModule } from './modules/audit';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -72,6 +73,7 @@ import { HealthController } from './health.controller';
     PagesModule,
     FormsModule,
     ApiKeysModule,
+    AuditModule,
   ],
   controllers: [HealthController],
 })

@@ -501,6 +501,25 @@ export interface ActivityLog {
   createdAt: Date;
 }
 
+export interface AuditLogUser {
+  id: string;
+  displayName: string;
+  email: string;
+}
+
+export interface AuditLog {
+  id: string;
+  userId: string | null;
+  user: AuditLogUser | null;
+  action: string;
+  resource: string;
+  resourceId: string;
+  metadata: Record<string, unknown>;
+  ipAddress: string | null;
+  userAgent: string | null;
+  createdAt: Date;
+}
+
 export interface Role {
   id: string;
   name: string;

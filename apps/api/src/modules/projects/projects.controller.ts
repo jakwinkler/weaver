@@ -24,6 +24,7 @@ import { ProjectsService } from './projects.service';
 import { ProjectMembersService } from './project-members.service';
 import { ProjectIssueTypesService } from './project-issue-types.service';
 import { ProjectPluginsService } from './project-plugins.service';
+import { Audit } from '../audit';
 
 @Controller('projects')
 @UseGuards(JwtAuthGuard, PermissionGuard)
@@ -37,6 +38,7 @@ export class ProjectsController {
 
   @Post()
   @RequirePermission('projects', 'create')
+  @Audit({ action: 'project.created', resource: 'project' })
   async create(
     @Body(new ZodValidationPipe(createProjectSchema)) dto: any,
     @CurrentUser() user: RequestUser,
@@ -59,6 +61,7 @@ export class ProjectsController {
 
   @Patch(':key')
   @RequirePermission('projects', 'update')
+  @Audit({ action: 'project.updated', resource: 'project', captureBefore: true })
   async update(
     @Param('key') key: string,
     @Body(new ZodValidationPipe(updateProjectSchema)) dto: any,
@@ -69,6 +72,7 @@ export class ProjectsController {
 
   @Delete(':key')
   @RequirePermission('projects', 'delete')
+  @Audit({ action: 'project.deleted', resource: 'project', captureBefore: true })
   @HttpCode(HttpStatus.NO_CONTENT)
   async delete(@Param('key') key: string) {
     await this.projectsService.delete(key);
@@ -85,6 +89,12 @@ export class ProjectsController {
 
   @Post(':key/members')
   @RequirePermission('projects', 'update')
+  @Audit({
+    action: 'project.member_added',
+    resource: 'project',
+    captureBefore: true,
+    resourceId: ({ request, before }) => String(before?.id ?? request.params.key),
+  })
   async addMember(
     @Param('key') key: string,
     @Body() dto: { userId: string; role?: string },
@@ -95,6 +105,12 @@ export class ProjectsController {
 
   @Patch(':key/members/:userId')
   @RequirePermission('projects', 'update')
+  @Audit({
+    action: 'project.member_role_changed',
+    resource: 'project',
+    captureBefore: true,
+    resourceId: ({ request, before }) => String(before?.id ?? request.params.key),
+  })
   async updateMemberRole(
     @Param('key') key: string,
     @Param('userId') userId: string,
@@ -106,6 +122,12 @@ export class ProjectsController {
 
   @Delete(':key/members/:userId')
   @RequirePermission('projects', 'update')
+  @Audit({
+    action: 'project.member_removed',
+    resource: 'project',
+    captureBefore: true,
+    resourceId: ({ request, before }) => String(before?.id ?? request.params.key),
+  })
   @HttpCode(HttpStatus.NO_CONTENT)
   async removeMember(
     @Param('key') key: string,
@@ -126,6 +148,12 @@ export class ProjectsController {
 
   @Post(':key/issue-types')
   @RequirePermission('projects', 'update')
+  @Audit({
+    action: 'project.issue_types_updated',
+    resource: 'project',
+    captureBefore: true,
+    resourceId: ({ request, before }) => String(before?.id ?? request.params.key),
+  })
   async setIssueTypes(
     @Param('key') key: string,
     @Body() dto: { issueTypeIds: string[] },
@@ -148,6 +176,11 @@ export class ProjectsController {
 
   @Post(':key/plugins/enable')
   @RequirePermission('projects', 'update')
+  @Audit({
+    action: 'plugin.enabled_for_project',
+    resource: 'plugin',
+    resourceId: ({ request }) => request.body.pluginId,
+  })
   async enablePlugin(
     @Param('key') key: string,
     @Body() dto: { pluginId: string },
@@ -158,6 +191,11 @@ export class ProjectsController {
 
   @Post(':key/plugins/disable')
   @RequirePermission('projects', 'update')
+  @Audit({
+    action: 'plugin.disabled_for_project',
+    resource: 'plugin',
+    resourceId: ({ request }) => request.body.pluginId,
+  })
   @HttpCode(HttpStatus.NO_CONTENT)
   async disablePlugin(
     @Param('key') key: string,
