@@ -18,9 +18,7 @@
     "@weaver/jira-import": "workspace:*",
     "@weaver/shared": "workspace:*",
     "@weaver/db": "workspace:*",
-    "nodemailer": "^8.0.1",
-    "pg": "^8.13.1",
-    "typeorm": "^0.3.20"
+    "nodemailer": "^8.0.1"
   },
   "devDependencies": {
     "@weaver/config": "workspace:*",

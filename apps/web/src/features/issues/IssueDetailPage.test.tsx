@@ -26,11 +26,15 @@ vi.mock('@/api', () => ({
       startDate: null,
       dueDate: null,
       percentDone: 0,
+      recurrenceRule: null,
+      recurrenceParentId: null,
+      recurrenceOccurrence: 0,
       createdAt: '2026-08-27T12:00:00.000Z',
       updatedAt: '2026-08-27T12:00:00.000Z',
     },
     isLoading: false,
   }),
+  useIssueRecurrence: () => ({ data: [] }),
   useProject: () => ({ data: { workflowId: 'workflow-1' } }),
   useTransitionIssue: () => ({ mutateAsync: apiMocks.transition, isPending: false }),
   useUpdateIssue: () => ({
@@ -105,18 +109,14 @@ describe('IssueDetailPage keyboard shortcuts', () => {
     expect(screen.getByText('Keyboard shortcuts')).toBeInTheDocument();
   });
 
-  it('opens assignee and status menus with contextual keys', async () => {
+  it('opens assignee and status menus with contextual keys', () => {
     renderPage();
 
     fireEvent.keyDown(document, { key: 'a' });
-    await waitFor(() => {
-      expect(screen.getByText('Unassign')).toBeInTheDocument();
-    });
+    expect(screen.getByText('Unassign')).toBeInTheDocument();
     fireEvent.keyDown(document, { key: 'Escape' });
 
     fireEvent.keyDown(document, { key: 's' });
-    await waitFor(() => {
-      expect(screen.getByRole('menuitem', { name: 'Done' })).toBeInTheDocument();
-    });
+    expect(screen.getByRole('menuitem', { name: 'Done' })).toBeInTheDocument();
   });
 });

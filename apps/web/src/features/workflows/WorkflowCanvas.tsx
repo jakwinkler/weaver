@@ -10,6 +10,7 @@ import {
   type OnConnect,
   type Connection,
   type NodeMouseHandler,
+  type OnNodeDrag,
   type Node,
   type Edge,
   BackgroundVariant,
@@ -56,12 +57,12 @@ export function WorkflowCanvas({
 }: WorkflowCanvasProps) {
   const positions = useWorkflowPositions(workflowId);
   const savedPositions = positions.getPositions();
-  const [edgeWaypoints, setEdgeWaypoints] = useState<Record<string, { x: number; y: number }>>(
-    () => positions.getEdgeWaypoints(),
+  const [edgeWaypoints, setEdgeWaypoints] = useState<Record<string, { x: number; y: number }>>(() =>
+    positions.getEdgeWaypoints(),
   );
-  const [edgeHandles, setEdgeHandles] = useState<Record<string, { sourceHandle: string; targetHandle: string }>>(
-    () => positions.getEdgeHandles(),
-  );
+  const [edgeHandles, setEdgeHandles] = useState<
+    Record<string, { sourceHandle: string; targetHandle: string }>
+  >(() => positions.getEdgeHandles());
 
   const handleDeleteTransition = useCallback(
     (transitionId: string) => {
@@ -98,9 +99,7 @@ export function WorkflowCanvas({
       // Update ReactFlow edges directly (bypasses the sync effect)
       setEdgesRef.current?.((currentEdges: Edge[]) =>
         currentEdges.map((e: Edge) =>
-          e.id === edgeId
-            ? { ...e, data: { ...e.data, waypoint: position } }
-            : e,
+          e.id === edgeId ? { ...e, data: { ...e.data, waypoint: position } } : e,
         ),
       );
 
@@ -113,7 +112,13 @@ export function WorkflowCanvas({
   );
 
   const derivedNodes = useWorkflowNodes(statuses, savedPositions);
-  const derivedEdges = useWorkflowEdges(transitions, handleDeleteTransition, edgeWaypoints, handleWaypointChange, edgeHandles);
+  const derivedEdges = useWorkflowEdges(
+    transitions,
+    handleDeleteTransition,
+    edgeWaypoints,
+    handleWaypointChange,
+    edgeHandles,
+  );
 
   const [nodes, setNodes, onNodesChange] = useNodesState(derivedNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(derivedEdges);
@@ -124,9 +129,7 @@ export function WorkflowCanvas({
   // Sync derived nodes into RF state, preserving current dragged positions
   useEffect(() => {
     setNodes((current) => {
-      const posMap = Object.fromEntries(
-        current.map((n) => [n.id, n.position]),
-      );
+      const posMap = Object.fromEntries(current.map((n) => [n.id, n.position]));
       return derivedNodes.map((n) => ({
         ...n,
         position: posMap[n.id] ?? n.position,
@@ -177,13 +180,10 @@ export function WorkflowCanvas({
     position: { x: number; y: number };
   } | null>(null);
 
-  const onConnect: OnConnect = useCallback(
-    (connection) => {
-      setPendingConnection(connection);
-      setConnectionDialogPos({ x: window.innerWidth / 2, y: 200 });
-    },
-    [],
-  );
+  const onConnect: OnConnect = useCallback((connection) => {
+    setPendingConnection(connection);
+    setConnectionDialogPos({ x: window.innerWidth / 2, y: 200 });
+  }, []);
 
   const handleConnectionConfirm = useCallback(
     (name: string) => {
@@ -220,7 +220,7 @@ export function WorkflowCanvas({
   }, []);
 
   // Save position on drag stop
-  const onNodeDragStop: NodeMouseHandler = useCallback(
+  const onNodeDragStop: OnNodeDrag<Node<StatusNodeData>> = useCallback(
     (_event, node) => {
       positions.updatePosition(node.id, node.position);
     },
@@ -248,16 +248,13 @@ export function WorkflowCanvas({
   );
 
   // Right-click on node → context menu
-  const onNodeContextMenu: NodeMouseHandler = useCallback(
-    (event, node) => {
-      event.preventDefault();
-      setContextMenu({
-        nodeId: node.id,
-        position: { x: event.clientX, y: event.clientY },
-      });
-    },
-    [],
-  );
+  const onNodeContextMenu: NodeMouseHandler = useCallback((event, node) => {
+    event.preventDefault();
+    setContextMenu({
+      nodeId: node.id,
+      position: { x: event.clientX, y: event.clientY },
+    });
+  }, []);
 
   // Delete key handling
   const onNodesDelete = useCallback(
@@ -291,18 +288,13 @@ export function WorkflowCanvas({
     return () => window.removeEventListener('keydown', handleKey);
   }, []);
 
-  const contextMenuStatus = contextMenu
-    ? statuses.find((s) => s.id === contextMenu.nodeId)
-    : null;
+  const contextMenuStatus = contextMenu ? statuses.find((s) => s.id === contextMenu.nodeId) : null;
 
-  const minimapNodeColor = useCallback(
-    (node: Node<StatusNodeData>) => {
-      const status = (node.data as StatusNodeData)?.status;
-      if (status) return MINIMAP_CATEGORY_COLORS[status.category] ?? '#94a3b8';
-      return '#94a3b8';
-    },
-    [],
-  );
+  const minimapNodeColor = useCallback((node: Node<StatusNodeData>) => {
+    const status = (node.data as StatusNodeData)?.status;
+    if (status) return MINIMAP_CATEGORY_COLORS[status.category] ?? '#94a3b8';
+    return '#94a3b8';
+  }, []);
 
   const defaultEdgeOptions = useMemo(() => ({ type: 'floating' as const }), []);
 
@@ -337,7 +329,6 @@ export function WorkflowCanvas({
           maskColor="rgba(0,0,0,0.08)"
           style={{ border: '1px solid #e2e8f0', borderRadius: 8 }}
         />
-
       </ReactFlow>
 
       {/* Connection dialog */}

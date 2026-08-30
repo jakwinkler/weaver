@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { InlineDatePicker } from './InlineDatePicker';
 import { InlineSelect } from './InlineSelect';
@@ -26,7 +26,7 @@ afterEach(() => {
 });
 
 describe('InlineSelect', () => {
-  it('saves a selected option', async () => {
+  it('saves a selected option', () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
 
     render(
@@ -40,12 +40,16 @@ describe('InlineSelect', () => {
       />,
     );
 
-    fireEvent.keyDown(screen.getByRole('combobox'), { key: 'ArrowDown' });
-    fireEvent.click(await screen.findByRole('option', { name: 'High' }));
-
-    await waitFor(() => {
-      expect(onSave).toHaveBeenCalledWith('high');
+    fireEvent.pointerDown(screen.getByRole('combobox'), {
+      button: 0,
+      ctrlKey: false,
+      pointerId: 1,
+      pointerType: 'mouse',
     });
+    const highOption = screen.getByRole('option', { name: 'High' });
+    fireEvent.click(highOption);
+
+    expect(onSave).toHaveBeenCalledWith('high');
   });
 
   it('renders no select affordance when editing is not allowed', () => {
@@ -71,17 +75,16 @@ describe('InlineDatePicker', () => {
     fireEvent.change(screen.getByDisplayValue('2026-08-26'), {
       target: { value: '2026-09-01' },
     });
-    await waitFor(() => {
-      expect(onSave).toHaveBeenCalledWith('2026-09-01');
+    expect(onSave).toHaveBeenCalledWith('2026-09-01');
+    await act(async () => {
+      await Promise.resolve();
     });
 
     rerender(<InlineDatePicker value="2026-09-01" onSave={onSave} />);
     fireEvent.change(screen.getByDisplayValue('2026-09-01'), {
       target: { value: '' },
     });
-    await waitFor(() => {
-      expect(onSave).toHaveBeenLastCalledWith(null);
-    });
+    expect(onSave).toHaveBeenLastCalledWith(null);
   });
 
   it('renders a formatted value without a date input when editing is not allowed', () => {

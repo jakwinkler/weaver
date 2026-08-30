@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getStoredPerPage, Pagination } from './Pagination';
 
@@ -59,7 +59,7 @@ describe('Pagination', () => {
     expect(onPageChange).toHaveBeenCalledWith(6);
   });
 
-  it('persists a selected page size', async () => {
+  it('persists a selected page size', () => {
     const onPerPageChange = vi.fn();
 
     render(
@@ -73,12 +73,16 @@ describe('Pagination', () => {
       />,
     );
 
-    fireEvent.keyDown(screen.getByRole('combobox'), { key: 'ArrowDown' });
-    fireEvent.click(await screen.findByRole('option', { name: '50' }));
-
-    await waitFor(() => {
-      expect(onPerPageChange).toHaveBeenCalledWith(50);
+    fireEvent.pointerDown(screen.getByRole('combobox'), {
+      button: 0,
+      ctrlKey: false,
+      pointerId: 1,
+      pointerType: 'mouse',
     });
+    const fiftyOption = screen.getByRole('option', { name: '50' });
+    fireEvent.click(fiftyOption);
+
+    expect(onPerPageChange).toHaveBeenCalledWith(50);
     expect(getStoredPerPage()).toBe(50);
   });
 });

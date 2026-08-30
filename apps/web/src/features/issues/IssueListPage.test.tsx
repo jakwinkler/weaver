@@ -73,6 +73,10 @@ vi.mock('@/api', async () => {
         queryFn: async () => apiMocks.issuePage,
         initialData: apiMocks.issuePage,
       }),
+    useReorderIssues: () => ({ mutateAsync: vi.fn() }),
+    useSprints: () => ({ data: [] }),
+    useBulkUpdateIssues: () => ({ mutateAsync: vi.fn(), isPending: false }),
+    useBulkDeleteIssues: () => ({ mutateAsync: vi.fn(), isPending: false }),
     useUpdateIssueDynamic: () => ({ mutateAsync: apiMocks.mutateAsync }),
     useTransitionIssueDynamic: () => ({ mutateAsync: apiMocks.transitionMutateAsync }),
     useUsers: () => ({
@@ -169,32 +173,36 @@ describe('IssueListPage inline editing', () => {
     expect(screen.getByDisplayValue('2026-08-30')).toBeInTheDocument();
   });
 
-  it('offers only configured workflow transitions and saves assignee changes', async () => {
+  it('offers only configured workflow transitions and saves assignee changes', () => {
     renderPage();
 
-    fireEvent.keyDown(screen.getByRole('combobox', { name: 'Edit TEST-1 status' }), {
-      key: 'ArrowDown',
+    fireEvent.pointerDown(screen.getByRole('combobox', { name: 'Edit TEST-1 status' }), {
+      button: 0,
+      ctrlKey: false,
+      pointerId: 1,
+      pointerType: 'mouse',
     });
-    expect(await screen.findByRole('option', { name: 'Open' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('option', { name: 'Done' }));
+    expect(screen.getByRole('option', { name: 'Open' })).toBeInTheDocument();
+    const doneOption = screen.getByRole('option', { name: 'Done' });
+    fireEvent.click(doneOption);
 
-    await waitFor(() => {
-      expect(apiMocks.transitionMutateAsync).toHaveBeenCalledWith({
-        issueKey: 'TEST-1',
-        transitionId: 'transition-done',
-      });
+    expect(apiMocks.transitionMutateAsync).toHaveBeenCalledWith({
+      issueKey: 'TEST-1',
+      transitionId: 'transition-done',
     });
 
-    fireEvent.keyDown(screen.getByRole('combobox', { name: 'Edit TEST-1 assignee' }), {
-      key: 'ArrowDown',
+    fireEvent.pointerDown(screen.getByRole('combobox', { name: 'Edit TEST-1 assignee' }), {
+      button: 0,
+      ctrlKey: false,
+      pointerId: 2,
+      pointerType: 'mouse',
     });
-    fireEvent.click(await screen.findByRole('option', { name: 'Unassigned' }));
+    const unassignedOption = screen.getByRole('option', { name: 'Unassigned' });
+    fireEvent.click(unassignedOption);
 
-    await waitFor(() => {
-      expect(apiMocks.mutateAsync).toHaveBeenCalledWith({
-        issueKey: 'TEST-1',
-        assigneeId: null,
-      });
+    expect(apiMocks.mutateAsync).toHaveBeenCalledWith({
+      issueKey: 'TEST-1',
+      assigneeId: null,
     });
   });
 

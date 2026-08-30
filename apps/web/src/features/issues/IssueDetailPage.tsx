@@ -37,13 +37,6 @@ import {
 import { cn } from '@/lib/utils';
 import { useHotkeys } from '@/hooks/useHotkeys';
 
-function openShortcutMenu(selector: string) {
-  const trigger = document.querySelector<HTMLButtonElement>(selector);
-  if (!trigger) return;
-  trigger.focus();
-  trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
-}
-
 export function IssueDetailPage() {
   const { issueKey } = useParams<{ issueKey: string }>();
   const { data: issue, isLoading } = useIssue(issueKey!);
@@ -68,6 +61,8 @@ export function IssueDetailPage() {
   const [editingDesc, setEditingDesc] = useState(false);
   const [descJson, setDescJson] = useState<Record<string, unknown> | null>(null);
   const [recurrenceDraft, setRecurrenceDraft] = useState<RecurrenceRule | null>(null);
+  const [assigneeMenuOpen, setAssigneeMenuOpen] = useState(false);
+  const [statusMenuOpen, setStatusMenuOpen] = useState(false);
 
   useEffect(() => {
     if (issue) {
@@ -114,12 +109,12 @@ export function IssueDetailPage() {
       },
       {
         keys: 'a',
-        handler: () => openShortcutMenu('[data-shortcut-assignee]'),
+        handler: () => setAssigneeMenuOpen(true),
         enabled: canAssign,
       },
       {
         keys: 's',
-        handler: () => openShortcutMenu('[data-shortcut-status]'),
+        handler: () => setStatusMenuOpen(true),
         enabled: canTransition,
       },
       {
@@ -371,7 +366,7 @@ export function IssueDetailPage() {
             </CardHeader>
             <CardContent className="px-4 pb-4 pt-0">
               {availableTransitions && availableTransitions.length > 0 && canTransition ? (
-                <DropdownMenu>
+                <DropdownMenu open={statusMenuOpen} onOpenChange={setStatusMenuOpen}>
                   <DropdownMenuTrigger asChild>
                     <button
                       data-shortcut-status
@@ -553,7 +548,7 @@ export function IssueDetailPage() {
                   <dt className="text-xs text-muted-foreground">Assignee</dt>
                   <dd className="mt-0.5">
                     {canAssign ? (
-                      <DropdownMenu>
+                      <DropdownMenu open={assigneeMenuOpen} onOpenChange={setAssigneeMenuOpen}>
                         <DropdownMenuTrigger asChild>
                           <button
                             data-shortcut-assignee

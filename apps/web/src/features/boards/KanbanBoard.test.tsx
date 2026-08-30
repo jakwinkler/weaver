@@ -22,6 +22,9 @@ function issue(id: string, priority: Issue['priority']): Issue {
     labels: [],
     sortOrder: Number(id) * 1000,
     percentDone: 0,
+    recurrenceRule: null,
+    recurrenceParentId: null,
+    recurrenceOccurrence: 0,
     createdAt: new Date('2026-01-01T00:00:00Z'),
     updatedAt: new Date('2026-01-01T00:00:00Z'),
   };
@@ -49,6 +52,7 @@ const boardIssues: BoardIssuesResponse = {
 
 vi.mock('react-router-dom', () => ({
   Link: ({ children }: { children: ReactNode }) => <a href="#">{children}</a>,
+  useNavigate: () => vi.fn(),
   useParams: () => ({ projectKey: 'WEB' }),
 }));
 

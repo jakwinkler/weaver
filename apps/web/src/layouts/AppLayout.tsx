@@ -90,7 +90,9 @@ export function AppLayout() {
       {
         keys: '/',
         handler: () => {
-          const searchInput = document.querySelector<HTMLInputElement>('[data-shortcut-search]');
+          const searchInput = document.querySelector<HTMLInputElement>(
+            '[data-shortcut-search]:not([readonly])',
+          );
           if (searchInput) {
             searchInput.focus();
             return;
@@ -118,7 +120,9 @@ export function AppLayout() {
     if (!pendingSearchFocus.current || location.pathname !== '/search') return;
 
     const frame = requestAnimationFrame(() => {
-      const searchInput = document.querySelector<HTMLInputElement>('[data-shortcut-search]');
+      const searchInput = document.querySelector<HTMLInputElement>(
+        '[data-shortcut-search]:not([readonly])',
+      );
       searchInput?.focus();
       pendingSearchFocus.current = false;
     });

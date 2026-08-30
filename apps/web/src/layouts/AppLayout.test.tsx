@@ -32,6 +32,9 @@ vi.mock('@/stores', () => ({
 }));
 
 vi.mock('@/hooks/useWebSocket', () => ({ useWebSocket: vi.fn() }));
+vi.mock('@/features/notifications/NotificationPanel', () => ({
+  NotificationPanel: () => <button type="button">Notifications</button>,
+}));
 
 Object.defineProperty(Element.prototype, 'hasPointerCapture', {
   configurable: true,
@@ -149,7 +152,9 @@ describe('AppLayout responsive shell', () => {
 
     const sidebar = document.querySelector('aside');
     expect(sidebar).toHaveClass('hidden', 'md:flex');
-    expect(screen.getByRole('link', { name: 'Weaver home mobile' })).toHaveClass('md:hidden');
+    expect(screen.getByRole('link', { name: 'Weaver home mobile' }).parentElement).toHaveClass(
+      'md:hidden',
+    );
     expect(screen.getByRole('main')).toHaveClass('px-4', 'sm:px-6');
   });
 });

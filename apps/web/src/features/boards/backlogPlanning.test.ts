@@ -21,6 +21,9 @@ function issue(overrides: Partial<Issue> & Pick<Issue, 'id' | 'key'>): Issue {
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,
+    recurrenceRule: overrides.recurrenceRule ?? null,
+    recurrenceParentId: overrides.recurrenceParentId ?? null,
+    recurrenceOccurrence: overrides.recurrenceOccurrence ?? 0,
   };
 }
 

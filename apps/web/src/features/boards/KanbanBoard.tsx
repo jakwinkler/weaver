@@ -483,7 +483,8 @@ export function KanbanBoard() {
     );
   }
 
-  const board = boardData?.board ?? boards[0];
+  const board = boardData?.board ?? boards?.[0];
+  if (!board) return null;
   const issues = localIssues ?? boardData?.issues ?? [];
   const statuses = (workflow?.statuses || []) as WorkflowStatus[];
   const swimlaneField = board.config.swimlaneField ?? 'none';
