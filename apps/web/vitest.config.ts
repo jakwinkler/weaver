@@ -7,6 +7,7 @@ export default mergeConfig(
   defineConfig({
     test: {
       exclude: ['e2e/**', 'node_modules/**', 'dist/**'],
+      include: ['src/**/*.test.{ts,tsx}'],
     },
   }),
 );

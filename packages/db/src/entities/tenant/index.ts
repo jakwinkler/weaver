@@ -23,3 +23,5 @@ export { AutomationRuleEntity } from './automation-rule.entity';
 export { AutomationLogEntity } from './automation-log.entity';
 export { ImportJobEntity } from './import-job.entity';
 export { ImportRecordEntity } from './import-record.entity';
+export { PageEntity } from './page.entity';
+export { PageVersionEntity } from './page-version.entity';

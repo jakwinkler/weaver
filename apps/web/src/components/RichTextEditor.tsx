@@ -39,6 +39,7 @@ interface RichTextEditorProps {
   onChange?: (json: Record<string, unknown>) => void;
   placeholder?: string;
   editable?: boolean;
+  editorClassName?: string;
 }
 
 export function RichTextEditor({
@@ -47,6 +48,7 @@ export function RichTextEditor({
   onChange,
   placeholder = 'Write something...',
   editable = true,
+  editorClassName,
 }: RichTextEditorProps) {
   const issueUpload = useUploadAttachment(issueKey || '__noop__');
   const genericUpload = useGenericUploadAttachment();
@@ -133,9 +135,10 @@ export function RichTextEditor({
     },
     editorProps: {
       attributes: {
-        class: editable
+        class: `${editable
           ? 'prose prose-sm max-w-none focus:outline-none min-h-[80px] px-3 py-2'
-          : 'prose prose-sm max-w-none',
+          : 'prose prose-sm max-w-none'} ${editorClassName ?? ''}`,
+        'aria-label': placeholder,
       },
       handlePaste: (_view, event) => {
         const items = event.clipboardData?.items;

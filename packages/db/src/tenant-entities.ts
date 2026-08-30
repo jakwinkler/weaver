@@ -12,6 +12,8 @@ import {
   IssueLinkEntity,
   IssueTypeEntity,
   NotificationEntity,
+  PageEntity,
+  PageVersionEntity,
   ProjectEntity,
   ProjectIssueTypeEntity,
   ProjectMemberEntity,
@@ -52,4 +54,6 @@ export const TENANT_ENTITIES = [
   ProjectPluginEntity,
   ImportJobEntity,
   ImportRecordEntity,
+  PageEntity,
+  PageVersionEntity,
 ] as const;

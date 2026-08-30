@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { RichTextRenderer } from './RichTextEditor';
+import { RichTextRenderer as WikiRichTextRenderer } from './RichTextRenderer';
 
 afterEach(cleanup);
 
@@ -17,6 +18,13 @@ function renderRichText(content: Record<string, unknown>) {
       <RichTextRenderer content={content} />
     </QueryClientProvider>,
   );
+}
+
+function doc(text: string) {
+  return {
+    type: 'doc',
+    content: [{ type: 'paragraph', content: [{ type: 'text', text }] }],
+  };
 }
 
 describe('RichTextRenderer', () => {
@@ -67,15 +75,8 @@ describe('RichTextRenderer', () => {
   });
 
   it('updates read-only content after a query refresh', async () => {
-    const first = {
-      type: 'doc',
-      content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Before refresh' }] }],
-    };
-    const second = {
-      type: 'doc',
-      content: [{ type: 'paragraph', content: [{ type: 'text', text: 'After refresh' }] }],
-    };
-
+    const first = doc('Before refresh');
+    const second = doc('After refresh');
     const queryClient = new QueryClient();
     const view = render(
       <QueryClientProvider client={queryClient}>
@@ -92,5 +93,26 @@ describe('RichTextRenderer', () => {
 
     await waitFor(() => expect(screen.getByText('After refresh')).toBeTruthy());
     expect(screen.queryByText('Before refresh')).toBeNull();
+  });
+
+  it('renders replacement content when a restored wiki page arrives', async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    const view = render(
+      <QueryClientProvider client={queryClient}>
+        <WikiRichTextRenderer content={doc('Current page content')} />
+      </QueryClientProvider>,
+    );
+
+    expect(screen.getByText('Current page content')).toBeTruthy();
+    view.rerender(
+      <QueryClientProvider client={queryClient}>
+        <WikiRichTextRenderer content={doc('Restored page content')} />
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByText('Restored page content')).toBeTruthy());
+    expect(screen.queryByText('Current page content')).toBeNull();
   });
 });

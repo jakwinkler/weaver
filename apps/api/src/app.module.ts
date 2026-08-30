@@ -29,6 +29,7 @@ import { DashboardModule } from './modules/dashboard';
 import { SettingsModule } from './modules/settings';
 import { AutomationsModule } from './modules/automations';
 import { ImportModule } from './modules/import';
+import { PagesModule } from './modules/pages';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -66,6 +67,7 @@ import { HealthController } from './health.controller';
     SettingsModule,
     AutomationsModule,
     ImportModule,
+    PagesModule,
   ],
   controllers: [HealthController],
 })
