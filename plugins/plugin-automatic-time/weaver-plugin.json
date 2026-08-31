@@ -1,7 +1,7 @@
 {
   "id": "@weaver/plugin-automatic-time",
   "name": "Automatic Time",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "Review private activity drafts and explicitly release them as official Weaver time",
   "author": "Weaver",
   "icon": "clock",
@@ -16,7 +16,12 @@
     "server": "src/server/index.ts",
     "client": "src/client/index.ts"
   },
-  "permissions": ["automatic-time.view", "automatic-time.manage-drafts", "automatic-time.release"],
+  "permissions": [
+    "automatic-time.view",
+    "automatic-time.manage-drafts",
+    "automatic-time.release",
+    "automatic-time.manage-devices"
+  ],
   "declaredPermissions": [
     {
       "key": "automatic-time.view",
@@ -32,8 +37,20 @@
       "key": "automatic-time.release",
       "label": "Release official time",
       "description": "Explicitly release reviewed drafts as official Weaver time entries"
+    },
+    {
+      "key": "automatic-time.manage-devices",
+      "label": "Manage companion devices",
+      "description": "Approve pairing requests and revoke only your own Automatic Time devices"
     }
   ],
+  "companion": {
+    "platform": "macos",
+    "downloadArtifact": "automatic-time-macos",
+    "minimumVersion": "0.2.0",
+    "pairingRoute": "/apps/automatic-time/settings",
+    "authenticator": "authenticateDeviceCredential"
+  },
   "requires": {
     "coreCapabilities": ["issue-candidates", "time-entries"]
   },
@@ -47,7 +64,12 @@
       "project.deleted",
       "time.locked"
     ],
-    "emits": ["automatic-time.draft_corrected", "automatic-time.day_released"]
+    "emits": [
+      "automatic-time.device_paired",
+      "automatic-time.device_revoked",
+      "automatic-time.draft_corrected",
+      "automatic-time.day_released"
+    ]
   },
   "ui": {
     "navigation": [
@@ -56,6 +78,12 @@
         "icon": "clock",
         "path": "/apps/automatic-time/drafts",
         "requiredPermissions": ["automatic-time.view"]
+      },
+      {
+        "label": "Automatic Time Settings",
+        "icon": "settings",
+        "path": "/apps/automatic-time/settings",
+        "requiredPermissions": ["automatic-time.manage-devices"]
       }
     ],
     "pages": [
@@ -68,6 +96,11 @@
         "path": "/apps/automatic-time/review",
         "component": "AutomaticTimeReviewPageWrapper",
         "requiredPermissions": ["automatic-time.view", "automatic-time.release"]
+      },
+      {
+        "path": "/apps/automatic-time/settings",
+        "component": "AutomaticTimeSettingsPageWrapper",
+        "requiredPermissions": ["automatic-time.manage-devices"]
       }
     ]
   },
@@ -125,12 +158,80 @@
       "path": "/test/fixtures/drafts",
       "handler": "loadSyntheticDraftFixtures",
       "requiredPermissions": ["automatic-time.manage-drafts"]
+    },
+    {
+      "method": "POST",
+      "path": "/pairing/requests",
+      "handler": "requestPairing",
+      "auth": "pairing"
+    },
+    {
+      "method": "POST",
+      "path": "/pairing/exchange",
+      "handler": "exchangePairingCode",
+      "auth": "pairing"
+    },
+    {
+      "method": "GET",
+      "path": "/pairing/requests/:userCode",
+      "handler": "getPairingRequest",
+      "requiredPermissions": ["automatic-time.manage-devices"]
+    },
+    {
+      "method": "POST",
+      "path": "/pairing/requests/:userCode/approve",
+      "handler": "approvePairingRequest",
+      "requiredPermissions": ["automatic-time.manage-devices"]
+    },
+    {
+      "method": "GET",
+      "path": "/devices",
+      "handler": "listDevices",
+      "requiredPermissions": ["automatic-time.manage-devices"]
+    },
+    {
+      "method": "POST",
+      "path": "/devices/:deviceId/revoke",
+      "handler": "revokeDevice",
+      "requiredPermissions": ["automatic-time.manage-devices"]
+    },
+    {
+      "method": "GET",
+      "path": "/device/status",
+      "handler": "getDeviceStatus",
+      "auth": "device",
+      "requiredDeviceScopes": ["automatic-time:device:heartbeat"]
+    },
+    {
+      "method": "GET",
+      "path": "/device/issue-candidates",
+      "handler": "listIssueCandidates",
+      "auth": "device",
+      "requiredDeviceScopes": ["automatic-time:candidates:read"]
+    },
+    {
+      "method": "GET",
+      "path": "/device/released-days",
+      "handler": "listReleasedDaysForRetention",
+      "auth": "device",
+      "requiredDeviceScopes": ["automatic-time:drafts:read"]
+    },
+    {
+      "method": "POST",
+      "path": "/device/drafts",
+      "handler": "syncDeviceDrafts",
+      "auth": "device",
+      "requiredDeviceScopes": ["automatic-time:drafts:write"]
     }
   ],
   "migrations": [
     {
       "version": "0.1.0",
       "path": "migrations/001_create_automatic_time_tables.sql"
+    },
+    {
+      "version": "0.2.0",
+      "path": "migrations/002_create_pairing_requests.sql"
     }
   ]
 }

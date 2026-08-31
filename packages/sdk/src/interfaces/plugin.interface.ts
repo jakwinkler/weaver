@@ -47,6 +47,10 @@ export interface PluginRequest {
   query: Record<string, string>;
   body: unknown;
   headers: Record<string, string>;
+  auth?:
+    | { type: 'interactive' }
+    | { type: 'pairing' }
+    | { type: 'device'; deviceId: string; scopes: string[] };
 }
 
 export interface PluginResponse {
@@ -59,10 +63,16 @@ export interface ConditionRegistry {
   register(name: string, evaluator: ConditionEvaluator): void;
 }
 
-export type ConditionEvaluator = (params: Record<string, unknown>, context: PluginContext) => Promise<boolean>;
+export type ConditionEvaluator = (
+  params: Record<string, unknown>,
+  context: PluginContext,
+) => Promise<boolean>;
 
 export interface PostFunctionRegistry {
   register(name: string, fn: PostFunction): void;
 }
 
-export type PostFunction = (params: Record<string, unknown>, context: PluginContext) => Promise<void>;
+export type PostFunction = (
+  params: Record<string, unknown>,
+  context: PluginContext,
+) => Promise<void>;

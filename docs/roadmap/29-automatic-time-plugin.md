@@ -4,7 +4,7 @@
 
 ## Status
 
-- Phases 0, 1, and 2 complete; Phase 3 not started
+- Phases 0, 1, 2, 3, and 4 complete; Phase 5 not started
 - First user: Matt, single-user workflow
 - Initial platform: macOS
 - Distribution: bundled first-party plugin, disabled by default
@@ -493,27 +493,48 @@ Phase 2 evidence:
 
 ### Phase 3: Companion foundation and pairing
 
-- [ ] Create the macOS companion project and reproducible build configuration.
-- [ ] Implement Keychain-backed device credentials.
-- [ ] Implement short-lived pairing and user approval.
-- [ ] Implement encrypted local storage and durable outbox.
-- [ ] Implement device status, revocation, and version display in plugin settings.
-- [ ] Add offline, expiration, revocation, and retry tests.
+- [x] Create the macOS companion project and reproducible build configuration.
+- [x] Implement Keychain-backed device credentials.
+- [x] Implement short-lived pairing and user approval.
+- [x] Implement encrypted local storage and durable outbox.
+- [x] Implement device status, revocation, and version display in plugin settings.
+- [x] Add offline, expiration, revocation, and retry tests.
 
 Gate: a paired companion can sync a synthetic derived draft but cannot release official time or access unrelated Weaver data.
 
+Phase 3 evidence:
+
+- `companion/automatic-time-macos/` is a Swift Package Manager project with a native menu bar application, a reproducible test-and-release-build script, an HTTP client, and separate library targets for storage and synchronization. The local build is intentionally unsigned and is not a distribution artifact.
+- Device credentials and the local encryption key use macOS Keychain entries restricted to the current device. Derived drafts and the durable outbox are stored in an AES-GCM encrypted, owner-only file, with stable source references and persisted retry state across restart.
+- Pairing requests expire after ten minutes, store only a digest of the one-time secret, require browser approval, enforce bounded attempts, and can be exchanged only once. Device credentials expire after ninety days, are stored as digests by the server, and are returned only during exchange.
+- Companion routes use a separate manifest-declared authentication boundary rather than browser JWT handling. Every device route declares its required scopes, derives user context from the paired device, records companion version and last-seen time, and rejects revoked or expired credentials immediately.
+- The plugin settings page shows the exact requesting device, platform, companion version, user code, expiry, requested scopes, and the explicit inability to release official time. Its device list exposes current status, version, last seen, credential expiry, and revocation.
+- Database-backed pairing tests cover single-use exchange, hashed secrets and tokens, scoped synthetic draft sync, raw-signal rejection, unrelated-data denial, release denial, scope removal, revocation, and expiry. Swift tests cover encrypted-storage plaintext absence, restart recovery, offline retry, revocation, and credential expiration.
+- Browser acceptance at 1920 by 1080 verifies approval, one-time exchange, the scoped device heartbeat, version and last-seen display, revocation, and rejection of the revoked credential on its next request. The browser console is clean.
+
 ### Phase 4: Metadata capture and segmentation
 
-- [ ] Implement active application and window metadata capture.
-- [ ] Implement browser domain and title capture with explicit permission boundaries.
-- [ ] Implement idle, pause, lock, sleep, and wake handling.
-- [ ] Implement Git repository, branch, and commit metadata capture without contents.
-- [ ] Implement Weaver candidate and recent-context synchronization.
-- [ ] Implement deterministic segmentation and interruption smoothing.
-- [ ] Implement retention deletion and verification.
-- [ ] Add fixture-driven unit and recovery tests.
+- [x] Implement active application and window metadata capture.
+- [x] Implement browser domain and title capture with explicit permission boundaries.
+- [x] Implement idle, pause, lock, sleep, and wake handling.
+- [x] Implement Git repository, branch, and commit metadata capture without contents.
+- [x] Implement Weaver candidate and recent-context synchronization.
+- [x] Implement deterministic segmentation and interruption smoothing.
+- [x] Implement retention deletion and verification.
+- [x] Add fixture-driven unit and recovery tests.
 
 Gate: a synthetic workday produces stable activity blocks with no idle inflation, no raw-signal upload, and no loss across restart.
+
+Phase 4 evidence:
+
+- The companion samples the frontmost application through AppKit. Window-title capture remains off by default, checks Accessibility trust without prompting, and requests permission only through the explicit menu action.
+- Browser metadata remains off by default. An explicit toggle enables a fixed Safari, Chrome, Brave, and Edge Apple Events adapter that immediately reduces the active URL to a normalized domain, discards paths, queries, and fragments, and applies domain exclusions to both the domain and title.
+- Idle detection, indefinite and timed pause, screen lock and unlock, sleep and wake, and missing-signal gaps create explicit segmentation boundaries. Capture does not sample optional context while paused, idle, locked, or asleep.
+- Git capture runs only for an explicitly configured repository. It records a SHA-256 repository fingerprint, branch, and commit identifier without reading file contents, diffs, or history, and supports repository exclusions.
+- The scoped companion client caches at most 100 current or recently updated Weaver issue candidates. A separate device route returns only the user's released local dates and release times so the companion can enforce post-release retention without gaining release authority.
+- Repository paths, exclusions, raw signals, activity blocks, bounded candidates, released-day state, outbox items, and deletion tombstones share the AES-GCM encrypted owner-only local store. Raw evidence expires 48 hours after a synchronized release or after an absolute seven days, and each deletion run persists count-only verification.
+- The deterministic segmenter closes on durable context changes, smooths interruptions shorter than two minutes, preserves exact issue-key transitions, omits idle and lifecycle gaps, refuses to infer missing intervals, and splits at the local-day boundary without losing captured duration.
+- Nineteen synthetic Swift tests cover privacy filters, browser sanitization, path-free Git metadata, timed pause and lock suppression, segmentation rules, encrypted restart recovery, bounded candidates, released-day synchronization, retention, and the durable outbox. The representative workday deterministically produces three blocks totaling 70 minutes, excludes idle and sleep time, retains no readable raw evidence at rest, emits no raw upload fields, and recovers the same signals and blocks after restart.
 
 ### Phase 5: Assignment, confidence, and descriptions
 

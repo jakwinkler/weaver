@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   AutomaticTimeDraftsPage,
   AutomaticTimeReviewPage,
+  AutomaticTimeSettingsPage,
   type AutomaticTimeApi,
   type AutomaticTimeDraft,
   type AutomaticTimeReview,
@@ -43,6 +44,10 @@ function createApi(): AutomaticTimeApi {
     deleteDraft: vi.fn().mockResolvedValue(undefined),
     getDailyReview: vi.fn(),
     releaseDay: vi.fn(),
+    getPairingRequest: vi.fn(),
+    approvePairingRequest: vi.fn(),
+    listDevices: vi.fn().mockResolvedValue([]),
+    revokeDevice: vi.fn(),
   };
 }
 
@@ -110,5 +115,51 @@ describe('Automatic Time plugin pages', () => {
     expect(await screen.findByText('Day released')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Release 0m' })).toBeNull();
     expect(screen.getAllByText('released').length).toBeGreaterThan(0);
+  });
+
+  it('shows exact pairing authority and revokes a companion device', async () => {
+    const api = createApi();
+    vi.mocked(api.getPairingRequest).mockResolvedValue({
+      userCode: 'ABCD-1234',
+      displayName: "Matt's Mac",
+      platform: 'macos',
+      companionVersion: '0.1.0',
+      requestedScopes: [
+        'automatic-time:candidates:read',
+        'automatic-time:drafts:write',
+        'automatic-time:device:heartbeat',
+      ],
+      status: 'pending',
+      expiresAt: '2026-08-29T20:00:00.000Z',
+    });
+    vi.mocked(api.approvePairingRequest).mockResolvedValue({ status: 'approved' });
+    vi.mocked(api.listDevices).mockResolvedValue([
+      {
+        id: 'device-1',
+        displayName: "Matt's Mac",
+        platform: 'macos',
+        companionVersion: '0.1.0',
+        scopes: ['automatic-time:drafts:write'],
+        status: 'active',
+        lastSeenAt: '2026-08-29T19:55:00.000Z',
+        expiresAt: '2026-11-27T19:55:00.000Z',
+        revokedAt: null,
+      },
+    ]);
+    vi.mocked(api.revokeDevice).mockResolvedValue({ status: 'revoked' });
+
+    render(
+      <MemoryRouter initialEntries={['/apps/automatic-time/settings?pairing=ABCD-1234']}>
+        <AutomaticTimeSettingsPage api={api} />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("Matt's Mac wants to pair")).toBeTruthy();
+    expect(screen.getByText('Cannot release official time')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Approve device' }));
+    await waitFor(() => expect(api.approvePairingRequest).toHaveBeenCalledWith('ABCD-1234'));
+
+    fireEvent.click(await screen.findByRole('button', { name: "Revoke Matt's Mac" }));
+    await waitFor(() => expect(api.revokeDevice).toHaveBeenCalledWith('device-1'));
   });
 });

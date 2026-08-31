@@ -51,6 +51,7 @@ export interface PluginCompanionMetadata {
   downloadArtifact: string;
   minimumVersion: string;
   pairingRoute: string;
+  authenticator?: string;
 }
 
 export interface PluginMigrationDefinition {
@@ -102,5 +103,7 @@ export interface PluginRouteDefinition {
   method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   path: string;
   handler: string;
+  auth?: 'interactive' | 'pairing' | 'device';
   requiredPermissions?: string[];
+  requiredDeviceScopes?: string[];
 }

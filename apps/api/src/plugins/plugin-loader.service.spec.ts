@@ -70,6 +70,28 @@ describe('PluginLoaderService manifest validation', () => {
     expect(loader.hasPlugin('@weaver/plugin-invalid')).toBe(false);
   });
 
+  it('rejects device routes without scoped companion authentication', async () => {
+    writeManifest('unsafe-device-route', {
+      id: '@weaver/plugin-unsafe-device',
+      name: 'Unsafe Device Plugin',
+      version: '1.0.0',
+      entrypoints: { server: 'src/server/index.ts' },
+      permissions: [],
+      routes: [
+        {
+          method: 'POST',
+          path: '/device/write',
+          handler: 'writeFromDevice',
+          auth: 'device',
+        },
+      ],
+    });
+
+    await loader.loadPlugins(pluginsDir);
+
+    expect(loader.getManifest('@weaver/plugin-unsafe-device')).toBeUndefined();
+  });
+
   it('accepts every existing bundled plugin manifest', async () => {
     const bundledPluginsDir = path.resolve(__dirname, '../../../../plugins');
 

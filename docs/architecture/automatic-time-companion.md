@@ -17,6 +17,8 @@ Build the first companion as a native Swift menu bar application targeting macOS
 - Put the production application in `companion/automatic-time-macos/`. Keep the Phase 0 proof under `spikes/` disposable.
 - Use `NSWorkspace.frontmostApplication` for the active application process.
 - Treat window-title access as an optional Accessibility capability. Check trust without prompting during ordinary startup. Request access only from an explicit onboarding or settings action.
+- Keep browser metadata disabled by default. When explicitly enabled, use a fixed browser allowlist and Apple Events to read only the active tab URL and title, immediately reduce the URL to its normalized domain, and never persist the full URL. Domain exclusions remove both domain and title evidence.
+- Read Git branch and commit identifiers only from an explicitly configured local repository. Persist a SHA-256 repository fingerprint with the branch and commit, while keeping the path inside the encrypted local configuration and never reading file contents or diffs.
 - Use CryptoKit AES-GCM for authenticated encryption of local evidence.
 - Store the evidence encryption key and device credential as small secrets in macOS Keychain. Do not store the evidence body in Keychain.
 - Keep capture adapters separate from segmentation, assignment, encrypted storage, and sync so every boundary can be fixture-tested.
@@ -70,7 +72,6 @@ The capability command reports only whether the APIs are available and authorize
 ## Remaining Decisions
 
 - Local inference model and runtime
-- Browser metadata mechanism and permission experience
 - Exact issue-candidate lookback window
 - Final-total adjustment policy beyond the default rounding rule
 - Companion signing, notarization, update, and delivery mechanism

@@ -45,6 +45,30 @@ export interface AutomaticTimeReleaseResult {
   };
 }
 
+export interface AutomaticTimePairingRequest {
+  userCode: string;
+  displayName: string;
+  platform: 'macos';
+  companionVersion: string;
+  requestedScopes: string[];
+  status: 'pending' | 'approved' | 'exchanged' | 'denied' | 'expired';
+  expiresAt: string;
+  approvedAt?: string | null;
+}
+
+export interface AutomaticTimeDevice {
+  id: string;
+  displayName: string;
+  platform: 'macos';
+  companionVersion: string;
+  scopes: string[];
+  status: 'active' | 'expired' | 'revoked';
+  lastSeenAt: string | null;
+  createdAt?: string;
+  revokedAt: string | null;
+  expiresAt: string | null;
+}
+
 export interface AutomaticTimeApi {
   listDrafts(date: string): Promise<AutomaticTimeDraft[]>;
   listIssueCandidates(): Promise<IssueCandidate[]>;
@@ -57,6 +81,10 @@ export interface AutomaticTimeApi {
   deleteDraft(draftId: string): Promise<void>;
   getDailyReview(date: string): Promise<AutomaticTimeReview>;
   releaseDay(date: string, idempotencyKey: string): Promise<AutomaticTimeReleaseResult>;
+  getPairingRequest(userCode: string): Promise<AutomaticTimePairingRequest>;
+  approvePairingRequest(userCode: string): Promise<{ status: string }>;
+  listDevices(): Promise<AutomaticTimeDevice[]>;
+  revokeDevice(deviceId: string): Promise<{ status: string }>;
 }
 
 export interface PluginApi {
@@ -76,5 +104,10 @@ export function createAutomaticTimeApi(api: PluginApi): AutomaticTimeApi {
     deleteDraft: (draftId) => api.delete(`/drafts/${draftId}`).then(() => undefined),
     getDailyReview: (date) => api.get(`/review/${date}`),
     releaseDay: (date, idempotencyKey) => api.post(`/review/${date}/release`, { idempotencyKey }),
+    getPairingRequest: (userCode) => api.get(`/pairing/requests/${encodeURIComponent(userCode)}`),
+    approvePairingRequest: (userCode) =>
+      api.post(`/pairing/requests/${encodeURIComponent(userCode)}/approve`),
+    listDevices: () => api.get('/devices'),
+    revokeDevice: (deviceId) => api.post(`/devices/${encodeURIComponent(deviceId)}/revoke`),
   };
 }
