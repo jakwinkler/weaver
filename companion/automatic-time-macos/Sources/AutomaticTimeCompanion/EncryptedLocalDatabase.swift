@@ -50,6 +50,8 @@ private struct LocalDatabaseState: Codable {
   var signals: [ActivitySignal] = []
   var activityBlocks: [ActivityBlock] = []
   var issueCandidates: IssueCandidateSnapshot?
+  var correctionMemories: CorrectionMemorySnapshot?
+  var syncedDraftReferences: [String: Date] = [:]
   var captureConfiguration: LocalCaptureConfiguration?
   var releasedDays: [String: Date] = [:]
   var retentionTombstones: [RetentionTombstone] = []
@@ -59,6 +61,8 @@ private struct LocalDatabaseState: Codable {
     case signals
     case activityBlocks
     case issueCandidates
+    case correctionMemories
+    case syncedDraftReferences
     case captureConfiguration
     case releasedDays
     case retentionTombstones
@@ -76,6 +80,12 @@ private struct LocalDatabaseState: Codable {
       IssueCandidateSnapshot.self,
       forKey: .issueCandidates
     )
+    correctionMemories = try container.decodeIfPresent(
+      CorrectionMemorySnapshot.self,
+      forKey: .correctionMemories
+    )
+    syncedDraftReferences =
+      try container.decodeIfPresent([String: Date].self, forKey: .syncedDraftReferences) ?? [:]
     captureConfiguration = try container.decodeIfPresent(
       LocalCaptureConfiguration.self,
       forKey: .captureConfiguration
@@ -125,6 +135,25 @@ public actor EncryptedLocalDatabase {
     return item.id
   }
 
+  @discardableResult
+  public func enqueueIfNeeded(_ draft: DerivedDraft, now: Date = Date()) throws -> Bool {
+    guard state.syncedDraftReferences[draft.sourceReference] == nil else { return false }
+    guard !state.outbox.contains(where: { $0.draft.sourceReference == draft.sourceReference }) else {
+      return false
+    }
+    state.outbox.append(
+      OutboxItem(
+        id: UUID(),
+        draft: draft,
+        attemptCount: 0,
+        nextAttemptAt: now,
+        createdAt: now
+      )
+    )
+    try persist()
+    return true
+  }
+
   public func dueItems(now: Date = Date()) -> [OutboxItem] {
     state.outbox
       .filter { $0.nextAttemptAt <= now }
@@ -162,6 +191,15 @@ public actor EncryptedLocalDatabase {
 
   public func issueCandidateSnapshot() -> IssueCandidateSnapshot? {
     state.issueCandidates
+  }
+
+  public func replaceCorrectionMemories(_ snapshot: CorrectionMemorySnapshot) throws {
+    state.correctionMemories = snapshot
+    try persist()
+  }
+
+  public func correctionMemorySnapshot() -> CorrectionMemorySnapshot? {
+    state.correctionMemories
   }
 
   public func replaceCaptureConfiguration(_ configuration: LocalCaptureConfiguration) throws {
@@ -226,6 +264,7 @@ public actor EncryptedLocalDatabase {
     state.activityBlocks.removeAll {
       absoluteBlockIDs.contains($0.sourceReference) || releasedBlockIDs.contains($0.sourceReference)
     }
+    state.syncedDraftReferences = state.syncedDraftReferences.filter { $0.value > absoluteCutoff }
 
     var tombstoneIDs: [UUID] = []
     if !absoluteSignals.isEmpty || !absoluteBlocks.isEmpty {
@@ -259,8 +298,11 @@ public actor EncryptedLocalDatabase {
     )
   }
 
-  public func markSucceeded(ids: [UUID]) throws {
+  public func markSucceeded(ids: [UUID], now: Date = Date()) throws {
     let completed = Set(ids)
+    for item in state.outbox where completed.contains(item.id) {
+      state.syncedDraftReferences[item.draft.sourceReference] = now
+    }
     state.outbox.removeAll { completed.contains($0.id) }
     try persist()
   }

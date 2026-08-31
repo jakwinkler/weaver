@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "day": "2026-08-25",
   "synthetic": true,
+  "candidateIssueKeys": ["WEAV-29", "WEAV-12"],
   "reviewDurationSeconds": 95,
   "segments": [
     {

@@ -21,6 +21,15 @@ Phase 4 adds:
 - encrypted raw signals, derived blocks, candidate snapshots, repository paths, and exclusion settings;
 - seven-day absolute evidence retention, 48-hour post-release deletion, and persisted deletion tombstones.
 
+Phase 5 adds:
+
+- exact-key, repository, branch, recency, Weaver-context, and correction-memory assignment;
+- encrypted synchronization of bounded correction memories;
+- stable local activity clustering with concise derived descriptions;
+- confidence, reasons, bounded alternatives, and a ruleset version on every draft;
+- optional loopback-only semantic ranking after deterministic evidence, with deterministic fallback;
+- labeled assignment evaluation that rejects invented issues.
+
 The companion sends derived drafts only. It does not upload raw application, window, browser, repository, or Git evidence, and its device credential cannot release official time. Window and browser metadata are disabled by default. Accessibility permission is requested only through the explicit menu action, and browser automation is attempted only after browser metadata is enabled.
 
 ## Build and test

@@ -99,13 +99,13 @@ describe('Automatic Time Phase 3 companion pairing (e2e)', () => {
         .get(url)
         .set('Authorization', `Bearer ${token}`)
         .set('X-Tenant-ID', tenantId)
-        .set('X-Companion-Version', '0.1.1'),
+        .set('X-Companion-Version', '0.3.0'),
     post: (url: string) =>
       request(app.getHttpServer())
         .post(url)
         .set('Authorization', `Bearer ${token}`)
         .set('X-Tenant-ID', tenantId)
-        .set('X-Companion-Version', '0.1.1'),
+        .set('X-Companion-Version', '0.3.0'),
   });
 
   const browserRoute = (path: string) => `/api/v1/plugin-routes/${pluginRouteId}${path}`;
@@ -121,7 +121,7 @@ describe('Automatic Time Phase 3 companion pairing (e2e)', () => {
       .send({
         displayName,
         platform: 'macos',
-        companionVersion: '0.1.0',
+        companionVersion: '0.3.0',
       })
       .expect(201);
 
@@ -153,7 +153,7 @@ describe('Automatic Time Phase 3 companion pairing (e2e)', () => {
       expect.objectContaining({
         displayName,
         platform: 'macos',
-        companionVersion: '0.1.0',
+        companionVersion: '0.3.0',
         status: 'pending',
         requestedScopes: expect.arrayContaining([
           'automatic-time:candidates:read',
@@ -217,7 +217,7 @@ describe('Automatic Time Phase 3 companion pairing (e2e)', () => {
       expect.objectContaining({
         deviceId: paired.deviceId,
         displayName: "Matt's Mac",
-        companionVersion: '0.1.1',
+        companionVersion: '0.3.0',
         status: 'active',
       }),
     );
@@ -227,6 +227,31 @@ describe('Automatic Time Phase 3 companion pairing (e2e)', () => {
       .expect(200);
     expect(candidates.body).toEqual([
       expect.objectContaining({ key: issue.body.key, summary: issue.body.summary }),
+    ]);
+
+    await dataSource.query(
+      `INSERT INTO "${schemaName}".automatic_time_correction_memories (
+         user_id, memory_type, normalized_features, target_issue_key,
+         weight, positive_count, negative_count, explanation
+       ) VALUES ($1::uuid, 'repository', $2::jsonb, $3, 1.25, 3, 0, $4)`,
+      [
+        userId,
+        JSON.stringify({ repositoryFingerprint: 'synthetic-repository' }),
+        issue.body.key,
+        'Synthetic repository correction',
+      ],
+    );
+    const correctionMemories = await deviceRequest(paired.deviceToken)
+      .get(companionRoute('/device/correction-memories'))
+      .expect(200);
+    expect(correctionMemories.body).toEqual([
+      expect.objectContaining({
+        memoryType: 'repository',
+        normalizedFeatures: { repositoryFingerprint: 'synthetic-repository' },
+        targetIssueKey: issue.body.key,
+        weight: 1.25,
+        explanation: 'Synthetic repository correction',
+      }),
     ]);
 
     const sync = await deviceRequest(paired.deviceToken)
@@ -243,6 +268,8 @@ describe('Automatic Time Phase 3 companion pairing (e2e)', () => {
             confidence: 0.98,
             assignmentMethod: 'exact-issue-key',
             assignmentReasons: ['Synthetic branch metadata contained APG-1'],
+            assignmentAlternatives: [],
+            rulesetVersion: 'automatic-time-assignment-v1',
             evidenceDigest: 'sha256:paired-synthetic-draft',
             issueKey: issue.body.key,
           },
@@ -254,8 +281,35 @@ describe('Automatic Time Phase 3 companion pairing (e2e)', () => {
         sourceReference: 'paired-synthetic-draft',
         issueKey: issue.body.key,
         proposedMinutes: 30,
+        assignmentAlternatives: [],
+        rulesetVersion: 'automatic-time-assignment-v1',
       }),
     ]);
+
+    await deviceRequest(paired.deviceToken)
+      .post(companionRoute('/device/drafts'))
+      .send({
+        drafts: [
+          {
+            sourceReference: 'invented-alternative-rejected',
+            localDate,
+            startedAt: '2026-08-29T15:30:00.000Z',
+            endedAt: '2026-08-29T15:45:00.000Z',
+            proposedMinutes: 15,
+            description: 'Must reject an unbounded alternative',
+            confidence: 0.8,
+            assignmentMethod: 'deterministic',
+            assignmentReasons: ['Synthetic bounded candidate check'],
+            assignmentAlternatives: [
+              { issueKey: 'GHOST-99', confidence: 0.7, reasons: ['Invented by fixture'] },
+            ],
+            rulesetVersion: 'automatic-time-assignment-v1',
+            evidenceDigest: 'sha256:invented-alternative',
+            issueKey: issue.body.key,
+          },
+        ],
+      })
+      .expect(400);
 
     await deviceRequest(paired.deviceToken)
       .post(companionRoute('/device/drafts'))
@@ -271,6 +325,8 @@ describe('Automatic Time Phase 3 companion pairing (e2e)', () => {
             confidence: 0,
             assignmentMethod: 'unassigned',
             assignmentReasons: [],
+            assignmentAlternatives: [],
+            rulesetVersion: 'automatic-time-assignment-v1',
             evidenceDigest: 'sha256:raw-signal-rejected',
             windowTitle: 'Raw window titles cannot cross the companion boundary',
           },
@@ -305,7 +361,7 @@ describe('Automatic Time Phase 3 companion pairing (e2e)', () => {
       expect.objectContaining({
         id: paired.deviceId,
         displayName: "Matt's Mac",
-        companionVersion: '0.1.1',
+        companionVersion: '0.3.0',
         status: 'active',
         lastSeenAt: expect.any(String),
       }),
@@ -320,6 +376,9 @@ describe('Automatic Time Phase 3 companion pairing (e2e)', () => {
     await deviceRequest(paired.deviceToken)
       .get(companionRoute('/device/issue-candidates'))
       .expect(403);
+    await deviceRequest(paired.deviceToken)
+      .get(companionRoute('/device/correction-memories'))
+      .expect(403);
 
     await authedRequest()
       .post(browserRoute(`/devices/${paired.deviceId}/revoke`))
@@ -333,7 +392,7 @@ describe('Automatic Time Phase 3 companion pairing (e2e)', () => {
       .send({
         displayName: 'Expired Pairing Mac',
         platform: 'macos',
-        companionVersion: '0.1.0',
+        companionVersion: '0.3.0',
       })
       .expect(201);
     await dataSource.query(

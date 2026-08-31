@@ -23,6 +23,10 @@ Build the first companion as a native Swift menu bar application targeting macOS
 - Store the evidence encryption key and device credential as small secrets in macOS Keychain. Do not store the evidence body in Keychain.
 - Keep capture adapters separate from segmentation, assignment, encrypted storage, and sync so every boundary can be fixture-tested.
 - Run segmentation and assignment locally. The companion may sync derived drafts, confidence, reasons, alternatives, durations, and a non-reversible evidence digest. Raw application events, window titles, browser titles, repository paths, and Git history do not leave the device.
+- Bound assignment to the latest 100 issue candidates and 200 enabled correction memories. Every primary result and alternative must remain inside the candidate snapshot.
+- Run exact issue keys, repository and branch mappings, correction memories, Weaver context, and recency before semantic ranking. Record the ruleset version and human-readable reasons on every derived draft.
+- Permit semantic ranking only through an explicitly enabled loopback OpenAI-compatible endpoint. Reject non-loopback hosts, configure the model locally, and keep deterministic assignment available when the service is stopped or fails.
+- Finalize clusters before synchronization. Keep the active cluster local, remember synchronized source references in encrypted storage, and avoid overlapping replacement drafts as a cluster grows.
 - Use synthetic metadata in automated tests. A diagnostic command may report capability booleans but must not print or persist the active application or window title.
 
 This accepts native Swift for the first macOS-only release. A cross-platform runtime can be reconsidered only when another supported desktop platform becomes a real requirement and an equal-condition spike proves that the native bridges do not weaken privacy, reliability, or maintainability.
@@ -71,7 +75,7 @@ The capability command reports only whether the APIs are available and authorize
 
 ## Remaining Decisions
 
-- Local inference model and runtime
+- Default local inference model after equal-condition alpha evaluation. The runtime contract is loopback-only and model-agnostic.
 - Exact issue-candidate lookback window
 - Final-total adjustment policy beyond the default rounding rule
 - Companion signing, notarization, update, and delivery mechanism

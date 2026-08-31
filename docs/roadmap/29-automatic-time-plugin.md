@@ -4,7 +4,7 @@
 
 ## Status
 
-- Phases 0, 1, 2, 3, and 4 complete; Phase 5 not started
+- Phases 0 through 5 complete; Phase 6 next
 - First user: Matt, single-user workflow
 - Initial platform: macOS
 - Distribution: bundled first-party plugin, disabled by default
@@ -538,17 +538,28 @@ Phase 4 evidence:
 
 ### Phase 5: Assignment, confidence, and descriptions
 
-- [ ] Implement bounded issue-candidate snapshots.
-- [ ] Implement exact issue-key matching.
-- [ ] Implement repository and branch mappings.
-- [ ] Implement recency and Weaver-context scoring.
-- [ ] Implement correction-memory scoring.
-- [ ] Add local semantic ranking only after deterministic evidence.
-- [ ] Add local activity clustering and concise descriptions.
-- [ ] Store confidence, reasons, alternatives, and ruleset version on every draft.
-- [ ] Add deterministic and labeled-fixture evaluation suites.
+- [x] Implement bounded issue-candidate snapshots.
+- [x] Implement exact issue-key matching.
+- [x] Implement repository and branch mappings.
+- [x] Implement recency and Weaver-context scoring.
+- [x] Implement correction-memory scoring.
+- [x] Add local semantic ranking only after deterministic evidence.
+- [x] Add local activity clustering and concise descriptions.
+- [x] Store confidence, reasons, alternatives, and ruleset version on every draft.
+- [x] Add deterministic and labeled-fixture evaluation suites.
 
 Gate: the assignment harness reaches the agreed accuracy threshold without inventing issues or sending raw metadata remotely.
+
+Phase 5 evidence:
+
+- The native assignment engine intersects every exact, mapped, remembered, and semantic result with a maximum 100-candidate snapshot. Unknown issue keys remain unassigned and cannot appear as alternatives.
+- Exact Weaver or local-context issue keys run first. Repository fingerprints, branch mappings, confirmed correction memories, candidate recency, and active Weaver context provide inspectable deterministic reasons before optional semantic ranking.
+- Correction rules synchronize through a device-scoped read route, are bounded to 200 enabled user-owned memories, and remain encrypted in companion storage.
+- Optional semantic ranking accepts only `localhost`, `127.0.0.1`, or `::1` OpenAI-compatible endpoints. It is disabled by default, runs only after structural deterministic evidence, cannot expand the candidate set, and falls back to deterministic scoring if the local service is unavailable.
+- Stable adjacent blocks are clustered locally. The active cluster is withheld until it is finalized, synchronized source references are remembered to prevent duplicate drafts, and descriptions contain concise derived text rather than raw evidence.
+- Plugin version `0.4.0` adds assignment alternatives and ruleset version to every stored draft. The device route rejects missing explainability metadata, unknown primary issues, unknown alternatives, and raw extra fields.
+- The time-weighted labeled-day evaluator requires an explicit candidate snapshot, reports invented suggestions, and passes the 80 percent destination target with zero inventions. The native labeled harness scores 100 percent on its four synthetic deterministic, mapping, correction-memory, and local-semantic cases.
+- Verification uses synthetic application, repository, branch, issue, and description data only. No private captured metadata is used by the suites.
 
 ### Phase 6: Complete live and daily review UX
 

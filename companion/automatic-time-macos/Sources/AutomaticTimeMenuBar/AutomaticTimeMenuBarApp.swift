@@ -11,6 +11,11 @@ final class CompanionAppModel: ObservableObject {
   @Published var tenantID = UserDefaults.standard.string(forKey: "tenantID") ?? ""
   @Published var repositoryPath = ""
   @Published var activeIssueKey = ""
+  @Published var repositoryIssueKey = ""
+  @Published var branchMappings = ""
+  @Published var enableLocalSemanticRanking = false
+  @Published var localInferenceEndpoint = "http://127.0.0.1:8000/v1"
+  @Published var localInferenceModel = ""
   @Published var applicationExclusions = ""
   @Published var domainExclusions = ""
   @Published var repositoryExclusions = ""
@@ -19,6 +24,7 @@ final class CompanionAppModel: ObservableObject {
   @Published private(set) var pairingStatus = "Not paired"
   @Published private(set) var captureStatus = "Capture stopped"
   @Published private(set) var candidateStatus = "Candidates not synchronized"
+  @Published private(set) var draftStatus = "No derived drafts synchronized"
   @Published private(set) var userCode = ""
   @Published private(set) var isPairing = false
   @Published private(set) var isCapturing = false
@@ -116,6 +122,7 @@ final class CompanionAppModel: ObservableObject {
     try? credentialVault.delete()
     pairingStatus = "Not paired"
     candidateStatus = "Candidates not synchronized"
+    draftStatus = "No derived drafts synchronized"
     userCode = ""
   }
 
@@ -165,7 +172,10 @@ final class CompanionAppModel: ObservableObject {
     isCapturing = false
     isPaused = true
     captureStatus = "Capture stopped"
-    Task { try? await captureCoordinator.pause() }
+    Task {
+      try? await captureCoordinator.pause()
+      await deriveAndSyncDrafts(includeActiveBlock: true)
+    }
   }
 
   func requestWindowTitlePermission() {
@@ -191,19 +201,93 @@ final class CompanionAppModel: ObservableObject {
         database: database,
         transport: client
       ).synchronize(credential: credential)
+      let memoryCount = try await CorrectionMemorySynchronizer(
+        database: database,
+        transport: client
+      ).synchronize(credential: credential)
       let releasedDayCount = try await RetentionStateSynchronizer(
         database: database,
         transport: client
       ).synchronize(credential: credential)
       if let captureCoordinator { _ = try await captureCoordinator.enforceRetention() }
       candidateStatus =
-        "\(count) bounded Weaver candidates and \(releasedDayCount) released days cached"
+        "\(count) candidates, \(memoryCount) correction rules, and \(releasedDayCount) released days cached"
+      await deriveAndSyncDrafts(includeActiveBlock: false)
     } catch CompanionTransportError.unauthorized {
       try? credentialVault.delete()
       pairingStatus = "Pairing was revoked or expired"
       candidateStatus = "Candidate synchronization stopped"
     } catch {
       candidateStatus = "Candidate synchronization will retry when Weaver is reachable"
+    }
+  }
+
+  private func deriveAndSyncDrafts(includeActiveBlock: Bool) async {
+    guard
+      let database,
+      let candidateSnapshot = await database.issueCandidateSnapshot()
+    else {
+      draftStatus = "Candidate snapshot required before deriving drafts"
+      return
+    }
+    let blocks = await database.allActivityBlocks()
+    guard !blocks.isEmpty else {
+      draftStatus = "No completed activity blocks to derive"
+      return
+    }
+    let correctionMemories = await database.correctionMemorySnapshot()?.memories ?? []
+    let semanticRanker: (any LocalSemanticIssueRanking)?
+    if enableLocalSemanticRanking,
+      let endpoint = URL(string: localInferenceEndpoint),
+      let configuration = try? LocalInferenceConfiguration(
+        baseURL: endpoint,
+        model: localInferenceModel
+      )
+    {
+      semanticRanker = try? LocalInferenceClient(configuration: configuration)
+    } else {
+      semanticRanker = nil
+    }
+
+    do {
+      let drafts = try await DraftDerivationEngine().derive(
+        blocks: blocks,
+        snapshot: candidateSnapshot,
+        rules: assignmentRules,
+        correctionMemories: correctionMemories,
+        semanticRanker: semanticRanker,
+        includeLastCluster: includeActiveBlock
+      )
+      var queued = 0
+      for draft in drafts {
+        if try await database.enqueueIfNeeded(draft) { queued += 1 }
+      }
+      guard
+        let apiURL = URL(string: apiBaseURL),
+        !tenantID.isEmpty
+      else {
+        draftStatus = "\(queued) private drafts queued locally"
+        return
+      }
+      let outcome = await OutboxSyncEngine(
+        database: database,
+        credentialVault: credentialVault,
+        transport: AutomaticTimeHTTPClient(apiBaseURL: apiURL, tenantID: tenantID)
+      ).sync()
+      switch outcome {
+      case .synced(let count):
+        draftStatus = "\(count) derived private drafts synchronized"
+      case .idle:
+        draftStatus = "Derived drafts are up to date"
+      case .notPaired, .credentialExpired, .credentialRevoked:
+        draftStatus = "Derived drafts remain queued until the device is paired"
+      case .retryScheduled:
+        draftStatus = "Derived drafts remain queued until Weaver is reachable"
+      case .storageFailed:
+        draftStatus = "Draft retry state could not be encrypted"
+      }
+    } catch {
+      draftStatus = "Draft derivation failed without sending raw evidence"
     }
   }
 
@@ -239,6 +323,27 @@ final class CompanionAppModel: ObservableObject {
     return value.isEmpty ? nil : value
   }
 
+  private var assignmentRules: AssignmentRules {
+    var repositories: [String: AssignmentTarget] = [:]
+    let repositoryKey = repositoryIssueKey.trimmingCharacters(in: .whitespacesAndNewlines)
+      .uppercased()
+    if let repositoryURL = configuredRepositoryURL, !repositoryKey.isEmpty {
+      let fingerprint = GitMetadataCapture().fingerprint(repositoryURL: repositoryURL)
+      repositories[fingerprint] = AssignmentTarget(issueKey: repositoryKey)
+    }
+    let branches = branchMappings.split(separator: ",").compactMap { entry -> BranchAssignmentMapping? in
+      let parts = entry.split(separator: "=", maxSplits: 1).map {
+        $0.trimmingCharacters(in: .whitespacesAndNewlines)
+      }
+      guard parts.count == 2, !parts[0].isEmpty, !parts[1].isEmpty else { return nil }
+      return BranchAssignmentMapping(
+        pattern: parts[0],
+        target: AssignmentTarget(issueKey: parts[1])
+      )
+    }
+    return AssignmentRules(repositoryMappings: repositories, branchMappings: branches)
+  }
+
   private func commaSeparated(_ value: String) -> Set<String> {
     Set(
       value.split(separator: ",")
@@ -259,7 +364,13 @@ final class CompanionAppModel: ObservableObject {
       privacySettings: privacySettings,
       repositoryPath: configuredRepositoryURL?.path,
       repositoryExclusionPaths: Array(commaSeparated(repositoryExclusions)).sorted(),
-      activeIssueKey: normalizedIssueKey
+      activeIssueKey: normalizedIssueKey,
+      assignmentRules: assignmentRules,
+      localInference: LocalInferencePreference(
+        isEnabled: enableLocalSemanticRanking,
+        endpoint: localInferenceEndpoint,
+        model: localInferenceModel
+      )
     )
     Task {
       do {
@@ -280,6 +391,16 @@ final class CompanionAppModel: ObservableObject {
     repositoryExclusions = configuration.repositoryExclusionPaths.joined(separator: ", ")
     repositoryPath = configuration.repositoryPath ?? ""
     activeIssueKey = configuration.activeIssueKey ?? ""
+    if let repositoryURL = configuration.repositoryPath.map(URL.init(fileURLWithPath:)) {
+      let fingerprint = GitMetadataCapture().fingerprint(repositoryURL: repositoryURL)
+      repositoryIssueKey = configuration.assignmentRules.repositoryMappings[fingerprint]?.issueKey ?? ""
+    }
+    branchMappings = configuration.assignmentRules.branchMappings.compactMap { mapping in
+      mapping.target.issueKey.map { "\(mapping.pattern)=\($0)" }
+    }.joined(separator: ", ")
+    enableLocalSemanticRanking = configuration.localInference.isEnabled
+    localInferenceEndpoint = configuration.localInference.endpoint
+    localInferenceModel = configuration.localInference.model
   }
 
   private func scheduleCaptureTimer() {
@@ -299,6 +420,7 @@ final class CompanionAppModel: ObservableObject {
     do {
       try await captureCoordinator.sample()
       _ = try await captureCoordinator.enforceRetention()
+      await deriveAndSyncDrafts(includeActiveBlock: false)
       isPaused = await captureCoordinator.captureIsPaused()
       if !isPaused { captureStatus = captureDescription }
     } catch {
@@ -324,6 +446,7 @@ struct AutomaticTimeMenuBarApp: App {
           statusRow("Pairing", model.pairingStatus)
           statusRow("Capture", model.captureStatus)
           statusRow("Weaver", model.candidateStatus)
+          statusRow("Drafts", model.draftStatus)
           if !model.userCode.isEmpty {
             Text(model.userCode).font(.system(.body, design: .monospaced)).textSelection(.enabled)
           }
@@ -349,6 +472,10 @@ struct AutomaticTimeMenuBarApp: App {
               .textFieldStyle(.roundedBorder)
             TextField("Current Weaver issue key (optional)", text: $model.activeIssueKey)
               .textFieldStyle(.roundedBorder)
+            TextField("Repository issue key mapping (optional)", text: $model.repositoryIssueKey)
+              .textFieldStyle(.roundedBorder)
+            TextField("Branch mappings, pattern=ISSUE, comma separated", text: $model.branchMappings)
+              .textFieldStyle(.roundedBorder)
             Toggle("Capture active window titles", isOn: $model.captureWindowTitles)
             Toggle("Capture browser domain and page title", isOn: $model.captureBrowserMetadata)
             Text("Window and browser metadata are off by default and never leave this Mac as raw evidence.")
@@ -363,6 +490,21 @@ struct AutomaticTimeMenuBarApp: App {
               Button("Resume") { model.resumeCapture() }.disabled(!model.isCapturing)
               Button("Stop") { model.stopCapture() }.disabled(!model.isCapturing)
             }
+          }
+
+          Divider()
+          Group {
+            Text("Local semantic ranking").font(.subheadline).bold()
+            Toggle("Use a local loopback model after deterministic evidence", isOn: $model.enableLocalSemanticRanking)
+            TextField("Loopback inference endpoint", text: $model.localInferenceEndpoint)
+              .textFieldStyle(.roundedBorder)
+              .disabled(!model.enableLocalSemanticRanking)
+            TextField("Local model name", text: $model.localInferenceModel)
+              .textFieldStyle(.roundedBorder)
+              .disabled(!model.enableLocalSemanticRanking)
+            Text("Non-loopback inference endpoints are rejected. Deterministic assignment continues if the local model is unavailable.")
+              .font(.caption)
+              .foregroundStyle(.secondary)
           }
 
           Divider()

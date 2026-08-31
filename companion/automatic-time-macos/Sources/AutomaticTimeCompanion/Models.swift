@@ -10,6 +10,8 @@ public struct DerivedDraft: Codable, Equatable, Sendable {
   public let confidence: Double
   public let assignmentMethod: String
   public let assignmentReasons: [String]
+  public let assignmentAlternatives: [AssignmentAlternative]
+  public let rulesetVersion: String
   public let evidenceDigest: String
   public let issueKey: String?
 
@@ -23,6 +25,8 @@ public struct DerivedDraft: Codable, Equatable, Sendable {
     confidence: Double,
     assignmentMethod: String,
     assignmentReasons: [String],
+    assignmentAlternatives: [AssignmentAlternative] = [],
+    rulesetVersion: String = AssignmentEngine.rulesetVersion,
     evidenceDigest: String,
     issueKey: String? = nil
   ) {
@@ -35,8 +39,46 @@ public struct DerivedDraft: Codable, Equatable, Sendable {
     self.confidence = confidence
     self.assignmentMethod = assignmentMethod
     self.assignmentReasons = assignmentReasons
+    self.assignmentAlternatives = assignmentAlternatives
+    self.rulesetVersion = rulesetVersion
     self.evidenceDigest = evidenceDigest
     self.issueKey = issueKey
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case sourceReference
+    case localDate
+    case startedAt
+    case endedAt
+    case proposedMinutes
+    case description
+    case confidence
+    case assignmentMethod
+    case assignmentReasons
+    case assignmentAlternatives
+    case rulesetVersion
+    case evidenceDigest
+    case issueKey
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    sourceReference = try container.decode(String.self, forKey: .sourceReference)
+    localDate = try container.decode(String.self, forKey: .localDate)
+    startedAt = try container.decode(Date.self, forKey: .startedAt)
+    endedAt = try container.decode(Date.self, forKey: .endedAt)
+    proposedMinutes = try container.decode(Int.self, forKey: .proposedMinutes)
+    description = try container.decode(String.self, forKey: .description)
+    confidence = try container.decode(Double.self, forKey: .confidence)
+    assignmentMethod = try container.decode(String.self, forKey: .assignmentMethod)
+    assignmentReasons = try container.decode([String].self, forKey: .assignmentReasons)
+    assignmentAlternatives =
+      try container.decodeIfPresent([AssignmentAlternative].self, forKey: .assignmentAlternatives)
+      ?? []
+    rulesetVersion =
+      try container.decodeIfPresent(String.self, forKey: .rulesetVersion) ?? "legacy-v1"
+    evidenceDigest = try container.decode(String.self, forKey: .evidenceDigest)
+    issueKey = try container.decodeIfPresent(String.self, forKey: .issueKey)
   }
 }
 

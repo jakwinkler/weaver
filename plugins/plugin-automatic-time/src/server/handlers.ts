@@ -14,11 +14,21 @@ interface SyntheticDraftFixture {
   confidence: number;
   assignmentMethod: string;
   assignmentReasons: string[];
+  assignmentAlternatives?: AssignmentAlternative[];
+  rulesetVersion?: string;
   evidenceDigest: string;
 }
 
 interface DeviceDraft extends SyntheticDraftFixture {
   issueKey?: string;
+  assignmentAlternatives: AssignmentAlternative[];
+  rulesetVersion: string;
+}
+
+interface AssignmentAlternative {
+  issueKey: string;
+  confidence: number;
+  reasons: string[];
 }
 
 const DEVICE_SCOPES = [
@@ -39,6 +49,8 @@ const DEVICE_DRAFT_FIELDS = new Set([
   'confidence',
   'assignmentMethod',
   'assignmentReasons',
+  'assignmentAlternatives',
+  'rulesetVersion',
   'evidenceDigest',
   'issueKey',
 ]);
@@ -134,12 +146,32 @@ function mapDraft(row: Row): Record<string, unknown> {
     confidence: Number(row.confidence),
     assignmentMethod: row.assignment_method,
     assignmentReasons: row.assignment_reasons,
+    assignmentAlternatives: row.assignment_alternatives,
+    rulesetVersion: row.ruleset_version,
     status: row.status,
     evidenceDigest: row.evidence_digest,
     releaseBatchId: row.release_batch_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     releasedAt: row.released_at,
+  };
+}
+
+function mapCorrectionMemory(row: Row): Record<string, unknown> {
+  const normalizedFeatures = Object.fromEntries(
+    Object.entries(row.normalized_features ?? {}).filter((entry) => typeof entry[1] === 'string'),
+  );
+  return {
+    id: row.id,
+    memoryType: row.memory_type,
+    normalizedFeatures,
+    targetProjectKey: row.target_project_key,
+    targetIssueKey: row.target_issue_key,
+    weight: Number(row.weight),
+    positiveCount: row.positive_count,
+    negativeCount: row.negative_count,
+    explanation: row.explanation,
+    updatedAt: row.updated_at,
   };
 }
 
@@ -180,11 +212,46 @@ function validateFixture(value: unknown): value is SyntheticDraftFixture {
     fixture.confidence <= 1 &&
     typeof fixture.assignmentMethod === 'string' &&
     Array.isArray(fixture.assignmentReasons) &&
-    fixture.assignmentReasons.every((reason) => typeof reason === 'string') &&
+    fixture.assignmentReasons.length <= 10 &&
+    fixture.assignmentReasons.every(
+      (reason) => typeof reason === 'string' && reason.length <= 500,
+    ) &&
+    (fixture.assignmentAlternatives === undefined ||
+      validateAssignmentAlternatives(fixture.assignmentAlternatives)) &&
+    (fixture.rulesetVersion === undefined ||
+      (typeof fixture.rulesetVersion === 'string' &&
+        fixture.rulesetVersion.length > 0 &&
+        fixture.rulesetVersion.length <= 100)) &&
     typeof fixture.evidenceDigest === 'string' &&
     fixture.evidenceDigest.length > 0 &&
     fixture.evidenceDigest.length <= 200
   );
+}
+
+function validateAssignmentAlternatives(value: unknown): value is AssignmentAlternative[] {
+  if (!Array.isArray(value) || value.length > 3) return false;
+  const keys = new Set<string>();
+  return value.every((alternative) => {
+    if (!alternative || typeof alternative !== 'object' || Array.isArray(alternative)) return false;
+    const candidate = alternative as Record<string, unknown>;
+    if (
+      Object.keys(candidate).some((key) => !['issueKey', 'confidence', 'reasons'].includes(key)) ||
+      typeof candidate.issueKey !== 'string' ||
+      !/^[A-Z][A-Z0-9]+-[0-9]+$/.test(candidate.issueKey) ||
+      candidate.issueKey.length > 100 ||
+      keys.has(candidate.issueKey) ||
+      typeof candidate.confidence !== 'number' ||
+      candidate.confidence < 0 ||
+      candidate.confidence > 1 ||
+      !Array.isArray(candidate.reasons) ||
+      candidate.reasons.length > 10 ||
+      !candidate.reasons.every((reason) => typeof reason === 'string' && reason.length <= 500)
+    ) {
+      return false;
+    }
+    keys.add(candidate.issueKey);
+    return true;
+  });
 }
 
 function validateDeviceDraft(value: unknown): value is DeviceDraft {
@@ -192,9 +259,14 @@ function validateDeviceDraft(value: unknown): value is DeviceDraft {
   const draft = value as unknown as Record<string, unknown>;
   return (
     Object.keys(draft).every((key) => DEVICE_DRAFT_FIELDS.has(key)) &&
+    validateAssignmentAlternatives(draft.assignmentAlternatives) &&
+    typeof draft.rulesetVersion === 'string' &&
+    draft.rulesetVersion.length > 0 &&
+    draft.rulesetVersion.length <= 100 &&
+    !draft.assignmentAlternatives.some((alternative) => alternative.issueKey === draft.issueKey) &&
     (draft.issueKey === undefined ||
       (typeof draft.issueKey === 'string' &&
-        draft.issueKey.length > 0 &&
+        /^[A-Z][A-Z0-9]+-[0-9]+$/.test(draft.issueKey) &&
         draft.issueKey.length <= 100))
   );
 }
@@ -530,20 +602,31 @@ export async function syncDeviceDrafts(
     return { status: 400, body: { message: 'Invalid derived draft payload' } };
   }
 
+  const requestedIssueKeys = new Set(
+    drafts.flatMap((draft) => [
+      ...(draft.issueKey ? [draft.issueKey] : []),
+      ...draft.assignmentAlternatives.map((alternative) => alternative.issueKey),
+    ]),
+  );
+  const currentCandidates = requestedIssueKeys.size
+    ? await context.api.issues.findCandidates({ includeUnassigned: true, limit: 100 })
+    : [];
+  const candidateByKey = new Map(currentCandidates.map((candidate) => [candidate.key, candidate]));
+  if (Array.from(requestedIssueKeys).some((issueKey) => !candidateByKey.has(issueKey))) {
+    return {
+      status: 400,
+      body: { message: 'Draft assignments must use bounded issue candidates' },
+    };
+  }
+
   const synced: Record<string, unknown>[] = [];
   for (const draft of drafts) {
     let issueId: string | null = null;
     let issueKey: string | null = null;
     if (draft.issueKey) {
-      const candidates = await context.api.issues.findCandidates({
-        includeUnassigned: true,
-        issueKeys: [draft.issueKey],
-        limit: 1,
-      });
-      if (candidates[0]) {
-        issueId = candidates[0].id;
-        issueKey = candidates[0].key;
-      }
+      const candidate = candidateByKey.get(draft.issueKey)!;
+      issueId = candidate.id;
+      issueKey = candidate.key;
     }
 
     let rows = rowsFromQuery(
@@ -551,9 +634,10 @@ export async function syncDeviceDrafts(
         `INSERT INTO automatic_time_drafts (
          user_id, source_reference, local_date, started_at, ended_at,
          proposed_minutes, description, issue_id, issue_key, confidence,
-         assignment_method, assignment_reasons, evidence_digest
+         assignment_method, assignment_reasons, assignment_alternatives,
+         ruleset_version, evidence_digest
        ) VALUES ($1::uuid, $2, $3::date, $4::timestamptz, $5::timestamptz,
-                 $6, $7, $8::uuid, $9, $10, $11, $12::jsonb, $13)
+                 $6, $7, $8::uuid, $9, $10, $11, $12::jsonb, $13::jsonb, $14, $15)
        ON CONFLICT (user_id, source_reference) DO UPDATE SET
          local_date = EXCLUDED.local_date,
          started_at = EXCLUDED.started_at,
@@ -565,6 +649,8 @@ export async function syncDeviceDrafts(
          confidence = EXCLUDED.confidence,
          assignment_method = EXCLUDED.assignment_method,
          assignment_reasons = EXCLUDED.assignment_reasons,
+         assignment_alternatives = EXCLUDED.assignment_alternatives,
+         ruleset_version = EXCLUDED.ruleset_version,
          evidence_digest = EXCLUDED.evidence_digest,
          updated_at = now()
        WHERE automatic_time_drafts.status = 'draft'
@@ -582,6 +668,8 @@ export async function syncDeviceDrafts(
           draft.confidence,
           draft.assignmentMethod,
           JSON.stringify(draft.assignmentReasons),
+          JSON.stringify(draft.assignmentAlternatives),
+          draft.rulesetVersion,
           draft.evidenceDigest,
         ],
       ),
@@ -625,9 +713,9 @@ export async function loadSyntheticDraftFixtures(
         `INSERT INTO automatic_time_drafts (
          user_id, source_reference, local_date, started_at, ended_at,
          proposed_minutes, description, confidence, assignment_method,
-         assignment_reasons, evidence_digest
+         assignment_reasons, assignment_alternatives, ruleset_version, evidence_digest
        ) VALUES ($1::uuid, $2, $3::date, $4::timestamptz, $5::timestamptz,
-                 $6, $7, $8, $9, $10::jsonb, $11)
+                 $6, $7, $8, $9, $10::jsonb, $11::jsonb, $12, $13)
        ON CONFLICT (user_id, source_reference) DO UPDATE SET
          local_date = EXCLUDED.local_date,
          started_at = EXCLUDED.started_at,
@@ -637,6 +725,8 @@ export async function loadSyntheticDraftFixtures(
          confidence = EXCLUDED.confidence,
          assignment_method = EXCLUDED.assignment_method,
          assignment_reasons = EXCLUDED.assignment_reasons,
+         assignment_alternatives = EXCLUDED.assignment_alternatives,
+         ruleset_version = EXCLUDED.ruleset_version,
          evidence_digest = EXCLUDED.evidence_digest,
          updated_at = now()
        RETURNING *`,
@@ -651,6 +741,8 @@ export async function loadSyntheticDraftFixtures(
           fixture.confidence,
           fixture.assignmentMethod,
           JSON.stringify(fixture.assignmentReasons),
+          JSON.stringify(fixture.assignmentAlternatives ?? []),
+          fixture.rulesetVersion ?? 'synthetic-fixture-v1',
           fixture.evidenceDigest,
         ],
       ),
@@ -672,6 +764,29 @@ export async function listIssueCandidates(
     limit: 100,
   });
   return { status: 200, body: candidates };
+}
+
+export async function listCorrectionMemories(
+  _req: PluginRequest,
+  context: PluginContext,
+): Promise<PluginResponse> {
+  const userId = requireUser(context);
+  if (!userId) return { status: 401, body: { message: 'Authentication required' } };
+  const rows = rowsFromQuery(
+    await context.db.query(
+      `SELECT id, memory_type, normalized_features, target_project_key,
+              target_issue_key, weight, positive_count, negative_count,
+              explanation, updated_at
+         FROM automatic_time_correction_memories
+        WHERE user_id = $1::uuid
+          AND enabled = true
+          AND (target_issue_key IS NOT NULL OR target_project_key IS NOT NULL)
+        ORDER BY weight DESC, updated_at DESC
+        LIMIT 200`,
+      [userId],
+    ),
+  );
+  return { status: 200, body: rows.map(mapCorrectionMemory) };
 }
 
 export async function listDrafts(
@@ -719,6 +834,8 @@ export async function assignDraft(
             confidence = 1,
             assignment_method = 'manual',
             assignment_reasons = $3::jsonb,
+            assignment_alternatives = '[]'::jsonb,
+            ruleset_version = 'manual-review-v1',
             updated_at = now()
       WHERE id = $4::uuid AND user_id = $5::uuid AND status = 'draft'
       RETURNING *`,

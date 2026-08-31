@@ -1,7 +1,7 @@
 {
   "id": "@weaver/plugin-automatic-time",
   "name": "Automatic Time",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Review private activity drafts and explicitly release them as official Weaver time",
   "author": "Weaver",
   "icon": "clock",
@@ -47,7 +47,7 @@
   "companion": {
     "platform": "macos",
     "downloadArtifact": "automatic-time-macos",
-    "minimumVersion": "0.2.0",
+    "minimumVersion": "0.3.0",
     "pairingRoute": "/apps/automatic-time/settings",
     "authenticator": "authenticateDeviceCredential"
   },
@@ -211,6 +211,13 @@
     },
     {
       "method": "GET",
+      "path": "/device/correction-memories",
+      "handler": "listCorrectionMemories",
+      "auth": "device",
+      "requiredDeviceScopes": ["automatic-time:rules:read"]
+    },
+    {
+      "method": "GET",
       "path": "/device/released-days",
       "handler": "listReleasedDaysForRetention",
       "auth": "device",
@@ -232,6 +239,10 @@
     {
       "version": "0.2.0",
       "path": "migrations/002_create_pairing_requests.sql"
+    },
+    {
+      "version": "0.4.0",
+      "path": "migrations/003_add_assignment_explainability.sql"
     }
   ]
 }

@@ -9,9 +9,10 @@ public protocol PairingTransport: AnyObject {
 }
 
 public final class AutomaticTimeHTTPClient:
-  PairingTransport, DraftTransport, IssueCandidateTransport, RetentionStateTransport
+  PairingTransport, DraftTransport, IssueCandidateTransport, RetentionStateTransport,
+  CorrectionMemoryTransport
 {
-  public static let companionVersion = "0.2.0"
+  public static let companionVersion = "0.3.0"
   private let apiBaseURL: URL
   private let tenantID: String
   private let session: URLSession
@@ -101,6 +102,18 @@ public final class AutomaticTimeHTTPClient:
     )
     guard response.status == 200 else { throw mapError(response.status) }
     return try decoder.decode([ReleasedDay].self, from: response.data)
+  }
+
+  public func fetchCorrectionMemories(
+    credential: DeviceCredential
+  ) async throws -> [CorrectionMemory] {
+    let response = try await send(
+      path: "device/correction-memories",
+      method: "GET",
+      bearerToken: credential.token
+    )
+    guard response.status == 200 else { throw mapError(response.status) }
+    return try decoder.decode([CorrectionMemory].self, from: response.data)
   }
 
   private struct SyncedDraft: Decodable { let id: String }

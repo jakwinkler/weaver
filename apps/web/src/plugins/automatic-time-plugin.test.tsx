@@ -22,6 +22,8 @@ const draft: AutomaticTimeDraft = {
   confidence: 0.82,
   assignmentMethod: 'synthetic-fixture',
   assignmentReasons: ['Recent Weaver issue activity'],
+  assignmentAlternatives: [],
+  rulesetVersion: 'synthetic-fixture-v1',
   status: 'draft',
   releasedAt: null,
 };

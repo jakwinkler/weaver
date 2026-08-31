@@ -10,6 +10,8 @@ export interface AutomaticTimeDraft {
   confidence: number;
   assignmentMethod: string;
   assignmentReasons: string[];
+  assignmentAlternatives: Array<{ issueKey: string; confidence: number; reasons: string[] }>;
+  rulesetVersion: string;
   status: 'draft' | 'hidden' | 'released' | 'superseded';
   releasedAt: string | null;
 }

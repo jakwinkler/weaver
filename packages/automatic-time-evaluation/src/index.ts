@@ -19,6 +19,7 @@ export interface LabeledDayFixture {
   schemaVersion: 1;
   day: string;
   synthetic: boolean;
+  candidateIssueKeys: string[];
   reviewDurationSeconds?: number;
   segments: LabeledSegment[];
 }
@@ -35,6 +36,8 @@ export interface DayEvaluationMetrics {
   reviewDurationSeconds: number | null;
   reviewUnderTwoMinutes: boolean | null;
   meetsDestinationTarget: boolean;
+  inventedSuggestionCount: number;
+  meetsAssignmentGate: boolean;
 }
 
 const ASSIGNMENT_METHODS = new Set<AssignmentMethod>(['deterministic', 'ai', 'none']);
@@ -78,6 +81,15 @@ export function validateDayFixture(value: unknown): LabeledDayFixture {
   }
   if (typeof fixture.synthetic !== 'boolean') {
     throw new Error('synthetic must be a boolean');
+  }
+  if (
+    !Array.isArray(fixture.candidateIssueKeys) ||
+    !fixture.candidateIssueKeys.every(
+      (issueKey) => typeof issueKey === 'string' && /^[A-Z][A-Z0-9]+-[0-9]+$/.test(issueKey),
+    ) ||
+    new Set(fixture.candidateIssueKeys).size !== fixture.candidateIssueKeys.length
+  ) {
+    throw new Error('candidateIssueKeys must be unique normalized issue keys');
   }
   if (
     fixture.reviewDurationSeconds !== undefined &&
@@ -163,6 +175,7 @@ export function validateDayFixture(value: unknown): LabeledDayFixture {
     schemaVersion: 1,
     day: fixture.day,
     synthetic: fixture.synthetic,
+    candidateIssueKeys: fixture.candidateIssueKeys as string[],
     ...(fixture.reviewDurationSeconds === undefined
       ? {}
       : { reviewDurationSeconds: fixture.reviewDurationSeconds as number }),
@@ -182,8 +195,13 @@ export function evaluateDay(value: unknown): DayEvaluationMetrics {
   let unassignedMinutes = 0;
   let deterministicMinutes = 0;
   let aiMinutes = 0;
+  let inventedSuggestionCount = 0;
+  const candidates = new Set(fixture.candidateIssueKeys);
 
   for (const segment of fixture.segments) {
+    if (segment.prediction.issueKey !== null && !candidates.has(segment.prediction.issueKey)) {
+      inventedSuggestionCount += 1;
+    }
     if (segment.expectedIssueKey === null) {
       continue;
     }
@@ -208,6 +226,7 @@ export function evaluateDay(value: unknown): DayEvaluationMetrics {
   const suggestedMinutes = correctMinutes + incorrectMinutes;
   const destinationAccuracy = ratio(correctMinutes, labeledMinutes);
   const reviewDurationSeconds = fixture.reviewDurationSeconds ?? null;
+  const meetsDestinationTarget = ratio(correctMinutes, labeledMinutes) >= 0.8;
 
   return {
     labeledMinutes,
@@ -220,6 +239,8 @@ export function evaluateDay(value: unknown): DayEvaluationMetrics {
     aiCoverage: ratio(aiMinutes, labeledMinutes),
     reviewDurationSeconds,
     reviewUnderTwoMinutes: reviewDurationSeconds === null ? null : reviewDurationSeconds < 120,
-    meetsDestinationTarget: destinationAccuracy >= 0.8,
+    meetsDestinationTarget,
+    inventedSuggestionCount,
+    meetsAssignmentGate: meetsDestinationTarget && inventedSuggestionCount === 0,
   };
 }

@@ -133,17 +133,63 @@ public struct LocalCaptureConfiguration: Codable, Equatable, Sendable {
   public let repositoryPath: String?
   public let repositoryExclusionPaths: [String]
   public let activeIssueKey: String?
+  public let assignmentRules: AssignmentRules
+  public let localInference: LocalInferencePreference
 
   public init(
     privacySettings: CapturePrivacySettings,
     repositoryPath: String? = nil,
     repositoryExclusionPaths: [String] = [],
-    activeIssueKey: String? = nil
+    activeIssueKey: String? = nil,
+    assignmentRules: AssignmentRules = AssignmentRules(),
+    localInference: LocalInferencePreference = LocalInferencePreference()
   ) {
     self.privacySettings = privacySettings
     self.repositoryPath = repositoryPath
     self.repositoryExclusionPaths = repositoryExclusionPaths
     self.activeIssueKey = activeIssueKey
+    self.assignmentRules = assignmentRules
+    self.localInference = localInference
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case privacySettings
+    case repositoryPath
+    case repositoryExclusionPaths
+    case activeIssueKey
+    case assignmentRules
+    case localInference
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    privacySettings = try container.decode(CapturePrivacySettings.self, forKey: .privacySettings)
+    repositoryPath = try container.decodeIfPresent(String.self, forKey: .repositoryPath)
+    repositoryExclusionPaths =
+      try container.decodeIfPresent([String].self, forKey: .repositoryExclusionPaths) ?? []
+    activeIssueKey = try container.decodeIfPresent(String.self, forKey: .activeIssueKey)
+    assignmentRules =
+      try container.decodeIfPresent(AssignmentRules.self, forKey: .assignmentRules)
+      ?? AssignmentRules()
+    localInference =
+      try container.decodeIfPresent(LocalInferencePreference.self, forKey: .localInference)
+      ?? LocalInferencePreference()
+  }
+}
+
+public struct LocalInferencePreference: Codable, Equatable, Sendable {
+  public let isEnabled: Bool
+  public let endpoint: String
+  public let model: String
+
+  public init(
+    isEnabled: Bool = false,
+    endpoint: String = "http://127.0.0.1:8000/v1",
+    model: String = ""
+  ) {
+    self.isEnabled = isEnabled
+    self.endpoint = endpoint
+    self.model = model
   }
 }
 

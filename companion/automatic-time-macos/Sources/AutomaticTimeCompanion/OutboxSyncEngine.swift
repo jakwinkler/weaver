@@ -55,7 +55,7 @@ public final class OutboxSyncEngine {
         drafts: items.map(\.draft),
         credential: credential
       )
-      try await database.markSucceeded(ids: items.map(\.id))
+      try await database.markSucceeded(ids: items.map(\.id), now: now)
       return .synced(synced)
     } catch CompanionTransportError.unauthorized {
       try? credentialVault.delete()

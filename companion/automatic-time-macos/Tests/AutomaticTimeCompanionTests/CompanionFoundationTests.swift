@@ -52,6 +52,43 @@ final class CompanionFoundationTests: XCTestCase {
     XCTAssertEqual(recovered.map(\.draft), [draft])
   }
 
+  func testEncryptedDatabaseDecodesLegacyDraftsWithoutExplainabilityFields() async throws {
+    let fileURL = temporaryDirectory.appendingPathComponent("legacy.store")
+    let key = SymmetricKey(data: Data(repeating: 6, count: 32))
+    let timestamp = "2026-08-29T13:00:00Z"
+    let legacyState: [String: Any] = [
+      "outbox": [
+        [
+          "id": UUID().uuidString,
+          "draft": [
+            "sourceReference": "legacy-draft",
+            "localDate": "2026-08-29",
+            "startedAt": timestamp,
+            "endedAt": "2026-08-29T13:30:00Z",
+            "proposedMinutes": 30,
+            "description": "Legacy encrypted draft",
+            "confidence": 0.8,
+            "assignmentMethod": "deterministic",
+            "assignmentReasons": ["Legacy reason"],
+            "evidenceDigest": "sha256:legacy",
+          ],
+          "attemptCount": 0,
+          "nextAttemptAt": timestamp,
+          "createdAt": timestamp,
+        ]
+      ]
+    ]
+    let plaintext = try JSONSerialization.data(withJSONObject: legacyState)
+    let sealed = try AES.GCM.seal(plaintext, using: key)
+    try XCTUnwrap(sealed.combined).write(to: fileURL)
+
+    let database = try EncryptedLocalDatabase(fileURL: fileURL, key: key)
+    let recovered = await database.allOutboxItems()
+
+    XCTAssertEqual(recovered.first?.draft.assignmentAlternatives, [])
+    XCTAssertEqual(recovered.first?.draft.rulesetVersion, "legacy-v1")
+  }
+
   func testOfflineFailureSurvivesRestartAndRetriesSuccessfully() async throws {
     let fileURL = temporaryDirectory.appendingPathComponent("retry.store")
     let key = SymmetricKey(data: Data(repeating: 8, count: 32))
@@ -78,6 +115,11 @@ final class CompanionFoundationTests: XCTestCase {
     XCTAssertEqual(second, .synced(1))
     let afterSuccess = await reopened.allOutboxItems()
     XCTAssertEqual(afterSuccess, [])
+    let requeued = try await reopened.enqueueIfNeeded(
+      .syntheticFixture,
+      now: .reference.addingTimeInterval(180)
+    )
+    XCTAssertFalse(requeued)
   }
 
   func testRevocationClearsCredentialButKeepsQueuedDraft() async throws {
