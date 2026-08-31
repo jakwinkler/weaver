@@ -4,7 +4,7 @@
 
 ## Status
 
-- Phases 0 through 5 complete; Phase 6 next
+- Phases 0 through 6 complete; Phase 7 local-alpha tooling complete, ten-working-day trial pending
 - First user: Matt, single-user workflow
 - Initial platform: macOS
 - Distribution: bundled first-party plugin, disabled by default
@@ -563,29 +563,48 @@ Phase 5 evidence:
 
 ### Phase 6: Complete live and daily review UX
 
-- [ ] Connect live companion drafts to the Drafts timeline.
-- [ ] Add confidence and "Why this issue?" details.
-- [ ] Add merge, split, offline work, and current-activity states.
-- [ ] Add keyboard-first Daily Review.
-- [ ] Add final reported-total adjustment with explicit preview.
-- [ ] Add reopen behavior for unlocked days and clear handling for partially locked days.
-- [ ] Add loading, offline, stale-device, failure, and empty states.
-- [ ] Add component, integration, and browser tests.
+- [x] Connect live companion drafts to the Drafts timeline.
+- [x] Add confidence and "Why this issue?" details.
+- [x] Add merge, split, offline work, and current-activity states.
+- [x] Add keyboard-first Daily Review.
+- [x] Add final reported-total adjustment with explicit preview.
+- [x] Add reopen behavior for unlocked days and clear handling for partially locked days.
+- [x] Add loading, offline, stale-device, failure, and empty states.
+- [x] Add component, integration, and browser tests.
 
 Gate: a representative day can be reviewed and released in under two minutes without using a timer.
 
+Phase 6 evidence:
+
+- Plugin version `0.5.0` adds a live timeline status route, manual offline drafts, validated interval editing, proportional split, adjacent merge, exact release previews, and resumable reopen behavior.
+- Drafts distinguish captured, offline, split, and merged work. They expose confidence, deterministic reasons, alternatives, editable descriptions and intervals, issue assignment, and live unpaired, active, stale, and offline companion states.
+- Daily Review presents one card at a time with arrow-key navigation, Enter-to-keep, H-to-hide, number-key alternatives, an explicit final total, and a preview of the exact official entries before release.
+- Reopen deletes the plugin's unlocked official entries in one transaction before restoring private drafts. A durable `reopening` state safely resumes after interruption. A locked entry blocks the full delete, preserves every official entry, and returns a partially locked state rather than a partial reopen.
+- Component coverage exercises editing, assignment, confidence, merge, offline work, keyboard review, release preview, loading, failure, stale, offline, partially locked, resumable, and unlocked reopen states. API integration coverage exercises interval editing, split, merge, offline work, adjusted release, interruption recovery, all-or-nothing core deletion, and locked-day refusal.
+- A disposable Full HD browser run installed and enabled the plugin, created and assigned offline work, split and merged adjacent drafts, previewed a 30-to-35-minute adjustment, released exactly one 35-minute official entry, and reopened it back to private review in 63 seconds. The disposable tenant and user were removed after verification.
+
 ### Phase 7: Learning, privacy, and local alpha
 
-- [ ] Update correction memories from confirmed reassignment and rejection.
-- [ ] Add memory inspection, disable, deletion, and recomputation.
-- [ ] Add local-only quality and review-time metrics.
-- [ ] Run privacy threat modeling for companion, pairing, sync, and uninstall.
-- [ ] Verify raw retention with time-controlled tests.
-- [ ] Verify no screenshots, content, credentials, or raw signals cross the network.
+- [x] Update correction memories from confirmed reassignment and rejection.
+- [x] Add memory inspection, disable, deletion, and recomputation.
+- [x] Add local-only quality and review-time metrics.
+- [x] Run privacy threat modeling for companion, pairing, sync, and uninstall.
+- [x] Verify raw retention with time-controlled tests.
+- [x] Verify no screenshots, content, credentials, or raw signals cross the network.
 - [ ] Run a ten-working-day single-user alpha.
 - [ ] Compare assignment accuracy, review time, unmatched rate, correction rate, and manual-timer use against acceptance criteria.
 
 Gate: the full acceptance criteria pass on a representative local trial and unresolved privacy or reliability findings are documented.
+
+Phase 7 implementation evidence:
+
+- Plugin version `0.6.0` learns positive and negative issue-targeted correction memories from reassignment, hide, and delete review actions. Learning uses an opaque context digest rather than server-visible application, title, browser, repository, or Git fields.
+- Correction memories are owner-scoped and inspectable. Enable or disable, delete, and recompute actions advance a per-user revision so the companion requeues only matching unreleased drafts. Released drafts and official time are not rewritten.
+- The private local-alpha view reports working days, captured and released drafts, destination accuracy, corrections, unmatched work, hidden or deleted work, median review time, and manual or timer usage. The core capability returns only the current user's source counts.
+- The [Automatic Time privacy threat model](../security/automatic-time-threat-model.md) covers companion capture, local inference, pairing, credentials, sync, correction learning, metrics, disable, and uninstall. The review also closed a transport gap by requiring HTTPS for every non-loopback Weaver API host.
+- Thirty-seven synthetic Swift tests cover correction learning, revision-based recomputation, exact 48-hour and seven-day retention cutoffs, encrypted state, transport policy, and an exact derived-draft network allowlist. API and web coverage exercise the reversible learning flow and private-alpha controls.
+- Full HD browser acceptance verified the empty and populated settings states, a 90-second median review, one of ten working days, correction statistics, and disable, recompute, confirmation, and deletion behavior. The disposable tenant, user, schema, and plugin data were removed after verification.
+- Automated and synthetic checks do not satisfy the ten-working-day gate. The real trial and its day two, five, and ten comparisons remain pending.
 
 ## Expected Code Surface
 

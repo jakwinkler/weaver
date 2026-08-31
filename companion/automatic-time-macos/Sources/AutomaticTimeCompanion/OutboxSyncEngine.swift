@@ -1,6 +1,7 @@
 import Foundation
 
 public enum CompanionTransportError: Error, Equatable {
+  case insecureBaseURL
   case offline
   case unauthorized
   case server(status: Int)

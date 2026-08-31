@@ -64,6 +64,20 @@ public struct CapturedContext: Codable, Equatable, Hashable, Sendable {
     return nil
   }
 
+  public var correctionContextDigest: String {
+    let values = [
+      applicationBundleIdentifier,
+      applicationName,
+      browserDomain ?? "",
+      repositoryFingerprint ?? "",
+      gitBranch ?? "",
+    ].map {
+      $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+    let canonical = values.map { "\($0.utf8.count):\($0)" }.joined(separator: "|")
+    return "sha256:\(sha256Hex(canonical))"
+  }
+
   private static func normalizedIssueKey(_ value: String?) -> String? {
     guard let value else { return nil }
     let candidate = value.uppercased()

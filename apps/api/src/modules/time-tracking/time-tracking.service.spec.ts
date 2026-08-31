@@ -21,6 +21,7 @@ describe('TimeTrackingService manual worklog contract', () => {
       throw new Error('Unexpected repository');
     }),
     transaction: jest.fn(),
+    query: jest.fn(),
   };
   const tenantConnections = {
     getEntityManager: jest.fn().mockResolvedValue(entityManager),
@@ -108,6 +109,25 @@ describe('TimeTrackingService manual worklog contract', () => {
 
     expect(timeEntryRepository.create).toHaveBeenCalledWith(
       expect.objectContaining({ source: 'timer' }),
+    );
+  });
+
+  it('counts only the current user worklog sources inside a bounded date range', async () => {
+    entityManager.query.mockResolvedValue([
+      { source: 'manual', entry_count: 2 },
+      { source: 'timer', entry_count: 1 },
+      { source: 'plugin', entry_count: 4 },
+    ]);
+
+    await expect(
+      service.countOwnEntriesBySource(
+        { loggedFrom: '2026-08-01T00:00:00Z', loggedTo: '2026-09-01T00:00:00Z' },
+        'user-1',
+      ),
+    ).resolves.toEqual({ manual: 2, timer: 1, plugin: 4 });
+    expect(entityManager.query).toHaveBeenCalledWith(
+      expect.stringContaining('WHERE user_id = $1::uuid'),
+      ['user-1', '2026-08-01T00:00:00Z', '2026-09-01T00:00:00Z'],
     );
   });
 
@@ -237,6 +257,65 @@ describe('TimeTrackingService manual worklog contract', () => {
         sourceReference: 'draft-1',
       }),
     );
+  });
+
+  it('deletes an unlocked plugin batch atomically for an explicit reopen', async () => {
+    const entries = [
+      {
+        id: 'entry-1',
+        userId: 'user-1',
+        sourcePluginId: '@weaver/plugin-automatic-time',
+        lockedAt: null,
+        lockReason: null,
+      },
+      {
+        id: 'entry-2',
+        userId: 'user-1',
+        sourcePluginId: '@weaver/plugin-automatic-time',
+        lockedAt: null,
+        lockReason: null,
+      },
+    ] as TimeEntryEntity[];
+    timeEntryRepository.find.mockResolvedValue(entries);
+
+    await expect(
+      service.deletePluginEntriesBatch(
+        '@weaver/plugin-automatic-time',
+        ['entry-1', 'entry-2'],
+        'user-1',
+      ),
+    ).resolves.toEqual({ deleted: 2 });
+
+    expect(entityManager.transaction).toHaveBeenCalledTimes(1);
+    expect(timeEntryRepository.remove).toHaveBeenCalledWith(entries);
+  });
+
+  it('keeps every plugin entry when one entry in a reopen batch is locked', async () => {
+    timeEntryRepository.find.mockResolvedValue([
+      {
+        id: 'entry-1',
+        userId: 'user-1',
+        sourcePluginId: '@weaver/plugin-automatic-time',
+        lockedAt: null,
+        lockReason: null,
+      },
+      {
+        id: 'entry-2',
+        userId: 'user-1',
+        sourcePluginId: '@weaver/plugin-automatic-time',
+        lockedAt: new Date('2026-08-30T18:00:00.000Z'),
+        lockReason: 'Invoiced',
+      },
+    ] as TimeEntryEntity[]);
+
+    await expect(
+      service.deletePluginEntriesBatch(
+        '@weaver/plugin-automatic-time',
+        ['entry-1', 'entry-2'],
+        'user-1',
+      ),
+    ).rejects.toThrow(new ConflictException('Time entry "entry-2" is locked: Invoiced'));
+    expect(timeEntryRepository.remove).not.toHaveBeenCalled();
   });
 
   it('returns a numeric total for the issue summary', async () => {

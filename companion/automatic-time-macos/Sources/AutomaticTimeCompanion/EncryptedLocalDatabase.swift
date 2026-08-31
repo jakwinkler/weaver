@@ -45,6 +45,12 @@ public struct RetentionTombstone: Codable, Equatable, Identifiable, Sendable {
   public let deletedBlocks: Int
 }
 
+private struct SyncedDraftMetadata: Codable {
+  let syncedAt: Date
+  let localDate: String
+  let correctionContextDigest: String?
+}
+
 private struct LocalDatabaseState: Codable {
   var outbox: [OutboxItem] = []
   var signals: [ActivitySignal] = []
@@ -52,6 +58,7 @@ private struct LocalDatabaseState: Codable {
   var issueCandidates: IssueCandidateSnapshot?
   var correctionMemories: CorrectionMemorySnapshot?
   var syncedDraftReferences: [String: Date] = [:]
+  var syncedDraftMetadata: [String: SyncedDraftMetadata] = [:]
   var captureConfiguration: LocalCaptureConfiguration?
   var releasedDays: [String: Date] = [:]
   var retentionTombstones: [RetentionTombstone] = []
@@ -63,6 +70,7 @@ private struct LocalDatabaseState: Codable {
     case issueCandidates
     case correctionMemories
     case syncedDraftReferences
+    case syncedDraftMetadata
     case captureConfiguration
     case releasedDays
     case retentionTombstones
@@ -86,6 +94,9 @@ private struct LocalDatabaseState: Codable {
     )
     syncedDraftReferences =
       try container.decodeIfPresent([String: Date].self, forKey: .syncedDraftReferences) ?? [:]
+    syncedDraftMetadata =
+      try container.decodeIfPresent([String: SyncedDraftMetadata].self, forKey: .syncedDraftMetadata)
+      ?? [:]
     captureConfiguration = try container.decodeIfPresent(
       LocalCaptureConfiguration.self,
       forKey: .captureConfiguration
@@ -193,7 +204,37 @@ public actor EncryptedLocalDatabase {
     state.issueCandidates
   }
 
-  public func replaceCorrectionMemories(_ snapshot: CorrectionMemorySnapshot) throws {
+  public func replaceCorrectionMemories(
+    _ snapshot: CorrectionMemorySnapshot,
+    recomputeContextDigests: [String] = []
+  ) throws {
+    let previousRevision = state.correctionMemories?.revision ?? 0
+    if snapshot.revision > previousRevision && !recomputeContextDigests.isEmpty {
+      let requested = Set(recomputeContextDigests)
+      let recomputeAll = requested.contains("*")
+      let releasedDates = Set(state.releasedDays.keys)
+      let invalidatedReferences = Set<String>(
+        state.syncedDraftMetadata.compactMap { sourceReference, metadata -> String? in
+          guard !releasedDates.contains(metadata.localDate) else { return nil }
+          if recomputeAll { return sourceReference }
+          guard
+            let digest = metadata.correctionContextDigest,
+            requested.contains(digest)
+          else { return nil }
+          return sourceReference
+        }
+      )
+      for sourceReference in invalidatedReferences {
+        state.syncedDraftReferences.removeValue(forKey: sourceReference)
+        state.syncedDraftMetadata.removeValue(forKey: sourceReference)
+      }
+      state.outbox.removeAll { item in
+        guard !releasedDates.contains(item.draft.localDate) else { return false }
+        if recomputeAll { return true }
+        guard let digest = item.draft.correctionContextDigest else { return false }
+        return requested.contains(digest)
+      }
+    }
     state.correctionMemories = snapshot
     try persist()
   }
@@ -265,6 +306,9 @@ public actor EncryptedLocalDatabase {
       absoluteBlockIDs.contains($0.sourceReference) || releasedBlockIDs.contains($0.sourceReference)
     }
     state.syncedDraftReferences = state.syncedDraftReferences.filter { $0.value > absoluteCutoff }
+    state.syncedDraftMetadata = state.syncedDraftMetadata.filter {
+      $0.value.syncedAt > absoluteCutoff
+    }
 
     var tombstoneIDs: [UUID] = []
     if !absoluteSignals.isEmpty || !absoluteBlocks.isEmpty {
@@ -302,6 +346,11 @@ public actor EncryptedLocalDatabase {
     let completed = Set(ids)
     for item in state.outbox where completed.contains(item.id) {
       state.syncedDraftReferences[item.draft.sourceReference] = now
+      state.syncedDraftMetadata[item.draft.sourceReference] = SyncedDraftMetadata(
+        syncedAt: now,
+        localDate: item.draft.localDate,
+        correctionContextDigest: item.draft.correctionContextDigest
+      )
     }
     state.outbox.removeAll { completed.contains($0.id) }
     try persist()

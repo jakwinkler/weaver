@@ -95,6 +95,33 @@ final class AssignmentEngineTests: XCTestCase {
     XCTAssertTrue(decision.reasons.contains { $0.contains("correction memory") })
   }
 
+  func testRejectedCorrectionMemoryCanDemoteABoundedCandidate() async throws {
+    let memory = CorrectionMemory(
+      id: "memory-rejected",
+      memoryType: "private-context-digest",
+      normalizedFeatures: [
+        "contextDigest": ActivityBlock.fixture(branch: nil).context.correctionContextDigest
+      ],
+      targetIssueKey: "ATM-1",
+      weight: 2,
+      positiveCount: 0,
+      negativeCount: 4,
+      explanation: "This private context was rejected for ATM-1"
+    )
+    let decision = try await AssignmentEngine().assign(
+      block: .fixture(branch: nil),
+      snapshot: .fixture,
+      rules: AssignmentRules(
+        repositoryMappings: ["repo-fingerprint": AssignmentTarget(issueKey: "ATM-1")]
+      ),
+      correctionMemories: [memory],
+      now: .reference
+    )
+
+    XCTAssertNil(decision.issueKey)
+    XCTAssertTrue(decision.reasons.contains { $0.contains("rejected correction memory") })
+  }
+
   func testSemanticRankingRunsOnlyAfterDeterministicEvidenceAndCannotExpandCandidates() async throws {
     let semantic = RecordingSemanticRanker(result: SemanticIssueRank(issueKey: "ATM-2", score: 0.95))
     let rules = AssignmentRules(
@@ -169,6 +196,10 @@ final class AssignmentEngineTests: XCTestCase {
     XCTAssertEqual(drafts[0].description, "Worked on Build Automatic Time assignment")
     XCTAssertFalse(drafts[0].assignmentReasons.isEmpty)
     XCTAssertEqual(drafts[0].rulesetVersion, AssignmentEngine.rulesetVersion)
+    XCTAssertEqual(
+      drafts[0].correctionContextDigest,
+      first.context.correctionContextDigest
+    )
   }
 
   func testLabeledAssignmentHarnessExceedsEightyPercentWithoutInventingIssues() async throws {

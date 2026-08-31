@@ -93,7 +93,7 @@ final class CompanionAppModel: ObservableObject {
 
     Task {
       do {
-        let client = AutomaticTimeHTTPClient(apiBaseURL: apiURL, tenantID: tenantID)
+        let client = try AutomaticTimeHTTPClient(apiBaseURL: apiURL, tenantID: tenantID)
         let coordinator = PairingCoordinator(
           transport: client,
           credentialVault: credentialVault
@@ -196,7 +196,7 @@ final class CompanionAppModel: ObservableObject {
       return
     }
     do {
-      let client = AutomaticTimeHTTPClient(apiBaseURL: apiURL, tenantID: tenantID)
+      let client = try AutomaticTimeHTTPClient(apiBaseURL: apiURL, tenantID: tenantID)
       let count = try await IssueCandidateSynchronizer(
         database: database,
         transport: client
@@ -272,7 +272,7 @@ final class CompanionAppModel: ObservableObject {
       let outcome = await OutboxSyncEngine(
         database: database,
         credentialVault: credentialVault,
-        transport: AutomaticTimeHTTPClient(apiBaseURL: apiURL, tenantID: tenantID)
+        transport: try AutomaticTimeHTTPClient(apiBaseURL: apiURL, tenantID: tenantID)
       ).sync()
       switch outcome {
       case .synced(let count):

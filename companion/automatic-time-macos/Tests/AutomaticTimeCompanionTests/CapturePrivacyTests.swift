@@ -81,6 +81,70 @@ final class CapturePrivacyTests: XCTestCase {
     XCTAssertNil(excluded)
     XCTAssertEqual(runner.invocationCount, 2)
   }
+
+  func testCorrectionContextDigestIsStableAndContainsNoRawMetadata() {
+    let first = CapturedContext(
+      applicationBundleIdentifier: "com.apple.dt.Xcode",
+      applicationName: "Xcode",
+      windowTitle: "Private customer title",
+      browserDomain: "docs.example.test",
+      browserTitle: "Private page title",
+      repositoryFingerprint: "sha256:synthetic-repository",
+      gitBranch: "feature/ATM-1-private-name",
+      gitCommit: "abcdef0123456789"
+    )
+    let titleChanged = first.replacing(
+      windowTitle: .some("Another private customer title"),
+      browserTitle: .some("Another private page title")
+    )
+    let repositoryChanged = first.replacing(
+      repositoryFingerprint: .some("sha256:different-repository")
+    )
+
+    XCTAssertEqual(first.correctionContextDigest, titleChanged.correctionContextDigest)
+    XCTAssertNotEqual(first.correctionContextDigest, repositoryChanged.correctionContextDigest)
+    XCTAssertTrue(first.correctionContextDigest.hasPrefix("sha256:"))
+    XCTAssertFalse(first.correctionContextDigest.contains("customer"))
+    XCTAssertFalse(first.correctionContextDigest.contains("docs.example.test"))
+  }
+
+  func testDerivedDraftNetworkContractContainsNoRawSignalsOrCapturedContent() throws {
+    let draft = DerivedDraft(
+      sourceReference: "cluster:synthetic",
+      localDate: "2026-08-31",
+      startedAt: Date(timeIntervalSince1970: 1_000),
+      endedAt: Date(timeIntervalSince1970: 2_800),
+      proposedMinutes: 30,
+      description: "Worked on a bounded synthetic issue",
+      confidence: 0.8,
+      assignmentMethod: "deterministic",
+      assignmentReasons: ["Matched a private context digest"],
+      evidenceDigest: "sha256:synthetic-evidence",
+      correctionContextDigest: "sha256:\(String(repeating: "c", count: 64))",
+      issueKey: "ATM-1"
+    )
+    let encoder = JSONEncoder()
+    encoder.dateEncodingStrategy = .iso8601
+    let object = try XCTUnwrap(
+      JSONSerialization.jsonObject(with: encoder.encode(draft)) as? [String: Any]
+    )
+
+    XCTAssertEqual(
+      Set(object.keys),
+      Set([
+        "sourceReference", "localDate", "startedAt", "endedAt", "proposedMinutes",
+        "description", "confidence", "assignmentMethod", "assignmentReasons",
+        "assignmentAlternatives", "rulesetVersion", "evidenceDigest",
+        "correctionContextDigest", "issueKey",
+      ])
+    )
+    for forbidden in [
+      "windowTitle", "browserTitle", "screenshot", "audio", "keystrokes",
+      "clipboardContents", "fileContents", "pageContents", "capturedCredential", "rawSignals",
+    ] {
+      XCTAssertNil(object[forbidden])
+    }
+  }
 }
 
 private final class FixtureGitCommandRunner: GitCommandRunning {

@@ -5,6 +5,9 @@ import { PluginContextFactory } from './plugin-context.factory';
 describe('PluginContextFactory core capability enforcement', () => {
   const entityManager = {
     query: jest.fn(),
+    transaction: jest.fn(async (callback: (manager: unknown) => Promise<unknown>) =>
+      callback(entityManager),
+    ),
   };
   const tenantConnections = {
     getEntityManager: jest.fn().mockResolvedValue(entityManager),
@@ -22,7 +25,9 @@ describe('PluginContextFactory core capability enforcement', () => {
     createBatch: jest.fn(),
     updatePluginEntry: jest.fn(),
     deletePluginEntry: jest.fn(),
+    deletePluginEntriesBatch: jest.fn(),
     listPluginEntries: jest.fn(),
+    countOwnEntriesBySource: jest.fn(),
     getPluginLockState: jest.fn(),
   };
 
@@ -72,6 +77,33 @@ describe('PluginContextFactory core capability enforcement', () => {
       '@weaver/plugin-automatic-time',
       request,
       'user-1',
+    );
+  });
+
+  it('forwards atomic plugin batch deletion through the declared capability', async () => {
+    timeTracking.deletePluginEntriesBatch.mockResolvedValue({ deleted: 2 });
+
+    await expect(
+      withContext((context) => context.api.timeEntries.deleteBatch(['entry-1', 'entry-2'])),
+    ).resolves.toEqual({ deleted: 2 });
+    expect(timeTracking.deletePluginEntriesBatch).toHaveBeenCalledWith(
+      '@weaver/plugin-automatic-time',
+      ['entry-1', 'entry-2'],
+      'user-1',
+    );
+  });
+
+  it('forwards private source counts through the declared capability', async () => {
+    timeTracking.countOwnEntriesBySource.mockResolvedValue({ manual: 2, timer: 1, plugin: 4 });
+    const filters = { loggedFrom: '2026-08-01T00:00:00Z' };
+
+    await expect(
+      withContext((context) => context.api.timeEntries.countOwnBySource(filters)),
+    ).resolves.toEqual({ manual: 2, timer: 1, plugin: 4 });
+    expect(timeTracking.countOwnEntriesBySource).toHaveBeenCalledWith(
+      filters,
+      'user-1',
+      entityManager,
     );
   });
 

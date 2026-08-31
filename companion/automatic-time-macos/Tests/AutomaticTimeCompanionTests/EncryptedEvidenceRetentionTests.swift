@@ -110,6 +110,45 @@ final class EncryptedEvidenceRetentionTests: XCTestCase {
     XCTAssertEqual(reopenedTombstones.count, 2)
   }
 
+  func testRetentionCutoffsDeleteAtFortyEightHoursAndSevenDaysButNotBefore() async throws {
+    let database = try EncryptedLocalDatabase(
+      fileURL: temporaryDirectory.appendingPathComponent("retention-boundaries.store"),
+      key: SymmetricKey(data: Data(repeating: 12, count: 32))
+    )
+    let now = Date.reference
+    let context = CapturedContext(
+      applicationBundleIdentifier: "dev.weaver.boundary",
+      applicationName: "Boundary fixture"
+    )
+    let beforeReleasedCutoff = now.addingTimeInterval(-(48 * 3_600) + 1)
+    let atReleasedCutoff = now.addingTimeInterval(-48 * 3_600)
+    let beforeAbsoluteCutoff = now.addingTimeInterval(-(7 * 86_400) + 1)
+    let atAbsoluteCutoff = now.addingTimeInterval(-7 * 86_400)
+    try await database.recordSignal(.context(context, at: beforeAbsoluteCutoff))
+    try await database.recordSignal(.context(context, at: atAbsoluteCutoff))
+    try await database.replaceActivityBlocks([
+      .retentionFixture(localDate: "2026-08-28", context: context, at: beforeReleasedCutoff),
+      .retentionFixture(localDate: "2026-08-27", context: context, at: atReleasedCutoff),
+    ])
+    try await database.markDayReleased(
+      localDate: "2026-08-28",
+      releasedAt: beforeReleasedCutoff
+    )
+    try await database.markDayReleased(
+      localDate: "2026-08-27",
+      releasedAt: atReleasedCutoff
+    )
+
+    let result = try await database.enforceRetention(now: now)
+
+    XCTAssertEqual(result.deletedSignals, 1)
+    XCTAssertEqual(result.deletedBlocks, 1)
+    let signals = await database.allSignals()
+    let blocks = await database.allActivityBlocks()
+    XCTAssertEqual(signals.count, 1)
+    XCTAssertEqual(blocks.map(\.localDate), ["2026-08-28"])
+  }
+
   func testCandidateSynchronizerStoresBoundedSnapshot() async throws {
     let database = try EncryptedLocalDatabase(
       fileURL: temporaryDirectory.appendingPathComponent("candidates.store"),

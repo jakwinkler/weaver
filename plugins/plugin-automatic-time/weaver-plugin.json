@@ -1,7 +1,7 @@
 {
   "id": "@weaver/plugin-automatic-time",
   "name": "Automatic Time",
-  "version": "0.4.0",
+  "version": "0.6.0",
   "description": "Review private activity drafts and explicitly release them as official Weaver time",
   "author": "Weaver",
   "icon": "clock",
@@ -47,7 +47,7 @@
   "companion": {
     "platform": "macos",
     "downloadArtifact": "automatic-time-macos",
-    "minimumVersion": "0.3.0",
+    "minimumVersion": "0.4.0",
     "pairingRoute": "/apps/automatic-time/settings",
     "authenticator": "authenticateDeviceCredential"
   },
@@ -118,6 +118,24 @@
       "requiredPermissions": ["automatic-time.view"]
     },
     {
+      "method": "GET",
+      "path": "/timeline-status",
+      "handler": "getTimelineStatus",
+      "requiredPermissions": ["automatic-time.view"]
+    },
+    {
+      "method": "POST",
+      "path": "/drafts/offline",
+      "handler": "addOfflineDraft",
+      "requiredPermissions": ["automatic-time.manage-drafts"]
+    },
+    {
+      "method": "POST",
+      "path": "/drafts/merge",
+      "handler": "mergeDrafts",
+      "requiredPermissions": ["automatic-time.manage-drafts"]
+    },
+    {
       "method": "PATCH",
       "path": "/drafts/:draftId",
       "handler": "editDraft",
@@ -136,6 +154,12 @@
       "requiredPermissions": ["automatic-time.manage-drafts"]
     },
     {
+      "method": "POST",
+      "path": "/drafts/:draftId/split",
+      "handler": "splitDraft",
+      "requiredPermissions": ["automatic-time.manage-drafts"]
+    },
+    {
       "method": "DELETE",
       "path": "/drafts/:draftId",
       "handler": "deleteDraft",
@@ -149,8 +173,20 @@
     },
     {
       "method": "POST",
+      "path": "/review/:localDate/preview",
+      "handler": "previewRelease",
+      "requiredPermissions": ["automatic-time.release"]
+    },
+    {
+      "method": "POST",
       "path": "/review/:localDate/release",
       "handler": "releaseDay",
+      "requiredPermissions": ["automatic-time.release"]
+    },
+    {
+      "method": "POST",
+      "path": "/review/:localDate/reopen",
+      "handler": "reopenDay",
       "requiredPermissions": ["automatic-time.release"]
     },
     {
@@ -194,6 +230,36 @@
       "path": "/devices/:deviceId/revoke",
       "handler": "revokeDevice",
       "requiredPermissions": ["automatic-time.manage-devices"]
+    },
+    {
+      "method": "GET",
+      "path": "/correction-memories",
+      "handler": "listCorrectionMemories",
+      "requiredPermissions": ["automatic-time.manage-devices"]
+    },
+    {
+      "method": "PATCH",
+      "path": "/correction-memories/:memoryId",
+      "handler": "updateCorrectionMemory",
+      "requiredPermissions": ["automatic-time.manage-devices"]
+    },
+    {
+      "method": "DELETE",
+      "path": "/correction-memories/:memoryId",
+      "handler": "deleteCorrectionMemory",
+      "requiredPermissions": ["automatic-time.manage-devices"]
+    },
+    {
+      "method": "POST",
+      "path": "/correction-memories/:memoryId/recompute",
+      "handler": "recomputeCorrectionMemory",
+      "requiredPermissions": ["automatic-time.manage-devices"]
+    },
+    {
+      "method": "GET",
+      "path": "/local-alpha/metrics",
+      "handler": "getLocalAlphaMetrics",
+      "requiredPermissions": ["automatic-time.view"]
     },
     {
       "method": "GET",
@@ -243,6 +309,14 @@
     {
       "version": "0.4.0",
       "path": "migrations/003_add_assignment_explainability.sql"
+    },
+    {
+      "version": "0.5.0",
+      "path": "migrations/004_add_reopening_release_status.sql"
+    },
+    {
+      "version": "0.6.0",
+      "path": "migrations/005_add_private_learning_and_alpha_metrics.sql"
     }
   ]
 }

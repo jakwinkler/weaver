@@ -1,7 +1,9 @@
 import Foundation
 
 public protocol CorrectionMemoryTransport: AnyObject, Sendable {
-  func fetchCorrectionMemories(credential: DeviceCredential) async throws -> [CorrectionMemory]
+  func fetchCorrectionMemories(
+    credential: DeviceCredential
+  ) async throws -> CorrectionMemoryRemoteSnapshot
 }
 
 public final class CorrectionMemorySynchronizer: @unchecked Sendable {
@@ -21,11 +23,11 @@ public final class CorrectionMemorySynchronizer: @unchecked Sendable {
 
   @discardableResult
   public func synchronize(credential: DeviceCredential, now: Date = Date()) async throws -> Int {
-    let memories = Array(
-      try await transport.fetchCorrectionMemories(credential: credential).prefix(maximumMemories)
-    )
+    let remote = try await transport.fetchCorrectionMemories(credential: credential)
+    let memories = Array(remote.memories.prefix(maximumMemories))
     try await database.replaceCorrectionMemories(
-      CorrectionMemorySnapshot(fetchedAt: now, memories: memories)
+      CorrectionMemorySnapshot(fetchedAt: now, revision: remote.revision, memories: memories),
+      recomputeContextDigests: remote.recomputeContextDigests
     )
     return memories.count
   }

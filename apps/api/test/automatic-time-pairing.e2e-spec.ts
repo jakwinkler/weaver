@@ -244,15 +244,21 @@ describe('Automatic Time Phase 3 companion pairing (e2e)', () => {
     const correctionMemories = await deviceRequest(paired.deviceToken)
       .get(companionRoute('/device/correction-memories'))
       .expect(200);
-    expect(correctionMemories.body).toEqual([
+    expect(correctionMemories.body).toEqual(
       expect.objectContaining({
-        memoryType: 'repository',
-        normalizedFeatures: { repositoryFingerprint: 'synthetic-repository' },
-        targetIssueKey: issue.body.key,
-        weight: 1.25,
-        explanation: 'Synthetic repository correction',
+        revision: 0,
+        recomputeContextDigests: [],
+        memories: [
+          expect.objectContaining({
+            memoryType: 'repository',
+            normalizedFeatures: { repositoryFingerprint: 'synthetic-repository' },
+            targetIssueKey: issue.body.key,
+            weight: 1.25,
+            explanation: 'Synthetic repository correction',
+          }),
+        ],
       }),
-    ]);
+    );
 
     const sync = await deviceRequest(paired.deviceToken)
       .post(companionRoute('/device/drafts'))
@@ -271,6 +277,7 @@ describe('Automatic Time Phase 3 companion pairing (e2e)', () => {
             assignmentAlternatives: [],
             rulesetVersion: 'automatic-time-assignment-v1',
             evidenceDigest: 'sha256:paired-synthetic-draft',
+            correctionContextDigest: `sha256:${'b'.repeat(64)}`,
             issueKey: issue.body.key,
           },
         ],
@@ -283,6 +290,7 @@ describe('Automatic Time Phase 3 companion pairing (e2e)', () => {
         proposedMinutes: 30,
         assignmentAlternatives: [],
         rulesetVersion: 'automatic-time-assignment-v1',
+        correctionContextDigest: `sha256:${'b'.repeat(64)}`,
       }),
     ]);
 
@@ -329,6 +337,14 @@ describe('Automatic Time Phase 3 companion pairing (e2e)', () => {
             rulesetVersion: 'automatic-time-assignment-v1',
             evidenceDigest: 'sha256:raw-signal-rejected',
             windowTitle: 'Raw window titles cannot cross the companion boundary',
+            screenshot: 'base64-synthetic-screen',
+            audio: 'base64-synthetic-audio',
+            keystrokes: 'synthetic typed contents',
+            clipboardContents: 'synthetic clipboard contents',
+            fileContents: 'synthetic source contents',
+            pageContents: 'synthetic browser contents',
+            capturedCredential: 'synthetic-secret',
+            rawSignals: [{ kind: 'context' }],
           },
         ],
       })

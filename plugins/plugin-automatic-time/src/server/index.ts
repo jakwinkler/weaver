@@ -20,6 +20,8 @@ export async function onDisable(context: PluginContext): Promise<void> {
 export async function onUninstall(context: PluginContext): Promise<void> {
   await context.db.runMigration(`
     DROP TABLE IF EXISTS automatic_time_pairing_requests CASCADE;
+    DROP TABLE IF EXISTS automatic_time_review_sessions CASCADE;
+    DROP TABLE IF EXISTS automatic_time_review_events CASCADE;
     DROP TABLE IF EXISTS automatic_time_drafts CASCADE;
     DROP TABLE IF EXISTS automatic_time_correction_memories CASCADE;
     DROP TABLE IF EXISTS automatic_time_release_batches CASCADE;

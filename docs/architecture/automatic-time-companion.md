@@ -4,6 +4,9 @@
 - Date: 2026-08-29
 - Scope: Automatic Time companion technology and Phase 0 operating defaults
 
+The Phase 7 privacy review and remaining distribution findings are recorded in
+[`../security/automatic-time-threat-model.md`](../security/automatic-time-threat-model.md).
+
 ## Context
 
 Automatic Time needs a separately installed macOS companion. The companion must collect a deliberately narrow metadata set, segment work locally, protect short-lived evidence at rest, and send only derived private drafts to Weaver. It must remain useful when Weaver is offline and must not broaden the plugin's authority to release official time.

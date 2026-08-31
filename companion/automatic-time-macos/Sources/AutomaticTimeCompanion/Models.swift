@@ -13,6 +13,7 @@ public struct DerivedDraft: Codable, Equatable, Sendable {
   public let assignmentAlternatives: [AssignmentAlternative]
   public let rulesetVersion: String
   public let evidenceDigest: String
+  public let correctionContextDigest: String?
   public let issueKey: String?
 
   public init(
@@ -28,6 +29,7 @@ public struct DerivedDraft: Codable, Equatable, Sendable {
     assignmentAlternatives: [AssignmentAlternative] = [],
     rulesetVersion: String = AssignmentEngine.rulesetVersion,
     evidenceDigest: String,
+    correctionContextDigest: String? = nil,
     issueKey: String? = nil
   ) {
     self.sourceReference = sourceReference
@@ -42,6 +44,7 @@ public struct DerivedDraft: Codable, Equatable, Sendable {
     self.assignmentAlternatives = assignmentAlternatives
     self.rulesetVersion = rulesetVersion
     self.evidenceDigest = evidenceDigest
+    self.correctionContextDigest = correctionContextDigest
     self.issueKey = issueKey
   }
 
@@ -58,6 +61,7 @@ public struct DerivedDraft: Codable, Equatable, Sendable {
     case assignmentAlternatives
     case rulesetVersion
     case evidenceDigest
+    case correctionContextDigest
     case issueKey
   }
 
@@ -78,6 +82,10 @@ public struct DerivedDraft: Codable, Equatable, Sendable {
     rulesetVersion =
       try container.decodeIfPresent(String.self, forKey: .rulesetVersion) ?? "legacy-v1"
     evidenceDigest = try container.decode(String.self, forKey: .evidenceDigest)
+    correctionContextDigest = try container.decodeIfPresent(
+      String.self,
+      forKey: .correctionContextDigest
+    )
     issueKey = try container.decodeIfPresent(String.self, forKey: .issueKey)
   }
 }

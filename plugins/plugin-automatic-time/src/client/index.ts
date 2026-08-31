@@ -9,8 +9,13 @@ export type {
   AutomaticTimeApi,
   AutomaticTimeDraft,
   AutomaticTimeReview,
+  AutomaticTimeReleasePreview,
   AutomaticTimeReleaseResult,
+  AutomaticTimeTimelineStatus,
   AutomaticTimeDevice,
+  AutomaticTimeCorrectionMemory,
+  AutomaticTimeCorrectionMemoryMutation,
+  AutomaticTimeLocalAlphaMetrics,
   AutomaticTimePairingRequest,
   IssueCandidate,
 } from './types';

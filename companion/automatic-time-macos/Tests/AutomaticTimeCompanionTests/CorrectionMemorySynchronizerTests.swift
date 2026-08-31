@@ -24,7 +24,13 @@ final class CorrectionMemorySynchronizerTests: XCTestCase {
     let database = try EncryptedLocalDatabase(fileURL: fileURL, key: key)
     let count = try await CorrectionMemorySynchronizer(
       database: database,
-      transport: CorrectionMemoryFixtureTransport(memories: memories)
+      transport: CorrectionMemoryFixtureTransport(
+        snapshot: CorrectionMemoryRemoteSnapshot(
+          revision: 1,
+          recomputeContextDigests: [],
+          memories: memories
+        )
+      )
     ).synchronize(credential: .rulesFixture, now: .reference)
 
     XCTAssertEqual(count, 200)
@@ -38,17 +44,93 @@ final class CorrectionMemorySynchronizerTests: XCTestCase {
     let reopenedCount = await reopened.correctionMemorySnapshot()?.memories.count
     XCTAssertEqual(reopenedCount, 200)
   }
+
+
+  func testNewRevisionRequeuesOnlyMatchingUnreleasedDrafts() async throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    let database = try EncryptedLocalDatabase(
+      fileURL: directory.appendingPathComponent("recompute.store"),
+      key: SymmetricKey(size: .bits256)
+    )
+    let matching = DerivedDraft.fixture(
+      sourceReference: "matching",
+      localDate: "2026-08-30",
+      correctionContextDigest: "sha256:matching"
+    )
+    let released = DerivedDraft.fixture(
+      sourceReference: "released",
+      localDate: "2026-08-29",
+      correctionContextDigest: "sha256:matching"
+    )
+    let unrelated = DerivedDraft.fixture(
+      sourceReference: "unrelated",
+      localDate: "2026-08-30",
+      correctionContextDigest: "sha256:unrelated"
+    )
+    for draft in [matching, released, unrelated] {
+      try await database.enqueue(draft, now: .reference)
+    }
+    let queued = await database.allOutboxItems()
+    try await database.markSucceeded(ids: queued.map(\.id), now: .reference)
+    try await database.markDayReleased(localDate: "2026-08-29", releasedAt: .reference)
+    try await database.replaceCorrectionMemories(
+      CorrectionMemorySnapshot(fetchedAt: .reference, revision: 1, memories: [])
+    )
+
+    _ = try await CorrectionMemorySynchronizer(
+      database: database,
+      transport: CorrectionMemoryFixtureTransport(
+        snapshot: CorrectionMemoryRemoteSnapshot(
+          revision: 2,
+          recomputeContextDigests: ["sha256:matching"],
+          memories: []
+        )
+      )
+    ).synchronize(credential: .rulesFixture, now: .reference.addingTimeInterval(60))
+
+    let matchingRequeued = try await database.enqueueIfNeeded(matching, now: .reference)
+    let releasedRequeued = try await database.enqueueIfNeeded(released, now: .reference)
+    let unrelatedRequeued = try await database.enqueueIfNeeded(unrelated, now: .reference)
+    XCTAssertTrue(matchingRequeued)
+    XCTAssertFalse(releasedRequeued)
+    XCTAssertFalse(unrelatedRequeued)
+  }
 }
 
 private final class CorrectionMemoryFixtureTransport: CorrectionMemoryTransport, @unchecked Sendable {
-  private let memories: [CorrectionMemory]
+  private let snapshot: CorrectionMemoryRemoteSnapshot
 
-  init(memories: [CorrectionMemory]) {
-    self.memories = memories
+  init(snapshot: CorrectionMemoryRemoteSnapshot) {
+    self.snapshot = snapshot
   }
 
-  func fetchCorrectionMemories(credential: DeviceCredential) async throws -> [CorrectionMemory] {
-    memories
+  func fetchCorrectionMemories(
+    credential: DeviceCredential
+  ) async throws -> CorrectionMemoryRemoteSnapshot {
+    snapshot
+  }
+}
+
+private extension DerivedDraft {
+  static func fixture(
+    sourceReference: String,
+    localDate: String,
+    correctionContextDigest: String
+  ) -> DerivedDraft {
+    DerivedDraft(
+      sourceReference: sourceReference,
+      localDate: localDate,
+      startedAt: .reference,
+      endedAt: .reference.addingTimeInterval(1_800),
+      proposedMinutes: 30,
+      description: "Synthetic private draft",
+      confidence: 0.8,
+      assignmentMethod: "deterministic",
+      assignmentReasons: ["Synthetic fixture"],
+      evidenceDigest: "sha256:\(sourceReference)",
+      correctionContextDigest: correctionContextDigest,
+      issueKey: "ATM-1"
+    )
   }
 }
 

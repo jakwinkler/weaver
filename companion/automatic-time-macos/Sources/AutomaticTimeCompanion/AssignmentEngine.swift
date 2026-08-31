@@ -118,10 +118,41 @@ public struct CorrectionMemory: Codable, Equatable, Sendable {
 
 public struct CorrectionMemorySnapshot: Codable, Equatable, Sendable {
   public let fetchedAt: Date
+  public let revision: Int
   public let memories: [CorrectionMemory]
 
-  public init(fetchedAt: Date, memories: [CorrectionMemory]) {
+  public init(fetchedAt: Date, revision: Int = 0, memories: [CorrectionMemory]) {
     self.fetchedAt = fetchedAt
+    self.revision = max(0, revision)
+    self.memories = memories
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case fetchedAt
+    case revision
+    case memories
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    fetchedAt = try container.decode(Date.self, forKey: .fetchedAt)
+    revision = try container.decodeIfPresent(Int.self, forKey: .revision) ?? 0
+    memories = try container.decode([CorrectionMemory].self, forKey: .memories)
+  }
+}
+
+public struct CorrectionMemoryRemoteSnapshot: Codable, Equatable, Sendable {
+  public let revision: Int
+  public let recomputeContextDigests: [String]
+  public let memories: [CorrectionMemory]
+
+  public init(
+    revision: Int,
+    recomputeContextDigests: [String],
+    memories: [CorrectionMemory]
+  ) {
+    self.revision = max(0, revision)
+    self.recomputeContextDigests = recomputeContextDigests
     self.memories = memories
   }
 }
@@ -209,15 +240,20 @@ public struct AssignmentEngine: Sendable {
 
     for memory in correctionMemories where memoryMatches(memory, context: block.context) {
       let observations = max(0, memory.positiveCount) + max(0, memory.negativeCount)
-      let reliability = Double(max(0, memory.positiveCount) + 1) / Double(observations + 1)
-      let contribution = min(0.7, 0.5 * min(max(memory.weight, 0), 2) * reliability)
+      let netEvidence = max(0, memory.positiveCount) - max(0, memory.negativeCount)
+      guard observations > 0, netEvidence != 0 else { continue }
+      let reliability = Double(abs(netEvidence)) / Double(observations)
+      let magnitude = min(0.7, 0.5 * min(max(memory.weight, 0), 2) * reliability)
+      let contribution = netEvidence > 0 ? magnitude : -magnitude
       let applied = apply(
         target: AssignmentTarget(
           issueKey: memory.targetIssueKey,
           projectKey: memory.targetProjectKey
         ),
         contribution: contribution,
-        reason: "Matched correction memory: \(memory.explanation)",
+        reason: netEvidence > 0
+          ? "Matched correction memory: \(memory.explanation)"
+          : "Matched rejected correction memory: \(memory.explanation)",
         candidates: candidates,
         scores: &scores
       )
@@ -262,9 +298,10 @@ public struct AssignmentEngine: Sendable {
         issueKey: nil,
         confidence: min(ranked.first?.value.score ?? 0, 1),
         method: .unassigned,
-        reasons: hasStructuralEvidence
-          ? ["Deterministic evidence was below the assignment threshold"]
-          : ["No deterministic assignment evidence"],
+        reasons: (ranked.first?.value.reasons ?? [])
+          + (hasStructuralEvidence
+            ? ["Deterministic evidence was below the assignment threshold"]
+            : ["No deterministic assignment evidence"]),
         alternatives: alternatives(from: ranked, excluding: nil),
         rulesetVersion: Self.rulesetVersion
       )
@@ -310,7 +347,7 @@ public struct AssignmentEngine: Sendable {
   ) {
     let key = issueKey.uppercased()
     guard var value = scores[key] else { return }
-    value.score = min(0.99, value.score + max(0, contribution))
+    value.score = min(0.99, max(0, value.score + contribution))
     if !value.reasons.contains(reason) { value.reasons.append(reason) }
     value.usedSemantic = value.usedSemantic || usedSemantic
     scores[key] = value
@@ -358,6 +395,8 @@ public struct AssignmentEngine: Sendable {
         return context.gitBranch?.lowercased().contains(normalized) == true
       case "weaverIssueKey":
         return context.weaverIssueKey?.lowercased() == normalized
+      case "contextDigest":
+        return context.correctionContextDigest.lowercased() == normalized
       default:
         return false
       }
@@ -443,7 +482,8 @@ public struct DraftDerivationEngine: Sendable {
     guard let first = cluster.first, let last = cluster.last else { return nil }
     let capturedSeconds = cluster.reduce(0) { $0 + $1.block.capturedSeconds }
     guard capturedSeconds > 0 else { return nil }
-    let decision = cluster.max { $0.decision.confidence < $1.decision.confidence }!.decision
+    let primary = cluster.max { $0.decision.confidence < $1.decision.confidence }!
+    let decision = primary.decision
     let references = cluster.map(\.block.sourceReference).joined(separator: "|")
     let evidence = cluster.map(\.block.evidenceDigest).joined(separator: "|")
     let description: String
@@ -466,6 +506,7 @@ public struct DraftDerivationEngine: Sendable {
       assignmentAlternatives: decision.alternatives,
       rulesetVersion: decision.rulesetVersion,
       evidenceDigest: "sha256:\(sha256Hex(evidence))",
+      correctionContextDigest: primary.block.context.correctionContextDigest,
       issueKey: decision.issueKey
     )
   }

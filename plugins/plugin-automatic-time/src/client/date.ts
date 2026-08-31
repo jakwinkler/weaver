@@ -12,9 +12,11 @@ export function formatDraftTime(value: string): string {
 }
 
 export function formatMinutes(minutes: number): string {
-  const hours = Math.floor(minutes / 60);
-  const remainder = minutes % 60;
-  if (hours === 0) return `${remainder}m`;
-  if (remainder === 0) return `${hours}h`;
-  return `${hours}h ${remainder}m`;
+  const sign = minutes < 0 ? '-' : '';
+  const absoluteMinutes = Math.abs(minutes);
+  const hours = Math.floor(absoluteMinutes / 60);
+  const remainder = absoluteMinutes % 60;
+  if (hours === 0) return `${sign}${remainder}m`;
+  if (remainder === 0) return `${sign}${hours}h`;
+  return `${sign}${hours}h ${remainder}m`;
 }

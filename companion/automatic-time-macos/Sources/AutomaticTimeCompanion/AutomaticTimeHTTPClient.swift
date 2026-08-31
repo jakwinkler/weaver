@@ -12,12 +12,18 @@ public final class AutomaticTimeHTTPClient:
   PairingTransport, DraftTransport, IssueCandidateTransport, RetentionStateTransport,
   CorrectionMemoryTransport
 {
-  public static let companionVersion = "0.3.0"
+  public static let companionVersion = "0.4.0"
   private let apiBaseURL: URL
   private let tenantID: String
   private let session: URLSession
 
-  public init(apiBaseURL: URL, tenantID: String, session: URLSession = .shared) {
+  public init(apiBaseURL: URL, tenantID: String, session: URLSession = .shared) throws {
+    let scheme = apiBaseURL.scheme?.lowercased()
+    let host = apiBaseURL.host?.lowercased()
+    let isLoopback = host == "localhost" || host == "127.0.0.1" || host == "::1"
+    guard scheme == "https" || (scheme == "http" && isLoopback) else {
+      throw CompanionTransportError.insecureBaseURL
+    }
     self.apiBaseURL = apiBaseURL
     self.tenantID = tenantID
     self.session = session
@@ -106,14 +112,14 @@ public final class AutomaticTimeHTTPClient:
 
   public func fetchCorrectionMemories(
     credential: DeviceCredential
-  ) async throws -> [CorrectionMemory] {
+  ) async throws -> CorrectionMemoryRemoteSnapshot {
     let response = try await send(
       path: "device/correction-memories",
       method: "GET",
       bearerToken: credential.token
     )
     guard response.status == 200 else { throw mapError(response.status) }
-    return try decoder.decode([CorrectionMemory].self, from: response.data)
+    return try decoder.decode(CorrectionMemoryRemoteSnapshot.self, from: response.data)
   }
 
   private struct SyncedDraft: Decodable { let id: String }
