@@ -48,6 +48,7 @@ services:
       retries: 12
 
   api:
+    image: ${WEAVER_API_IMAGE:-weaver-live-api}
     build:
       context: ../..
       dockerfile: deploy/weaver.usercore.com/Dockerfile
@@ -55,15 +56,20 @@ services:
     restart: unless-stopped
     environment:
       <<: [*database-environment, *redis-environment]
-      # Weaver currently provisions fresh schemas through TypeORM synchronize.
-      # This deployment is explicitly a disposable live-testing environment.
-      NODE_ENV: development
+      NODE_ENV: production
+      TZ: UTC
       API_PORT: 3000
       API_PREFIX: api/v1
+      CORS_ORIGINS: https://weaver.usercore.com
+      WEB_URL: https://weaver.usercore.com
+      WEB_APP_URL: https://weaver.usercore.com
+      API_PUBLIC_URL: https://weaver.usercore.com
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?JWT_REFRESH_SECRET is required}
       JWT_EXPIRES_IN: 15m
       REFRESH_TOKEN_EXPIRES_IN: 7d
+      WEAVER_TRUSTED_PLUGINS: ${WEAVER_TRUSTED_PLUGINS:-}
+      STORAGE_LOCAL_PATH: /tmp/weaver-uploads
     volumes:
       - uploads:/tmp/weaver-uploads
     depends_on:
@@ -79,6 +85,7 @@ services:
       start_period: 20s
 
   worker:
+    image: ${WEAVER_WORKER_IMAGE:-weaver-live-worker}
     build:
       context: ../..
       dockerfile: deploy/weaver.usercore.com/Dockerfile
@@ -87,6 +94,7 @@ services:
     environment:
       <<: [*database-environment, *redis-environment]
       NODE_ENV: production
+      TZ: UTC
     depends_on:
       postgres:
         condition: service_healthy
@@ -94,13 +102,14 @@ services:
         condition: service_healthy
 
   web:
+    image: ${WEAVER_WEB_IMAGE:-weaver-live-web}
     build:
       context: ../..
       dockerfile: deploy/weaver.usercore.com/Dockerfile
       target: web
     restart: unless-stopped
     ports:
-      - '127.0.0.1:${WEB_PORT:-3400}:80'
+      - '127.0.0.1:${WEB_PORT:-3400}:8080'
     depends_on:
       api:
         condition: service_healthy

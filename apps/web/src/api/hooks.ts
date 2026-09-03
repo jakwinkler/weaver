@@ -39,7 +39,7 @@ export function useCurrentUser() {
   return useQuery({
     queryKey: ['currentUser'],
     queryFn: async () => {
-      const res = await apiClient.get<User>('/auth/me');
+      const res = await apiClient.get<User & { role: string }>('/auth/me');
       return res.data;
     },
     retry: false,

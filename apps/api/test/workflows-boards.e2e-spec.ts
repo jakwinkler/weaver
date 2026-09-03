@@ -161,6 +161,18 @@ describe('Workflows, Boards, Sprints, Comments, Activity (e2e)', () => {
             .expect(400);
         });
 
+        it('rejects workflow rules whose evaluators are not registered', async () => {
+          await authedRequest()
+            .post(`/api/v1/workflows/${workflowId}/transitions`)
+            .send({
+              fromStatusId: statusOpenId,
+              toStatusId: statusClosedId,
+              name: 'Latent runtime failure',
+              conditions: [{ type: 'missing-evaluator', params: {} }],
+            })
+            .expect(400);
+        });
+
         it('GET /workflows/:id/transitions/available/:statusId - should return available transitions', async () => {
           const res = await authedRequest()
             .get(`/api/v1/workflows/${workflowId}/transitions/available/${statusOpenId}`)
@@ -226,6 +238,8 @@ describe('Workflows, Boards, Sprints, Comments, Activity (e2e)', () => {
     let issueId: string;
     let boardId: string;
     let sprintId: string;
+    let projectWorkflowId: string;
+    let issueStatusId: string;
 
     beforeAll(async () => {
       // Create a project
@@ -235,6 +249,7 @@ describe('Workflows, Boards, Sprints, Comments, Activity (e2e)', () => {
         .expect(201);
       projectKey = projRes.body.key;
       projectId = projRes.body.id;
+      projectWorkflowId = projRes.body.workflowId;
 
       // Create an issue
       const issueRes = await authedRequest()
@@ -243,6 +258,56 @@ describe('Workflows, Boards, Sprints, Comments, Activity (e2e)', () => {
         .expect(201);
       issueKey = issueRes.body.key;
       issueId = issueRes.body.id;
+      issueStatusId = issueRes.body.statusId;
+    });
+
+    it('rolls back a status transition when another update field is invalid', async () => {
+      const workflow = await authedRequest()
+        .get(`/api/v1/workflows/${projectWorkflowId}`)
+        .expect(200);
+      const transition = workflow.body.transitions.find(
+        (candidate: any) => candidate.fromStatusId === issueStatusId,
+      );
+      expect(transition).toBeDefined();
+
+      const response = await authedRequest()
+        .patch(`/api/v1/issues/${issueKey}`)
+        .send({
+          statusId: transition.toStatusId,
+          parentId: '11111111-1111-4111-8111-111111111111',
+        });
+      expect(response.status).toBeGreaterThanOrEqual(400);
+
+      const unchanged = await authedRequest()
+        .get(`/api/v1/issues/${issueKey}`)
+        .expect(200);
+      expect(unchanged.body.statusId).toBe(issueStatusId);
+    });
+
+    it('rejects self-parenting and parent cycles', async () => {
+      const selfResponse = await authedRequest()
+        .patch(`/api/v1/issues/${issueKey}`)
+        .send({ parentId: issueId });
+      if (selfResponse.status < 400) {
+        await authedRequest()
+          .patch(`/api/v1/issues/${issueKey}`)
+          .send({ parentId: null });
+      }
+      expect(selfResponse.status).toBe(400);
+
+      const child = await authedRequest()
+        .post(`/api/v1/projects/${projectKey}/issues`)
+        .send({ summary: 'Hierarchy child', parentId: issueId })
+        .expect(201);
+      const cycleResponse = await authedRequest()
+        .patch(`/api/v1/issues/${issueKey}`)
+        .send({ parentId: child.body.id });
+      if (cycleResponse.status < 400) {
+        await authedRequest()
+          .patch(`/api/v1/issues/${issueKey}`)
+          .send({ parentId: null });
+      }
+      expect(cycleResponse.status).toBe(400);
     });
 
     describe('Boards', () => {
@@ -278,6 +343,8 @@ describe('Workflows, Boards, Sprints, Comments, Activity (e2e)', () => {
     });
 
     describe('Sprints', () => {
+      let secondSprintId: string;
+
       it('POST /sprints - should create a sprint', async () => {
         const res = await authedRequest()
           .post(`/api/v1/sprints?projectId=${projectId}`)
@@ -287,6 +354,14 @@ describe('Workflows, Boards, Sprints, Comments, Activity (e2e)', () => {
         expect(res.body.name).toBe('Sprint 1');
       });
 
+      it('creates a second planned sprint', async () => {
+        const res = await authedRequest()
+          .post(`/api/v1/sprints?projectId=${projectId}`)
+          .send({ name: 'Sprint 2' })
+          .expect(201);
+        secondSprintId = res.body.id;
+      });
+
       it('GET /sprints - should list sprints', async () => {
         const res = await authedRequest()
           .get(`/api/v1/sprints?projectId=${projectId}`)
@@ -294,11 +369,60 @@ describe('Workflows, Boards, Sprints, Comments, Activity (e2e)', () => {
         expect(Array.isArray(res.body)).toBe(true);
       });
 
+      it('rejects adding issues from another project', async () => {
+        const otherProject = await authedRequest()
+          .post('/api/v1/projects')
+          .send({ name: 'Other Sprint Project', key: 'OSP' })
+          .expect(201);
+        const otherIssue = await authedRequest()
+          .post(`/api/v1/projects/${otherProject.body.key}/issues`)
+          .send({ summary: 'Issue from another project' })
+          .expect(201);
+
+        await authedRequest()
+          .post(`/api/v1/sprints/${sprintId}/issues`)
+          .send({ issueIds: [otherIssue.body.id] })
+          .expect(400);
+      });
+
+      it('clears issue assignments when deleting a planned sprint', async () => {
+        const temporarySprint = await authedRequest()
+          .post(`/api/v1/sprints?projectId=${projectId}`)
+          .send({ name: 'Temporary Sprint' })
+          .expect(201);
+
+        await authedRequest()
+          .post(`/api/v1/sprints/${temporarySprint.body.id}/issues`)
+          .send({ issueIds: [issueId] })
+          .expect(201);
+        await authedRequest().delete(`/api/v1/sprints/${temporarySprint.body.id}`).expect(204);
+
+        const issue = await authedRequest().get(`/api/v1/issues/${issueKey}`).expect(200);
+        expect(issue.body.sprintId).toBeNull();
+      });
+
       it('POST /sprints/:id/start - should start sprint', async () => {
+        await authedRequest()
+          .post(`/api/v1/sprints/${sprintId}/issues`)
+          .send({ issueIds: [issueId] })
+          .expect(201);
         const res = await authedRequest()
           .post(`/api/v1/sprints/${sprintId}/start`);
         expect(res.status).toBeLessThan(300);
         expect(res.body.status).toBe('active');
+      });
+
+      it('does not allow a second active sprint in the same project', async () => {
+        await authedRequest()
+          .post(`/api/v1/sprints/${secondSprintId}/start`)
+          .expect(400);
+      });
+
+      it('does not silently steal issues from another sprint', async () => {
+        await authedRequest()
+          .post(`/api/v1/sprints/${secondSprintId}/issues`)
+          .send({ issueIds: [issueId] })
+          .expect(400);
       });
 
       it('POST /sprints/:id/complete - should complete sprint', async () => {
@@ -306,6 +430,26 @@ describe('Workflows, Boards, Sprints, Comments, Activity (e2e)', () => {
           .post(`/api/v1/sprints/${sprintId}/complete`);
         expect(res.status).toBeLessThan(300);
         expect(res.body.status).toBe('completed');
+
+        const issue = await authedRequest()
+          .get(`/api/v1/issues/${issueKey}`)
+          .expect(200);
+        expect(issue.body.sprintId).toBeNull();
+      });
+
+      it('does not add issues to a completed sprint', async () => {
+        await authedRequest()
+          .post(`/api/v1/sprints/${sprintId}/issues`)
+          .send({ issueIds: [issueId] })
+          .expect(400);
+      });
+
+      it('rejects editing or deleting a completed sprint', async () => {
+        await authedRequest()
+          .patch(`/api/v1/sprints/${sprintId}`)
+          .send({ name: 'Rewritten History' })
+          .expect(400);
+        await authedRequest().delete(`/api/v1/sprints/${sprintId}`).expect(400);
       });
     });
 
@@ -388,6 +532,18 @@ describe('Workflows, Boards, Sprints, Comments, Activity (e2e)', () => {
 
       it('DELETE /issue-links/:id - should delete link', async () => {
         await authedRequest().delete(`/api/v1/issue-links/${linkId}`).expect(204);
+      });
+    });
+
+    describe('Referential integrity', () => {
+      it('rejects deleting a status that is still used by an issue', async () => {
+        await authedRequest()
+          .delete(`/api/v1/workflows/${projectWorkflowId}/statuses/${issueStatusId}`)
+          .expect(409);
+      });
+
+      it('rejects deleting a workflow that is still assigned to a project', async () => {
+        await authedRequest().delete(`/api/v1/workflows/${projectWorkflowId}`).expect(409);
       });
     });
 

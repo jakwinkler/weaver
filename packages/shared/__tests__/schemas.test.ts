@@ -13,6 +13,7 @@ import {
   notificationPreferencesSchema,
   updateNotificationPreferencesSchema,
   updateTenantSettingsSchema,
+  createWebhookSchema,
 } from '../src/schemas';
 
 describe('registerSchema', () => {
@@ -341,6 +342,16 @@ describe('createWorkflowStatusSchema', () => {
       color: '#3B82F6',
     });
     expect(result.success).toBe(false);
+  });
+});
+
+describe('createWebhookSchema', () => {
+  it('rejects user-supplied webhook secrets shorter than 32 characters', () => {
+    expect(createWebhookSchema.safeParse({
+      url: 'https://example.com/hook',
+      events: ['issue.created'],
+      secret: 'short',
+    }).success).toBe(false);
   });
 });
 

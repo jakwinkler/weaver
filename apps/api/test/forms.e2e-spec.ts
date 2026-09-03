@@ -42,7 +42,7 @@ describe('External intake forms (e2e)', () => {
     });
 
     accessToken = registerResponse.body.accessToken;
-    tenantId = registerResponse.body.tenant.id;
+    tenantId = registerResponse.body.tenantId;
 
     await authed()
       .post('/api/v1/projects')
@@ -50,6 +50,9 @@ describe('External intake forms (e2e)', () => {
       .expect(201);
     const issueTypesResponse = await authed().get('/api/v1/issue-types').expect(200);
     issueTypeId = issueTypesResponse.body.find((issueType: any) => issueType.slug === 'bug').id;
+    for (const slug of ['requester_email', 'product_area']) {
+      await authed().post('/api/v1/custom-fields').send({ name: slug, slug, fieldType: 'text' }).expect(201);
+    }
   });
 
   afterAll(async () => {
@@ -183,7 +186,7 @@ describe('External intake forms (e2e)', () => {
     expect(submissionsResponse.body[0].issueKey).toBe(`${projectKey}-1`);
 
     const notificationsResponse = await authed().get('/api/v1/notifications').expect(200);
-    expect(notificationsResponse.body.items[0]).toEqual(
+    expect(notificationsResponse.body.data[0]).toEqual(
       expect.objectContaining({
         type: 'form_submission',
         title: `New form submission: ${projectKey}-1`,
@@ -225,7 +228,9 @@ describe('External intake forms (e2e)', () => {
   });
 
   it('limits public submissions to 10 per IP per minute', async () => {
-    (rateLimitingGuard as any).store.clear();
+    const guard = rateLimitingGuard as any;
+    if (guard.touchedKeys.size) await guard.redis.del(...guard.touchedKeys);
+    guard.touchedKeys.clear();
 
     for (let index = 1; index <= 10; index += 1) {
       await request(app.getHttpServer())

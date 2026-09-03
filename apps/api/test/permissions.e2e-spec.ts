@@ -16,6 +16,8 @@ describe('Permissions (e2e)', () => {
   let ownerToken: string;
   let viewerToken: string;
   let memberToken: string;
+  let viewerUserId: string;
+  let memberUserId: string;
   let tenantId: string;
 
   // Test data IDs
@@ -24,6 +26,8 @@ describe('Permissions (e2e)', () => {
   let issueId: string;
   let commentId: string;
   let issueTypeId: string;
+  let privateProjectId: string;
+  let privateIssueKey: string;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -63,6 +67,7 @@ describe('Permissions (e2e)', () => {
       `SELECT id FROM public.users WHERE email = $1`,
       ['perm-viewer@test.com'],
     );
+    viewerUserId = viewerUser.id;
     await dataSource.query(
       `INSERT INTO public.tenant_memberships (tenant_id, user_id, role, created_at)
        VALUES ($1, $2, 'viewer', NOW())`,
@@ -79,6 +84,7 @@ describe('Permissions (e2e)', () => {
       `SELECT id FROM public.users WHERE email = $1`,
       ['perm-member@test.com'],
     );
+    memberUserId = memberUser.id;
     await dataSource.query(
       `INSERT INTO public.tenant_memberships (tenant_id, user_id, role, created_at)
        VALUES ($1, $2, 'member', NOW())`,
@@ -103,6 +109,15 @@ describe('Permissions (e2e)', () => {
       .expect(201);
     projectId = projectRes.body.id;
 
+    await asOwner()
+      .post('/api/v1/projects/PERM/members')
+      .send({ userId: viewerUserId, role: 'viewer' })
+      .expect(201);
+    await asOwner()
+      .post('/api/v1/projects/PERM/members')
+      .send({ userId: memberUserId, role: 'member' })
+      .expect(201);
+
     const issueRes = await asOwner()
       .post('/api/v1/projects/PERM/issues')
       .send({ summary: 'Perm Test Issue' })
@@ -115,6 +130,17 @@ describe('Permissions (e2e)', () => {
       .send({ body: COMMENT_BODY })
       .expect(201);
     commentId = commentRes.body.id;
+
+    const privateProject = await asOwner()
+      .post('/api/v1/projects')
+      .send({ name: 'Owner Only', key: 'SECRET' })
+      .expect(201);
+    privateProjectId = privateProject.body.id;
+    const privateIssue = await asOwner()
+      .post('/api/v1/projects/SECRET/issues')
+      .send({ summary: 'Private issue' })
+      .expect(201);
+    privateIssueKey = privateIssue.body.key;
   });
 
   afterAll(async () => {
@@ -226,6 +252,36 @@ describe('Permissions (e2e)', () => {
 
     it('GET /dashboard — dashboard', async () => {
       await asViewer().get('/api/v1/dashboard').expect(200);
+    });
+  });
+
+  describe('Private project membership', () => {
+    it('filters private projects from non-members', async () => {
+      const response = await asViewer().get('/api/v1/projects').expect(200);
+      expect(response.body.data.map((project: { key: string }) => project.key)).toContain('PERM');
+      expect(response.body.data.map((project: { key: string }) => project.key)).not.toContain('SECRET');
+    });
+
+    it('blocks direct access to a private project and its data', async () => {
+      await asViewer().get('/api/v1/projects/SECRET').expect(403);
+      await asViewer().get('/api/v1/projects/SECRET/issues').expect(403);
+      await asViewer().get(`/api/v1/issues/${privateIssueKey}`).expect(403);
+      await asViewer().get(`/api/v1/boards?projectId=${privateProjectId}`).expect(403);
+      await asViewer().get(`/api/v1/sprints?projectId=${privateProjectId}`).expect(403);
+      await asViewer().get(`/api/v1/issues/${privateIssueKey}/comments`).expect(403);
+    });
+
+    it('excludes private project data from search and dashboard aggregates', async () => {
+      const search = await asViewer()
+        .post('/api/v1/search')
+        .send({ query: 'summary ~ "Private issue"' })
+        .expect(201);
+      expect(search.body.data).toHaveLength(0);
+
+      const dashboard = await asViewer().get('/api/v1/dashboard').expect(200);
+      expect(dashboard.body.stats.totalProjects).toBe(1);
+      expect(dashboard.body.projectOverviews.map((project: { key: string }) => project.key))
+        .not.toContain('SECRET');
     });
   });
 
@@ -402,7 +458,7 @@ describe('Permissions (e2e)', () => {
         .send({
           url: 'https://example.com/hook',
           events: ['issue.created'],
-          secret: 'test-secret-123',
+          secret: 'test-secret-123-test-secret-123456',
         });
       expect([200, 201]).toContain(res.status);
     });

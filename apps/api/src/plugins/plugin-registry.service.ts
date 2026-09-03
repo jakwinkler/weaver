@@ -175,6 +175,7 @@ export class PluginRegistryService implements OnApplicationBootstrap {
     const tenant = requireTenantContext();
 
     await this.repo.manager.transaction(async (manager) => {
+      await manager.query("SELECT set_config('search_path', quote_ident($1) || ', public', true)", [tenant.schemaName]);
       const transactionalRepo = manager.getRepository(InstalledPluginEntity);
       const installed = await transactionalRepo.findOne({
         where: { tenantId: tenant.tenantId, pluginId },

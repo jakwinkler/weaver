@@ -20,7 +20,7 @@ export function LoginPage() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     const result = await loginMutation.mutateAsync({ email, password });
-    login(result.accessToken, result.user, result.tenantId, result.refreshToken);
+    login(result.accessToken, result.user, result.tenantId);
     navigate('/projects');
   };
 

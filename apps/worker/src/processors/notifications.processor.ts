@@ -10,6 +10,7 @@ import { Job } from 'bullmq';
 import { createTransport } from 'nodemailer';
 import type SMTPTransport from 'nodemailer/lib/smtp-transport';
 import { DataSource } from 'typeorm';
+import { resolveSafeOutboundHost } from '../security/outbound-http';
 
 export type { NotificationJobData } from '@weaver/shared';
 
@@ -135,10 +136,12 @@ export function createNotificationProcessor(
 
     await dependencies.rateLimiter.wait(job.data.tenantId);
 
+    const addresses = await resolveSafeOutboundHost(smtp.host);
     const transport = dependencies.transportFactory({
-      host: smtp.host,
+      host: addresses[0].address,
       port: smtp.port,
       secure: smtp.secure,
+      tls: { servername: smtp.host },
       auth: smtp.user ? { user: smtp.user, pass: smtp.pass } : undefined,
     });
     await transport.sendMail({

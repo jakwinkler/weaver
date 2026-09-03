@@ -5,10 +5,19 @@ import { AddressInfo, createServer, Server, Socket } from 'node:net';
 import request from 'supertest';
 import { DataSource } from 'typeorm';
 import { AppModule } from '../src/app.module';
+import { AuthService } from '../src/core/auth/auth.service';
 import { TenantConnectionProvider } from '../src/core/tenant';
 import { NotificationQueueService } from '../src/modules/mail/notification-queue.service';
 
 jest.setTimeout(60_000);
+
+// Only the in-process SMTP transport fixture bypasses public-DNS resolution.
+// The outbound-http security suite exercises the real private-address rejection.
+jest.mock('../src/core/security/outbound-http', () => {
+  const actual = jest.requireActual('../src/core/security/outbound-http');
+  return { ...actual, resolveSafeOutboundHost: (host: string) => host === '127.0.0.1'
+    ? Promise.resolve([{ address: host, family: 4 }]) : actual.resolveSafeOutboundHost(host) };
+});
 
 class MockSmtpServer {
   readonly messages: string[] = [];
@@ -143,7 +152,7 @@ describe('Email notifications (e2e)', () => {
       })
       .expect(201);
     ownerToken = ownerResponse.body.accessToken;
-    tenantId = ownerResponse.body.tenant.id;
+    tenantId = ownerResponse.body.tenantId;
 
     const recipientResponse = await request(app.getHttpServer())
       .post('/api/v1/auth/register')
@@ -163,6 +172,7 @@ describe('Email notifications (e2e)', () => {
        VALUES ($1, $2, 'member') ON CONFLICT DO NOTHING`,
       [tenantId, recipientId],
     );
+    recipientToken = (await app.get(AuthService).createSessionForUser(recipientId, tenantId)).accessToken;
 
     await authedOwner().patch('/api/v1/settings').send({ smtp }).expect(200);
 

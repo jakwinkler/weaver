@@ -3,8 +3,13 @@ import { INestApplication } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import request from 'supertest';
 import * as bcrypt from 'bcrypt';
+import { ProjectMemberEntity } from '@weaver/db';
 import { AppModule } from '../src/app.module';
 import { TenantConnectionProvider } from '../src/core/tenant';
+import {
+  ConditionEvaluatorRegistry,
+  PostFunctionRegistry,
+} from '../src/modules/workflows';
 
 describe('Drag & Drop / Reorder (e2e)', () => {
   let app: INestApplication;
@@ -24,6 +29,9 @@ describe('Drag & Drop / Reorder (e2e)', () => {
   let issueId2: string;
   let issueId3: string;
   let statuses: any[];
+  let transitions: any[];
+  let conditionRegistry: ConditionEvaluatorRegistry;
+  let postFunctionRegistry: PostFunctionRegistry;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -36,6 +44,8 @@ describe('Drag & Drop / Reorder (e2e)', () => {
 
     dataSource = app.get(DataSource);
     connections = app.get(TenantConnectionProvider);
+    conditionRegistry = app.get(ConditionEvaluatorRegistry);
+    postFunctionRegistry = app.get(PostFunctionRegistry);
 
     // 1. Register owner
     const registerRes = await request(app.getHttpServer()).post('/api/v1/auth/register').send({
@@ -99,10 +109,18 @@ describe('Drag & Drop / Reorder (e2e)', () => {
       .expect(201);
     projectId = projectRes.body.id;
 
+    const tenantManager = (await connections.getConnection('tenant_dnd_test_org')).manager;
+    await tenantManager.getRepository(ProjectMemberEntity).save({
+      projectId,
+      userId: memberUser.id,
+      role: 'member',
+    });
+
     // 6. Get workflow statuses
     const workflowId = projectRes.body.workflowId;
     const workflowRes = await asOwner().get(`/api/v1/workflows/${workflowId}`).expect(200);
     statuses = workflowRes.body.statuses;
+    transitions = workflowRes.body.transitions;
 
     // 7. Create 3 issues
     const issue1 = await asOwner()
@@ -250,19 +268,68 @@ describe('Drag & Drop / Reorder (e2e)', () => {
       expect(res.body.statusId).toBe(inProgressStatus.id);
     });
 
-    it('PATCH /issues/:key — status change creates activity log', async () => {
+    it('rejects status changes that have no workflow transition', async () => {
       const doneStatus = statuses.find((s: any) => s.category === 'done');
       expect(doneStatus).toBeDefined();
 
-      await asOwner()
+      const response = await asOwner()
         .patch(`/api/v1/issues/${issueKey2}`)
-        .send({ statusId: doneStatus.id })
-        .expect(200);
+        .send({ statusId: doneStatus.id });
+      if (response.status < 400) {
+        const initialStatus = statuses.find((status: any) => status.isInitial);
+        await connections.getConnection('tenant_dnd_test_org').then((connection) =>
+          connection.query(
+            `UPDATE "tenant_dnd_test_org".issues SET status_id = $1 WHERE key = $2`,
+            [initialStatus.id, issueKey2],
+          ),
+        );
+      }
+      expect(response.status).toBe(400);
+    });
+
+    it('evaluates transition rules and executes post-functions', async () => {
+      const initialStatus = statuses.find((s: any) => s.isInitial);
+      const transition = transitions.find(
+        (item: any) => item.fromStatusId === initialStatus.id,
+      );
+      expect(transition).toBeDefined();
+
+      conditionRegistry.register('security-deny', async () => false);
+      await connections.getConnection('tenant_dnd_test_org').then((connection) =>
+        connection.query(
+          `UPDATE "tenant_dnd_test_org".workflow_transitions
+           SET conditions = $1::jsonb WHERE id = $2`,
+          [JSON.stringify([{ type: 'security-deny', params: {} }]), transition.id],
+        ),
+      );
+      await asOwner()
+        .post(`/api/v1/issues/${issueKey2}/transition`)
+        .send({ transitionId: transition.id })
+        .expect(400);
+
+      let postFunctionCalls = 0;
+      postFunctionRegistry.register('security-record', async () => {
+        postFunctionCalls += 1;
+      });
+      await connections.getConnection('tenant_dnd_test_org').then((connection) =>
+        connection.query(
+          `UPDATE "tenant_dnd_test_org".workflow_transitions
+           SET conditions = '[]'::jsonb,
+               post_functions = $1::jsonb
+           WHERE id = $2`,
+          [JSON.stringify([{ type: 'security-record', params: {} }]), transition.id],
+        ),
+      );
+      await asOwner()
+        .post(`/api/v1/issues/${issueKey2}/transition`)
+        .send({ transitionId: transition.id })
+        .expect(201);
+      expect(postFunctionCalls).toBe(1);
 
       // Check activity log
       const activityRes = await asOwner().get(`/api/v1/issues/${issueKey2}/activity`).expect(200);
       const moveActivity = activityRes.body.find(
-        (a: any) => a.action === 'updated' && a.fieldName === 'status',
+        (a: any) => a.action === 'transitioned' && a.fieldName === 'status',
       );
       expect(moveActivity).toBeDefined();
     });
@@ -330,10 +397,10 @@ describe('Drag & Drop / Reorder (e2e)', () => {
 
     it('Member can move issue status (200)', async () => {
       // Use the first available status
-      const targetStatus = statuses[0];
+      const targetStatus = statuses.find((s: any) => s.category === 'in_progress');
       expect(targetStatus).toBeDefined();
       await asMember()
-        .patch(`/api/v1/issues/${issueKey1}`)
+        .patch(`/api/v1/issues/${issueKey3}`)
         .send({ statusId: targetStatus.id })
         .expect(200);
     });

@@ -8,6 +8,7 @@ import { WorkflowsModule } from '../workflows';
 import { EventsModule } from '../events';
 import { MailModule } from '../mail';
 import { RecurrenceService } from './recurrence.service';
+import { CustomFieldsModule } from '../custom-fields/custom-fields.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { RecurrenceService } from './recurrence.service';
     WorkflowsModule,
     EventsModule,
     MailModule,
+    CustomFieldsModule,
   ],
   controllers: [IssuesController],
   providers: [IssuesService, RecurrenceService],

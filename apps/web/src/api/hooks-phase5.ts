@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { apiClient } from './client';
+import { useAuthStore } from '@/stores';
 
 // ── Notifications ──
 
@@ -253,16 +254,7 @@ export function useCreateTeam() {
 
 export function useMyPermissions(): string[] {
   const { data: roles } = useRoles();
-  const role = (() => {
-    try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) return null;
-      const payload = JSON.parse(atob(token.split('.')[1]));
-      return payload.role || null;
-    } catch {
-      return null;
-    }
-  })();
+  const role = useAuthStore((state) => state.role);
 
   if (role === 'owner') return ['*'];
 

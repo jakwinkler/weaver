@@ -53,12 +53,17 @@ function formatWeek(date: Date): string {
 export function GanttChart() {
   const { projectKey = '' } = useParams<{ projectKey: string }>();
   const { data: projectPlugins } = useProjectPlugins(projectKey);
-  const { data, isLoading, isError } = useProjectIssues({ projectKey, perPage: 100 });
-  const scrollRef = useRef<HTMLDivElement>(null);
 
   if (projectPlugins && !projectPlugins.some((p) => p.pluginId === '@weaver/plugin-gantt')) {
     return <FeatureNotEnabled featureName="Gantt Chart" projectKey={projectKey} />;
   }
+
+  return <GanttChartContent projectKey={projectKey} />;
+}
+
+function GanttChartContent({ projectKey }: { projectKey: string }) {
+  const { data, isLoading, isError } = useProjectIssues({ projectKey, perPage: 100 });
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const { issues, timelineStart, totalDays, weeks } = useMemo(() => {
     if (!data?.data || data.data.length === 0) {

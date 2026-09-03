@@ -9,20 +9,26 @@ COPY packages/config/package.json ./packages/config/
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/db/package.json ./packages/db/
 COPY packages/jira-import/package.json ./packages/jira-import/
+COPY packages/sdk/package.json ./packages/sdk/
 COPY apps/api/package.json ./apps/api/
+COPY plugins ./plugins
 RUN pnpm install --frozen-lockfile
 
 # Build
-FROM deps AS build
+FROM base AS build
+COPY --from=deps /app ./
 COPY . .
 RUN pnpm --filter @weaver/shared build && \
+    pnpm --filter @weaver/sdk build && \
     pnpm --filter @weaver/db build && \
     pnpm --filter @weaver/jira-import build && \
+    pnpm --filter './plugins/*' build && \
     pnpm --filter @weaver/api build
 
 # Production
 FROM base AS production
 ENV NODE_ENV=production
+RUN mkdir -p /tmp/weaver-uploads && chown node:node /tmp/weaver-uploads
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/packages/shared/node_modules ./packages/shared/node_modules
 COPY --from=build /app/packages/shared/dist ./packages/shared/dist
@@ -33,9 +39,13 @@ COPY --from=build /app/packages/db/node_modules ./packages/db/node_modules
 COPY --from=build /app/packages/jira-import/dist ./packages/jira-import/dist
 COPY --from=build /app/packages/jira-import/package.json ./packages/jira-import/
 COPY --from=build /app/packages/jira-import/node_modules ./packages/jira-import/node_modules
+COPY --from=build /app/packages/sdk/dist ./packages/sdk/dist
+COPY --from=build /app/packages/sdk/package.json ./packages/sdk/
 COPY --from=build /app/apps/api/dist ./apps/api/dist
 COPY --from=build /app/apps/api/package.json ./apps/api/
 COPY --from=build /app/apps/api/node_modules ./apps/api/node_modules
+COPY --from=build /app/plugins ./plugins
 
 EXPOSE 3000
+USER node
 CMD ["node", "apps/api/dist/main.js"]

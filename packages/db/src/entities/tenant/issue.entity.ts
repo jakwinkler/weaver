@@ -12,6 +12,7 @@ import {
 import { ProjectEntity } from './project.entity';
 import { CommentEntity } from './comment.entity';
 import { IssueTypeEntity } from './issue-type.entity';
+import { SprintEntity } from './sprint.entity';
 import { WorkflowStatusEntity } from './workflow-status.entity';
 import type { RecurrenceRule } from '@weaver/shared';
 
@@ -95,19 +96,23 @@ export class IssueEntity {
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt!: Date;
 
-  @ManyToOne(() => ProjectEntity, (project) => project.issues)
+  @ManyToOne(() => ProjectEntity, (project) => project.issues, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'project_id' })
   project!: ProjectEntity;
 
-  @ManyToOne(() => IssueTypeEntity, { nullable: true })
+  @ManyToOne(() => IssueTypeEntity, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'issue_type_id' })
   issueType!: IssueTypeEntity | null;
 
-  @ManyToOne(() => WorkflowStatusEntity)
+  @ManyToOne(() => SprintEntity, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'sprint_id' })
+  sprint!: SprintEntity | null;
+
+  @ManyToOne(() => WorkflowStatusEntity, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'status_id' })
   status!: WorkflowStatusEntity;
 
-  @ManyToOne(() => IssueEntity, { nullable: true })
+  @ManyToOne(() => IssueEntity, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'parent_id' })
   parent!: IssueEntity | null;
 

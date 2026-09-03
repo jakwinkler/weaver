@@ -55,7 +55,7 @@ describe('Automatic Time Phase 1 core boundary (e2e)', () => {
       .expect(201);
 
     accessToken = registration.body.accessToken;
-    tenantId = registration.body.tenant.id;
+    tenantId = registration.body.tenantId;
     userId = registration.body.user.id;
 
     pluginDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'weaver-automatic-time-e2e-'));

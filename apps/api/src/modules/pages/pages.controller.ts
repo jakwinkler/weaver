@@ -21,14 +21,17 @@ import {
 } from '../../core/auth';
 import { ZodValidationPipe } from '../../common';
 import { PagesService } from './pages.service';
+import { ProjectAccessGuard, RequireProjectAccess } from '../../core/tenant';
 
 @Controller('projects/:projectKey/pages')
-@UseGuards(JwtAuthGuard, PermissionGuard)
+@UseGuards(JwtAuthGuard, PermissionGuard, ProjectAccessGuard)
+@RequireProjectAccess('project-key')
 export class PagesController {
   constructor(private readonly pagesService: PagesService) {}
 
   @Post()
   @RequirePermission('pages', 'create')
+  @RequireProjectAccess('project-key', 'write')
   create(
     @Param('projectKey') projectKey: string,
     @Body(new ZodValidationPipe(createPageSchema)) dto: any,
@@ -66,6 +69,7 @@ export class PagesController {
 
   @Post(':slug/history/:versionId/restore')
   @RequirePermission('pages', 'update')
+  @RequireProjectAccess('project-key', 'write')
   restore(
     @Param('projectKey') projectKey: string,
     @Param('slug') slug: string,
@@ -86,6 +90,7 @@ export class PagesController {
 
   @Patch(':slug')
   @RequirePermission('pages', 'update')
+  @RequireProjectAccess('project-key', 'write')
   update(
     @Param('projectKey') projectKey: string,
     @Param('slug') slug: string,
@@ -97,6 +102,7 @@ export class PagesController {
 
   @Delete(':slug')
   @RequirePermission('pages', 'delete')
+  @RequireProjectAccess('project-key', 'write')
   @HttpCode(HttpStatus.NO_CONTENT)
   async delete(
     @Param('projectKey') projectKey: string,

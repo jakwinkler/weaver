@@ -45,7 +45,7 @@ export function OrgPicker() {
   }, []);
 
   const finish = (session: AuthSession) => {
-    login(session.accessToken, session.user, session.tenantId, session.refreshToken);
+      login(session.accessToken, session.user, session.tenantId);
     navigate('/projects', { replace: true });
   };
 

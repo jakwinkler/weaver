@@ -14,6 +14,11 @@ import { Label } from '@/components/ui/label';
 import { ImportProgress } from './ImportProgress';
 
 const STEPS = ['Source', 'Credentials', 'Connect', 'Projects', 'Review'];
+const ACTIVE_IMPORT_STORAGE_KEY = 'weaver:active-jira-import-id';
+
+function getStoredImportId(): string | null {
+  return window.sessionStorage.getItem(ACTIVE_IMPORT_STORAGE_KEY);
+}
 
 export function ImportWizard() {
   const [step, setStep] = useState(1);
@@ -25,7 +30,7 @@ export function ImportWizard() {
   const [projects, setProjects] = useState<JiraProjectSummary[]>([]);
   const [importAll, setImportAll] = useState(true);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
-  const [importId, setImportId] = useState<string | null>(null);
+  const [importId, setImportId] = useState<string | null>(getStoredImportId);
   const discover = useDiscoverJiraProjects();
   const startImport = useStartJiraImport();
 
@@ -59,6 +64,7 @@ export function ImportWizard() {
       ...(importAll ? {} : { projectKeys: [...selectedKeys] }),
     });
     setSecret('');
+    window.sessionStorage.setItem(ACTIVE_IMPORT_STORAGE_KEY, job.id);
     setImportId(job.id);
   };
 
@@ -76,6 +82,7 @@ export function ImportWizard() {
     setImportAll(true);
     setSelectedKeys(new Set());
     setImportId(null);
+    window.sessionStorage.removeItem(ACTIVE_IMPORT_STORAGE_KEY);
     setSecret('');
     discover.reset();
     startImport.reset();
@@ -303,8 +310,8 @@ export function ImportWizard() {
                 <div>
                   <h3 className="font-medium text-foreground">Review the import</h3>
                   <p className="text-sm text-muted-foreground">
-                    Existing items from this Jira instance will be skipped if you run the import
-                    again.
+                    Existing items from this Jira instance are reused when you run the import again.
+                    Missing items are imported, and recovered sprint assignments are repaired.
                   </p>
                 </div>
                 <dl className="grid gap-3 border border-border p-4 text-sm sm:grid-cols-2">

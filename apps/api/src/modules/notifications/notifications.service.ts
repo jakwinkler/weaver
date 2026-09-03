@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { NotificationEntity } from '@weaver/db';
 import type { PaginatedResponse } from '@weaver/shared';
 import { requireTenantContext, TenantConnectionProvider } from '../../core/tenant';
@@ -67,7 +67,7 @@ export class NotificationsService {
 
     const notification = await repo.findOneBy({ id, userId });
     if (!notification) {
-      throw new Error('Notification not found');
+      throw new NotFoundException('Notification not found');
     }
 
     notification.isRead = true;

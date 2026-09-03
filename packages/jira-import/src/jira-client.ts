@@ -1,5 +1,6 @@
 import type {
   JiraAttachment,
+  JiraBoard,
   JiraComment,
   JiraConnectionConfig,
   JiraIssue,
@@ -137,12 +138,13 @@ export class JiraClient {
   }
 
   async getSprints(config: JiraConnectionConfig, projectKey: string): Promise<JiraSprint[]> {
-    const boards = await this.getAgileValues<{ id: number }>(
+    const boards = await this.getAgileValues<JiraBoard>(
       config,
-      `/rest/agile/1.0/board?projectKeyOrId=${encodeURIComponent(projectKey)}`,
+      `/rest/agile/1.0/board?projectKeyOrId=${encodeURIComponent(projectKey)}&type=scrum`,
     );
     const byId = new Map<string, JiraSprint>();
     for (const board of boards) {
+      if (board.type?.toLowerCase() !== 'scrum') continue;
       const sprints = await this.getAgileValues<JiraSprint>(
         config,
         `/rest/agile/1.0/board/${board.id}/sprint`,

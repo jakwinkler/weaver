@@ -17,10 +17,20 @@ spec:
         {{- include "weaver.worker.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: backend
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: worker
           image: "{{ .Values.image.worker.repository }}:{{ .Values.image.worker.tag }}"
           imagePullPolicy: {{ .Values.image.worker.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           envFrom:
             - configMapRef:
                 name: {{ include "weaver.fullname" . }}-config

@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto';
 import { promises as fs } from 'fs';
 import path from 'path';
-import type { EntityManager } from 'typeorm';
+import type { EntityManager, Repository } from 'typeorm';
 import {
   AttachmentEntity,
   CommentEntity,
@@ -80,6 +80,35 @@ export function selectIssueKey(
     key = `${projectKey.toUpperCase()}-${nextCounter}`;
   } while (existingKeys.has(key));
   return { key, nextCounter, preserved: false };
+}
+
+export function getSprintReconciliationTarget(
+  externalSprintId: string | null,
+  importedSprints: ReadonlyMap<string, string>,
+  currentSprintId: string | null,
+): string | null {
+  if (!externalSprintId) return null;
+  const importedSprintId = importedSprints.get(externalSprintId);
+  return importedSprintId && importedSprintId !== currentSprintId ? importedSprintId : null;
+}
+
+export async function reconcileExistingIssueSprint(
+  issueRepo: Pick<Repository<IssueEntity>, 'findOneBy' | 'update'>,
+  localIssueId: string,
+  externalSprintId: string | null,
+  importedSprints: ReadonlyMap<string, string>,
+): Promise<boolean> {
+  if (!externalSprintId || !importedSprints.has(externalSprintId)) return false;
+  const existingIssue = await issueRepo.findOneBy({ id: localIssueId });
+  if (!existingIssue) return false;
+  const sprintTarget = getSprintReconciliationTarget(
+    externalSprintId,
+    importedSprints,
+    existingIssue.sprintId,
+  );
+  if (!sprintTarget) return false;
+  await issueRepo.update(localIssueId, { sprintId: sprintTarget });
+  return true;
 }
 
 export type ProgressCallback = (progress: ImportProgress) => Promise<void> | void;
@@ -204,11 +233,23 @@ export class ImportOrchestrator {
     for (const jiraIssue of issues) {
       await this.checkCancelled();
       try {
+        const mapped = this.mapper.mapIssue(jiraIssue, fieldNames);
         const existing = await this.findRecord('issue', jiraIssue.id);
         if (existing) {
           issueIds.set(jiraIssue.id, existing.localId);
-          this.skippedItems += 1;
-          await this.emitProgress(`Skipping duplicate ${jiraIssue.key}`);
+          const sprintReconciled = await reconcileExistingIssueSprint(
+            issueRepo,
+            existing.localId,
+            mapped.sprintExternalId,
+            sprintIds,
+          );
+          if (sprintReconciled) {
+            this.importedItems += 1;
+            await this.emitProgress(`Reconnected ${jiraIssue.key} to its imported sprint`);
+          } else {
+            this.skippedItems += 1;
+            await this.emitProgress(`Skipping duplicate ${jiraIssue.key}`);
+          }
           await this.importCommentsAndAttachments(
             jiraIssue,
             existing.localId,
@@ -217,7 +258,6 @@ export class ImportOrchestrator {
           continue;
         }
 
-        const mapped = this.mapper.mapIssue(jiraIssue, fieldNames);
         const keySelection = selectIssueKey(jiraIssue.key, project.key, counter, existingKeys);
         counter = keySelection.nextCounter;
         existingKeys.add(keySelection.key);

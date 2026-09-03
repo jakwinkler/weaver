@@ -29,7 +29,7 @@ export const plugin: WeaverPlugin = {
     await context.db.query('DROP TABLE IF EXISTS github_links');
   },
 
-  async onEvent(event: string, data: unknown, context: PluginContext) {
+  async onEvent(event: string, _data: unknown, context: PluginContext) {
     if (event === 'issue.created') {
       context.logger.info('New issue created, checking for GitHub references');
     }

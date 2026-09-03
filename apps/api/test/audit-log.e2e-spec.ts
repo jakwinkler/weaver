@@ -44,7 +44,7 @@ describe('Audit Log (e2e)', () => {
       .expect(201);
 
     ownerToken = register.body.accessToken;
-    tenantId = register.body.tenant.id;
+    tenantId = register.body.tenantId;
     ownerId = register.body.user.id;
 
     const passwordHash = await bcrypt.hash('password123', 10);
@@ -119,6 +119,9 @@ describe('Audit Log (e2e)', () => {
       .set('X-Forwarded-For', '203.0.113.9')
       .set('User-Agent', 'Weaver Audit Test')
       .send({ name: 'Audit Project', key: 'AUD' })
+      .expect((response) => {
+        if (response.status !== 201) throw new Error(`Project creation failed: ${JSON.stringify(response.body)}`);
+      })
       .expect(201);
 
     const result = await authed(ownerToken)

@@ -1,6 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { DEFAULT_NOTIFICATION_PREFERENCES } from '@weaver/shared';
 import { MailService } from './mail.service';
+jest.mock('../../core/security/outbound-http', () => ({ resolveSafeOutboundHost: jest.fn().mockResolvedValue([{ address: '8.8.8.8', family: 4 }]) }));
 
 describe('MailService', () => {
   const smtp = {

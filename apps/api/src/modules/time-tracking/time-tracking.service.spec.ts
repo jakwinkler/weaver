@@ -36,6 +36,7 @@ describe('TimeTrackingService manual worklog contract', () => {
     jest.clearAllMocks();
     tenantConnections.getEntityManager.mockResolvedValue(entityManager);
     eventDispatcher.emit.mockResolvedValue(undefined);
+    issueRepository.findOneBy.mockResolvedValue({ id: 'issue-1', key: 'WEB-1' });
     entityManager.transaction.mockImplementation(async (callback) => callback(entityManager));
     service = new TimeTrackingService(tenantConnections as any, eventDispatcher as any);
   });
@@ -157,14 +158,16 @@ describe('TimeTrackingService manual worklog contract', () => {
       id: 'entry-1',
       minutes: 30,
       description: 'Original',
+      userId: 'user-1',
     } as TimeEntryEntity;
     timeEntryRepository.findOneBy.mockResolvedValue(entry);
     timeEntryRepository.save.mockImplementation(async (value) => value);
 
-    await expect(service.update('entry-1', { minutes: 60 })).resolves.toEqual({
+    await expect(service.update('WEB-1', 'entry-1', { minutes: 60 }, 'user-1')).resolves.toEqual({
       id: 'entry-1',
       minutes: 60,
       description: 'Original',
+      userId: 'user-1',
     });
     expect(timeEntryRepository.save).toHaveBeenCalledWith(entry);
   });
@@ -178,17 +181,17 @@ describe('TimeTrackingService manual worklog contract', () => {
       lockReason: 'Invoiced',
     } as TimeEntryEntity);
 
-    await expect(service.update('entry-1', { minutes: 60 })).rejects.toThrow(
+    await expect(service.update('WEB-1', 'entry-1', { minutes: 60 }, 'user-1')).rejects.toThrow(
       new ConflictException('Time entry "entry-1" is locked: Invoiced'),
     );
     expect(timeEntryRepository.save).not.toHaveBeenCalled();
   });
 
   it('deletes an existing manual entry', async () => {
-    const entry = { id: 'entry-1' } as TimeEntryEntity;
+    const entry = { id: 'entry-1', userId: 'user-1' } as TimeEntryEntity;
     timeEntryRepository.findOneBy.mockResolvedValue(entry);
 
-    await service.delete('entry-1');
+    await service.delete('WEB-1', 'entry-1', 'user-1');
 
     expect(timeEntryRepository.remove).toHaveBeenCalledWith(entry);
   });
@@ -200,7 +203,7 @@ describe('TimeTrackingService manual worklog contract', () => {
       lockReason: null,
     } as TimeEntryEntity);
 
-    await expect(service.delete('entry-1')).rejects.toThrow(
+    await expect(service.delete('WEB-1', 'entry-1', 'user-1')).rejects.toThrow(
       new ConflictException('Time entry "entry-1" is locked'),
     );
     expect(timeEntryRepository.remove).not.toHaveBeenCalled();

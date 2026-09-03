@@ -4,13 +4,15 @@ import {
   Get,
   Body,
   Res,
+  Req,
+  HttpCode,
+  HttpStatus,
   UseGuards,
   BadRequestException,
-  Req,
   Param,
   Query,
 } from '@nestjs/common';
-import { Request, Response } from 'express';
+import { CookieOptions, Request, Response } from 'express';
 import {
   createOAuthOrganizationSchema,
   loginSchema,
@@ -24,11 +26,24 @@ import { GitHubOAuthGuard, GoogleOAuthGuard } from './oauth.guard';
 import { SamlAuthGuard } from './saml.guard';
 import { OidcStrategy } from './oidc.strategy';
 
-const COOKIE_OPTIONS = {
-  httpOnly: true,
-  sameSite: 'lax' as const,
-  path: '/',
-};
+const ACCESS_COOKIE_MAX_AGE_MS = 15 * 60 * 1000;
+const REFRESH_COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+function cookieOptions(path: string, maxAge: number): CookieOptions {
+  return {
+    httpOnly: true,
+    sameSite: 'lax' as const,
+    secure: process.env.NODE_ENV === 'production',
+    path,
+    maxAge,
+  };
+}
+
+function extractRefreshToken(req: Request): string | undefined {
+  const authorization = req.headers.authorization;
+  const bearer = authorization?.match(/^Bearer\s+(.+)$/i);
+  return bearer?.[1] || req.cookies?.weaver_refresh;
+}
 
 const OAUTH_CONTEXT_COOKIE = 'weaver_oauth_context';
 const OIDC_STATE_COOKIE = 'weaver_oidc_state';
@@ -50,7 +65,7 @@ export class AuthController {
     }
 
     const data = await this.authService.register(result.data);
-    res.cookie('weaver_token', data.accessToken, COOKIE_OPTIONS);
+    this.setAuthCookies(res, data.accessToken, data.refreshToken);
     return res.json(data);
   }
 
@@ -62,22 +77,51 @@ export class AuthController {
     }
 
     const data = await this.authService.login(result.data);
-    res.cookie('weaver_token', data.accessToken, COOKIE_OPTIONS);
+    this.setAuthCookies(res, data.accessToken, data.refreshToken);
     return res.json(data);
   }
 
   @Post('refresh')
-  @UseGuards(JwtOnlyAuthGuard)
-  async refresh(@CurrentUser() user: RequestUser, @Res() res: Response) {
-    const data = await this.authService.refreshToken(user.userId);
-    res.cookie('weaver_token', data.accessToken, COOKIE_OPTIONS);
+  async refresh(@Req() req: Request, @Res() res: Response) {
+    const refreshToken = extractRefreshToken(req);
+    if (!refreshToken) {
+      throw new BadRequestException('Refresh token required');
+    }
+    const data = await this.authService.rotateRefreshToken(refreshToken);
+    this.setAuthCookies(res, data.accessToken, data.refreshToken);
     return res.json(data);
+  }
+
+  @Post('logout')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async logout(@Req() req: Request, @Res() res: Response) {
+    await this.authService.revokeRefreshToken(extractRefreshToken(req));
+    res.clearCookie('weaver_token', cookieOptions('/', 0));
+    res.clearCookie('weaver_refresh', cookieOptions('/api/v1/auth', 0));
+    return res.status(HttpStatus.NO_CONTENT).send();
   }
 
   @Get('me')
   @UseGuards(JwtAuthGuard)
   async me(@CurrentUser() user: RequestUser) {
-    return this.authService.getProfile(user.userId);
+    return this.authService.getProfile(user.userId, user.tenantId);
+  }
+
+  private setAuthCookies(
+    res: Response,
+    accessToken: string,
+    refreshToken: string,
+  ): void {
+    res.cookie(
+      'weaver_token',
+      accessToken,
+      cookieOptions('/', ACCESS_COOKIE_MAX_AGE_MS),
+    );
+    res.cookie(
+      'weaver_refresh',
+      refreshToken,
+      cookieOptions('/api/v1/auth', REFRESH_COOKIE_MAX_AGE_MS),
+    );
   }
 
   @Get('google')
@@ -178,7 +222,7 @@ export class AuthController {
   }
 
   @Get('session')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtOnlyAuthGuard)
   async session(@CurrentUser() user: RequestUser, @Res() res: Response) {
     const session = await this.authService.createSessionForUser(user.userId, user.tenantId);
     this.setSessionCookies(res, session.accessToken, session.refreshToken);
@@ -220,19 +264,12 @@ export class AuthController {
   }
 
   private setSessionCookies(res: Response, accessToken: string, refreshToken: string) {
-    const options = {
-      ...COOKIE_OPTIONS,
-      secure: process.env.NODE_ENV === 'production',
-    };
-    res.cookie('weaver_token', accessToken, options);
-    res.cookie('weaver_refresh', refreshToken, options);
+    this.setAuthCookies(res, accessToken, refreshToken);
   }
 
   private transientCookieOptions() {
     return {
-      ...COOKIE_OPTIONS,
-      secure: process.env.NODE_ENV === 'production',
-      maxAge: 10 * 60 * 1000,
+      ...cookieOptions('/', 10 * 60 * 1000),
     };
   }
 }

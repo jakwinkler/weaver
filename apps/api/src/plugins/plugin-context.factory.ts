@@ -1,18 +1,15 @@
-import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import type {
-  PluginContext,
-  PluginCoreCapability,
-  PluginIssueCandidate,
-  PluginIssueCandidateFilters,
-  RequestOptions,
-} from '@weaver/sdk';
+import type { PluginContext, PluginCoreCapability, PluginIssueCandidate, PluginIssueCandidateFilters, RequestOptions } from '@weaver/sdk';
 import { InstalledPluginEntity } from '@weaver/db';
 import type { EntityManager, Repository } from 'typeorm';
 import { TenantConnectionProvider, requireTenantContext } from '../core/tenant';
 import { EventDispatcherService } from '../modules/events';
 import { TimeTrackingService } from '../modules/time-tracking/time-tracking.service';
 import { PluginLoaderService } from './plugin-loader.service';
+import { fetchWithSafeRedirects, readLimitedResponseText } from '../core/security/outbound-http';
+
+const ISSUE_UPDATE_FIELDS = new Set(['summary', 'description', 'priority', 'assignee_id', 'custom_fields', 'sprint_id', 'parent_id', 'epic_id', 'labels', 'sort_order', 'start_date', 'due_date', 'percent_done']);
 
 @Injectable()
 export class PluginContextFactory {
@@ -35,19 +32,15 @@ export class PluginContextFactory {
     },
   ): Promise<PluginContext> {
     const tenant = requireTenantContext();
-    const em = options?.manager ?? (await this.tenantConnections.getEntityManager());
-
-    // Ensure raw SQL queries run in the tenant schema
     const runInSchema = async <T>(fn: (manager: EntityManager) => Promise<T>): Promise<T> => {
       if (options?.manager) {
-        await em.query(`SET LOCAL search_path TO "${tenant.schemaName}", public`);
-        return fn(em);
+        await options.manager.query(
+          "SELECT set_config('search_path', quote_ident($1) || ', public', true)",
+          [tenant.schemaName],
+        );
+        return fn(options.manager);
       }
-
-      return em.transaction(async (manager) => {
-        await manager.query(`SET LOCAL search_path TO "${tenant.schemaName}", public`);
-        return fn(manager);
-      });
+      return this.tenantConnections.runInTenantTransaction(fn);
     };
 
     return {
@@ -90,7 +83,19 @@ export class PluginContextFactory {
             return this.findIssueCandidates(runInSchema, userId, filters);
           },
           update: async (key: string, data: Record<string, unknown>) => {
-            const sets = Object.entries(data)
+            const fields = Object.entries(data);
+            if (fields.length === 0) {
+              throw new BadRequestException('At least one issue update field is required');
+            }
+            for (const [field] of fields) {
+              if (!ISSUE_UPDATE_FIELDS.has(field)) {
+                throw new BadRequestException(
+                  `Unsupported issue update field: ${field}`,
+                );
+              }
+            }
+
+            const sets = fields
               .map(([k], i) => `"${k}" = $${i + 2}`)
               .join(', ');
             return runInSchema((manager) =>
@@ -373,7 +378,7 @@ export class PluginContextFactory {
     const timer = setTimeout(() => controller.abort(), timeout);
 
     try {
-      const res = await fetch(url, {
+      const res = await fetchWithSafeRedirects(url, {
         method,
         headers: {
           'Content-Type': 'application/json',
@@ -382,7 +387,13 @@ export class PluginContextFactory {
         body: body ? JSON.stringify(body) : undefined,
         signal: controller.signal,
       });
-      const data = await res.json().catch(() => null);
+      const responseText = await readLimitedResponseText(res, 1024 * 1024);
+      let data: unknown = null;
+      try {
+        data = responseText ? JSON.parse(responseText) : null;
+      } catch {
+        data = null;
+      }
       const responseHeaders: Record<string, string> = {};
       res.headers.forEach((v, k) => {
         responseHeaders[k] = v;

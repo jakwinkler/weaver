@@ -7,19 +7,21 @@
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
-    "lint": "turbo run lint",
+    "lint": "eslint apps packages plugins --no-error-on-unmatched-pattern",
     "test": "turbo run test",
     "test:e2e": "turbo run test:e2e",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
     "clean": "turbo run clean && rm -rf node_modules"
   },
   "devDependencies": {
+    "@types/node": "^22.10.5",
     "@module-federation/vite": "^1.21.0",
     "@vitejs/plugin-react": "^4.3.4",
+    "eslint": "^9.17.0",
     "prettier": "^3.4.2",
     "turbo": "^2.3.3",
     "typescript": "^5.7.2",
-    "vite": "^6.0.7"
+    "vite": "^6.4.3"
   },
   "packageManager": "pnpm@9.15.4",
   "engines": {
@@ -29,7 +31,25 @@
   "pnpm": {
     "overrides": {
       "@types/react": "^18.3.18",
-      "@types/react-dom": "^18.3.5"
+      "@types/react-dom": "^18.3.5",
+      "engine.io": "6.6.9",
+      "express@4.22.1>path-to-regexp": "0.1.13",
+      "router@2.2.0>path-to-regexp": "8.4.0",
+      "minimatch@9": "9.0.7",
+      "brace-expansion@2": "2.1.4",
+      "serialize-javascript": "7.0.3",
+      "fast-uri": "3.1.6",
+      "browserslist": "4.28.7",
+      "linkify-it": "5.0.2",
+      "lodash": "4.18.0",
+      "rollup@4": "4.59.0",
+      "picomatch@4": "4.0.4",
+      "postcss@8": "8.5.18",
+      "nanoid@3": "3.3.18",
+      "handlebars": "4.7.9",
+      "multer": "2.3.0",
+      "socket.io-parser": "4.2.7",
+      "ws": "8.21.3"
     }
   },
   "dependencies": {

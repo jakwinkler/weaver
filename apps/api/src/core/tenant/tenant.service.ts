@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import { TenantEntity } from '@weaver/db';
 import type { TenantSettings } from '@weaver/shared';
 
@@ -40,10 +40,13 @@ export class TenantService {
   async create(data: {
     name: string;
     slug: string;
-  }): Promise<TenantEntity> {
+  }, manager?: EntityManager): Promise<TenantEntity> {
+    const repo = manager
+      ? manager.getRepository(TenantEntity)
+      : this.tenantRepo;
     const schemaName = `tenant_${data.slug.replace(/-/g, '_')}`;
 
-    const tenant = this.tenantRepo.create({
+    const tenant = repo.create({
       name: data.name,
       slug: data.slug,
       schemaName,
@@ -51,7 +54,7 @@ export class TenantService {
       settings: {},
     });
 
-    return this.tenantRepo.save(tenant);
+    return repo.save(tenant);
   }
 
   async findAll(): Promise<TenantEntity[]> {

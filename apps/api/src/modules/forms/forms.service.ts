@@ -21,7 +21,7 @@ import { MailService } from '../mail';
 import { NotificationsService } from '../notifications';
 import { ProjectsService, ProjectIssueTypesService } from '../projects';
 
-interface FormView extends FormEntity {
+export interface FormView extends FormEntity {
   tenantSlug: string;
 }
 
@@ -297,11 +297,12 @@ export class FormsService {
       const lead = await this.userRepo.findOneBy({ id: leadUserId });
       const tenant = getTenantContext();
       if (lead && tenant) {
-        await this.mailService.sendMail(tenant.tenantId, {
-          to: lead.email,
-          subject: `New ${form.name} submission: ${issueKey}`,
+        await this.mailService.enqueueNotification({
+          tenantId: tenant.tenantId,
+          userId: lead.id,
+          preference: 'emailOnAssign',
           template: 'form-submission',
-          context: { formName: form.name, issueKey, summary },
+          context: { formName: form.name, issueKey, summary, issueUrl: this.mailService.issueUrl(issueKey) },
         });
       }
     } catch (error) {

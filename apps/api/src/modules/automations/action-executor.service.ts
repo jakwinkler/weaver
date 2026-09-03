@@ -65,6 +65,7 @@ export class AutomationActionExecutorService {
           this.requireIssueKey(context),
           { body: this.normalizeCommentBody(action.body) },
           context.actorId,
+          requireTenantContext().tenantId,
         );
         return;
       case 'send_notification':

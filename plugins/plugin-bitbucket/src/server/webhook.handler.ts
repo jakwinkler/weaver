@@ -1,23 +1,26 @@
 import type { PluginRequest, PluginResponse, PluginContext } from '@weaver/sdk';
-import { createHmac } from 'crypto';
+import { timingSafeEqual } from 'crypto';
 
-function verifySignature(payload: string, signature: string, secret: string): boolean {
-  const expected = createHmac('sha256', secret).update(payload).digest('hex');
-  return expected === signature;
+function verifyToken(provided: string, expected: string): boolean {
+  const providedBuffer = Buffer.from(provided);
+  const expectedBuffer = Buffer.from(expected);
+  return (
+    providedBuffer.length === expectedBuffer.length &&
+    timingSafeEqual(providedBuffer, expectedBuffer)
+  );
 }
 
 export async function handleBitbucketWebhook(req: PluginRequest, context: PluginContext): Promise<PluginResponse> {
-  const signature = req.headers['x-hub-signature'];
+  const token = req.params.token;
   const event = req.headers['x-event-key'];
   const secret = context.settings.webhookSecret as string;
 
-  if (!signature || !secret) {
-    return { status: 401, body: { message: 'Missing signature or secret' } };
+  if (!token || !secret) {
+    return { status: 401, body: { message: 'Missing webhook token' } };
   }
 
-  const payload = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
-  if (!verifySignature(payload, signature, secret)) {
-    return { status: 401, body: { message: 'Invalid signature' } };
+  if (!verifyToken(token, secret)) {
+    return { status: 401, body: { message: 'Invalid webhook token' } };
   }
 
   const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body as Record<string, any>;

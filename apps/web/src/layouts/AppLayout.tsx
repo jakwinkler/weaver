@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore, useThemeStore } from '@/stores';
-import { useProjects, useInstalledPlugins, useAvailablePlugins, useMyPermissions } from '@/api';
+import { useProjects, useInstalledPlugins, useAvailablePlugins, useMyPermissions, useCurrentUser } from '@/api';
 import { ProjectIcon } from '@/features/projects/ProjectSettingsPage';
 import { NotificationPanel } from '@/features/notifications/NotificationPanel';
 import { UserAvatar } from '@/components/UserAvatar';
@@ -45,6 +46,7 @@ import { getPluginIcon } from '@/plugins/plugin-icons';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { HotkeysContext, getHotkeyContext, useHotkeys } from '@/hooks/useHotkeys';
 import { ShortcutsDialog } from '@/components/ShortcutsDialog';
+import { endSession } from '@/auth/logout-session';
 
 export const adminNavItems = [
   { to: '/admin/workflows', label: 'Workflows', icon: GitBranch },
@@ -63,10 +65,12 @@ export const adminNavItems = [
 
 export function AppLayout() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const location = useLocation();
   const user = useAuthStore((s) => s.user);
   const isAdmin = useAuthStore((s) => s.isAdmin());
-  const logout = useAuthStore((s) => s.logout);
+  const setUser = useAuthStore((s) => s.setUser);
+  const { data: currentUser } = useCurrentUser();
   const { data: projectsData } = useProjects();
   const { data: installedPlugins } = useInstalledPlugins();
   const { data: availablePlugins } = useAvailablePlugins();
@@ -80,6 +84,7 @@ export function AppLayout() {
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const pendingSearchFocus = useRef(false);
+  useEffect(() => { if (currentUser) setUser(currentUser); }, [currentUser, setUser]);
 
   // Initialize WebSocket connection for real-time updates
   useWebSocket();
@@ -141,13 +146,13 @@ export function AppLayout() {
         entry.requiredPermissions.every((perm) => permissions.includes(perm)),
     );
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await endSession(queryClient);
     navigate('/login');
   };
 
   return (
-    <div className="flex h-screen bg-muted/50">
+    <div className="flex h-screen min-w-0 bg-background text-foreground">
       {/* Sidebar */}
       <aside className="relative z-10 hidden w-64 flex-col bg-slate-900 text-white md:flex">
         <div className="flex h-14 items-center border-b border-white/10 px-5">
@@ -334,11 +339,9 @@ export function AppLayout() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="hidden text-white/80 hover:text-white hover:bg-white/10 sm:inline-flex"
-                  onClick={() =>
-                    setTheme(theme === 'dark' ? 'light' : theme === 'light' ? 'dark' : 'dark')
-                  }
                   aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+                  className="text-white/80 hover:text-white hover:bg-white/10"
+                  onClick={() => setTheme(theme === 'dark' ? 'light' : theme === 'light' ? 'dark' : 'dark')}
                 >
                   {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
                 </Button>
@@ -519,7 +522,7 @@ export function AppLayout() {
         </Dialog>
 
         {/* Content */}
-        <main className="min-w-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
+        <main className="min-w-0 flex-1 overflow-y-auto bg-background px-3 py-5 sm:px-6">
           <HotkeysContext.Provider value={getHotkeyContext(location.pathname)}>
             <Outlet />
           </HotkeysContext.Provider>

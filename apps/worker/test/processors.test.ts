@@ -1,12 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { processEvent, type EventJobData } from '../src/processors/events.processor';
-import { processWebhook, type WebhookJobData } from '../src/processors/webhooks.processor';
-import {
-  createNotificationProcessor,
-  processNotification,
-  TenantEmailRateLimiter,
-  type NotificationJobData,
-} from '../src/processors/notifications.processor';
+import { processWebhookWithDependencies, type WebhookJobData } from '../src/processors/webhooks.processor';
+import { createNotificationProcessor, processNotification, TenantEmailRateLimiter, type NotificationJobData } from '../src/processors/notifications.processor';
 import type { Job } from 'bullmq';
 
 function mockJob<T>(data: T): Job<T> {
@@ -28,17 +23,45 @@ describe('Worker Processors', () => {
   });
 
   describe('Webhooks Processor', () => {
-    it('should process webhook job without errors', async () => {
+    it('loads the destination secret from tenant storage and signs the delivery', async () => {
       const job = mockJob<WebhookJobData>({
         webhookId: 'wh-1',
-        url: 'https://example.com/webhook',
-        secret: 'test-secret',
+        tenantId: 'tenant-1',
+        schemaName: 'tenant_test',
         eventType: 'issue.created',
         payload: { issueKey: 'WEB-1' },
-        attempt: 1,
       });
+      const fetcher = vi.fn().mockResolvedValue(new Response('ok', { status: 200 }));
+      const webhook = {
+        id: 'wh-1',
+        active: true,
+        url: 'https://1.1.1.1/webhook',
+        secret: 'a'.repeat(32),
+      };
+      const dataSource = {
+        initialize: vi.fn().mockResolvedValue(undefined),
+        destroy: vi.fn().mockResolvedValue(undefined),
+        getRepository: vi.fn().mockReturnValue({
+          findOneBy: vi.fn().mockResolvedValue(webhook),
+          save: vi.fn(),
+        }),
+        query: vi.fn().mockResolvedValue(undefined),
+      };
 
-      await expect(processWebhook(job)).resolves.toBeUndefined();
+      await expect(processWebhookWithDependencies(job, {
+        createDataSource: () => dataSource as never,
+        fetcher,
+        now: () => 1_800_000_000_000,
+      })).resolves.toBeUndefined();
+      expect(fetcher).toHaveBeenCalledWith(
+        expect.any(URL),
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            'X-Webhook-Timestamp': '1800000000',
+          }),
+        }),
+      );
+      expect(dataSource.destroy).toHaveBeenCalled();
     });
   });
 
@@ -60,7 +83,7 @@ describe('Worker Processors', () => {
       const wait = vi.fn().mockResolvedValue(undefined);
       const processor = createNotificationProcessor({
         getTenantSmtpSettings: vi.fn().mockResolvedValue({
-          host: 'smtp.example.com',
+          host: '8.8.8.8',
           port: 587,
           secure: false,
           user: 'smtp-user',

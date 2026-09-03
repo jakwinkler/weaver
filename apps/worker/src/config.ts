@@ -1,15 +1,15 @@
 export const config = {
-  database: {
-    host: process.env.DATABASE_HOST || 'localhost',
-    port: parseInt(process.env.DATABASE_PORT || '5432', 10),
-    user: process.env.DATABASE_USER || 'weaver',
-    password: process.env.DATABASE_PASSWORD || 'weaver_dev',
-    name: process.env.DATABASE_NAME || 'weaver',
-  },
   redis: {
     host: process.env.REDIS_HOST || 'localhost',
     port: parseInt(process.env.REDIS_PORT || '6380', 10),
     password: process.env.REDIS_PASSWORD || undefined,
+  },
+  database: {
+    host: process.env.DATABASE_HOST || 'localhost',
+    port: parseInt(process.env.DATABASE_PORT || '5432', 10),
+    username: process.env.DATABASE_USER || 'weaver',
+    password: process.env.DATABASE_PASSWORD || 'weaver_dev',
+    database: process.env.DATABASE_NAME || 'weaver',
   },
   queues: {
     events: { name: 'events', concurrency: 10 },

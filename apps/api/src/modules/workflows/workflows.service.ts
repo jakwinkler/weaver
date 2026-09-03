@@ -1,5 +1,12 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ConflictException,
+} from '@nestjs/common';
+import {
+  IssueEntity,
+  ProjectEntity,
   WorkflowEntity,
   WorkflowStatusEntity,
   WorkflowTransitionEntity,
@@ -10,10 +17,17 @@ import {
   CreateWorkflowTransitionDto,
 } from '@weaver/shared';
 import { TenantConnectionProvider } from '../../core/tenant';
+import { In } from 'typeorm';
+import { ConditionEvaluatorRegistry } from './condition-evaluator.registry';
+import { PostFunctionRegistry } from './post-function.registry';
 
 @Injectable()
 export class WorkflowsService {
-  constructor(private readonly tenantConnections: TenantConnectionProvider) {}
+  constructor(
+    private readonly tenantConnections: TenantConnectionProvider,
+    private readonly conditionEvaluators: ConditionEvaluatorRegistry,
+    private readonly postFunctions: PostFunctionRegistry,
+  ) {}
 
   async create(dto: CreateWorkflowDto): Promise<WorkflowEntity> {
     const em = await this.tenantConnections.getEntityManager();
@@ -71,24 +85,29 @@ export class WorkflowsService {
     await this.findById(id);
     const em = await this.tenantConnections.getEntityManager();
 
-    // Delete transitions first, then statuses, then the workflow
-    await em.getRepository(WorkflowTransitionEntity)
-      .createQueryBuilder()
-      .delete()
-      .where('workflow_id = :id', { id })
-      .execute();
+    const assignedProjects = await em.getRepository(ProjectEntity).countBy({ workflowId: id });
+    if (assignedProjects > 0) {
+      throw new ConflictException('Workflow cannot be deleted while assigned to a project');
+    }
 
-    await em.getRepository(WorkflowStatusEntity)
-      .createQueryBuilder()
-      .delete()
-      .where('workflow_id = :id', { id })
-      .execute();
+    const statusIds = (
+      await em.getRepository(WorkflowStatusEntity).find({
+        where: { workflowId: id },
+        select: ['id'],
+      })
+    ).map(({ id: statusId }) => statusId);
+    if (
+      statusIds.length > 0 &&
+      (await em.getRepository(IssueEntity).countBy({ statusId: In(statusIds) })) > 0
+    ) {
+      throw new ConflictException('Workflow cannot be deleted while its statuses are in use');
+    }
 
-    await em.getRepository(WorkflowEntity)
-      .createQueryBuilder()
-      .delete()
-      .where('id = :id', { id })
-      .execute();
+    await em.transaction(async (manager) => {
+      await manager.getRepository(WorkflowTransitionEntity).delete({ workflowId: id });
+      await manager.getRepository(WorkflowStatusEntity).delete({ workflowId: id });
+      await manager.getRepository(WorkflowEntity).delete({ id });
+    });
   }
 
   // ── Statuses ──
@@ -144,14 +163,19 @@ export class WorkflowsService {
       throw new NotFoundException(`Status "${statusId}" not found`);
     }
 
-    const transitionRepo = em.getRepository(WorkflowTransitionEntity);
-    await transitionRepo
-      .createQueryBuilder()
-      .delete()
-      .where('from_status_id = :statusId OR to_status_id = :statusId', { statusId })
-      .execute();
+    if ((await em.getRepository(IssueEntity).countBy({ statusId })) > 0) {
+      throw new ConflictException('Status cannot be deleted while it is used by an issue');
+    }
 
-    await statusRepo.remove(status);
+    await em.transaction(async (manager) => {
+      await manager
+        .getRepository(WorkflowTransitionEntity)
+        .createQueryBuilder()
+        .delete()
+        .where('from_status_id = :statusId OR to_status_id = :statusId', { statusId })
+        .execute();
+      await manager.getRepository(WorkflowStatusEntity).delete({ id: statusId, workflowId });
+    });
   }
 
   // ── Transitions ──
@@ -169,6 +193,7 @@ export class WorkflowsService {
     if (!fromStatus || !toStatus) {
       throw new BadRequestException('From/To status must belong to this workflow');
     }
+    this.assertRegisteredRules(dto);
 
     const repo = em.getRepository(WorkflowTransitionEntity);
     const transition = repo.create({ ...dto, workflowId });
@@ -186,6 +211,21 @@ export class WorkflowsService {
     if (!transition) {
       throw new NotFoundException(`Transition "${transitionId}" not found`);
     }
+    const fromStatusId = dto.fromStatusId ?? transition.fromStatusId;
+    const toStatusId = dto.toStatusId ?? transition.toStatusId;
+    const statusRepo = em.getRepository(WorkflowStatusEntity);
+    const matchingStatusCount = await statusRepo.countBy({
+      id: In([fromStatusId, toStatusId]),
+      workflowId,
+    });
+    if (matchingStatusCount !== new Set([fromStatusId, toStatusId]).size) {
+      throw new BadRequestException('From/To status must belong to this workflow');
+    }
+    this.assertRegisteredRules({
+      conditions: dto.conditions ?? transition.conditions,
+      validators: dto.validators ?? transition.validators,
+      postFunctions: dto.postFunctions ?? transition.postFunctions,
+    });
     Object.assign(transition, dto);
     return repo.save(transition);
   }
@@ -240,5 +280,46 @@ export class WorkflowsService {
       throw new NotFoundException('No default workflow found');
     }
     return workflow;
+  }
+
+  private assertRegisteredRules(rules: {
+    conditions?: unknown[];
+    validators?: unknown[];
+    postFunctions?: unknown[];
+  }): void {
+    for (const [label, values] of [
+      ['condition', rules.conditions ?? []],
+      ['validator', rules.validators ?? []],
+    ] as const) {
+      for (const rule of values) {
+        const type = this.ruleType(rule, label);
+        if (!this.conditionEvaluators.has(type)) {
+          throw new BadRequestException(
+            `Workflow ${label} evaluator "${type}" is not registered`,
+          );
+        }
+      }
+    }
+
+    for (const rule of rules.postFunctions ?? []) {
+      const type = this.ruleType(rule, 'post-function');
+      if (!this.postFunctions.has(type)) {
+        throw new BadRequestException(
+          `Workflow post-function "${type}" is not registered`,
+        );
+      }
+    }
+  }
+
+  private ruleType(rule: unknown, label: string): string {
+    if (
+      typeof rule !== 'object' ||
+      rule === null ||
+      typeof (rule as Record<string, unknown>).type !== 'string' ||
+      !(rule as Record<string, unknown>).type
+    ) {
+      throw new BadRequestException(`Workflow ${label} configuration is invalid`);
+    }
+    return (rule as Record<string, unknown>).type as string;
   }
 }

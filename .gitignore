@@ -37,3 +37,4 @@ docker/data/
 # Misc
 *.tgz
 .cache/
+uploads/

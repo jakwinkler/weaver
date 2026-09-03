@@ -49,7 +49,7 @@ describe('Bulk Operations (e2e)', () => {
       .expect(201);
 
     ownerToken = registerRes.body.accessToken;
-    tenantId = registerRes.body.tenant.id;
+    tenantId = registerRes.body.tenantId;
 
     const passwordHash = await bcrypt.hash('password123', 10);
     await dataSource.query(

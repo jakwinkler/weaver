@@ -21,10 +21,12 @@ import {
 } from '../../core/auth';
 import { ZodValidationPipe } from '../../common';
 import { FormsService } from './forms.service';
+import { ProjectAccessGuard, RequireProjectAccess } from '../../core/tenant';
 
 @Controller('projects/:projectKey/forms')
-@UseGuards(JwtAuthGuard, PermissionGuard)
+@UseGuards(JwtAuthGuard, PermissionGuard, ProjectAccessGuard)
 @RequirePermission('projects', 'update')
+@RequireProjectAccess('project-key', 'write')
 export class FormsController {
   constructor(private readonly formsService: FormsService) {}
 

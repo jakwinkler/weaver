@@ -45,7 +45,8 @@ describe('apiClient authentication headers', () => {
 
     await apiClient.get('/projects');
 
-    expect(authorization).toBe('Bearer existing-access-token');
+    expect(authorization).toBeUndefined();
+    expect(apiClient.defaults.withCredentials).toBe(true);
     expect(tenantId).toBe('existing-tenant-id');
   });
 });

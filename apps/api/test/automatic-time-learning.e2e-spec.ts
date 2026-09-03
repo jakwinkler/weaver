@@ -196,10 +196,11 @@ describe('Automatic Time Phase 7 learning and local metrics (e2e)', () => {
       .send({ idempotencyKey: 'phase-7-learning-release' })
       .expect(200);
 
-    await authedRequest()
+    const manualEntry = await authedRequest()
       .post(`/api/v1/issues/${correctedIssue.body.key}/time-entries`)
       .send({ minutes: 5, description: 'Exceptional manual timer', source: 'timer' })
       .expect(201);
+    await dataSource.query(`UPDATE "${schemaName}".time_entries SET logged_at = $1 WHERE id = $2`, [`${localDate}T15:00:00Z`, manualEntry.body.id]);
 
     const metrics = await authedRequest().get(pluginRoute('/local-alpha/metrics')).expect(200);
     expect(metrics.body).toEqual(

@@ -34,6 +34,7 @@ import { FormsModule } from './modules/forms';
 import { ApiKeysModule } from './modules/api-keys';
 import { AuditModule } from './modules/audit';
 import { HealthController } from './health.controller';
+import { StorageModule } from './core/storage';
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { HealthController } from './health.controller';
       envFilePath: ['.env', '../../.env'],
     }),
     DatabaseModule,
+    StorageModule,
     TenantModule,
     AuthModule,
     UsersModule,

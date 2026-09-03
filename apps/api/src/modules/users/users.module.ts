@@ -4,11 +4,13 @@ import { UserEntity, TenantMembershipEntity } from '@weaver/db';
 import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
 import { AttachmentsModule } from '../attachments/attachments.module';
+import { WebSocketModule } from '../../core/websocket';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([UserEntity, TenantMembershipEntity]),
     AttachmentsModule,
+    WebSocketModule,
   ],
   controllers: [UsersController],
   providers: [UsersService],

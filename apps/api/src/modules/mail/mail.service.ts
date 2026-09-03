@@ -32,6 +32,7 @@ const SUBJECTS: Record<EmailTemplateName, (context: Record<string, unknown>) => 
   'issue-status-changed': (context) =>
     `[${context.issueKey}] Status changed to ${context.newStatus}`,
   'comment-added': (context) => `[${context.issueKey}] ${context.actorName} added a comment`,
+  'form-submission': (context) => `[${context.issueKey}] New ${context.formName} submission`,
 };
 
 interface EnqueueNotificationOptions {
@@ -41,6 +42,7 @@ interface EnqueueNotificationOptions {
   template: EmailTemplateName;
   context: Record<string, unknown>;
 }
+import { resolveSafeOutboundHost } from '../../core/security/outbound-http';
 
 @Injectable()
 export class MailService {
@@ -189,11 +191,13 @@ export class MailService {
       throw new BadRequestException('SMTP is not configured');
     }
 
+    const [destination] = await resolveSafeOutboundHost(smtp.host);
     const transport = this.transportFactory({
-      host: smtp.host,
+      host: destination.address,
       port: smtp.port,
       secure: smtp.secure,
       auth: smtp.user ? { user: smtp.user, pass: smtp.pass } : undefined,
+      tls: { servername: smtp.host },
     });
     await transport.sendMail({
       from: `"${smtp.fromName}" <${smtp.fromEmail}>`,
@@ -254,8 +258,9 @@ export class MailService {
   }
 
   private apiPublicUrl(): string {
-    const apiUrl = this.config.get('API_PUBLIC_URL', 'http://localhost:3000/api/v1');
-    return apiUrl.replace(/\/$/, '');
+    const apiUrl = this.config.get('API_PUBLIC_URL', 'http://localhost:3000').replace(/\/$/, '');
+    const prefix = `/${this.config.get('API_PREFIX', 'api/v1').replace(/^\/+|\/+$/g, '')}`;
+    return apiUrl.endsWith(prefix) ? apiUrl : `${apiUrl}${prefix}`;
   }
 
   private webAppUrl(): string {

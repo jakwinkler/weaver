@@ -62,7 +62,6 @@ describe('Mentions (e2e)', () => {
       })
       .expect(201);
 
-    tokenB = resB.body.accessToken;
     userBId = resB.body.user.id;
 
     const resC = await request(app.getHttpServer())
@@ -83,6 +82,17 @@ describe('Mentions (e2e)', () => {
       `INSERT INTO public.tenant_memberships (tenant_id, user_id, role) VALUES ($1, $2, 'member') ON CONFLICT DO NOTHING`,
       [tenantId, userBId],
     );
+
+    tokenB = (
+      await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({
+          email: 'mention-b@example.com',
+          password: 'password123',
+          tenantId,
+        })
+        .expect(201)
+    ).body.accessToken;
 
     // Create workflow + initial status for the tenant
     const wfRes = await request(app.getHttpServer())

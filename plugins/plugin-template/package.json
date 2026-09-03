@@ -4,9 +4,10 @@
   "private": true,
   "main": "./src/client/index.ts",
   "scripts": {
-    "build": "vite build",
+    "build": "vite build && tsc -p tsconfig.server.json",
     "dev": "vite",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.server.json"
   },
   "peerDependencies": {
     "@tanstack/react-query": "^5.0.0",
@@ -19,6 +20,6 @@
     "@weaver/sdk": "workspace:*",
     "@types/react": "^18.3.18",
     "typescript": "^5.7.2",
-    "vite": "^6.0.7"
+    "vite": "^6.4.3"
   }
 }

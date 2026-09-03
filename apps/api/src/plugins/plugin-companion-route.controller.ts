@@ -1,10 +1,15 @@
-import { All, Controller, HttpStatus, Logger, Req, Res, UseGuards } from '@nestjs/common';
+import { All, Controller, HttpStatus, Logger, Req, Res } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import type { PluginRequest, PluginResponse, PluginRouteDefinition } from '@weaver/sdk';
-import { RateLimit, RateLimitingGuard } from '../core/rate-limiting';
+import { RateLimit } from '../core/rate-limiting';
 import { PluginContextFactory } from './plugin-context.factory';
 import { PluginLoaderService } from './plugin-loader.service';
 import { PluginRegistryService } from './plugin-registry.service';
+import { TenantService } from '../core/tenant/tenant.service';
+import { tenantStorage } from '../core/tenant/tenant.context';
+import { InjectRepository } from '@nestjs/typeorm';
+import { TenantMembershipEntity } from '@weaver/db';
+import { Repository } from 'typeorm';
 
 interface DevicePrincipal {
   deviceId: string;
@@ -13,7 +18,6 @@ interface DevicePrincipal {
 }
 
 @Controller('plugin-companion-routes')
-@UseGuards(RateLimitingGuard)
 @RateLimit(60, 60_000)
 export class PluginCompanionRouteController {
   private readonly logger = new Logger(PluginCompanionRouteController.name);
@@ -22,10 +26,25 @@ export class PluginCompanionRouteController {
     private readonly registry: PluginRegistryService,
     private readonly loader: PluginLoaderService,
     private readonly contextFactory: PluginContextFactory,
+    private readonly tenants: TenantService,
+    @InjectRepository(TenantMembershipEntity)
+    private readonly memberships: Repository<TenantMembershipEntity>,
   ) {}
 
   @All('*')
   async handleCompanionRoute(@Req() req: Request, @Res() res: Response) {
+    // The header locates the credential store. Only the pairing secret or device
+    // authenticator below grants access, never the header or a browser session.
+    const tenantId = req.headers['x-tenant-id'];
+    if (typeof tenantId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tenantId)) {
+      return res.status(HttpStatus.BAD_REQUEST).json({ message: 'A valid tenant ID is required' });
+    }
+    const tenant = await this.tenants.findById(tenantId);
+    if (!tenant) return res.status(HttpStatus.NOT_FOUND).json({ message: 'Tenant not found' });
+    return tenantStorage.run({ tenantId, schemaName: tenant.schemaName }, () => this.dispatchCompanionRoute(req, res, tenantId));
+  }
+
+  private async dispatchCompanionRoute(req: Request, res: Response, tenantId: string) {
     const parsed = this.parseRoute(req.path);
     if (!parsed) {
       return res.status(HttpStatus.NOT_FOUND).json({ message: 'Missing route path' });
@@ -102,6 +121,9 @@ export class PluginCompanionRouteController {
             message: 'Missing required device scopes',
             missing,
           });
+        }
+        if (!await this.memberships.findOneBy({ tenantId, userId: principal.userId })) {
+          return res.status(HttpStatus.UNAUTHORIZED).json({ message: 'Device membership is no longer valid' });
         }
         pluginRequest.auth = {
           type: 'device',

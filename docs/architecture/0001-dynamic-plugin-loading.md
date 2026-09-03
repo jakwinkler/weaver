@@ -24,4 +24,6 @@ Module Federation already handles runtime registration, named exposes, shared de
 - Production deployments must build plugin workspaces before starting the API.
 - `remoteEntry.js` is revalidated, while hashed chunks can be cached immutably.
 - Client plugin code runs with the same browser authority as Weaver. Installation remains a trusted administrative action, not a security sandbox.
+- Production loads plugins only from the deployment-owned `WEAVER_TRUSTED_PLUGINS` allowlist. Client bundle URLs must resolve to the exact same-origin API asset route, with no query string, fragment, or embedded credentials.
+- Manifest permissions authorize Weaver users and UI contributions. They do not sandbox plugin code or limit the authority of a compromised bundle.
 - A plugin that declares client UI but has no compiled remote returns a visible load failure. Server-only plugins do not receive a `clientBundle` URL.

@@ -13,6 +13,7 @@ describe('Roadmap (e2e)', () => {
   let tenantId: string;
   let epicTypeId: string;
   let terminalStatusId: string;
+  let inProgressStatusId: string;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -38,7 +39,7 @@ describe('Roadmap (e2e)', () => {
       .expect(201);
 
     accessToken = registration.body.accessToken;
-    tenantId = registration.body.tenant.id;
+    tenantId = registration.body.tenantId;
 
     await authedRequest()
       .post('/api/v1/projects')
@@ -57,6 +58,7 @@ describe('Roadmap (e2e)', () => {
     const workflow = await authedRequest()
       .get(`/api/v1/workflows/${defaultWorkflow.id}`)
       .expect(200);
+    inProgressStatusId = workflow.body.statuses.find((s: any) => s.category === 'in_progress').id;
     terminalStatusId = workflow.body.statuses.find(
       (status: { isTerminal: boolean }) => status.isTerminal,
     ).id;
@@ -136,6 +138,9 @@ describe('Roadmap (e2e)', () => {
         .expect(201),
     );
 
+    await authedRequest()
+      .patch(`/api/v1/issues/${children[0].body.key}`)
+      .send({ statusId: inProgressStatusId }).expect(200);
     await authedRequest()
       .patch(`/api/v1/issues/${children[0].body.key}`)
       .send({ statusId: terminalStatusId })

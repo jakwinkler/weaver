@@ -16,9 +16,14 @@ export function ImportProgress({ importId, onStartAnother }: ImportProgressProps
     return (
       <div className="space-y-3 py-6">
         <p className="text-sm text-destructive">Unable to load the import status.</p>
-        <Button type="button" variant="outline" onClick={() => status.refetch()}>
-          Try again
-        </Button>
+        <div className="flex gap-3">
+          <Button type="button" variant="outline" onClick={() => status.refetch()}>
+            Try again
+          </Button>
+          <Button type="button" variant="outline" onClick={onStartAnother}>
+            Forget this import
+          </Button>
+        </div>
       </div>
     );
   }

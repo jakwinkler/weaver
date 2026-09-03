@@ -3,7 +3,7 @@ import { PassportModule } from '@nestjs/passport';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { ApiKeyEntity, UserEntity, TenantMembershipEntity } from '@weaver/db';
+import { ApiKeyEntity, UserEntity, TenantMembershipEntity, RefreshSessionEntity } from '@weaver/db';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './jwt.strategy';
@@ -29,7 +29,7 @@ import { OidcStrategy } from './oidc.strategy';
         signOptions: { expiresIn: '15m' },
       }),
     }),
-    TypeOrmModule.forFeature([ApiKeyEntity, UserEntity, TenantMembershipEntity]),
+    TypeOrmModule.forFeature([ApiKeyEntity, UserEntity, TenantMembershipEntity, RefreshSessionEntity]),
   ],
   controllers: [AuthController],
   providers: [
@@ -48,6 +48,7 @@ import { OidcStrategy } from './oidc.strategy';
     OidcStrategy,
   ],
   exports: [
+    JwtModule,
     AuthService,
     ApiKeyGuard,
     ApiKeyRateLimitGuard,

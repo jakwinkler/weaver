@@ -13,6 +13,7 @@ describe('Sprint Reports (e2e)', () => {
   let tenantId: string;
   let projectId: string;
   let terminalStatusId: string;
+  let inProgressStatusId: string;
   let reportSprintId: string;
   const today = new Date().toISOString().split('T')[0];
 
@@ -40,7 +41,7 @@ describe('Sprint Reports (e2e)', () => {
       .expect(201);
 
     accessToken = registration.body.accessToken;
-    tenantId = registration.body.tenant.id;
+    tenantId = registration.body.tenantId;
 
     const project = await authedRequest()
       .post('/api/v1/projects')
@@ -53,6 +54,7 @@ describe('Sprint Reports (e2e)', () => {
     const workflow = await authedRequest()
       .get(`/api/v1/workflows/${defaultWorkflow.id}`)
       .expect(200);
+    inProgressStatusId = workflow.body.statuses.find((s: any) => s.category === 'in_progress').id;
     terminalStatusId = workflow.body.statuses.find(
       (status: { isTerminal: boolean }) => status.isTerminal,
     ).id;
@@ -123,6 +125,9 @@ describe('Sprint Reports (e2e)', () => {
 
     await authedRequest()
       .patch(`/api/v1/issues/${issues[1].key}`)
+      .send({ statusId: inProgressStatusId }).expect(200);
+    await authedRequest()
+      .patch(`/api/v1/issues/${issues[1].key}`)
       .send({ statusId: terminalStatusId })
       .expect(200);
 
@@ -182,6 +187,9 @@ describe('Sprint Reports (e2e)', () => {
       .send({ issueIds: issues.map((issue) => issue.id) })
       .expect(201);
     await authedRequest().post(`/api/v1/sprints/${sprint.body.id}/start`).expect(201);
+    await authedRequest()
+      .patch(`/api/v1/issues/${issues[0].key}`)
+      .send({ statusId: inProgressStatusId }).expect(200);
     await authedRequest()
       .patch(`/api/v1/issues/${issues[0].key}`)
       .send({ statusId: terminalStatusId })

@@ -1,11 +1,19 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
-import { ProjectEntity, ProjectMemberEntity } from '@weaver/db';
+import {
+  BoardEntity,
+  IssueEntity,
+  ProjectEntity,
+  ProjectMemberEntity,
+  SprintEntity,
+} from '@weaver/db';
 import { CreateProjectDto, UpdateProjectDto, PaginatedResponse } from '@weaver/shared';
 import { TenantConnectionProvider } from '../../core/tenant';
 import { WorkflowsService } from '../workflows';
 import { EventDispatcherService } from '../events';
 import { ProjectPluginsService } from './project-plugins.service';
 import { PaginationParams, paginate } from '../../common';
+import { ProjectAccessService } from '../../core/tenant';
+import type { RequestUser } from '../../core/auth';
 
 @Injectable()
 export class ProjectsService {
@@ -14,6 +22,7 @@ export class ProjectsService {
     private readonly workflowsService: WorkflowsService,
     private readonly eventDispatcher: EventDispatcherService,
     private readonly projectPluginsService: ProjectPluginsService,
+    private readonly projectAccess: ProjectAccessService,
   ) {}
 
   async create(dto: CreateProjectDto, userId: string): Promise<ProjectEntity> {
@@ -65,10 +74,21 @@ export class ProjectsService {
     return saved;
   }
 
-  async findAll(params: PaginationParams): Promise<PaginatedResponse<ProjectEntity>> {
+  async findAll(
+    params: PaginationParams,
+    user: RequestUser,
+  ): Promise<PaginatedResponse<ProjectEntity>> {
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(ProjectEntity);
     const qb = repo.createQueryBuilder('project');
+    const projectIds = await this.projectAccess.accessibleProjectIds(user);
+    if (projectIds !== null) {
+      if (projectIds.length === 0) {
+        qb.where('1 = 0');
+      } else {
+        qb.where('project.id IN (:...projectIds)', { projectIds });
+      }
+    }
 
     return paginate(qb, params, ['name', 'key', 'createdAt', 'updatedAt']);
   }
@@ -112,6 +132,16 @@ export class ProjectsService {
     const project = await this.findByKey(key);
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(ProjectEntity);
+    const [issueCount, boardCount, sprintCount] = await Promise.all([
+      em.getRepository(IssueEntity).countBy({ projectId: project.id }),
+      em.getRepository(BoardEntity).countBy({ projectId: project.id }),
+      em.getRepository(SprintEntity).countBy({ projectId: project.id }),
+    ]);
+    if (issueCount || boardCount || sprintCount) {
+      throw new ConflictException(
+        'Project cannot be deleted while it contains issues, boards, or sprints',
+      );
+    }
     await repo.remove(project);
   }
 
@@ -119,14 +149,19 @@ export class ProjectsService {
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(ProjectEntity);
 
-    await repo
+    const result = await repo
       .createQueryBuilder()
       .update(ProjectEntity)
       .set({ issueCounter: () => 'issue_counter + 1' })
       .where('id = :id', { id: projectId })
+      .returning('issue_counter')
       .execute();
 
-    const project = await repo.findOneByOrFail({ id: projectId });
-    return project.issueCounter;
+    const counter = result.raw[0]?.issue_counter;
+    if (counter === undefined) {
+      throw new NotFoundException(`Project "${projectId}" not found`);
+    }
+
+    return Number(counter);
   }
 }

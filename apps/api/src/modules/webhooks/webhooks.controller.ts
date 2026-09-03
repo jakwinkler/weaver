@@ -11,7 +11,14 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
+import {
+  createWebhookSchema,
+  updateWebhookSchema,
+  type CreateWebhookDto,
+  type UpdateWebhookDto,
+} from '@weaver/shared';
 import { JwtAuthGuard, PermissionGuard, RequirePermission } from '../../core/auth';
+import { ZodValidationPipe } from '../../common';
 import { WebhooksService } from './webhooks.service';
 import { Audit } from '../audit';
 
@@ -23,9 +30,7 @@ export class WebhooksController {
 
   @Post()
   @Audit({ action: 'webhook.created', resource: 'webhook' })
-  async create(
-    @Body() dto: { url: string; secret: string; events: string[]; projectId?: string },
-  ) {
+  async create(@Body(new ZodValidationPipe(createWebhookSchema)) dto: CreateWebhookDto) {
     return this.webhooksService.create(dto);
   }
 
@@ -43,7 +48,7 @@ export class WebhooksController {
   @Audit({ action: 'webhook.updated', resource: 'webhook', captureBefore: true })
   async update(
     @Param('id') id: string,
-    @Body() dto: Partial<{ url: string; secret: string; events: string[]; active: boolean }>,
+    @Body(new ZodValidationPipe(updateWebhookSchema)) dto: UpdateWebhookDto,
   ) {
     return this.webhooksService.update(id, dto);
   }

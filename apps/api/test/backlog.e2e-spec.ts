@@ -18,6 +18,7 @@ describe('Backlog and sprint planning (e2e)', () => {
   let secondBacklogIssueKey: string;
   let sprintIssueKey: string;
   let doneStatusId: string;
+  let inProgressStatusId: string;
   let issueTypeId: string;
 
   const authedRequest = () => ({
@@ -62,7 +63,7 @@ describe('Backlog and sprint planning (e2e)', () => {
       .expect(201);
 
     token = registerRes.body.accessToken;
-    tenantId = registerRes.body.tenant.id;
+    tenantId = registerRes.body.tenantId;
     userId = registerRes.body.user.id;
 
     const projectRes = await authedRequest()
@@ -74,6 +75,7 @@ describe('Backlog and sprint planning (e2e)', () => {
     const workflowRes = await authedRequest()
       .get(`/api/v1/workflows/${projectRes.body.workflowId}`)
       .expect(200);
+    inProgressStatusId = workflowRes.body.statuses.find((s: any) => s.category === 'in_progress').id;
     doneStatusId = workflowRes.body.statuses.find(
       (status: { category: string }) => status.category === 'done',
     ).id;
@@ -217,6 +219,9 @@ describe('Backlog and sprint planning (e2e)', () => {
       .patch(`/api/v1/issues/${backlogIssueKey}/sprint`)
       .send({ sprintId })
       .expect(200);
+    await authedRequest()
+      .patch(`/api/v1/issues/${backlogIssueKey}`)
+      .send({ statusId: inProgressStatusId }).expect(200);
     await authedRequest()
       .patch(`/api/v1/issues/${backlogIssueKey}`)
       .send({ statusId: doneStatusId })

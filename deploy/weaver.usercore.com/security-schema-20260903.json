@@ -1,0 +1,232 @@
+[
+  {
+    "schema": "public",
+    "up": [
+      {
+        "query": "CREATE TABLE \"refresh_sessions\" (\"id\" uuid NOT NULL DEFAULT uuid_generate_v4(), \"user_id\" uuid NOT NULL, \"tenant_id\" uuid NOT NULL, \"token_hash\" character varying(64) NOT NULL, \"expires_at\" TIMESTAMP WITH TIME ZONE NOT NULL, \"created_at\" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT \"PK_9190032f6967b7971dca07d69f3\" PRIMARY KEY (\"id\"))"
+      },
+      {
+        "query": "CREATE INDEX \"IDX_a7ab4fd82c654c85b9de53d971\" ON \"refresh_sessions\" (\"user_id\") "
+      },
+      {
+        "query": "CREATE INDEX \"IDX_104f799758357bbb5902b81cf9\" ON \"refresh_sessions\" (\"tenant_id\") "
+      },
+      {
+        "query": "CREATE UNIQUE INDEX \"IDX_d76f5941d821678137ef15d965\" ON \"refresh_sessions\" (\"token_hash\") "
+      },
+      {
+        "query": "ALTER TABLE \"refresh_sessions\" ADD CONSTRAINT \"FK_a7ab4fd82c654c85b9de53d971a\" FOREIGN KEY (\"user_id\") REFERENCES \"users\"(\"id\") ON DELETE CASCADE ON UPDATE NO ACTION"
+      },
+      {
+        "query": "ALTER TABLE \"refresh_sessions\" ADD CONSTRAINT \"FK_104f799758357bbb5902b81cf90\" FOREIGN KEY (\"tenant_id\") REFERENCES \"tenants\"(\"id\") ON DELETE CASCADE ON UPDATE NO ACTION"
+      }
+    ],
+    "down": [
+      {
+        "query": "DROP TABLE \"refresh_sessions\""
+      },
+      {
+        "query": "DROP INDEX \"public\".\"IDX_a7ab4fd82c654c85b9de53d971\""
+      },
+      {
+        "query": "DROP INDEX \"public\".\"IDX_104f799758357bbb5902b81cf9\""
+      },
+      {
+        "query": "DROP INDEX \"public\".\"IDX_d76f5941d821678137ef15d965\""
+      },
+      {
+        "query": "ALTER TABLE \"refresh_sessions\" DROP CONSTRAINT \"FK_a7ab4fd82c654c85b9de53d971a\""
+      },
+      {
+        "query": "ALTER TABLE \"refresh_sessions\" DROP CONSTRAINT \"FK_104f799758357bbb5902b81cf90\""
+      }
+    ]
+  },
+  {
+    "schema": "tenant_rocket_web",
+    "up": [
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"comments\" DROP CONSTRAINT \"FK_4ce924bcd63bee0fccc7fe1d8f6\""
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"sprints\" DROP CONSTRAINT \"FK_82145010051f3f2fc94671c0b35\""
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"workflow_transitions\" DROP CONSTRAINT \"FK_58336fc5e065337745f54ed09b1\""
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"workflow_transitions\" DROP CONSTRAINT \"FK_8cb7034f4257d080e9124e13db7\""
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"workflow_transitions\" DROP CONSTRAINT \"FK_c9d9c163db11bfafce74e2f7c65\""
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"workflow_statuses\" DROP CONSTRAINT \"FK_9a4787836ba925fb9b50d1e3073\""
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"issues\" DROP CONSTRAINT \"FK_11f35e8296e10c229e7b68c68d4\""
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"issues\" DROP CONSTRAINT \"FK_53d9b04f3d8c1fb560cf37fad71\""
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"issues\" DROP CONSTRAINT \"FK_7d7da16adb251f544b1db256fdc\""
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"issues\" DROP CONSTRAINT \"FK_98fad9e9dacbfd3f12a9628578e\""
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"boards\" DROP CONSTRAINT \"FK_1542ae826c0dfeaf4c79e07fc57\""
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"import_jobs\" ALTER COLUMN \"errors\" SET DEFAULT '[]'::jsonb"
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"comments\" ADD CONSTRAINT \"FK_4ce924bcd63bee0fccc7fe1d8f6\" FOREIGN KEY (\"issue_id\") REFERENCES \"tenant_rocket_web\".\"issues\"(\"id\") ON DELETE CASCADE ON UPDATE NO ACTION"
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"sprints\" ADD CONSTRAINT \"FK_82145010051f3f2fc94671c0b35\" FOREIGN KEY (\"project_id\") REFERENCES \"tenant_rocket_web\".\"projects\"(\"id\") ON DELETE RESTRICT ON UPDATE NO ACTION"
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"workflow_transitions\" ADD CONSTRAINT \"FK_58336fc5e065337745f54ed09b1\" FOREIGN KEY (\"workflow_id\") REFERENCES \"tenant_rocket_web\".\"workflows\"(\"id\") ON DELETE CASCADE ON UPDATE NO ACTION"
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"workflow_transitions\" ADD CONSTRAINT \"FK_8cb7034f4257d080e9124e13db7\" FOREIGN KEY (\"from_status_id\") REFERENCES \"tenant_rocket_web\".\"workflow_statuses\"(\"id\") ON DELETE CASCADE ON UPDATE NO ACTION"
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"workflow_transitions\" ADD CONSTRAINT \"FK_c9d9c163db11bfafce74e2f7c65\" FOREIGN KEY (\"to_status_id\") REFERENCES \"tenant_rocket_web\".\"workflow_statuses\"(\"id\") ON DELETE CASCADE ON UPDATE NO ACTION"
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"workflow_statuses\" ADD CONSTRAINT \"FK_9a4787836ba925fb9b50d1e3073\" FOREIGN KEY (\"workflow_id\") REFERENCES \"tenant_rocket_web\".\"workflows\"(\"id\") ON DELETE CASCADE ON UPDATE NO ACTION"
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"issues\" ADD CONSTRAINT \"FK_11f35e8296e10c229e7b68c68d4\" FOREIGN KEY (\"project_id\") REFERENCES \"tenant_rocket_web\".\"projects\"(\"id\") ON DELETE RESTRICT ON UPDATE NO ACTION"
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"issues\" ADD CONSTRAINT \"FK_53d9b04f3d8c1fb560cf37fad71\" FOREIGN KEY (\"issue_type_id\") REFERENCES \"tenant_rocket_web\".\"issue_types\"(\"id\") ON DELETE SET NULL ON UPDATE NO ACTION"
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"issues\" ADD CONSTRAINT \"FK_d95aa108063de2be63c1401d188\" FOREIGN KEY (\"sprint_id\") REFERENCES \"tenant_rocket_web\".\"sprints\"(\"id\") ON DELETE SET NULL ON UPDATE NO ACTION"
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"issues\" ADD CONSTRAINT \"FK_7d7da16adb251f544b1db256fdc\" FOREIGN KEY (\"status_id\") REFERENCES \"tenant_rocket_web\".\"workflow_statuses\"(\"id\") ON DELETE RESTRICT ON UPDATE NO ACTION"
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"issues\" ADD CONSTRAINT \"FK_98fad9e9dacbfd3f12a9628578e\" FOREIGN KEY (\"parent_id\") REFERENCES \"tenant_rocket_web\".\"issues\"(\"id\") ON DELETE SET NULL ON UPDATE NO ACTION"
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"boards\" ADD CONSTRAINT \"FK_1542ae826c0dfeaf4c79e07fc57\" FOREIGN KEY (\"project_id\") REFERENCES \"tenant_rocket_web\".\"projects\"(\"id\") ON DELETE RESTRICT ON UPDATE NO ACTION"
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"projects\" ADD CONSTRAINT \"FK_ba975f36386253d561dac2022fb\" FOREIGN KEY (\"workflow_id\") REFERENCES \"tenant_rocket_web\".\"workflows\"(\"id\") ON DELETE RESTRICT ON UPDATE NO ACTION"
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"issue_links\" ADD CONSTRAINT \"FK_9ffae1c267c29bdf67f6d5ed3c3\" FOREIGN KEY (\"source_issue_id\") REFERENCES \"tenant_rocket_web\".\"issues\"(\"id\") ON DELETE CASCADE ON UPDATE NO ACTION"
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"issue_links\" ADD CONSTRAINT \"FK_448d9b37594d9efdf50506086ef\" FOREIGN KEY (\"target_issue_id\") REFERENCES \"tenant_rocket_web\".\"issues\"(\"id\") ON DELETE CASCADE ON UPDATE NO ACTION"
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"activity_logs\" ADD CONSTRAINT \"FK_95559b42765291b930129dfa39a\" FOREIGN KEY (\"issue_id\") REFERENCES \"tenant_rocket_web\".\"issues\"(\"id\") ON DELETE CASCADE ON UPDATE NO ACTION"
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"time_entries\" ADD CONSTRAINT \"FK_7fe9f51dcc2bba234e1c06402aa\" FOREIGN KEY (\"issue_id\") REFERENCES \"tenant_rocket_web\".\"issues\"(\"id\") ON DELETE CASCADE ON UPDATE NO ACTION"
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"attachments\" ADD CONSTRAINT \"FK_dd7c238245012c896f736aa9bbf\" FOREIGN KEY (\"issue_id\") REFERENCES \"tenant_rocket_web\".\"issues\"(\"id\") ON DELETE CASCADE ON UPDATE NO ACTION"
+      }
+    ],
+    "down": [
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"comments\" ADD CONSTRAINT \"FK_4ce924bcd63bee0fccc7fe1d8f6\" FOREIGN KEY (\"issue_id\") REFERENCES \"tenant_rocket_web\".\"issues\"(\"id\") ON DELETE NO ACTION ON UPDATE NO ACTION"
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"sprints\" ADD CONSTRAINT \"FK_82145010051f3f2fc94671c0b35\" FOREIGN KEY (\"project_id\") REFERENCES \"tenant_rocket_web\".\"projects\"(\"id\") ON DELETE NO ACTION ON UPDATE NO ACTION"
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"workflow_transitions\" ADD CONSTRAINT \"FK_58336fc5e065337745f54ed09b1\" FOREIGN KEY (\"workflow_id\") REFERENCES \"tenant_rocket_web\".\"workflows\"(\"id\") ON DELETE NO ACTION ON UPDATE NO ACTION"
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"workflow_transitions\" ADD CONSTRAINT \"FK_8cb7034f4257d080e9124e13db7\" FOREIGN KEY (\"from_status_id\") REFERENCES \"tenant_rocket_web\".\"workflow_statuses\"(\"id\") ON DELETE NO ACTION ON UPDATE NO ACTION"
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"workflow_transitions\" ADD CONSTRAINT \"FK_c9d9c163db11bfafce74e2f7c65\" FOREIGN KEY (\"to_status_id\") REFERENCES \"tenant_rocket_web\".\"workflow_statuses\"(\"id\") ON DELETE NO ACTION ON UPDATE NO ACTION"
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"workflow_statuses\" ADD CONSTRAINT \"FK_9a4787836ba925fb9b50d1e3073\" FOREIGN KEY (\"workflow_id\") REFERENCES \"tenant_rocket_web\".\"workflows\"(\"id\") ON DELETE NO ACTION ON UPDATE NO ACTION"
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"issues\" ADD CONSTRAINT \"FK_11f35e8296e10c229e7b68c68d4\" FOREIGN KEY (\"project_id\") REFERENCES \"tenant_rocket_web\".\"projects\"(\"id\") ON DELETE NO ACTION ON UPDATE NO ACTION"
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"issues\" ADD CONSTRAINT \"FK_53d9b04f3d8c1fb560cf37fad71\" FOREIGN KEY (\"issue_type_id\") REFERENCES \"tenant_rocket_web\".\"issue_types\"(\"id\") ON DELETE NO ACTION ON UPDATE NO ACTION"
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"issues\" ADD CONSTRAINT \"FK_7d7da16adb251f544b1db256fdc\" FOREIGN KEY (\"status_id\") REFERENCES \"tenant_rocket_web\".\"workflow_statuses\"(\"id\") ON DELETE NO ACTION ON UPDATE NO ACTION"
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"issues\" ADD CONSTRAINT \"FK_98fad9e9dacbfd3f12a9628578e\" FOREIGN KEY (\"parent_id\") REFERENCES \"tenant_rocket_web\".\"issues\"(\"id\") ON DELETE NO ACTION ON UPDATE NO ACTION"
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"boards\" ADD CONSTRAINT \"FK_1542ae826c0dfeaf4c79e07fc57\" FOREIGN KEY (\"project_id\") REFERENCES \"tenant_rocket_web\".\"projects\"(\"id\") ON DELETE NO ACTION ON UPDATE NO ACTION"
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"import_jobs\" ALTER COLUMN \"errors\" SET DEFAULT '[]'"
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"comments\" DROP CONSTRAINT \"FK_4ce924bcd63bee0fccc7fe1d8f6\""
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"sprints\" DROP CONSTRAINT \"FK_82145010051f3f2fc94671c0b35\""
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"workflow_transitions\" DROP CONSTRAINT \"FK_58336fc5e065337745f54ed09b1\""
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"workflow_transitions\" DROP CONSTRAINT \"FK_8cb7034f4257d080e9124e13db7\""
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"workflow_transitions\" DROP CONSTRAINT \"FK_c9d9c163db11bfafce74e2f7c65\""
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"workflow_statuses\" DROP CONSTRAINT \"FK_9a4787836ba925fb9b50d1e3073\""
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"issues\" DROP CONSTRAINT \"FK_11f35e8296e10c229e7b68c68d4\""
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"issues\" DROP CONSTRAINT \"FK_53d9b04f3d8c1fb560cf37fad71\""
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"issues\" DROP CONSTRAINT \"FK_d95aa108063de2be63c1401d188\""
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"issues\" DROP CONSTRAINT \"FK_7d7da16adb251f544b1db256fdc\""
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"issues\" DROP CONSTRAINT \"FK_98fad9e9dacbfd3f12a9628578e\""
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"boards\" DROP CONSTRAINT \"FK_1542ae826c0dfeaf4c79e07fc57\""
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"projects\" DROP CONSTRAINT \"FK_ba975f36386253d561dac2022fb\""
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"issue_links\" DROP CONSTRAINT \"FK_9ffae1c267c29bdf67f6d5ed3c3\""
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"issue_links\" DROP CONSTRAINT \"FK_448d9b37594d9efdf50506086ef\""
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"activity_logs\" DROP CONSTRAINT \"FK_95559b42765291b930129dfa39a\""
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"time_entries\" DROP CONSTRAINT \"FK_7fe9f51dcc2bba234e1c06402aa\""
+      },
+      {
+        "query": "ALTER TABLE \"tenant_rocket_web\".\"attachments\" DROP CONSTRAINT \"FK_dd7c238245012c896f736aa9bbf\""
+      }
+    ]
+  }
+]

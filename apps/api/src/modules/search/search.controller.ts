@@ -5,7 +5,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { z } from 'zod';
-import { JwtAuthGuard, PermissionGuard } from '../../core/auth';
+import { CurrentUser, JwtAuthGuard, PermissionGuard, RequestUser } from '../../core/auth';
 import { ZodValidationPipe } from '../../common';
 import { SearchService } from './search.service';
 
@@ -24,7 +24,8 @@ export class SearchController {
   @Post()
   async search(
     @Body(new ZodValidationPipe(searchSchema)) dto: any,
+    @CurrentUser() user: RequestUser,
   ) {
-    return this.searchService.search(dto);
+    return this.searchService.search(dto, user);
   }
 }

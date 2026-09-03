@@ -1,15 +1,15 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { AttachmentEntity, IssueEntity } from '@weaver/db';
 import { TenantConnectionProvider } from '../../core/tenant';
-import * as fs from 'fs';
-import * as path from 'path';
 import { randomUUID } from 'crypto';
-
-const UPLOAD_DIR = process.env.UPLOAD_DIR || '/tmp/weaver-uploads';
+import { StorageService } from '../../core/storage';
 
 @Injectable()
 export class AttachmentsService {
-  constructor(private readonly tenantConnections: TenantConnectionProvider) {}
+  constructor(
+    private readonly tenantConnections: TenantConnectionProvider,
+    private readonly storage: StorageService,
+  ) {}
 
   private async resolveIssueId(issueKey: string): Promise<string> {
     const em = await this.tenantConnections.getEntityManager();
@@ -26,17 +26,25 @@ export class AttachmentsService {
     uploaderId: string,
   ): Promise<AttachmentEntity> {
     const issueId = await this.resolveIssueId(issueKey);
+    return this.save(file, uploaderId, issueId);
+  }
+
+  async upload(
+    file: Express.Multer.File,
+    uploaderId: string,
+  ): Promise<AttachmentEntity> {
+    return this.save(file, uploaderId, null);
+  }
+
+  private async save(
+    file: Express.Multer.File,
+    uploaderId: string,
+    issueId: string | null,
+  ): Promise<AttachmentEntity> {
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(AttachmentEntity);
-
-    // Ensure upload directory exists
-    if (!fs.existsSync(UPLOAD_DIR)) {
-      fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-    }
-
-    const storageKey = `${randomUUID()}-${file.originalname}`;
-    const filePath = path.join(UPLOAD_DIR, storageKey);
-    fs.writeFileSync(filePath, file.buffer);
+    const storageKey = randomUUID();
+    await this.storage.put(storageKey, file.buffer);
 
     const attachment = repo.create({
       issueId,
@@ -47,34 +55,12 @@ export class AttachmentsService {
       storageKey,
     });
 
-    return repo.save(attachment);
-  }
-
-  async upload(
-    file: Express.Multer.File,
-    uploaderId: string,
-  ): Promise<AttachmentEntity> {
-    const em = await this.tenantConnections.getEntityManager();
-    const repo = em.getRepository(AttachmentEntity);
-
-    if (!fs.existsSync(UPLOAD_DIR)) {
-      fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+    try {
+      return await repo.save(attachment);
+    } catch (error) {
+      await this.storage.delete(storageKey);
+      throw error;
     }
-
-    const storageKey = `${randomUUID()}-${file.originalname}`;
-    const filePath = path.join(UPLOAD_DIR, storageKey);
-    fs.writeFileSync(filePath, file.buffer);
-
-    const attachment = repo.create({
-      issueId: null,
-      uploaderId,
-      filename: file.originalname,
-      mimeType: file.mimetype,
-      size: String(file.size),
-      storageKey,
-    });
-
-    return repo.save(attachment);
   }
 
   async findByIssue(issueKey: string): Promise<AttachmentEntity[]> {
@@ -98,17 +84,20 @@ export class AttachmentsService {
     return attachment;
   }
 
+  async getData(storageKey: string): Promise<Buffer> {
+    try {
+      return await this.storage.get(storageKey);
+    } catch {
+      throw new NotFoundException('Stored file not found');
+    }
+  }
+
   async delete(id: string): Promise<void> {
     const attachment = await this.findById(id);
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(AttachmentEntity);
 
-    // Remove file from disk
-    const filePath = path.join(UPLOAD_DIR, attachment.storageKey);
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-    }
-
+    await this.storage.delete(attachment.storageKey);
     await repo.remove(attachment);
   }
 }

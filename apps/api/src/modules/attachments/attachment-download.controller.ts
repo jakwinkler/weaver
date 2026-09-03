@@ -7,24 +7,23 @@ import {
   UseGuards,
   UseInterceptors,
   UploadedFile,
-  NotFoundException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Response } from 'express';
 import { JwtAuthGuard, CurrentUser, RequestUser, PermissionGuard, RequirePermission } from '../../core/auth';
 import { AttachmentsService } from './attachments.service';
-import * as fs from 'fs';
-import * as path from 'path';
-
-const UPLOAD_DIR = process.env.UPLOAD_DIR || '/tmp/weaver-uploads';
+import { getMaxAttachmentBytes } from './attachment-storage';
+import { ProjectAccessGuard, RequireProjectAccess } from '../../core/tenant';
 
 @Controller('attachments')
-@UseGuards(JwtAuthGuard, PermissionGuard)
+@UseGuards(JwtAuthGuard, PermissionGuard, ProjectAccessGuard)
 export class AttachmentDownloadController {
   constructor(private readonly attachmentsService: AttachmentsService) {}
 
   @Post('upload')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: getMaxAttachmentBytes() } }),
+  )
   @RequirePermission('issues', 'update')
   async upload(
     @UploadedFile() file: Express.Multer.File,
@@ -35,20 +34,19 @@ export class AttachmentDownloadController {
 
   @Get(':id/download')
   @RequirePermission('issues', 'read')
+  @RequireProjectAccess('attachment-id')
   async download(@Param('id') id: string, @Res() res: Response) {
     const attachment = await this.attachmentsService.findById(id);
-    const filePath = path.join(UPLOAD_DIR, attachment.storageKey);
+    const data = await this.attachmentsService.getData(attachment.storageKey);
 
-    if (!fs.existsSync(filePath)) {
-      throw new NotFoundException('File not found on disk');
-    }
-
+    res.attachment(attachment.filename);
     res.set({
-      'Content-Type': attachment.mimeType,
-      'Content-Disposition': `inline; filename="${attachment.filename}"`,
+      'Content-Type': 'application/octet-stream',
+      'Content-Security-Policy': "sandbox; default-src 'none'",
+      'X-Content-Type-Options': 'nosniff',
+      'Cross-Origin-Resource-Policy': 'same-origin',
     });
 
-    const stream = fs.createReadStream(filePath);
-    stream.pipe(res);
+    res.send(data);
   }
 }

@@ -44,7 +44,7 @@ describe('Project wiki (e2e)', () => {
       .expect(201);
 
     ownerToken = registration.body.accessToken;
-    tenantId = registration.body.tenant.id;
+    tenantId = registration.body.tenantId;
 
     const passwordHash = await bcrypt.hash('password123', 10);
     for (const role of ['member', 'viewer'] as const) {
@@ -74,6 +74,10 @@ describe('Project wiki (e2e)', () => {
       .post('/api/v1/projects')
       .send({ name: 'Wiki Project', key: 'WIKI' })
       .expect(201);
+    for (const role of ['member', 'viewer']) {
+      const [user] = await dataSource.query('SELECT id FROM public.users WHERE email = $1', [`wiki-${role}@test.com`]);
+      await as(ownerToken).post('/api/v1/projects/WIKI/members').send({ userId: user.id, role }).expect(201);
+    }
   });
 
   afterAll(async () => {

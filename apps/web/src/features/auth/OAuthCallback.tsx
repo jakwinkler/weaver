@@ -22,7 +22,7 @@ export function OAuthCallback() {
       .get<AuthSession>('/auth/session')
       .then(({ data }) => {
         if (!active) return;
-        login(data.accessToken, data.user, data.tenantId, data.refreshToken);
+        login(data.accessToken, data.user, data.tenantId);
         navigate('/projects', { replace: true });
       })
       .catch(() => {

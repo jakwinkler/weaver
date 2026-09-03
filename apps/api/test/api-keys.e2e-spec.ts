@@ -38,7 +38,7 @@ describe('API keys (e2e)', () => {
       .expect(201);
 
     accessToken = registration.body.accessToken;
-    tenantId = registration.body.tenant.id;
+    tenantId = registration.body.tenantId;
   });
 
   afterAll(async () => {

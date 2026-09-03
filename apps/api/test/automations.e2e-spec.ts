@@ -45,7 +45,7 @@ describe('Automation engine (e2e)', () => {
 
     ownerToken = owner.body.accessToken;
     ownerId = owner.body.user.id;
-    tenantId = owner.body.tenant.id;
+    tenantId = owner.body.tenantId;
 
     const passwordHash = await bcrypt.hash('password123', 10);
     const [member] = await dataSource.query(

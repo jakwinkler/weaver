@@ -60,6 +60,19 @@ export class TeamsService {
     return rows[0];
   }
 
+  async delete(id: string): Promise<void> {
+    const em = await this.tenantConnections.getEntityManager();
+    const s = this.schema();
+    const rows = await em.query(
+      `DELETE FROM "${s}"."teams" WHERE id = $1 RETURNING id`,
+      [id],
+    );
+
+    if (rows.length === 0) {
+      throw new NotFoundException(`Team "${id}" not found`);
+    }
+  }
+
   async addMember(teamId: string, userId: string): Promise<TeamMember> {
     await this.findById(teamId);
 
@@ -84,12 +97,14 @@ export class TeamsService {
     const em = await this.tenantConnections.getEntityManager();
     const s = this.schema();
 
-    const result = await em.query(
-      `DELETE FROM "${s}"."team_members" WHERE team_id = $1 AND user_id = $2`,
+    const rows = await em.query(
+      `DELETE FROM "${s}"."team_members"
+       WHERE team_id = $1 AND user_id = $2
+       RETURNING team_id`,
       [teamId, userId],
     );
 
-    if (result[1] === 0) {
+    if (rows.length === 0) {
       throw new NotFoundException('Team membership not found');
     }
   }

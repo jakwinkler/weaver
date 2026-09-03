@@ -12,6 +12,7 @@ import { PluginRouteController } from './plugin-route.controller';
 import { PluginAssetsController } from './plugin-assets.controller';
 import { PluginCompanionRouteController } from './plugin-companion-route.controller';
 import { TimeTrackingModule } from '../modules/time-tracking';
+import { PluginRouteAuthGuard } from './plugin-route-auth.guard';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { TimeTrackingModule } from '../modules/time-tracking';
     PluginRegistryService,
     PluginContextFactory,
     PluginEventBridgeService,
+    PluginRouteAuthGuard,
   ],
   exports: [PluginLoaderService, PluginRegistryService, PluginContextFactory],
 })

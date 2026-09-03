@@ -1,4 +1,4 @@
-import { IssueTypeEntity, WorkflowStatusEntity } from '@weaver/db';
+import { IssueEntity, IssueTypeEntity, WorkflowStatusEntity } from '@weaver/db';
 import { AutomationConditionEvaluatorService } from './condition-evaluator.service';
 
 describe('AutomationConditionEvaluatorService', () => {
@@ -19,7 +19,7 @@ describe('AutomationConditionEvaluatorService', () => {
     labels: [],
     statusId: 'status-1',
     issueTypeId: 'type-1',
-  } as never;
+  } as unknown as IssueEntity;
 
   beforeEach(() => {
     jest.clearAllMocks();

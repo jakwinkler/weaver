@@ -18,6 +18,7 @@ describe('Story Points (e2e)', () => {
   let pointedIssueKey: string;
   let initialStatusId: string;
   let terminalStatusId: string;
+  let inProgressStatusId: string;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -43,7 +44,7 @@ describe('Story Points (e2e)', () => {
       .expect(201);
 
     accessToken = registration.body.accessToken;
-    tenantId = registration.body.tenant.id;
+    tenantId = registration.body.tenantId;
 
     const project = await authedRequest()
       .post('/api/v1/projects')
@@ -59,6 +60,7 @@ describe('Story Points (e2e)', () => {
     initialStatusId = workflowDetail.body.statuses.find(
       (status: { isInitial: boolean }) => status.isInitial,
     ).id;
+    inProgressStatusId = workflowDetail.body.statuses.find((s: any) => s.category === 'in_progress').id;
     terminalStatusId = workflowDetail.body.statuses.find(
       (status: { isTerminal: boolean }) => status.isTerminal,
     ).id;
@@ -152,6 +154,9 @@ describe('Story Points (e2e)', () => {
       .send({ summary: 'Completed pointed issue', storyPoints: 5 })
       .expect(201);
 
+    await authedRequest()
+      .patch(`/api/v1/issues/${completedIssue.body.key}`)
+      .send({ statusId: inProgressStatusId }).expect(200);
     await authedRequest()
       .patch(`/api/v1/issues/${completedIssue.body.key}`)
       .send({ statusId: terminalStatusId })

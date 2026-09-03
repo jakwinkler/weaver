@@ -18,10 +18,17 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       jwtFromRequest: cookieOrBearerExtractor,
       ignoreExpiration: false,
       secretOrKey: configService.get<string>('JWT_SECRET'),
+      passReqToCallback: true,
     });
   }
 
-  validate(payload: JwtPayload) {
+  validate(
+    req: Request & { tenantMembershipRole?: string },
+    payload: JwtPayload,
+  ) {
+    if (payload.tokenType !== 'access') {
+      throw new UnauthorizedException('Access token required');
+    }
     if (!payload?.sub || !payload.email || !payload.tenantId || !payload.role) {
       throw new UnauthorizedException('Invalid access token');
     }
@@ -29,7 +36,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       userId: payload.sub,
       email: payload.email,
       tenantId: payload.tenantId,
-      role: payload.role,
+      role: req.tenantMembershipRole || payload.role,
     };
   }
 }

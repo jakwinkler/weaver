@@ -37,6 +37,13 @@ export class TeamsController {
     return this.teamsService.findById(id);
   }
 
+  @Delete(':id')
+  @RequirePermission('admin', 'manage_users')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async delete(@Param('id') id: string) {
+    await this.teamsService.delete(id);
+  }
+
   @Post(':id/members')
   @RequirePermission('admin', 'manage_users')
   async addMember(

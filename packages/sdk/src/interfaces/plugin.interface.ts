@@ -49,6 +49,8 @@ export interface PluginRequest {
   params: Record<string, string>;
   query: Record<string, string>;
   body: unknown;
+  /** Exact UTF-8 request body for signature verification, when available. */
+  rawBody?: string;
   headers: Record<string, string>;
   auth?:
     | { type: 'interactive' }

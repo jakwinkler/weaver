@@ -32,6 +32,11 @@ export async function paginate<T extends ObjectLiteral>(
 
     const alias = qb.alias;
     qb.orderBy(`${alias}.${field}`, desc ? 'DESC' : 'ASC');
+    if (field !== 'id') {
+      qb.addOrderBy(`${alias}.id`, 'ASC');
+    }
+  } else {
+    qb.addOrderBy(`${qb.alias}.id`, 'ASC');
   }
 
   // Apply pagination

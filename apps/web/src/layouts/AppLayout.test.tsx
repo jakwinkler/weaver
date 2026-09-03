@@ -6,13 +6,16 @@ import { MemoryRouter, Outlet, Route, Routes, useLocation } from 'react-router-d
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { adminNavItems, AppLayout } from './AppLayout';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const storeMocks = vi.hoisted(() => ({
   logout: vi.fn(),
   setTheme: vi.fn(),
+  setUser: vi.fn(),
 }));
 
 vi.mock('@/api', () => ({
+  useCurrentUser: () => ({ data: undefined }),
   useAvailablePlugins: () => ({ data: [] }),
   useInstalledPlugins: () => ({ data: [] }),
   useMyPermissions: () => ['*'],
@@ -25,6 +28,7 @@ vi.mock('@/stores', () => ({
     selector({
       isAdmin: () => false,
       logout: storeMocks.logout,
+      setUser: storeMocks.setUser,
       user: { displayName: 'Matt', email: 'matt@example.com' },
     }),
   useThemeStore: (selector: (state: unknown) => unknown) =>
@@ -78,6 +82,7 @@ function ProjectFixture() {
 
 function renderLayout(initialEntry = '/projects/TEST/board') {
   return render(
+    <QueryClientProvider client={new QueryClient()}>
     <TooltipProvider>
       <MemoryRouter initialEntries={[initialEntry]}>
         <LocationDisplay />
@@ -93,7 +98,8 @@ function renderLayout(initialEntry = '/projects/TEST/board') {
           </Route>
         </Routes>
       </MemoryRouter>
-    </TooltipProvider>,
+    </TooltipProvider>
+    </QueryClientProvider>,
   );
 }
 
@@ -155,7 +161,7 @@ describe('AppLayout responsive shell', () => {
     expect(screen.getByRole('link', { name: 'Weaver home mobile' }).parentElement).toHaveClass(
       'md:hidden',
     );
-    expect(screen.getByRole('main')).toHaveClass('px-4', 'sm:px-6');
+    expect(screen.getByRole('main')).toHaveClass('px-3', 'sm:px-6');
   });
 });
 

@@ -20,7 +20,9 @@ describe('Plugin upgrades (e2e)', () => {
   let runMigration: jest.Mock;
   let repo: {
     find: jest.Mock;
+    findOne: jest.Mock;
     save: jest.Mock;
+    manager: { transaction: jest.Mock };
   };
   let loader: {
     getManifest: jest.Mock;
@@ -57,7 +59,9 @@ describe('Plugin upgrades (e2e)', () => {
     runMigration = jest.fn().mockResolvedValue(undefined);
     repo = {
       find: jest.fn().mockResolvedValue([installed]),
+      findOne: jest.fn(async ({ where }) => (await repo.find()).find((row: InstalledPluginEntity) => row.pluginId === where.pluginId)),
       save: jest.fn(async (plugin: InstalledPluginEntity) => plugin),
+      manager: { transaction: jest.fn(async (callback) => callback({ getRepository: () => repo, query: jest.fn() })) },
     };
     loader = {
       getManifest: jest.fn(() => manifest),
@@ -80,7 +84,6 @@ describe('Plugin upgrades (e2e)', () => {
       repo as never,
       loader as never,
       contextFactory as never,
-      {} as never,
     );
   });
 
@@ -92,7 +95,8 @@ describe('Plugin upgrades (e2e)', () => {
   it('triggers onUpgrade on startup and persists the new version', async () => {
     await service.onApplicationBootstrap();
 
-    expect(contextFactory.create).toHaveBeenCalledWith(pluginId, installed.settings);
+    expect(contextFactory.create).toHaveBeenCalledWith(pluginId, installed.settings, undefined,
+      expect.objectContaining({ manager: expect.any(Object), capabilityState: { installed: true, enabled: true } }));
     expect(onUpgrade).toHaveBeenCalledWith(
       '1.0.0',
       '1.1.0',
@@ -245,7 +249,16 @@ describe('Plugin upgrades (e2e)', () => {
          ALTER TABLE upgrade_probe ADD COLUMN upgraded_at TIMESTAMPTZ;`,
       );
 
-      const databaseRepo = {
+      const databaseRepo: any = {
+        manager: { transaction: async (callback: (manager: any) => Promise<unknown>) => {
+          await client.query('BEGIN');
+          try {
+            const result = await callback({ getRepository: () => databaseRepo, query: (sql: string, args: unknown[]) => client.query(sql, args) });
+            await client.query('COMMIT');
+            return result;
+          } catch (error) { await client.query('ROLLBACK'); throw error; }
+        } },
+        findOne: jest.fn(async ({ where }) => (await databaseRepo.find()).find((row: InstalledPluginEntity) => row.pluginId === where.pluginId)),
         find: jest.fn(async () => {
           const result = await client.query(
             `SELECT ip.id, ip.tenant_id, ip.plugin_id, ip.version,
@@ -320,7 +333,6 @@ describe('Plugin upgrades (e2e)', () => {
         databaseRepo as never,
         databaseLoader as never,
         databaseContextFactory as never,
-        {} as never,
       );
 
       await databaseService.onApplicationBootstrap();

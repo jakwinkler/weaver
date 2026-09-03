@@ -7,6 +7,7 @@ import {
   TenantMembershipEntity,
   ApiKeyEntity,
   InstalledPluginEntity,
+  RefreshSessionEntity,
 } from '@weaver/db';
 
 const publicEntities = [
@@ -15,6 +16,7 @@ const publicEntities = [
   TenantMembershipEntity,
   ApiKeyEntity,
   InstalledPluginEntity,
+  RefreshSessionEntity,
 ];
 
 @Global()

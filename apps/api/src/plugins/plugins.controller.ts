@@ -11,7 +11,11 @@ import {
   BadRequestException,
   UseGuards,
 } from '@nestjs/common';
-import { JwtAuthGuard } from '../core/auth';
+import {
+  JwtAuthGuard,
+  PermissionGuard,
+  RequirePermission,
+} from '../core/auth';
 import { PluginRegistryService } from './plugin-registry.service';
 import { PluginLoaderService } from './plugin-loader.service';
 import { Audit } from '../modules/audit';
@@ -61,7 +65,14 @@ export class PluginsController {
 
   @Get()
   async listInstalled() {
-    return this.registry.getInstalled();
+    const installed = await this.registry.getInstalled();
+    return installed.map(({ id, pluginId, version, enabled, installedAt }) => ({
+      id,
+      pluginId,
+      version,
+      enabled,
+      installedAt,
+    }));
   }
 
   @Post('install')
@@ -70,11 +81,15 @@ export class PluginsController {
     resource: 'plugin',
     resourceId: ({ request }) => request.body.pluginId,
   })
+  @UseGuards(PermissionGuard)
+  @RequirePermission('admin', 'manage_plugins')
   async install(@Body('pluginId') pluginId: string) {
     return this.registry.install(pluginId);
   }
 
   @Post('uninstall')
+  @UseGuards(PermissionGuard)
+  @RequirePermission('admin', 'manage_plugins')
   @HttpCode(HttpStatus.NO_CONTENT)
   @Audit({
     action: 'plugin.uninstalled',
@@ -103,6 +118,8 @@ export class PluginsController {
     captureBefore: true,
     resourceId: ({ request }) => request.body.pluginId,
   })
+  @UseGuards(PermissionGuard)
+  @RequirePermission('admin', 'manage_plugins')
   async enable(@Body('pluginId') pluginId: string) {
     return this.registry.enable(pluginId);
   }
@@ -114,11 +131,15 @@ export class PluginsController {
     captureBefore: true,
     resourceId: ({ request }) => request.body.pluginId,
   })
+  @UseGuards(PermissionGuard)
+  @RequirePermission('admin', 'manage_plugins')
   async disable(@Body('pluginId') pluginId: string) {
     return this.registry.disable(pluginId);
   }
 
   @Post('upgrade')
+  @UseGuards(PermissionGuard)
+  @RequirePermission('admin', 'manage_plugins')
   @Audit({
     action: 'plugin.upgraded',
     resource: 'plugin',
@@ -136,6 +157,8 @@ export class PluginsController {
     captureBefore: true,
     resourceId: ({ request }) => request.body.pluginId,
   })
+  @UseGuards(PermissionGuard)
+  @RequirePermission('admin', 'manage_plugins')
   async updateSettings(
     @Body('pluginId') pluginId: string,
     @Body('settings') settings: Record<string, unknown>,
@@ -144,6 +167,8 @@ export class PluginsController {
   }
 
   @Get('settings')
+  @UseGuards(PermissionGuard)
+  @RequirePermission('admin', 'manage_plugins')
   async getSettings(@Query('pluginId') pluginId: string) {
     return this.registry.getSettings(pluginId);
   }

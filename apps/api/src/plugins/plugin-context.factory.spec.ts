@@ -5,12 +5,13 @@ import { PluginContextFactory } from './plugin-context.factory';
 describe('PluginContextFactory core capability enforcement', () => {
   const entityManager = {
     query: jest.fn(),
-    transaction: jest.fn(async (callback: (manager: unknown) => Promise<unknown>) =>
+    transaction: jest.fn(async (callback: (manager: unknown) => Promise<unknown>): Promise<unknown> =>
       callback(entityManager),
     ),
   };
   const tenantConnections = {
     getEntityManager: jest.fn().mockResolvedValue(entityManager),
+    runInTenantTransaction: jest.fn(async (callback: (manager: unknown) => Promise<unknown>) => callback(entityManager)),
   };
   const eventDispatcher = {
     emit: jest.fn().mockResolvedValue(undefined),
@@ -78,6 +79,13 @@ describe('PluginContextFactory core capability enforcement', () => {
       request,
       'user-1',
     );
+  });
+
+  it('rejects untrusted issue update keys before constructing SQL', async () => {
+    await expect(withContext((context) => context.api.issues.update('SAFE-1', {
+      'summary" = NULL WHERE true; --': 'injected',
+    }))).rejects.toThrow('Unsupported issue update field');
+    expect(entityManager.query).not.toHaveBeenCalled();
   });
 
   it('forwards atomic plugin batch deletion through the declared capability', async () => {

@@ -1,21 +1,44 @@
-import { Reflector } from '@nestjs/core';
+import type { ExecutionContext } from '@nestjs/common';
 import { RateLimitingGuard } from './rate-limiting.guard';
 
-describe('RateLimitingGuard lifecycle', () => {
-  beforeEach(() => {
-    jest.useFakeTimers();
+function contextFor(path: string): ExecutionContext {
+  return {
+    switchToHttp: () => ({
+      getRequest: () => ({
+        originalUrl: path,
+        url: path,
+        headers: {},
+        cookies: {},
+        ip: '203.0.113.5',
+      }),
+    }),
+    getHandler: () => contextFor,
+    getClass: () => RateLimitingGuard,
+  } as unknown as ExecutionContext;
+}
+
+describe('RateLimitingGuard availability behavior', () => {
+  function createGuard(): RateLimitingGuard {
+    return new RateLimitingGuard(
+      { getAllAndOverride: jest.fn().mockReturnValue(undefined) } as never,
+      { get: jest.fn((_key: string, fallback: unknown) => fallback) } as never,
+      { verifyAsync: jest.fn() } as never,
+    );
+  }
+
+  it('fails open when Redis is unavailable', async () => {
+    const guard = createGuard();
+    (guard as any).redis = { status: 'end' };
+
+    await expect(guard.canActivate(contextFor('/api/v1/projects'))).resolves.toBe(true);
   });
 
-  afterEach(() => {
-    jest.useRealTimers();
-  });
+  it('never consults Redis for the health endpoint', async () => {
+    const guard = createGuard();
+    const evalCommand = jest.fn();
+    (guard as any).redis = { status: 'ready', eval: evalCommand };
 
-  it('releases its cleanup interval when the application shuts down', () => {
-    const clearIntervalSpy = jest.spyOn(global, 'clearInterval');
-    const guard = new RateLimitingGuard(new Reflector());
-
-    guard.onModuleDestroy();
-
-    expect(clearIntervalSpy).toHaveBeenCalledTimes(1);
+    await expect(guard.canActivate(contextFor('/api/v1/health'))).resolves.toBe(true);
+    expect(evalCommand).not.toHaveBeenCalled();
   });
 });

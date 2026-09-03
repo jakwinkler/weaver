@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { CommentEntity, IssueEntity, ProjectEntity } from '@weaver/db';
 import { CreateCommentDto } from '@weaver/shared';
 import { getTenantContext, TenantConnectionProvider } from '../../core/tenant';
@@ -80,7 +80,7 @@ export class CommentsService {
       }
     }
 
-    await this.sendCommentEmails(issue, authorId, tenantMemberIds, body);
+    await this.sendCommentEmails(issue, authorId, [...tenantMemberIds], body);
 
     return saved;
   }
@@ -138,13 +138,30 @@ export class CommentsService {
     return comment;
   }
 
+  private async findByIssueAndId(
+    issueKey: string,
+    id: string,
+  ): Promise<CommentEntity> {
+    const issueId = (await this.resolveIssue(issueKey)).id;
+    const em = await this.tenantConnections.getEntityManager();
+    const comment = await em.getRepository(CommentEntity).findOneBy({ id, issueId });
+    if (!comment) {
+      throw new NotFoundException(`Comment "${id}" not found for issue "${issueKey}"`);
+    }
+    return comment;
+  }
+
   async update(
+    issueKey: string,
     id: string,
     dto: CreateCommentDto,
     updaterId: string,
     tenantId: string,
   ): Promise<CommentEntity> {
-    const comment = await this.findById(id);
+    const comment = await this.findByIssueAndId(issueKey, id);
+    if (comment.authorId !== updaterId) {
+      throw new ForbiddenException('Only the comment author can update this comment');
+    }
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(CommentEntity);
 
@@ -168,8 +185,6 @@ export class CommentsService {
 
     // Resolve issueKey for notification
     const issue = await em.getRepository(IssueEntity).findOneBy({ id: comment.issueId });
-    const issueKey = issue?.key ?? 'UNKNOWN';
-
     if (issue) {
       this.eventDispatcher.emit('comment.updated', {
         commentId: saved.id,
@@ -195,29 +210,29 @@ export class CommentsService {
     }
 
     if (issue) {
-      await this.sendMentionEmails(issue, updaterId, tenantMemberIds, newBody);
+      await this.sendMentionEmails(issue, updaterId, [...tenantMemberIds], newBody);
     }
 
     return saved;
   }
 
-  async delete(id: string, userId?: string): Promise<void> {
-    const comment = await this.findById(id);
+  async delete(issueKey: string, id: string, userId: string): Promise<void> {
+    const comment = await this.findByIssueAndId(issueKey, id);
+    if (comment.authorId !== userId) {
+      throw new ForbiddenException('Only the comment author can delete this comment');
+    }
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(CommentEntity);
 
     // Resolve issueKey for event
-    const issue = await em.getRepository(IssueEntity).findOneBy({ id: comment.issueId });
     await repo.remove(comment);
 
-    if (issue) {
-      this.eventDispatcher.emit('comment.deleted', {
-        commentId: id,
-        issueKey: issue.key,
-        projectKey: issue.key.split('-')[0],
-        userId: userId ?? null,
-      });
-    }
+    this.eventDispatcher.emit('comment.deleted', {
+      commentId: id,
+      issueKey,
+      projectKey: issueKey.split('-')[0],
+      userId,
+    });
   }
 
   private async sendCommentEmails(

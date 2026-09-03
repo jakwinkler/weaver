@@ -67,7 +67,7 @@ describe('Plugin settings (e2e)', () => {
     });
 
     accessToken = res.body.accessToken;
-    tenantId = res.body.tenant.id;
+    tenantId = res.body.tenantId;
 
     await authedRequest().post('/api/v1/plugins/install').send({ pluginId }).expect(201);
   });

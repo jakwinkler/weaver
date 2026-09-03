@@ -53,7 +53,7 @@ export class BoardsService {
     return board;
   }
 
-  async findByIdWithIssues(id: string): Promise<BoardIssuesResponse> {
+  async findByIdWithIssues(id: string): Promise<BoardIssuesResponse<IssueEntity, BoardEntity>> {
     const board = await this.findById(id);
     const em = await this.tenantConnections.getEntityManager();
     const issueRepo = em.getRepository(IssueEntity);
@@ -92,14 +92,14 @@ export class BoardsService {
   private async groupIssues(
     issues: IssueEntity[],
     config: BoardConfig,
-  ): Promise<BoardIssueGroup[]> {
+  ): Promise<BoardIssueGroup<IssueEntity>[]> {
     const field = config.swimlaneField ?? 'none';
     if (field === 'none') {
       return [{ key: 'all', value: null, label: 'All issues', issues }];
     }
 
     const labels = await this.getGroupLabels(issues, field);
-    const grouped = new Map<string, BoardIssueGroup>();
+    const grouped = new Map<string, BoardIssueGroup<IssueEntity>>();
 
     for (const issue of issues) {
       const value = this.getGroupValue(issue, field);
@@ -170,8 +170,8 @@ export class BoardsService {
 
   private compareGroups(
     field: BoardSwimlaneField,
-    left: BoardIssueGroup,
-    right: BoardIssueGroup,
+    left: BoardIssueGroup<IssueEntity>,
+    right: BoardIssueGroup<IssueEntity>,
   ): number {
     if (left.value === null) return 1;
     if (right.value === null) return -1;

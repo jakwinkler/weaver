@@ -5,7 +5,10 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   Index,
+  ManyToOne,
+  JoinColumn,
 } from 'typeorm';
+import { IssueEntity } from './issue.entity';
 
 @Entity({ name: 'time_entries' })
 @Index('UQ_time_entries_plugin_source_reference', ['sourcePluginId', 'sourceReference'], {
@@ -57,4 +60,7 @@ export class TimeEntryEntity {
 
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt!: Date;
+  @ManyToOne(() => IssueEntity, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'issue_id' })
+  issue!: IssueEntity;
 }

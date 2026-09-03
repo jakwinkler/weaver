@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ImportWizard } from './ImportWizard';
 
 const discover = {
@@ -38,13 +38,24 @@ vi.mock('@/api', () => ({
 }));
 
 describe('ImportWizard project selection', () => {
+  afterEach(cleanup);
+
   beforeEach(() => {
     vi.clearAllMocks();
+    window.sessionStorage.clear();
     discover.mutateAsync.mockResolvedValue([
       { id: '1', key: 'ONE', name: 'One' },
       { id: '2', key: 'TWO', name: 'Two' },
     ]);
     startImport.mutateAsync.mockResolvedValue({ id: 'job-1' });
+  });
+
+  it('restores the active import after navigating away and returning', () => {
+    window.sessionStorage.setItem('weaver:active-jira-import-id', 'job-1');
+
+    render(<ImportWizard />);
+
+    expect(screen.getByText('Import queued')).toBeTruthy();
   });
 
   it('sends only checked Jira projects when import-all is disabled', async () => {
@@ -67,6 +78,7 @@ describe('ImportWizard project selection', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
 
     expect(screen.getByText(/Every unspecified Jira project will be skipped/)).toBeTruthy();
+    expect(screen.getByText(/recovered sprint assignments are repaired/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Start Jira import' }));
 
     await waitFor(() => {
@@ -78,6 +90,7 @@ describe('ImportWizard project selection', () => {
         },
         projectKeys: ['ONE'],
       });
+      expect(window.sessionStorage.getItem('weaver:active-jira-import-id')).toBe('job-1');
     });
   });
 });

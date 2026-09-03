@@ -36,10 +36,10 @@
     "subscribes": ["issue.created", "project.created"]
   },
   "routes": [
-    { "method": "GET", "path": "/projects/:projectKey/repositories", "handler": "listRepositories" },
-    { "method": "POST", "path": "/projects/:projectKey/repositories", "handler": "addRepository" },
-    { "method": "DELETE", "path": "/projects/:projectKey/repositories/:repoId", "handler": "removeRepository" },
-    { "method": "GET", "path": "/issues/:issueKey/repository-links", "handler": "listIssueLinks" }
+    { "method": "GET", "path": "/projects/:projectKey/repositories", "handler": "listRepositories", "requiredPermissions": ["repository.read"] },
+    { "method": "POST", "path": "/projects/:projectKey/repositories", "handler": "addRepository", "requiredPermissions": ["repository.manage"] },
+    { "method": "DELETE", "path": "/projects/:projectKey/repositories/:repoId", "handler": "removeRepository", "requiredPermissions": ["repository.manage"] },
+    { "method": "GET", "path": "/issues/:issueKey/repository-links", "handler": "listIssueLinks", "requiredPermissions": ["repository.read"] }
   ],
   "migrations": ["migrations/001_create_repository_tables.sql"]
 }

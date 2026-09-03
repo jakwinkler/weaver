@@ -204,7 +204,7 @@ describe('Automatic Time Phase 2 plugin (e2e)', () => {
     });
     await otherUserRequest()
       .get(`/api/v1/plugin-routes/${pluginRouteId}/drafts?date=${localDate}`)
-      .expect(200, []);
+      .expect(403);
 
     const reviewDraft = fixtures.body.find(
       (draft: { sourceReference: string }) => draft.sourceReference === 'synthetic-review-draft',
@@ -219,7 +219,7 @@ describe('Automatic Time Phase 2 plugin (e2e)', () => {
     await otherUserRequest()
       .patch(`/api/v1/plugin-routes/${pluginRouteId}/drafts/${reviewDraft.id}`)
       .send({ proposedMinutes: 999 })
-      .expect(404);
+      .expect(403);
 
     await authedRequest()
       .patch(`/api/v1/plugin-routes/${pluginRouteId}/drafts/${reviewDraft.id}`)

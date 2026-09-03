@@ -88,7 +88,7 @@ describe('AutomationActionExecutorService', () => {
   });
 
   it('normalizes plain-text comments to rich-text documents', async () => {
-    await service.execute({ type: 'add_comment', body: 'Automated comment' }, context);
+    await tenantStorage.run({ tenantId: 'tenant-1', schemaName: 'tenant_1' }, () => service.execute({ type: 'add_comment', body: 'Automated comment' }, context));
 
     expect(commentsService.create).toHaveBeenCalledWith(
       'AUTO-1',
@@ -104,6 +104,7 @@ describe('AutomationActionExecutorService', () => {
         },
       },
       context.actorId,
+      'tenant-1',
     );
   });
 

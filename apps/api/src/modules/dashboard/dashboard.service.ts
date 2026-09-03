@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { TenantConnectionProvider } from '../../core/tenant';
+import { ProjectAccessService, TenantConnectionProvider } from '../../core/tenant';
+import type { RequestUser } from '../../core/auth';
 import { UsersService } from '../users';
 import {
   ProjectEntity,
@@ -7,30 +8,36 @@ import {
   WorkflowStatusEntity,
   ActivityLogEntity,
 } from '@weaver/db';
-import { In, Not } from 'typeorm';
+import { EntityManager, In, Not, ObjectLiteral, SelectQueryBuilder } from 'typeorm';
 
 @Injectable()
 export class DashboardService {
   constructor(
     private readonly tenantConnections: TenantConnectionProvider,
     private readonly usersService: UsersService,
+    private readonly projectAccess: ProjectAccessService,
   ) {}
 
-  async getDashboard(userId: string) {
+  async getDashboard(user: RequestUser) {
     const em = await this.tenantConnections.getEntityManager();
+    const projectIds = await this.projectAccess.accessibleProjectIds(user);
 
     const [stats, myIssues, recentActivity, projectOverviews] =
       await Promise.all([
-        this.getStats(em, userId),
-        this.getMyIssues(em, userId),
-        this.getRecentActivity(em),
-        this.getProjectOverviews(em, userId),
+        this.getStats(em, user.userId, projectIds),
+        this.getMyIssues(em, user.userId, projectIds),
+        this.getRecentActivity(em, projectIds),
+        this.getProjectOverviews(em, user.userId, projectIds),
       ]);
 
     return { stats, myIssues, recentActivity, projectOverviews };
   }
 
-  private async getStats(em: any, userId: string) {
+  private async getStats(
+    em: EntityManager,
+    userId: string,
+    projectIds: string[] | null,
+  ) {
     const projectRepo = em.getRepository(ProjectEntity);
     const issueRepo = em.getRepository(IssueEntity);
     const statusRepo = em.getRepository(WorkflowStatusEntity);
@@ -46,46 +53,44 @@ export class DashboardService {
     weekStart.setDate(weekStart.getDate() - weekStart.getDay());
     weekStart.setHours(0, 0, 0, 0);
 
+    const myOpenQuery = issueRepo
+      .createQueryBuilder('issue')
+      .where('issue.assignee_id = :userId', { userId });
+    if (terminalIds.length > 0) {
+      myOpenQuery.andWhere('issue.status_id NOT IN (:...terminalIds)', { terminalIds });
+    }
+    this.scopeIssueQuery(myOpenQuery, projectIds);
+
+    const overdueQuery = issueRepo
+      .createQueryBuilder('issue')
+      .where('issue.due_date < :today', { today });
+    if (terminalIds.length > 0) {
+      overdueQuery.andWhere('issue.status_id NOT IN (:...terminalIds)', { terminalIds });
+    }
+    this.scopeIssueQuery(overdueQuery, projectIds);
+
+    const completedQuery = issueRepo
+      .createQueryBuilder('issue')
+      .where('issue.status_id IN (:...terminalIds)', { terminalIds })
+      .andWhere('issue.updated_at >= :weekStart', { weekStart });
+    this.scopeIssueQuery(completedQuery, projectIds);
+
     const [totalProjects, myOpenIssues, overdueIssues, completedThisWeek] =
       await Promise.all([
-        projectRepo.count(),
-
-        terminalIds.length > 0
-          ? issueRepo
-              .createQueryBuilder('issue')
-              .where('issue.assignee_id = :userId', { userId })
-              .andWhere('issue.status_id NOT IN (:...terminalIds)', {
-                terminalIds,
-              })
-              .getCount()
-          : issueRepo.count({ where: { assigneeId: userId } }),
-
-        terminalIds.length > 0
-          ? issueRepo
-              .createQueryBuilder('issue')
-              .where('issue.due_date < :today', { today })
-              .andWhere('issue.status_id NOT IN (:...terminalIds)', {
-                terminalIds,
-              })
-              .getCount()
-          : issueRepo
-              .createQueryBuilder('issue')
-              .where('issue.due_date < :today', { today })
-              .getCount(),
-
-        terminalIds.length > 0
-          ? issueRepo
-              .createQueryBuilder('issue')
-              .where('issue.status_id IN (:...terminalIds)', { terminalIds })
-              .andWhere('issue.updated_at >= :weekStart', { weekStart })
-              .getCount()
-          : 0,
+        projectIds === null ? projectRepo.count() : projectIds.length,
+        myOpenQuery.getCount(),
+        overdueQuery.getCount(),
+        terminalIds.length > 0 ? completedQuery.getCount() : 0,
       ]);
 
     return { totalProjects, myOpenIssues, overdueIssues, completedThisWeek };
   }
 
-  private async getMyIssues(em: any, userId: string) {
+  private async getMyIssues(
+    em: EntityManager,
+    userId: string,
+    projectIds: string[] | null,
+  ) {
     const issueRepo = em.getRepository(IssueEntity);
     const statusRepo = em.getRepository(WorkflowStatusEntity);
 
@@ -99,6 +104,10 @@ export class DashboardService {
     const whereConditions: any = { assigneeId: userId };
     if (terminalIds.length > 0) {
       whereConditions.statusId = Not(In(terminalIds));
+    }
+    if (projectIds !== null) {
+      if (projectIds.length === 0) return [];
+      whereConditions.projectId = In(projectIds);
     }
 
     const issues = await issueRepo.find({
@@ -151,11 +160,24 @@ export class DashboardService {
     });
   }
 
-  private async getRecentActivity(em: any) {
+  private async getRecentActivity(em: EntityManager, projectIds: string[] | null) {
     const activityRepo = em.getRepository(ActivityLogEntity);
     const issueRepo = em.getRepository(IssueEntity);
 
+    if (projectIds !== null && projectIds.length === 0) return [];
+    let accessibleIssueIds: string[] | null = null;
+    if (projectIds !== null) {
+      const accessibleIssues = await issueRepo.find({
+        where: { projectId: In(projectIds) },
+        select: ['id'],
+      });
+      accessibleIssueIds = accessibleIssues.map(({ id }) => id);
+      if (accessibleIssueIds.length === 0) return [];
+    }
     const activities = await activityRepo.find({
+      ...(accessibleIssueIds === null
+        ? {}
+        : { where: { issueId: In(accessibleIssueIds) } }),
       order: { createdAt: 'DESC' },
       take: 20,
     });
@@ -200,12 +222,18 @@ export class DashboardService {
     });
   }
 
-  private async getProjectOverviews(em: any, userId: string) {
+  private async getProjectOverviews(
+    em: EntityManager,
+    userId: string,
+    projectIds: string[] | null,
+  ) {
     const projectRepo = em.getRepository(ProjectEntity);
     const issueRepo = em.getRepository(IssueEntity);
     const statusRepo = em.getRepository(WorkflowStatusEntity);
 
+    if (projectIds !== null && projectIds.length === 0) return [];
     const projects = await projectRepo.find({
+      ...(projectIds === null ? {} : { where: { id: In(projectIds) } }),
       order: { updatedAt: 'DESC' },
     });
 
@@ -222,12 +250,14 @@ export class DashboardService {
     weekStart.setHours(0, 0, 0, 0);
 
     // Total issues per project
-    const totalCounts: { project_id: string; count: string }[] = await issueRepo
+    const totalCountQuery = issueRepo
       .createQueryBuilder('issue')
       .select('issue.project_id', 'project_id')
       .addSelect('COUNT(*)', 'count')
-      .groupBy('issue.project_id')
-      .getRawMany();
+      .groupBy('issue.project_id');
+    this.scopeIssueQuery(totalCountQuery, projectIds);
+    const totalCounts: { project_id: string; count: string }[] =
+      await totalCountQuery.getRawMany();
     const totalMap = new Map(
       totalCounts.map((r) => [r.project_id, parseInt(r.count, 10)]),
     );
@@ -235,13 +265,15 @@ export class DashboardService {
     // Open issues per project (not terminal)
     let openMap = new Map<string, number>();
     if (terminalIds.length > 0) {
-      const openCounts: { project_id: string; count: string }[] = await issueRepo
+      const openCountQuery = issueRepo
         .createQueryBuilder('issue')
         .select('issue.project_id', 'project_id')
         .addSelect('COUNT(*)', 'count')
         .where('issue.status_id NOT IN (:...terminalIds)', { terminalIds })
-        .groupBy('issue.project_id')
-        .getRawMany();
+        .groupBy('issue.project_id');
+      this.scopeIssueQuery(openCountQuery, projectIds);
+      const openCounts: { project_id: string; count: string }[] =
+        await openCountQuery.getRawMany();
       openMap = new Map(
         openCounts.map((r) => [r.project_id, parseInt(r.count, 10)]),
       );
@@ -252,27 +284,29 @@ export class DashboardService {
     // My open issues per project (assigned to user, not terminal)
     let myOpenMap = new Map<string, number>();
     if (terminalIds.length > 0) {
-      const myOpenCounts: { project_id: string; count: string }[] =
-        await issueRepo
+      const myOpenCountQuery = issueRepo
           .createQueryBuilder('issue')
           .select('issue.project_id', 'project_id')
           .addSelect('COUNT(*)', 'count')
           .where('issue.assignee_id = :userId', { userId })
           .andWhere('issue.status_id NOT IN (:...terminalIds)', { terminalIds })
-          .groupBy('issue.project_id')
-          .getRawMany();
+          .groupBy('issue.project_id');
+      this.scopeIssueQuery(myOpenCountQuery, projectIds);
+      const myOpenCounts: { project_id: string; count: string }[] =
+        await myOpenCountQuery.getRawMany();
       myOpenMap = new Map(
         myOpenCounts.map((r) => [r.project_id, parseInt(r.count, 10)]),
       );
     } else {
-      const myOpenCounts: { project_id: string; count: string }[] =
-        await issueRepo
+      const myOpenCountQuery = issueRepo
           .createQueryBuilder('issue')
           .select('issue.project_id', 'project_id')
           .addSelect('COUNT(*)', 'count')
           .where('issue.assignee_id = :userId', { userId })
-          .groupBy('issue.project_id')
-          .getRawMany();
+          .groupBy('issue.project_id');
+      this.scopeIssueQuery(myOpenCountQuery, projectIds);
+      const myOpenCounts: { project_id: string; count: string }[] =
+        await myOpenCountQuery.getRawMany();
       myOpenMap = new Map(
         myOpenCounts.map((r) => [r.project_id, parseInt(r.count, 10)]),
       );
@@ -281,16 +315,17 @@ export class DashboardService {
     // My done issues per project (assigned to user, terminal, this week)
     let myDoneMap = new Map<string, number>();
     if (terminalIds.length > 0) {
-      const myDoneCounts: { project_id: string; count: string }[] =
-        await issueRepo
+      const myDoneCountQuery = issueRepo
           .createQueryBuilder('issue')
           .select('issue.project_id', 'project_id')
           .addSelect('COUNT(*)', 'count')
           .where('issue.assignee_id = :userId', { userId })
           .andWhere('issue.status_id IN (:...terminalIds)', { terminalIds })
           .andWhere('issue.updated_at >= :weekStart', { weekStart })
-          .groupBy('issue.project_id')
-          .getRawMany();
+          .groupBy('issue.project_id');
+      this.scopeIssueQuery(myDoneCountQuery, projectIds);
+      const myDoneCounts: { project_id: string; count: string }[] =
+        await myDoneCountQuery.getRawMany();
       myDoneMap = new Map(
         myDoneCounts.map((r) => [r.project_id, parseInt(r.count, 10)]),
       );
@@ -307,5 +342,17 @@ export class DashboardService {
       myDoneIssues: myDoneMap.get(p.id) ?? 0,
       updatedAt: p.updatedAt,
     }));
+  }
+
+  private scopeIssueQuery<T extends ObjectLiteral>(
+    query: SelectQueryBuilder<T>,
+    projectIds: string[] | null,
+  ): void {
+    if (projectIds === null) return;
+    if (projectIds.length === 0) {
+      query.andWhere('1 = 0');
+      return;
+    }
+    query.andWhere('issue.project_id IN (:...projectIds)', { projectIds });
   }
 }

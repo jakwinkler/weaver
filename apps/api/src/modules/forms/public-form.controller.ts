@@ -8,13 +8,12 @@ import {
   Post,
   Req,
   ServiceUnavailableException,
-  UseGuards,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { publicFormSubmissionSchema } from '@weaver/shared';
 import type { Request } from 'express';
 import { ZodValidationPipe } from '../../common';
-import { RateLimit, RateLimitingGuard } from '../../core/rate-limiting';
+import { RateLimit } from '../../core/rate-limiting';
 import { tenantStorage } from '../../core/tenant/tenant.context';
 import { TenantConnectionProvider } from '../../core/tenant/tenant-connection.provider';
 import { TenantService } from '../../core/tenant/tenant.service';
@@ -45,7 +44,6 @@ export class PublicFormController {
   }
 
   @Post(':formSlug/submit')
-  @UseGuards(RateLimitingGuard)
   @RateLimit(10, 60_000)
   async submit(
     @Param('tenantSlug') tenantSlug: string,

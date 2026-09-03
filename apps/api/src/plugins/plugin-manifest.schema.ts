@@ -157,6 +157,7 @@ const manifestSchema = z
             auth: z.enum(['interactive', 'pairing', 'device']).optional(),
             requiredPermissions: permissionList.optional(),
             requiredDeviceScopes: permissionList.optional(),
+            public: z.boolean().optional(),
           })
           .strict(),
       )

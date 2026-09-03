@@ -68,7 +68,8 @@ export type EmailTemplateName =
   | 'issue-assigned'
   | 'mentioned-in-comment'
   | 'issue-status-changed'
-  | 'comment-added';
+  | 'comment-added'
+  | 'form-submission';
 
 export interface EmailNotificationJobData {
   type: 'email';
@@ -92,7 +93,6 @@ export interface InAppNotificationJobData {
 }
 
 export type NotificationJobData = EmailNotificationJobData | InAppNotificationJobData;
-
 export interface TenantMembership {
   tenantId: string;
   userId: string;
@@ -390,17 +390,17 @@ export interface BoardConfig {
   wipLimits?: Record<string, number>;
 }
 
-export interface BoardIssueGroup {
+export interface BoardIssueGroup<TIssue = Issue> {
   key: string;
   value: string | null;
   label: string;
-  issues: Issue[];
+  issues: TIssue[];
 }
 
-export interface BoardIssuesResponse {
-  board: Board;
-  issues: Issue[];
-  groups: BoardIssueGroup[];
+export interface BoardIssuesResponse<TIssue = Issue, TBoard = Board> {
+  board: TBoard;
+  issues: TIssue[];
+  groups: BoardIssueGroup<TIssue>[];
   columnPointTotals: Record<string, number>;
 }
 
@@ -564,6 +564,14 @@ export interface Webhook {
   events: string[];
   active: boolean;
   createdAt: Date;
+}
+
+export interface WebhookDeliveryJobData {
+  tenantId: string;
+  schemaName: string;
+  webhookId: string;
+  eventType: string;
+  payload: Record<string, unknown>;
 }
 
 export interface SavedFilter {
