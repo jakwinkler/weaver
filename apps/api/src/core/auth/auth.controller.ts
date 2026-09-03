@@ -86,7 +86,7 @@ export class AuthController {
   @Get('me')
   @UseGuards(JwtAuthGuard)
   async me(@CurrentUser() user: RequestUser) {
-    return this.authService.getProfile(user.userId);
+    return this.authService.getProfile(user.userId, user.tenantId);
   }
 
   private setAuthCookies(

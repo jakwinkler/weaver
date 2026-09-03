@@ -59,6 +59,39 @@ function isBlockedAddress(address: string): boolean {
   return true;
 }
 
+export async function resolveSafeOutboundHost(
+  rawHostname: string,
+  lookup: AddressLookup = defaultLookup,
+): Promise<ResolvedAddress[]> {
+  const trimmed = rawHostname.trim();
+  if (
+    !trimmed ||
+    trimmed.includes('/') ||
+    trimmed.includes('\\') ||
+    trimmed.includes('@') ||
+    /\s/.test(trimmed)
+  ) {
+    throw new BadRequestException('Outbound hostname is invalid');
+  }
+
+  const hostname = trimmed.replace(/^\[|\]$/g, '');
+  const literalFamily = isIP(hostname);
+  const addresses = literalFamily
+    ? [{ address: hostname, family: literalFamily }]
+    : await lookup(hostname);
+
+  if (
+    addresses.length === 0 ||
+    addresses.some(({ address }) => isBlockedAddress(address))
+  ) {
+    throw new BadRequestException(
+      'Outbound hostname resolves to a private or reserved address',
+    );
+  }
+
+  return addresses;
+}
+
 export async function assertSafeOutboundUrl(
   rawUrl: string,
   lookup: AddressLookup = defaultLookup,
@@ -77,20 +110,7 @@ export async function assertSafeOutboundUrl(
     throw new BadRequestException('Outbound URL must not include credentials');
   }
 
-  const hostname = url.hostname.replace(/^\[|\]$/g, '');
-  const literalFamily = isIP(hostname);
-  const addresses = literalFamily
-    ? [{ address: hostname, family: literalFamily }]
-    : await lookup(hostname);
-
-  if (
-    addresses.length === 0 ||
-    addresses.some(({ address }) => isBlockedAddress(address))
-  ) {
-    throw new BadRequestException(
-      'Outbound URL resolves to a private or reserved address',
-    );
-  }
+  await resolveSafeOutboundHost(url.hostname, lookup);
 
   return url;
 }

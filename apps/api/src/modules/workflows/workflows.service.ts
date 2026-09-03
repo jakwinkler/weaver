@@ -18,10 +18,16 @@ import {
 } from '@weaver/shared';
 import { TenantConnectionProvider } from '../../core/tenant';
 import { In } from 'typeorm';
+import { ConditionEvaluatorRegistry } from './condition-evaluator.registry';
+import { PostFunctionRegistry } from './post-function.registry';
 
 @Injectable()
 export class WorkflowsService {
-  constructor(private readonly tenantConnections: TenantConnectionProvider) {}
+  constructor(
+    private readonly tenantConnections: TenantConnectionProvider,
+    private readonly conditionEvaluators: ConditionEvaluatorRegistry,
+    private readonly postFunctions: PostFunctionRegistry,
+  ) {}
 
   async create(dto: CreateWorkflowDto): Promise<WorkflowEntity> {
     const em = await this.tenantConnections.getEntityManager();
@@ -187,6 +193,7 @@ export class WorkflowsService {
     if (!fromStatus || !toStatus) {
       throw new BadRequestException('From/To status must belong to this workflow');
     }
+    this.assertRegisteredRules(dto);
 
     const repo = em.getRepository(WorkflowTransitionEntity);
     const transition = repo.create({ ...dto, workflowId });
@@ -204,6 +211,21 @@ export class WorkflowsService {
     if (!transition) {
       throw new NotFoundException(`Transition "${transitionId}" not found`);
     }
+    const fromStatusId = dto.fromStatusId ?? transition.fromStatusId;
+    const toStatusId = dto.toStatusId ?? transition.toStatusId;
+    const statusRepo = em.getRepository(WorkflowStatusEntity);
+    const matchingStatusCount = await statusRepo.countBy({
+      id: In([fromStatusId, toStatusId]),
+      workflowId,
+    });
+    if (matchingStatusCount !== new Set([fromStatusId, toStatusId]).size) {
+      throw new BadRequestException('From/To status must belong to this workflow');
+    }
+    this.assertRegisteredRules({
+      conditions: dto.conditions ?? transition.conditions,
+      validators: dto.validators ?? transition.validators,
+      postFunctions: dto.postFunctions ?? transition.postFunctions,
+    });
     Object.assign(transition, dto);
     return repo.save(transition);
   }
@@ -258,5 +280,46 @@ export class WorkflowsService {
       throw new NotFoundException('No default workflow found');
     }
     return workflow;
+  }
+
+  private assertRegisteredRules(rules: {
+    conditions?: unknown[];
+    validators?: unknown[];
+    postFunctions?: unknown[];
+  }): void {
+    for (const [label, values] of [
+      ['condition', rules.conditions ?? []],
+      ['validator', rules.validators ?? []],
+    ] as const) {
+      for (const rule of values) {
+        const type = this.ruleType(rule, label);
+        if (!this.conditionEvaluators.has(type)) {
+          throw new BadRequestException(
+            `Workflow ${label} evaluator "${type}" is not registered`,
+          );
+        }
+      }
+    }
+
+    for (const rule of rules.postFunctions ?? []) {
+      const type = this.ruleType(rule, 'post-function');
+      if (!this.postFunctions.has(type)) {
+        throw new BadRequestException(
+          `Workflow post-function "${type}" is not registered`,
+        );
+      }
+    }
+  }
+
+  private ruleType(rule: unknown, label: string): string {
+    if (
+      typeof rule !== 'object' ||
+      rule === null ||
+      typeof (rule as Record<string, unknown>).type !== 'string' ||
+      !(rule as Record<string, unknown>).type
+    ) {
+      throw new BadRequestException(`Workflow ${label} configuration is invalid`);
+    }
+    return (rule as Record<string, unknown>).type as string;
   }
 }

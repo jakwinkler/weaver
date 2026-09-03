@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+  BadRequestException,
+} from '@nestjs/common';
 import { IssueLinkEntity } from '@weaver/db';
 import { TenantConnectionProvider } from '../../core/tenant';
 
@@ -7,6 +12,9 @@ export class IssueLinksService {
   constructor(private readonly tenantConnections: TenantConnectionProvider) {}
 
   async create(dto: { linkType: string; sourceIssueId: string; targetIssueId: string }): Promise<IssueLinkEntity> {
+    if (dto.sourceIssueId === dto.targetIssueId) {
+      throw new BadRequestException('An issue cannot be linked to itself');
+    }
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(IssueLinkEntity);
 

@@ -40,7 +40,7 @@ export class SearchService {
       .createQueryBuilder('issue');
 
     if (whereClause) {
-      qb.where(whereClause, parameters);
+      qb.where(`(${whereClause})`, parameters);
     }
 
     const projectIds = await this.projectAccess.accessibleProjectIds(user);

@@ -42,6 +42,7 @@ describe('PluginLoaderService client bundles', () => {
     fs.rmSync(pluginsDir, { recursive: true, force: true });
     delete process.env.WEAVER_PLUGIN_DEV_SERVERS;
     delete process.env.API_PREFIX;
+    delete process.env.WEAVER_TRUSTED_PLUGINS;
     if (originalNodeEnv === undefined) {
       delete process.env.NODE_ENV;
     } else {
@@ -73,9 +74,20 @@ describe('PluginLoaderService client bundles', () => {
 
   it('discovers named handlers from compiled server handler modules in production', async () => {
     process.env.NODE_ENV = 'production';
+    process.env.WEAVER_TRUSTED_PLUGINS = '@example/plugin';
 
     const handler = await service.getHandler('@example/plugin', 'handleWebhook');
 
     expect(handler).toBeInstanceOf(Function);
+  });
+
+  it('does not load deployment plugins that are absent from the production trust list', async () => {
+    process.env.NODE_ENV = 'production';
+    delete process.env.WEAVER_TRUSTED_PLUGINS;
+    const productionService = new PluginLoaderService();
+
+    await productionService.loadPlugins(pluginsDir);
+
+    expect(productionService.hasPlugin('@example/plugin')).toBe(false);
   });
 });

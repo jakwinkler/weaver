@@ -36,8 +36,12 @@ export class TenantMiddleware implements NestMiddleware {
   ) {}
 
   async use(req: Request, _res: Response, next: NextFunction) {
-    // Skip tenant resolution for auth routes and public routes (resolved by slug)
-    if (req.originalUrl.includes('/auth/') || req.originalUrl.includes('/api/v1/public/')) {
+    // Skip only core auth and public endpoints, never similarly named plugin paths.
+    const requestPath = req.originalUrl.split('?')[0];
+    if (
+      /^\/api\/v1\/auth(?:\/|$)/.test(requestPath) ||
+      /^\/api\/v1\/public(?:\/|$)/.test(requestPath)
+    ) {
       next();
       return;
     }

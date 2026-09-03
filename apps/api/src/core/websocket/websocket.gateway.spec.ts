@@ -25,7 +25,7 @@ describe('WeaverGateway project room isolation', () => {
     const to = jest.fn().mockReturnValue({ emit });
     gateway.server = { to } as never;
 
-    await gateway.handleJoinProject(client as never, { projectKey: 'SHARED' });
+    const result = await gateway.handleJoinProject(client as never, { projectKey: 'SHARED' });
     gateway.handleLeaveProject(client as never, { projectKey: 'SHARED' });
     gateway.emitToProject('tenant-b', 'SHARED', 'issue.created', { id: 'issue-b' });
 
@@ -35,6 +35,7 @@ describe('WeaverGateway project room isolation', () => {
       'read',
     );
     expect(client.join).toHaveBeenCalledWith('tenant:tenant-a:project:SHARED');
+    expect(result).toEqual({ joined: true, projectKey: 'SHARED' });
     expect(client.leave).toHaveBeenCalledWith('tenant:tenant-a:project:SHARED');
     expect(to).toHaveBeenCalledWith('tenant:tenant-b:project:SHARED');
     expect(emit).toHaveBeenCalledWith('issue.created', { id: 'issue-b' });
@@ -59,8 +60,28 @@ describe('WeaverGateway project room isolation', () => {
       join: jest.fn(),
     };
 
-    await gateway.handleJoinProject(client as never, { projectKey: 'PRIVATE' });
+    const result = await gateway.handleJoinProject(client as never, { projectKey: 'PRIVATE' });
 
     expect(client.join).not.toHaveBeenCalled();
+    expect(result).toEqual({ joined: false });
+  });
+
+  it('disconnects an active socket after its tenant role changes', () => {
+    const gateway = new WeaverGateway(
+      { verify: jest.fn() } as never,
+      tenantRepo as never,
+      membershipRepo as never,
+      {} as never,
+    );
+    const disconnectSockets = jest.fn();
+    const inRoom = jest.fn().mockReturnValue({ disconnectSockets });
+    gateway.server = {
+      in: inRoom,
+    } as never;
+
+    gateway.disconnectUserFromTenant('user-a', 'tenant-a');
+
+    expect(inRoom).toHaveBeenCalledWith('tenant:tenant-a:user:user-a');
+    expect(disconnectSockets).toHaveBeenCalledWith(true);
   });
 });

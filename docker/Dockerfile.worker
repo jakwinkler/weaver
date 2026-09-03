@@ -34,4 +34,5 @@ COPY --from=build /app/packages/db/package.json ./packages/db/
 COPY --from=build /app/apps/worker/dist ./apps/worker/dist
 COPY --from=build /app/apps/worker/package.json ./apps/worker/
 
+USER node
 CMD ["node", "apps/worker/dist/main.js"]

@@ -12,3 +12,5 @@ data:
   REDIS_HOST: {{ include "weaver.redis.host" . | quote }}
   REDIS_PORT: "6379"
   NODE_ENV: {{ .Values.env.NODE_ENV | quote }}
+  WEAVER_TRUSTED_PLUGINS: {{ .Values.env.WEAVER_TRUSTED_PLUGINS | quote }}
+  STORAGE_LOCAL_PATH: "/tmp/weaver-uploads"

@@ -188,6 +188,35 @@ describe('Administrative authorization security (e2e)', () => {
       .expect(403);
   });
 
+  it('keeps OR-based WQL searches inside the viewer project boundary', async () => {
+    const response = await authenticated(viewerToken)
+      .post('/api/v1/search')
+      .send({
+        query:
+          'summary ~ "Primary authorization" OR summary ~ "Secondary authorization"',
+      })
+      .expect(201);
+
+    expect(response.body.data).toEqual([]);
+  });
+
+  it('allows only the uploader to download an unlinked attachment', async () => {
+    const uploaded = await authenticated(ownerToken)
+      .post('/api/v1/attachments/upload')
+      .attach('file', Buffer.from('private orphan attachment'), {
+        filename: 'orphan.txt',
+        contentType: 'text/plain',
+      })
+      .expect(201);
+
+    await authenticated(viewerToken)
+      .get(`/api/v1/attachments/${uploaded.body.id}/download`)
+      .expect(403);
+    await authenticated(ownerToken)
+      .get(`/api/v1/attachments/${uploaded.body.id}/download`)
+      .expect(200);
+  });
+
   it('prevents admins from granting the owner role', async () => {
     const response = await authenticated(adminToken)
       .patch(`/api/v1/users/${adminId}/role`)
@@ -248,7 +277,7 @@ describe('Administrative authorization security (e2e)', () => {
       .send({
         url: 'http://169.254.169.254/latest/meta-data',
         events: ['issue.created'],
-        secret: 'security-test-secret',
+        secret: 'security-test-secret-security-test',
       })
       .expect(400);
   });
@@ -259,7 +288,7 @@ describe('Administrative authorization security (e2e)', () => {
       .send({
         url: 'https://1.1.1.1/webhook',
         events: ['issue.created'],
-        secret: 'security-test-secret',
+        secret: 'security-test-secret-security-test',
       })
       .expect(201);
     webhookId = created.body.id;

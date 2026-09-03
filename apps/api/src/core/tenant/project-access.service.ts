@@ -153,6 +153,10 @@ export class ProjectAccessService {
     }
     if (attachment.issueId) {
       await this.assertIssueIds([attachment.issueId], user, mode);
+      return;
+    }
+    if (attachment.uploaderId !== user.userId) {
+      throw new ForbiddenException('Only the uploader can access an unlinked attachment');
     }
   }
 

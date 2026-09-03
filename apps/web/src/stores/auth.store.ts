@@ -8,7 +8,7 @@ interface AuthState {
   role: string | null;
   login: (token: string, user: User, tenantId: string) => void;
   logout: () => void;
-  setUser: (user: User) => void;
+  setUser: (user: User & { role?: string }) => void;
   updateUser: (partial: Partial<User>) => void;
   isAuthenticated: () => boolean;
   isAdmin: () => boolean;
@@ -28,19 +28,19 @@ const browserStorage = typeof window === 'undefined' ? null : window.localStorag
 // Remove credentials left behind by older clients. Authentication is cookie-based.
 browserStorage?.removeItem('accessToken');
 browserStorage?.removeItem('refreshToken');
+browserStorage?.removeItem('role');
 
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   accessToken: null,
   tenantId: browserStorage?.getItem('tenantId') ?? null,
-  role: browserStorage?.getItem('role') ?? null,
+  role: null,
 
   login: (token: string, user: User, tenantId: string) => {
     browserStorage?.removeItem('accessToken');
     browserStorage?.removeItem('refreshToken');
     browserStorage?.setItem('tenantId', tenantId);
     const role = decodeJwtRole(token);
-    if (role) browserStorage?.setItem('role', role);
     set({ accessToken: token, user, tenantId, role });
   },
 
@@ -52,7 +52,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ accessToken: null, user: null, tenantId: null, role: null });
   },
 
-  setUser: (user: User) => set({ user }),
+  setUser: (user: User & { role?: string }) =>
+    set((state) => ({ user, role: user.role ?? state.role })),
 
   updateUser: (partial: Partial<User>) => {
     const current = get().user;

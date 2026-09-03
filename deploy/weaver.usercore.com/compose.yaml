@@ -55,15 +55,15 @@ services:
     restart: unless-stopped
     environment:
       <<: [*database-environment, *redis-environment]
-      # Weaver currently provisions fresh schemas through TypeORM synchronize.
-      # This deployment is explicitly a disposable live-testing environment.
-      NODE_ENV: development
+      NODE_ENV: production
       API_PORT: 3000
       API_PREFIX: api/v1
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?JWT_REFRESH_SECRET is required}
       JWT_EXPIRES_IN: 15m
       REFRESH_TOKEN_EXPIRES_IN: 7d
+      WEAVER_TRUSTED_PLUGINS: ${WEAVER_TRUSTED_PLUGINS:-}
+      STORAGE_LOCAL_PATH: /tmp/weaver-uploads
     volumes:
       - uploads:/tmp/weaver-uploads
     depends_on:
@@ -100,7 +100,7 @@ services:
       target: web
     restart: unless-stopped
     ports:
-      - '127.0.0.1:${WEB_PORT:-3400}:80'
+      - '127.0.0.1:${WEB_PORT:-3400}:8080'
     depends_on:
       api:
         condition: service_healthy

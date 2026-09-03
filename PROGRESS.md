@@ -1,10 +1,10 @@
 # Weaver - Development Progress
 
-> **Overall: 125 / 125 tasks complete (100%)**
+> **Overall: 95 / 125 tasks complete (76%)**
 
 ---
 
-## Phase 1: Foundation (20/20)
+## Phase 1: Foundation (18/20)
 
 - [x] P1.01 - Initialize monorepo root (pnpm, Turborepo, git, .nvmrc)
 - [x] P1.02 - Create packages/config (shared ESLint + TSConfig)
@@ -13,9 +13,9 @@
 - [x] P1.05 - Create packages/db tenant schema entities (Project, Issue, Workflow, Board, Sprint, etc.)
 - [x] P1.06 - Set up Docker Compose dev environment (Postgres 16, Redis 7)
 - [x] P1.07 - Scaffold NestJS API app (bootstrap, health check, Jest config)
-- [x] P1.08 - Implement database module (public schema connection + migrations)
+- [ ] P1.08 - Implement database module (public schema connection + migrations)
 - [x] P1.09 - Implement tenant context (AsyncLocalStorage, middleware, TenantService)
-- [x] P1.10 - Implement tenant schema provisioning (create schema, run migrations, seed defaults)
+- [ ] P1.10 - Implement tenant schema provisioning (create schema, run migrations, seed defaults)
 - [x] P1.11 - Implement tenant-scoped database connections (per-tenant EntityManager)
 - [x] P1.12 - Implement auth module (register + login with bcrypt + JWT)
 - [x] P1.13 - Implement JWT guards, token refresh, CurrentUser decorator
@@ -27,14 +27,14 @@
 - [x] P1.19 - Set up React Query + Zustand + Axios client with JWT interceptor
 - [x] P1.20 - Build auth pages (Login, Register, protected route wrapper)
 
-## Phase 1b: Frontend + Infra (7/7)
+## Phase 1b: Frontend + Infra (5/7)
 
 - [x] P1.21 - Build app layout (sidebar, topbar, responsive navigation)
 - [x] P1.22 - Build projects list and create project pages
 - [x] P1.23 - Build issue list and issue detail pages
 - [x] P1.24 - Create packages/ui shared component library (Button, Input, Modal, Table, etc.)
-- [x] P1.25 - Create production Docker Compose + Dockerfiles (api, web, worker)
-- [x] P1.26 - Scaffold worker app with BullMQ (tenant-ops queue)
+- [ ] P1.25 - Create production Docker Compose + Dockerfiles (api, web, worker)
+- [ ] P1.26 - Scaffold worker app with BullMQ (tenant-ops queue)
 - [x] P1.27 - End-to-end integration test (full register->project->issue lifecycle)
 
 ---
@@ -62,21 +62,21 @@
 
 ---
 
-## Phase 3: Custom Fields & Search (16/16)
+## Phase 3: Custom Fields & Search (13/16)
 
 - [x] P3.01 - Implement custom field definitions module (CRUD, field types: text, number, select, date, user, checkbox)
 - [x] P3.02 - Implement JSONB validation engine (validate custom_fields against definitions)
 - [x] P3.03 - Apply custom fields to issue CRUD (store/retrieve/update JSONB)
-- [x] P3.04 - Implement WQL parser (PEG.js grammar: field operators, AND/OR/NOT, parentheses)
+- [ ] P3.04 - Implement WQL parser (PEG.js grammar: field operators, AND/OR/NOT, parentheses)
 - [x] P3.05 - Implement WQL-to-SQL translator (safe parameterized query generation)
 - [x] P3.06 - Implement search endpoint (POST /search with WQL, pagination, sorting)
 - [x] P3.07 - Implement saved filters (CRUD, per-user, shared filters)
-- [x] P3.08 - Implement quick filters on boards (status, assignee, label filter chips)
+- [ ] P3.08 - Implement quick filters on boards (status, assignee, label filter chips)
 - [x] P3.09 - Implement attachments module (upload, download, S3/local storage adapter)
 - [x] P3.10 - Implement time tracking module (time entries CRUD, issue summary)
 - [x] P3.11 - Build custom field definition management UI (settings page)
 - [x] P3.12 - Build dynamic custom field renderer (form inputs based on field type)
-- [x] P3.13 - Build WQL search input with autocomplete (field names, operators, values)
+- [ ] P3.13 - Build WQL search input with autocomplete (field names, operators, values)
 - [x] P3.14 - Build saved filters UI (save, load, manage)
 - [x] P3.15 - Build calendar view (issues by due date, month/week toggle)
 - [x] P3.16 - Phase 3 end-to-end integration test (custom fields, WQL queries, attachments)
@@ -104,42 +104,42 @@
 
 ---
 
-## Phase 5: Real-Time & Notifications (16/16)
+## Phase 5: Real-Time & Notifications (10/16)
 
-- [x] P5.01 - Implement WebSocket gateway (Socket.io, tenant rooms, auth)
+- [x] P5.01 - Implement WebSocket gateway (Socket.io, authenticated project rooms)
 - [x] P5.02 - Implement real-time board updates (issue moved, created, updated)
 - [x] P5.03 - Implement real-time issue detail updates (field changes, comments)
 - [x] P5.04 - Implement in-app notifications module (CRUD, mark read, badge count)
-- [x] P5.05 - Implement email notification channel (React Email templates, SMTP)
-- [x] P5.06 - Implement notification preferences (per-user, per-event-type settings)
+- [ ] P5.05 - Implement email notification channel (React Email templates, SMTP)
+- [ ] P5.06 - Implement notification preferences (per-user, per-event-type settings)
 - [x] P5.07 - Implement webhook module (CRUD, HMAC-SHA256 signing)
 - [x] P5.08 - Implement webhook delivery (retries with exponential backoff, circuit breaker)
-- [x] P5.09 - Implement webhook delivery log (status tracking, manual retry)
+- [ ] P5.09 - Implement webhook delivery log (status tracking, manual retry)
 - [x] P5.10 - Implement rate limiting (Redis-backed, per-auth-type limits)
 - [x] P5.11 - Implement RBAC with custom roles (permissions JSONB, role assignment)
-- [x] P5.12 - Implement teams module (CRUD, team members, project assignment)
-- [x] P5.13 - Build notification panel UI (dropdown, mark read, preferences page)
+- [ ] P5.12 - Implement teams module (CRUD, team members, project assignment)
+- [ ] P5.13 - Build notification panel UI (dropdown, mark read, preferences page)
 - [x] P5.14 - Build webhook management UI (CRUD, delivery log viewer)
-- [x] P5.15 - Generate OpenAPI/Swagger docs (decorators on all endpoints)
+- [ ] P5.15 - Generate OpenAPI/Swagger docs (decorators on all endpoints)
 - [x] P5.16 - Phase 5 end-to-end integration test (real-time updates, notifications, webhooks, RBAC)
 
 ---
 
-## Phase 6: Polish & Launch (32/32)
+## Phase 6: Polish & Launch (15/32)
 
-- [x] P6.01 - Implement Google OAuth (free tier auth provider)
-- [x] P6.02 - Implement SSO/SAML/OIDC (paid tier, feature-flagged)
-- [x] P6.03 - Build Gantt chart view (timeline bars, dependencies, drag to reschedule)
+- [ ] P6.01 - Implement Google OAuth (free tier auth provider)
+- [ ] P6.02 - Implement SSO/SAML/OIDC (paid tier, feature-flagged)
+- [ ] P6.03 - Build Gantt chart view (timeline bars, dependencies, drag to reschedule)
 - [x] P6.04 - Implement keyboard shortcuts (global + context-specific, shortcut help modal)
-- [x] P6.05 - Implement bulk operations (multi-select issues, bulk status change, bulk assign)
+- [ ] P6.05 - Implement bulk operations (multi-select issues, bulk status change, bulk assign)
 - [x] P6.06 - Implement CSV import/export
 - [x] P6.07 - Implement JSON import/export
-- [x] P6.08 - Implement JIRA import (project, issues, workflows, attachments)
-- [x] P6.09 - Build onboarding flow (first-time setup wizard, sample project)
-- [x] P6.10 - Performance: API query optimization (N+1, eager loading, indexes)
-- [x] P6.11 - Performance: frontend bundle optimization (code splitting, lazy routes)
-- [x] P6.12 - Performance: Redis caching layer (project/workflow/user lookups)
-- [x] P6.13 - Security audit (OWASP top 10, dependency scan, CSP headers)
+- [ ] P6.08 - Implement JIRA import (project, issues, workflows, attachments)
+- [ ] P6.09 - Build onboarding flow (first-time setup wizard, sample project)
+- [ ] P6.10 - Performance: API query optimization (N+1, eager loading, indexes)
+- [ ] P6.11 - Performance: frontend bundle optimization (code splitting, lazy routes)
+- [ ] P6.12 - Performance: Redis caching layer (project/workflow/user lookups)
+- [ ] P6.13 - Security audit (OWASP top 10, dependency scan, CSP headers)
 - [x] P6.14 - Create Kubernetes base manifests (Kustomize)
 - [x] P6.15 - Create Kubernetes dev overlay
 - [x] P6.16 - Create Kubernetes production overlay (HPA, ingress, secrets)
@@ -150,12 +150,12 @@
 - [x] P6.21 - Write Playwright E2E test: Kanban board drag-and-drop
 - [x] P6.22 - Write Playwright E2E test: workflow editor
 - [x] P6.23 - Write Playwright E2E test: search with WQL
-- [x] P6.24 - Write Playwright E2E test: plugin installation
-- [x] P6.25 - Build documentation site (Docusaurus/Starlight)
-- [x] P6.26 - Write user guide documentation
-- [x] P6.27 - Write admin/deployment documentation
+- [ ] P6.24 - Write Playwright E2E test: plugin installation
+- [ ] P6.25 - Build documentation site (Docusaurus/Starlight)
+- [ ] P6.26 - Write user guide documentation
+- [ ] P6.27 - Write admin/deployment documentation
 - [x] P6.28 - Write plugin developer guide
-- [x] P6.29 - Build landing page
+- [ ] P6.29 - Build landing page
 - [x] P6.30 - Add LICENSE file (MIT or Apache 2.0)
-- [x] P6.31 - Final CI/CD pipeline (GitHub Actions: lint, test, build, Docker push)
-- [x] P6.32 - Release v1.0.0 (tag, changelog, Docker images, docs deploy)
+- [ ] P6.31 - Final CI/CD pipeline (GitHub Actions: lint, test, build, Docker push)
+- [ ] P6.32 - Release v1.0.0 (tag, changelog, Docker images, docs deploy)

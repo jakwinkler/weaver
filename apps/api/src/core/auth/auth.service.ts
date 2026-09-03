@@ -4,12 +4,14 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { createHash, randomUUID } from 'crypto';
 import {
   UserEntity,
+  TenantEntity,
   TenantMembershipEntity,
   RefreshSessionEntity,
 } from '@weaver/db';
@@ -42,55 +44,75 @@ export class AuthService {
     @InjectRepository(RefreshSessionEntity)
     private readonly refreshSessionRepo: Repository<RefreshSessionEntity>,
     private readonly jwtService: JwtService,
+    private readonly config: ConfigService,
     private readonly tenantService: TenantService,
     private readonly tenantProvisioningService: TenantProvisioningService,
   ) {}
 
   async register(dto: RegisterDto): Promise<AuthResponse<SanitizedUser>> {
-    const existing = await this.userRepo.findOneBy({ email: dto.email });
-    if (existing) {
-      throw new ConflictException('A user with this email already exists');
-    }
-
     const passwordHash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
+    const schemaName = `tenant_${dto.orgSlug.replace(/-/g, '_')}`;
+    let provisioningAttempted = false;
 
-    const user = this.userRepo.create({
-      email: dto.email,
-      displayName: dto.displayName,
-      passwordHash,
-      authProvider: 'local',
-    });
-    await this.userRepo.save(user);
+    try {
+      return await this.userRepo.manager.transaction(async (manager) => {
+        // Keep concurrent attempts for either identifier in one transaction.
+        await manager.query(
+          'SELECT pg_advisory_xact_lock(hashtext($1)), pg_advisory_xact_lock(hashtext($2))',
+          [`registration-email:${dto.email}`, `registration-slug:${dto.orgSlug}`],
+        );
 
-    const tenant = await this.tenantService.create({
-      name: dto.orgName,
-      slug: dto.orgSlug,
-    });
+        if (await manager.getRepository(UserEntity).findOneBy({ email: dto.email })) {
+          throw new ConflictException('A user with this email already exists');
+        }
+        if (await manager.getRepository(TenantEntity).findOneBy({ slug: dto.orgSlug })) {
+          throw new ConflictException('An organization with this slug already exists');
+        }
 
-    await this.tenantProvisioningService.provisionSchema(tenant.schemaName);
+        const userRepo = manager.getRepository(UserEntity);
+        const user = await userRepo.save(userRepo.create({
+          email: dto.email,
+          displayName: dto.displayName,
+          passwordHash,
+          authProvider: 'local',
+        }));
 
-    const membership = this.membershipRepo.create({
-      tenantId: tenant.id,
-      userId: user.id,
-      role: 'owner',
-    });
-    await this.membershipRepo.save(membership);
+        const tenant = await this.tenantService.create({
+          name: dto.orgName,
+          slug: dto.orgSlug,
+        }, manager);
 
-    const payload = {
-      sub: user.id,
-      email: user.email,
-      tenantId: tenant.id,
-      role: 'owner',
-    };
+        provisioningAttempted = true;
+        await this.tenantProvisioningService.provisionSchema(tenant.schemaName);
 
-    const { accessToken, refreshToken } = await this.issueTokenPair(payload);
+        const membershipRepo = manager.getRepository(TenantMembershipEntity);
+        await membershipRepo.save(membershipRepo.create({
+          tenantId: tenant.id,
+          userId: user.id,
+          role: 'owner',
+        }));
 
-    return {
-      accessToken,
-      refreshToken,
-      user: this.sanitizeUser(user),
-      tenantId: tenant.id,
-    };
+        const payload = {
+          sub: user.id,
+          email: user.email,
+          tenantId: tenant.id,
+          role: 'owner',
+        };
+        const { accessToken, refreshToken } = await this.issueTokenPair(payload, manager);
+
+        return {
+          accessToken,
+          refreshToken,
+          user: this.sanitizeUser(user),
+          tenantId: tenant.id,
+        };
+      });
+    } catch (error) {
+      if (provisioningAttempted) {
+        await this.tenantProvisioningService.dropSchema(schemaName);
+      }
+      throw error;
+    }
   }
 
   async login(dto: LoginDto): Promise<AuthResponse<SanitizedUser>> {
@@ -192,13 +214,17 @@ export class AuthService {
     return user;
   }
 
-  async getProfile(userId: string) {
+  async getProfile(userId: string, tenantId: string) {
     const user = await this.userRepo.findOneBy({ id: userId });
     if (!user) {
       throw new UnauthorizedException('User not found');
     }
+    const membership = await this.membershipRepo.findOneBy({ userId, tenantId });
+    if (!membership) {
+      throw new UnauthorizedException('User has no tenant membership');
+    }
 
-    return this.sanitizeUser(user);
+    return { ...this.sanitizeUser(user), role: membership.role };
   }
 
   private sanitizeUser(user: UserEntity): SanitizedUser {
@@ -217,7 +243,10 @@ export class AuthService {
     const jti = randomUUID();
     const refreshToken = this.jwtService.sign(
       { ...payload, tokenType: 'refresh', jti } satisfies JwtPayload,
-      { expiresIn: REFRESH_TOKEN_EXPIRY },
+      {
+        expiresIn: REFRESH_TOKEN_EXPIRY,
+        secret: this.refreshTokenSecret(),
+      },
     );
     const repo = manager
       ? manager.getRepository(RefreshSessionEntity)
@@ -237,7 +266,9 @@ export class AuthService {
   private async verifyRefreshToken(token: string): Promise<JwtPayload> {
     let payload: JwtPayload;
     try {
-      payload = await this.jwtService.verifyAsync<JwtPayload>(token);
+      payload = await this.jwtService.verifyAsync<JwtPayload>(token, {
+        secret: this.refreshTokenSecret(),
+      });
     } catch {
       throw new UnauthorizedException('Invalid refresh token');
     }
@@ -251,5 +282,10 @@ export class AuthService {
 
   private hashToken(token: string): string {
     return createHash('sha256').update(token).digest('hex');
+  }
+
+  private refreshTokenSecret(): string {
+    return this.config.get<string>('JWT_REFRESH_SECRET')
+      ?? this.config.getOrThrow<string>('JWT_SECRET');
   }
 }

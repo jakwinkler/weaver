@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { queryClient } from '@/api/query-client';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { AdminRoute } from '@/components/AdminRoute';
@@ -32,16 +33,6 @@ import { DashboardPage } from '@/features/dashboard/DashboardPage';
 import { ProfilePage } from '@/features/profile/ProfilePage';
 import { PublicProjectPage } from '@/features/projects/PublicProjectPage';
 import { SystemSettingsPage } from '@/features/settings/SystemSettingsPage';
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 1000 * 60,
-      retry: 1,
-      refetchOnWindowFocus: false,
-    },
-  },
-});
 
 export function App() {
   return (

@@ -26,6 +26,7 @@ RUN pnpm --filter @weaver/shared build && \
 # Production
 FROM base AS production
 ENV NODE_ENV=production
+RUN mkdir -p /tmp/weaver-uploads && chown node:node /tmp/weaver-uploads
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/packages/shared/dist ./packages/shared/dist
 COPY --from=build /app/packages/shared/package.json ./packages/shared/
@@ -38,4 +39,5 @@ COPY --from=build /app/apps/api/package.json ./apps/api/
 COPY --from=build /app/plugins ./plugins
 
 EXPOSE 3000
+USER node
 CMD ["node", "apps/api/dist/main.js"]

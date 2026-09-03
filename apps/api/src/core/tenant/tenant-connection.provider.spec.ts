@@ -1,8 +1,38 @@
-import { EntityManager } from 'typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 import { TenantConnectionProvider } from './tenant-connection.provider';
 import { tenantStorage } from './tenant.context';
 
 describe('TenantConnectionProvider raw query isolation', () => {
+  it('shares one pool initialization across concurrent first requests', async () => {
+    let releaseInitialization!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      releaseInitialization = resolve;
+    });
+    const initialize = jest
+      .spyOn(DataSource.prototype, 'initialize')
+      .mockImplementation(async function (this: DataSource) {
+        await gate;
+        (this as any).isInitialized = true;
+        return this;
+      });
+    const config = {
+      get: jest.fn((_key: string, fallback: unknown) => fallback),
+    };
+    const provider = new TenantConnectionProvider(config as never);
+
+    try {
+      const first = provider.getConnection('tenant_concurrent');
+      const second = provider.getConnection('tenant_concurrent');
+      releaseInitialization();
+      const [firstConnection, secondConnection] = await Promise.all([first, second]);
+
+      expect(firstConnection === secondConnection).toBe(true);
+      expect(initialize).toHaveBeenCalledTimes(1);
+    } finally {
+      initialize.mockRestore();
+    }
+  });
+
   it('uses one checked-out connection and a tenant-only local search path', async () => {
     const manager = { query: jest.fn().mockResolvedValue([{ result: 1 }]) } as unknown as EntityManager;
     const queryRunner = {

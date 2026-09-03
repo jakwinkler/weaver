@@ -53,6 +53,7 @@ export const TENANT_ENTITIES = [
 @Injectable()
 export class TenantConnectionProvider {
   private connections = new Map<string, DataSource>();
+  private initializing = new Map<string, Promise<DataSource>>();
 
   constructor(private readonly config: ConfigService) {}
 
@@ -62,6 +63,23 @@ export class TenantConnectionProvider {
       return existing;
     }
 
+    const pending = this.initializing.get(schemaName);
+    if (pending) {
+      return pending;
+    }
+
+    const initialization = this.initializeConnection(schemaName);
+    this.initializing.set(schemaName, initialization);
+    try {
+      return await initialization;
+    } finally {
+      if (this.initializing.get(schemaName) === initialization) {
+        this.initializing.delete(schemaName);
+      }
+    }
+  }
+
+  private async initializeConnection(schemaName: string): Promise<DataSource> {
     const ds = new DataSource({
       type: 'postgres',
       host: this.config.get('DATABASE_HOST', 'localhost'),
@@ -75,9 +93,16 @@ export class TenantConnectionProvider {
       logging: this.config.get('DATABASE_LOGGING') === 'true',
     });
 
-    await ds.initialize();
-    this.connections.set(schemaName, ds);
-    return ds;
+    try {
+      await ds.initialize();
+      this.connections.set(schemaName, ds);
+      return ds;
+    } catch (error) {
+      if (ds.isInitialized) {
+        await ds.destroy();
+      }
+      throw error;
+    }
   }
 
   async getEntityManager(): Promise<EntityManager> {
@@ -114,15 +139,18 @@ export class TenantConnectionProvider {
   }
 
   async closeAll(): Promise<void> {
+    await Promise.allSettled(this.initializing.values());
     for (const [, ds] of this.connections) {
       if (ds.isInitialized) {
         await ds.destroy();
       }
     }
     this.connections.clear();
+    this.initializing.clear();
   }
 
   async closeConnection(schemaName: string): Promise<void> {
+    await this.initializing.get(schemaName)?.catch(() => undefined);
     const ds = this.connections.get(schemaName);
     if (ds?.isInitialized) {
       await ds.destroy();

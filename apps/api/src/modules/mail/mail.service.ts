@@ -4,6 +4,7 @@ import * as Handlebars from 'handlebars';
 import * as fs from 'fs';
 import * as path from 'path';
 import { TenantService } from '../../core/tenant/tenant.service';
+import { resolveSafeOutboundHost } from '../../core/security/outbound-http';
 
 @Injectable()
 export class MailService {
@@ -22,11 +23,15 @@ export class MailService {
     }
 
     const { smtp } = settings;
+    const [destination] = await resolveSafeOutboundHost(smtp.host);
     const transport = createTransport({
-      host: smtp.host,
+      host: destination.address,
       port: smtp.port,
       secure: smtp.secure,
       auth: { user: smtp.user, pass: smtp.pass },
+      tls: {
+        servername: smtp.host,
+      },
     });
 
     const templatePath = path.join(__dirname, 'templates', `${options.template}.hbs`);

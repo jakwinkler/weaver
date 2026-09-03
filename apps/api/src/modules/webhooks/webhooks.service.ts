@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { WebhookEntity } from '@weaver/db';
-import { TenantConnectionProvider } from '../../core/tenant';
+import { getTenantContext, TenantConnectionProvider } from '../../core/tenant';
 import * as crypto from 'crypto';
 import type { CreateWebhookDto, UpdateWebhookDto } from '@weaver/shared';
 import {
@@ -8,6 +8,7 @@ import {
   fetchWithSafeRedirects,
   readLimitedResponseText,
 } from '../../core/security/outbound-http';
+import { WebhookQueueService } from './webhook-queue.service';
 
 export interface WebhookDeliveryRecord {
   id: string;
@@ -26,7 +27,28 @@ type WebhookResponse = Omit<WebhookEntity, 'secret' | 'tenant'>;
 export class WebhooksService {
   private readonly logger = new Logger(WebhooksService.name);
 
-  constructor(private readonly tenantConnections: TenantConnectionProvider) {}
+  constructor(
+    private readonly tenantConnections: TenantConnectionProvider,
+    private readonly webhookQueue: WebhookQueueService,
+  ) {}
+
+  async enqueue(
+    webhookId: string,
+    eventType: string,
+    payload: Record<string, unknown>,
+  ): Promise<void> {
+    const context = getTenantContext();
+    if (!context) {
+      throw new Error('Tenant context is required to enqueue a webhook');
+    }
+    await this.webhookQueue.enqueue({
+      tenantId: context.tenantId,
+      schemaName: context.schemaName,
+      webhookId,
+      eventType,
+      payload,
+    });
+  }
 
   async create(dto: CreateWebhookDto): Promise<WebhookEntity> {
     await assertSafeOutboundUrl(dto.url);
@@ -108,9 +130,10 @@ export class WebhooksService {
     }
 
     const body = JSON.stringify(payload);
+    const timestamp = Math.floor(Date.now() / 1000).toString();
     const signature = crypto
       .createHmac('sha256', webhook.secret)
-      .update(body)
+      .update(`${timestamp}.${body}`)
       .digest('hex');
 
     let responseStatus: number | null = null;
@@ -123,6 +146,7 @@ export class WebhooksService {
         headers: {
           'Content-Type': 'application/json',
           'X-Webhook-Signature': signature,
+          'X-Webhook-Timestamp': timestamp,
           'X-Webhook-Event': event,
         },
         body,

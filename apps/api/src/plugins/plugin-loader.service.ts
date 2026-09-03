@@ -90,6 +90,12 @@ export class PluginLoaderService implements OnModuleInit, OnModuleDestroy {
       try {
         const raw = fs.readFileSync(manifestPath, 'utf-8');
         const manifest: PluginManifest = JSON.parse(raw);
+        if (!this.isPluginTrusted(manifest.id)) {
+          this.logger.warn(
+            `Skipping untrusted production plugin: ${manifest.id}`,
+          );
+          continue;
+        }
         this.manifests.set(manifest.id, manifest);
         this.pluginDirs.set(manifest.id, entry.name);
         this.logger.log(`Loaded plugin manifest: ${manifest.id} v${manifest.version}`);
@@ -292,5 +298,19 @@ export class PluginLoaderService implements OnModuleInit, OnModuleDestroy {
       path.resolve(process.cwd(), '../../plugins'),
     ];
     return candidates.find((candidate) => fs.existsSync(candidate)) ?? candidates[0];
+  }
+
+  private isPluginTrusted(pluginId: string): boolean {
+    if (process.env.NODE_ENV !== 'production') {
+      return true;
+    }
+
+    const trusted = new Set(
+      (process.env.WEAVER_TRUSTED_PLUGINS || '')
+        .split(',')
+        .map((id) => id.trim())
+        .filter(Boolean),
+    );
+    return trusted.has(pluginId);
   }
 }

@@ -33,5 +33,14 @@ describe('auth token storage', () => {
     expect(window.localStorage.getItem('accessToken')).toBeNull();
     expect(window.localStorage.getItem('refreshToken')).toBeNull();
     expect(window.localStorage.getItem('tenantId')).toBe('tenant-1');
+    expect(window.localStorage.getItem('role')).toBeNull();
+  });
+
+  it('does not trust a role value written directly to local storage', () => {
+    window.localStorage.setItem('role', 'owner');
+    useAuthStore.getState().logout();
+
+    expect(useAuthStore.getState().isAdmin()).toBe(false);
+    expect(window.localStorage.getItem('role')).toBeNull();
   });
 });

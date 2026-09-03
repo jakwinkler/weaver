@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { WebhookEntity } from '@weaver/db';
+import { ProjectEntity, WebhookEntity } from '@weaver/db';
 import { TenantConnectionProvider, getTenantContext } from '../../core/tenant';
 import { WeaverGateway } from '../../core/websocket';
 import { WebhooksService } from '../webhooks';
@@ -27,21 +27,18 @@ export class EventDispatcherService {
   ): Promise<void> {
     // Push to WebSocket for real-time updates
     const tenantCtx = getTenantContext();
-    if (tenantCtx) {
+    if (tenantCtx && typeof payload.projectKey === 'string') {
       const wsPayload = { event, data: payload, timestamp: new Date().toISOString() };
-      this.gateway.emitToTenant(tenantCtx.tenantId, event, wsPayload);
+      this.gateway.emitToProject(
+        tenantCtx.tenantId,
+        payload.projectKey,
+        event,
+        wsPayload,
+      );
 
-      // Also emit to project room if projectKey is present
-      if (payload.projectKey) {
-        this.gateway.emitToProject(
-          tenantCtx.tenantId,
-          payload.projectKey as string,
-          event,
-          wsPayload,
-        );
-      }
-
-      this.logger.debug(`WS event "${event}" sent to tenant ${tenantCtx.tenantId}`);
+      this.logger.debug(
+        `WS event "${event}" sent to project ${payload.projectKey} in tenant ${tenantCtx.tenantId}`,
+      );
     }
 
     try {
@@ -50,14 +47,29 @@ export class EventDispatcherService {
 
       const webhooks = await repo.find({ where: { active: true } });
 
+      let projectId = typeof payload.projectId === 'string'
+        ? payload.projectId
+        : null;
+      if (
+        !projectId &&
+        typeof payload.projectKey === 'string' &&
+        webhooks.some((webhook) => webhook.projectId !== null)
+      ) {
+        projectId = (
+          await em.getRepository(ProjectEntity).findOneBy({ key: payload.projectKey })
+        )?.id ?? null;
+      }
+
       const matching = webhooks.filter(
-        (wh) => wh.events.includes(event) || wh.events.includes('*'),
+        (wh) =>
+          (wh.events.includes(event) || wh.events.includes('*')) &&
+          (wh.projectId === null || wh.projectId === projectId),
       );
 
       if (matching.length > 0) {
         const deliveries = matching.map((wh) =>
           this.webhooksService
-            .deliver(wh.id, event, payload)
+            .enqueue(wh.id, event, payload)
             .catch((err) =>
               this.logger.warn(
                 `Failed to deliver event ${event} to webhook ${wh.id}: ${err}`,

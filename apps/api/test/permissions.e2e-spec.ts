@@ -458,7 +458,7 @@ describe('Permissions (e2e)', () => {
         .send({
           url: 'https://example.com/hook',
           events: ['issue.created'],
-          secret: 'test-secret-123',
+          secret: 'test-secret-123-test-secret-123456',
         });
       expect([200, 201]).toContain(res.status);
     });

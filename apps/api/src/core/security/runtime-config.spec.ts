@@ -15,11 +15,21 @@ describe('runtime security configuration', () => {
     ).toThrow('JWT_SECRET');
   });
 
-  it('accepts a sufficiently long non-placeholder production secret', () => {
+  it('rejects a missing production refresh-token secret', () => {
     expect(() =>
       validateSecurityConfiguration({
         NODE_ENV: 'production',
         JWT_SECRET: 'd6f681c44a4f4ccfa85f7c4ab2d98c38ef87f9ba0f4cbbaa',
+      }),
+    ).toThrow('JWT_REFRESH_SECRET');
+  });
+
+  it('accepts distinct, sufficiently long production secrets', () => {
+    expect(() =>
+      validateSecurityConfiguration({
+        NODE_ENV: 'production',
+        JWT_SECRET: 'd6f681c44a4f4ccfa85f7c4ab2d98c38ef87f9ba0f4cbbaa',
+        JWT_REFRESH_SECRET: '65b04e5cb780425d87e00418e658663de3f6a0c969ce43a1',
       }),
     ).not.toThrow();
   });

@@ -7,6 +7,7 @@ import { RichTextEditor, normalizeCommentBody } from './RichTextEditor';
 import { loadDraft, saveDraft, clearDraft } from './useCommentDraft';
 import { UserAvatar } from '@/components/UserAvatar';
 import { Trash2 } from 'lucide-react';
+import { useAuthStore } from '@/stores';
 
 interface CommentsSectionProps {
   issueKey: string;
@@ -18,6 +19,8 @@ export function CommentsSection({ issueKey }: CommentsSectionProps) {
   const queryClient = useQueryClient();
   const canCreate = useHasPermission('comments.create');
   const canDelete = useHasPermission('comments.delete');
+  const tenantId = useAuthStore((state) => state.tenantId);
+  const userId = useAuthStore((state) => state.user?.id);
 
   const [editorContent, setEditorContent] = useState<Record<string, unknown> | null>(
     () => loadDraft(issueKey),
@@ -34,10 +37,12 @@ export function CommentsSection({ issueKey }: CommentsSectionProps) {
   );
 
   useEffect(() => {
+    if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+    setEditorContent(loadDraft(issueKey));
     return () => {
       if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
     };
-  }, []);
+  }, [issueKey, tenantId, userId]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -77,6 +82,7 @@ export function CommentsSection({ issueKey }: CommentsSectionProps) {
       {canCreate && (
         <form onSubmit={handleSubmit} className="mb-6">
           <RichTextEditor
+            key={`${tenantId}:${userId}:${issueKey}`}
             issueKey={issueKey}
             content={editorContent}
             onChange={handleEditorChange}

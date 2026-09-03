@@ -27,14 +27,14 @@ ingress:
   enabled: true
   className: nginx
   host: weaver.example.com
-  tls: false
+  tls: true
 
 postgresql:
   enabled: true
   auth:
     database: weaver
     username: weaver
-    password: weaver_dev
+    password: ""
   primary:
     persistence:
       size: 10Gi
@@ -50,4 +50,6 @@ autoscaling:
 
 env:
   JWT_SECRET: ""
+  JWT_REFRESH_SECRET: ""
+  WEAVER_TRUSTED_PLUGINS: ""
   NODE_ENV: production

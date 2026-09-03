@@ -6,13 +6,33 @@ import { API_BASE_URL } from '@/api/client';
 const componentCache = new Map<string, ComponentType<any>>();
 const registeredRemotes = new Map<string, string>();
 
-function absoluteBundleUrl(clientBundle: string): string {
-  return new URL(clientBundle, API_BASE_URL).toString();
+function absoluteBundleUrl(pluginId: string, clientBundle: string): string | null {
+  const pageOrigin = typeof window === 'undefined' ? 'http://localhost' : window.location.origin;
+  const apiBase = new URL(API_BASE_URL, pageOrigin);
+  const url = new URL(clientBundle, apiBase);
+  const pluginPath = pluginId
+    .split('/')
+    .map((segment) => encodeURIComponent(segment).replace('%40', '@'))
+    .join('/');
+  const apiPath = apiBase.pathname.replace(/\/+$/, '');
+  const expectedPath = `${apiPath}/plugin-assets/${pluginPath}/remoteEntry.js`;
+
+  if (
+    url.origin !== apiBase.origin ||
+    url.pathname !== expectedPath ||
+    url.search !== '' ||
+    url.hash !== '' ||
+    url.username !== '' ||
+    url.password !== ''
+  ) {
+    return null;
+  }
+
+  return url.toString();
 }
 
-function registerPluginRemote(pluginId: string, clientBundle: string): string {
+function registerPluginRemote(pluginId: string, entry: string): string {
   const remoteName = getPluginRemoteName(pluginId);
-  const entry = absoluteBundleUrl(clientBundle);
   const previousEntry = registeredRemotes.get(remoteName);
 
   if (previousEntry !== entry) {
@@ -32,13 +52,15 @@ export function getPluginComponent(
   clientBundle?: string,
 ): ComponentType<any> | null {
   if (!clientBundle) return null;
+  const entry = absoluteBundleUrl(pluginId, clientBundle);
+  if (!entry) return null;
 
-  const cacheKey = `${pluginId}::${clientBundle}::${componentName}`;
+  const cacheKey = `${pluginId}::${entry}::${componentName}`;
   const cached = componentCache.get(cacheKey);
   if (cached) return cached;
 
   const LazyComponent = React.lazy(async () => {
-    const remoteName = registerPluginRemote(pluginId, clientBundle);
+    const remoteName = registerPluginRemote(pluginId, entry);
     const remoteModule = (await loadRemote(`${remoteName}/${PLUGIN_REMOTE_MODULE}`)) as Record<
       string,
       unknown

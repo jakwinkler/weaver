@@ -17,12 +17,14 @@ RUN corepack enable \
     && corepack prepare pnpm@9.15.4 --activate
 
 WORKDIR /app/apps/api
+RUN mkdir -p /tmp/weaver-uploads && chown node:node /tmp/weaver-uploads
 COPY --from=build /app/node_modules /app/node_modules
 COPY --from=build /app/apps/api /app/apps/api
 COPY --from=build /app/packages /app/packages
 COPY --from=build /app/plugins /app/plugins
 
 EXPOSE 3000
+USER node
 CMD ["./node_modules/.bin/tsx", "dist/main.js"]
 
 FROM node:20-alpine AS worker
@@ -32,12 +34,13 @@ COPY --from=build /app/node_modules /app/node_modules
 COPY --from=build /app/apps/worker /app/apps/worker
 COPY --from=build /app/packages /app/packages
 
+USER node
 CMD ["node", "apps/worker/dist/main.js"]
 
-FROM nginx:alpine AS web
+FROM nginxinc/nginx-unprivileged:alpine AS web
 
 COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/apps/web/dist /usr/share/nginx/html
 
-EXPOSE 80
+EXPOSE 8080
 CMD ["nginx", "-g", "daemon off;"]

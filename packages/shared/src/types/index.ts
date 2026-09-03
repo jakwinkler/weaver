@@ -272,6 +272,14 @@ export interface Webhook {
   createdAt: Date;
 }
 
+export interface WebhookDeliveryJobData {
+  tenantId: string;
+  schemaName: string;
+  webhookId: string;
+  eventType: string;
+  payload: Record<string, unknown>;
+}
+
 export interface SavedFilter {
   id: string;
   name: string;

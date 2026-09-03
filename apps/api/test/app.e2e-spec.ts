@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
+import { configureHttpSecurity } from '../src/core/security/http-security';
 
 describe('App (e2e)', () => {
   let app: INestApplication;
@@ -12,6 +13,7 @@ describe('App (e2e)', () => {
     }).compile();
 
     app = moduleFixture.createNestApplication();
+    configureHttpSecurity(app);
     app.setGlobalPrefix('api/v1');
     await app.init();
   });
@@ -28,6 +30,9 @@ describe('App (e2e)', () => {
         expect(res.body.status).toBe('ok');
         expect(res.body.service).toBe('weaver-api');
         expect(res.body.timestamp).toBeDefined();
+        expect(res.headers['content-security-policy']).toContain("default-src 'none'");
+        expect(res.headers['x-content-type-options']).toBe('nosniff');
+        expect(res.headers['x-frame-options']).toBe('SAMEORIGIN');
       });
   });
 });

@@ -69,4 +69,16 @@ describe('dynamic plugin loader', () => {
     expect(registerRemotes).not.toHaveBeenCalled();
     expect(loadRemote).not.toHaveBeenCalled();
   });
+
+  it.each([
+    'https://attacker.example/remoteEntry.js',
+    '/api/v1/projects',
+    '/api/v1/plugin-assets/@other/plugin/remoteEntry.js',
+  ])('rejects an untrusted client bundle URL: %s', (clientBundle) => {
+    expect(
+      getPluginComponent('@example/plugin', 'ExamplePanel', clientBundle),
+    ).toBeNull();
+    expect(registerRemotes).not.toHaveBeenCalled();
+    expect(loadRemote).not.toHaveBeenCalled();
+  });
 });

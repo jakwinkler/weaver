@@ -7,7 +7,6 @@ import {
   Logger,
   OnModuleDestroy,
   OnModuleInit,
-  ServiceUnavailableException,
   SetMetadata,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -38,6 +37,7 @@ export class RateLimitingGuard implements CanActivate, OnModuleInit, OnModuleDes
   private readonly DEFAULT_UNAUTHENTICATED_LIMIT = 30;
   private readonly DEFAULT_WINDOW_MS = 60_000;
   private readonly keyPrefix: string;
+  private lastStoreWarningAt = 0;
 
   constructor(
     private readonly reflector: Reflector,
@@ -85,6 +85,9 @@ export class RateLimitingGuard implements CanActivate, OnModuleInit, OnModuleDes
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
+    if (this.isHealthEndpoint(request)) {
+      return true;
+    }
     const meta = this.reflector.getAllAndOverride<
       { limit: number; windowMs: number } | undefined
     >(RATE_LIMIT_KEY, [context.getHandler(), context.getClass()]);
@@ -104,7 +107,8 @@ export class RateLimitingGuard implements CanActivate, OnModuleInit, OnModuleDes
     const key = `${this.keyPrefix}:${limit}:${windowMs}:${this.getIdentityKey(request, verifiedUserId)}`;
 
     if (this.redis.status !== 'ready') {
-      throw new ServiceUnavailableException('Rate-limit store unavailable');
+      this.warnStoreUnavailable('Redis is not ready');
+      return true;
     }
 
     this.touchedKeys.add(key);
@@ -118,8 +122,11 @@ export class RateLimitingGuard implements CanActivate, OnModuleInit, OnModuleDes
         String(windowMs),
       ) as [number, number];
       [count, ttl] = result.map(Number) as [number, number];
-    } catch {
-      throw new ServiceUnavailableException('Rate-limit store unavailable');
+    } catch (error) {
+      this.warnStoreUnavailable(
+        error instanceof Error ? error.message : 'Redis command failed',
+      );
+      return true;
     }
 
     if (count > limit) {
@@ -180,5 +187,21 @@ export class RateLimitingGuard implements CanActivate, OnModuleInit, OnModuleDes
     return ['/auth/login', '/auth/register', '/auth/refresh'].some((suffix) =>
       path.endsWith(suffix),
     );
+  }
+
+  private isHealthEndpoint(request: any): boolean {
+    const path = String(request.originalUrl || request.url || '')
+      .split('?')[0]
+      .replace(/\/+$/, '');
+    return path.endsWith('/health') || path === 'health';
+  }
+
+  private warnStoreUnavailable(reason: string): void {
+    const now = Date.now();
+    if (now - this.lastStoreWarningAt < 30_000) {
+      return;
+    }
+    this.lastStoreWarningAt = now;
+    this.logger.warn(`Rate limiting temporarily bypassed: ${reason}`);
   }
 }

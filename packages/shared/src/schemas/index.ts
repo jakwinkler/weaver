@@ -197,7 +197,7 @@ export const createWebhookSchema = z.object({
   url: z.string().url(),
   events: z.array(z.string()).min(1),
   projectId: z.string().uuid().optional(),
-  secret: z.string().min(1).max(255).optional(),
+  secret: z.string().min(32).max(255).optional(),
 });
 export type CreateWebhookDto = z.infer<typeof createWebhookSchema>;
 

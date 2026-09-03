@@ -1,6 +1,7 @@
 import {
   assertSafeOutboundUrl,
   fetchWithSafeRedirects,
+  resolveSafeOutboundHost,
 } from './outbound-http';
 
 describe('outbound HTTP security', () => {
@@ -40,5 +41,13 @@ describe('outbound HTTP security', () => {
       ),
     ).rejects.toThrow('private or reserved');
     expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects private SMTP destinations before credentials can be sent', async () => {
+    await expect(
+      resolveSafeOutboundHost('smtp.internal.example', async () => [
+        { address: '10.20.30.40', family: 4 },
+      ]),
+    ).rejects.toThrow('private or reserved');
   });
 });

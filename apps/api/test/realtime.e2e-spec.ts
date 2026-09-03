@@ -166,6 +166,14 @@ describe('Real-Time WebSocket (e2e)', () => {
         throw new Error('Socket did not connect');
       }
 
+      const subscription = await socket
+        .timeout(3000)
+        .emitWithAck('join:project', { projectKey });
+      if (!subscription?.joined) {
+        socket.close();
+        throw new Error(`Socket was not authorized for project ${projectKey}`);
+      }
+
       return new Promise((resolve, reject) => {
         const timer = setTimeout(() => {
           socket.close();

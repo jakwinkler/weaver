@@ -1,4 +1,6 @@
 import axios from 'axios';
+import { clearLocalSession } from '@/auth/clear-local-session';
+import { queryClient } from './query-client';
 
 export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1';
 
@@ -71,10 +73,7 @@ apiClient.interceptors.response.use(
       return apiClient(originalRequest);
     } catch (refreshError) {
       processQueue(refreshError);
-      localStorage.removeItem('accessToken');
-      localStorage.removeItem('refreshToken');
-      localStorage.removeItem('tenantId');
-      localStorage.removeItem('role');
+      clearLocalSession(queryClient);
       window.location.href = '/login';
       return Promise.reject(refreshError);
     } finally {

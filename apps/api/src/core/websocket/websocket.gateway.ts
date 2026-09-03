@@ -82,7 +82,7 @@ export class WeaverGateway implements OnGatewayConnection, OnGatewayDisconnect {
       (client as any).userEmail = payload.email;
 
       if (payload.tenantId) {
-        client.join(`tenant:${payload.tenantId}`);
+        client.join(this.userRoom(payload.tenantId, payload.sub));
       }
 
       this.logger.log(`Client connected: ${client.id} (user: ${payload.sub})`);
@@ -99,13 +99,13 @@ export class WeaverGateway implements OnGatewayConnection, OnGatewayDisconnect {
   async handleJoinProject(
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { projectKey: string },
-  ) {
+  ): Promise<{ joined: boolean; projectKey?: string }> {
     const tenantId = (client as any).tenantId as string | undefined;
     const schemaName = (client as any).tenantSchemaName as string | undefined;
     const userId = (client as any).userId as string | undefined;
     const role = (client as any).role as string | undefined;
     if (!tenantId || !schemaName || !userId || !role || !data?.projectKey) {
-      return;
+      return { joined: false };
     }
 
     const user: RequestUser = {
@@ -121,12 +121,13 @@ export class WeaverGateway implements OnGatewayConnection, OnGatewayDisconnect {
       );
     } catch {
       this.logger.warn(`Client ${client.id} denied project room ${data.projectKey}`);
-      return;
+      return { joined: false };
     }
 
     const room = this.projectRoom(tenantId, data.projectKey);
     client.join(room);
     this.logger.debug(`Client ${client.id} joined ${room}`);
+    return { joined: true, projectKey: data.projectKey };
   }
 
   @SubscribeMessage('leave:project')
@@ -158,7 +159,17 @@ export class WeaverGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
+  disconnectUserFromTenant(userId: string, tenantId: string): void {
+    this.server
+      .in(this.userRoom(tenantId, userId))
+      .disconnectSockets(true);
+  }
+
   private projectRoom(tenantId: string, projectKey: string): string {
     return `tenant:${tenantId}:project:${projectKey}`;
+  }
+
+  private userRoom(tenantId: string, userId: string): string {
+    return `tenant:${tenantId}:user:${userId}`;
   }
 }
