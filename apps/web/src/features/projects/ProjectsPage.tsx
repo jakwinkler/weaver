@@ -1,7 +1,12 @@
 import { useState, useCallback, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useProjects, useCreateProject, useHasPermission } from '@/api';
-import { RichTextEditor, serializeDoc } from '@/components/RichTextEditor';
+import {
+  RichTextEditor,
+  extractPlainText,
+  normalizeCommentBody,
+  serializeDoc,
+} from '@/components/RichTextEditor';
 import { ProjectIcon } from './ProjectSettingsPage';
 import { Pagination, getStoredPerPage } from '@/components/Pagination';
 import { SortableHeader, type SortDirection } from '@/components/SortableHeader';
@@ -109,7 +114,7 @@ export function ProjectsPage() {
 
   return (
     <div>
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-foreground">Projects</h1>
         {canCreate && (
           <Button onClick={() => setShowForm(!showForm)} variant={showForm ? 'outline' : 'default'}>
@@ -122,7 +127,7 @@ export function ProjectsPage() {
         <Card className="mb-6">
           <CardContent className="pt-5">
             <form onSubmit={handleCreate}>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-1">
                   <Label htmlFor="projectName">Name</Label>
                   <Input
@@ -203,10 +208,10 @@ export function ProjectsPage() {
                   </Link>
                 </TableCell>
                 <TableCell className="text-sm text-muted-foreground">
-                  {project.description || '-'}
+                  {extractPlainText(normalizeCommentBody(project.description)) || '-'}
                 </TableCell>
                 <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
-                  {project.issueCounter}
+                  {project.key}
                 </TableCell>
               </TableRow>
             ))}

@@ -1,10 +1,21 @@
 import { Navigate, Outlet } from 'react-router-dom';
-import { useAuthStore } from '@/stores';
+import { useCurrentUser } from '@/api';
 
 export function AdminRoute() {
-  const isAdmin = useAuthStore((s) => s.isAdmin());
+  const { data: currentUser, isLoading, isError } = useCurrentUser();
 
-  if (!isAdmin) {
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
+        Checking access...
+      </div>
+    );
+  }
+
+  if (
+    isError ||
+    (currentUser?.role !== 'owner' && currentUser?.role !== 'admin')
+  ) {
     return <Navigate to="/projects" replace />;
   }
 

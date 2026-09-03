@@ -68,9 +68,9 @@ export function SearchPage() {
     <div>
       <h1 className="mb-6 text-2xl font-bold text-foreground">Search</h1>
 
-      <div className="flex gap-6">
+      <div className="flex flex-col gap-6 lg:flex-row">
         {/* Sidebar - Saved Filters */}
-        <div className="w-64 flex-shrink-0">
+        <div className="w-full flex-shrink-0 lg:w-64">
           <Card>
             <CardHeader className="border-b border-border px-4 py-3">
               <CardTitle className="text-sm">Saved Filters</CardTitle>
@@ -126,10 +126,10 @@ export function SearchPage() {
         </div>
 
         {/* Main Content */}
-        <div className="flex-1">
+        <div className="min-w-0 flex-1">
           {/* Search form */}
           <form onSubmit={handleSearch} className="mb-6">
-            <div className="flex gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row">
               <Input
                 type="text"
                 value={query}
@@ -206,7 +206,7 @@ export function SearchPage() {
             <Card className="mb-6">
               <div className="border-b border-border px-6 py-3">
                 <p className="text-sm text-muted-foreground">
-                  {search.data.meta.total} result{search.data.meta.total !== 1 ? 's' : ''} found
+                  {search.data.total} result{search.data.total !== 1 ? 's' : ''} found
                 </p>
               </div>
               {search.data.data.length === 0 ? (
