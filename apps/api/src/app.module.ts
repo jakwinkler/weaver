@@ -28,6 +28,7 @@ import { TeamsModule } from './modules/teams';
 import { DashboardModule } from './modules/dashboard';
 import { SettingsModule } from './modules/settings';
 import { HealthController } from './health.controller';
+import { StorageModule } from './core/storage';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { HealthController } from './health.controller';
       envFilePath: ['.env', '../../.env'],
     }),
     DatabaseModule,
+    StorageModule,
     TenantModule,
     AuthModule,
     UsersModule,

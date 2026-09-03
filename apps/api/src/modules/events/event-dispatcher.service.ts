@@ -33,7 +33,12 @@ export class EventDispatcherService {
 
       // Also emit to project room if projectKey is present
       if (payload.projectKey) {
-        this.gateway.emitToProject(payload.projectKey as string, event, wsPayload);
+        this.gateway.emitToProject(
+          tenantCtx.tenantId,
+          payload.projectKey as string,
+          event,
+          wsPayload,
+        );
       }
 
       this.logger.debug(`WS event "${event}" sent to tenant ${tenantCtx.tenantId}`);

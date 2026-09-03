@@ -15,17 +15,25 @@ describe('PluginLoaderService client bundles', () => {
     pluginsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'weaver-plugins-'));
     const pluginDir = path.join(pluginsDir, 'plugin-example');
     fs.mkdirSync(path.join(pluginDir, 'dist/client'), { recursive: true });
+    fs.mkdirSync(path.join(pluginDir, 'dist/server'), { recursive: true });
     fs.writeFileSync(
       path.join(pluginDir, 'weaver-plugin.json'),
       JSON.stringify({
         id: '@example/plugin',
         name: 'Example',
         version: '1.0.0',
-        entrypoints: { client: 'src/client/index.ts' },
+        entrypoints: {
+          client: 'src/client/index.ts',
+          server: 'src/server/index.ts',
+        },
         permissions: [],
       }),
     );
     fs.writeFileSync(path.join(pluginDir, 'dist/client/remoteEntry.js'), 'export {};');
+    fs.writeFileSync(
+      path.join(pluginDir, 'dist/server/webhook.handler.js'),
+      'exports.handleWebhook = () => ({ status: 200, body: {} });',
+    );
     service = new PluginLoaderService();
     await service.loadPlugins(pluginsDir);
   });
@@ -61,5 +69,13 @@ describe('PluginLoaderService client bundles', () => {
     });
 
     expect(service.getPluginDevServerUrl('@example/plugin')).toBe('http://localhost:5199');
+  });
+
+  it('discovers named handlers from compiled server handler modules in production', async () => {
+    process.env.NODE_ENV = 'production';
+
+    const handler = await service.getHandler('@example/plugin', 'handleWebhook');
+
+    expect(handler).toBeInstanceOf(Function);
   });
 });

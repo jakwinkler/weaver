@@ -33,7 +33,7 @@ export class WorkflowStatusEntity {
   @Column({ type: 'int', default: 0 })
   position!: number;
 
-  @ManyToOne(() => WorkflowEntity, (workflow) => workflow.statuses)
+  @ManyToOne(() => WorkflowEntity, (workflow) => workflow.statuses, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'workflow_id' })
   workflow!: WorkflowEntity;
 }

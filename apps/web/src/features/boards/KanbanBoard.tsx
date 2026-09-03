@@ -37,6 +37,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { moveIssueForBoard } from './kanban-order';
 
 interface StatusColumn {
   statusId: string;
@@ -366,19 +367,9 @@ export function KanbanBoard() {
 
     setOverColumnId(targetStatusId);
 
-    // Find which column the active issue is currently in
-    const activeIssue = localIssues.find((i) => i.id === activeId);
-    if (activeIssue && activeIssue.statusId !== targetStatusId) {
-      // Move issue to new column optimistically
-      setLocalIssues((prev) => {
-        if (!prev) return prev;
-        return prev.map((issue) =>
-          issue.id === activeId
-            ? { ...issue, statusId: targetStatusId }
-            : issue,
-        );
-      });
-    }
+    setLocalIssues((prev) => prev
+      ? moveIssueForBoard(prev, activeId, over.id as string, targetStatusId)
+      : prev);
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -439,26 +430,23 @@ export function KanbanBoard() {
       setLocalIssues(null);
     };
 
-    if (statusChanged) {
-      updateIssue.mutate(
-        {
-          issueKey: draggedIssue.key,
-          statusId: targetStatusId,
-          sortOrder: issueUpdates.find((u) => u.id === activeId)?.sortOrder ?? 0,
-        },
-        { onSuccess: cleanup, onError: cleanup },
-      );
-    }
+    const persistMove = async () => {
+      try {
+        if (statusChanged) {
+          await updateIssue.mutateAsync({
+            issueKey: draggedIssue.key,
+            statusId: targetStatusId,
+          });
+        }
+        if (issueUpdates.length > 0) {
+          await reorderIssues.mutateAsync({ issues: issueUpdates });
+        }
+      } finally {
+        cleanup();
+      }
+    };
 
-    if (issueUpdates.length > 0) {
-      reorderIssues.mutate(
-        { issues: issueUpdates },
-        {
-          onSuccess: () => { if (!statusChanged) cleanup(); },
-          onError: cleanup,
-        },
-      );
-    }
+    void persistMove();
   };
 
   const handleDragCancel = () => {

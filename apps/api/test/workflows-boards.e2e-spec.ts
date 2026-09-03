@@ -35,7 +35,7 @@ describe('Workflows, Boards, Sprints, Comments, Activity (e2e)', () => {
       });
 
     accessToken = res.body.accessToken;
-    tenantId = res.body.tenant.id;
+    tenantId = res.body.tenantId;
   });
 
   afterAll(async () => {
@@ -226,6 +226,8 @@ describe('Workflows, Boards, Sprints, Comments, Activity (e2e)', () => {
     let issueId: string;
     let boardId: string;
     let sprintId: string;
+    let projectWorkflowId: string;
+    let issueStatusId: string;
 
     beforeAll(async () => {
       // Create a project
@@ -235,6 +237,7 @@ describe('Workflows, Boards, Sprints, Comments, Activity (e2e)', () => {
         .expect(201);
       projectKey = projRes.body.key;
       projectId = projRes.body.id;
+      projectWorkflowId = projRes.body.workflowId;
 
       // Create an issue
       const issueRes = await authedRequest()
@@ -243,6 +246,7 @@ describe('Workflows, Boards, Sprints, Comments, Activity (e2e)', () => {
         .expect(201);
       issueKey = issueRes.body.key;
       issueId = issueRes.body.id;
+      issueStatusId = issueRes.body.statusId;
     });
 
     describe('Boards', () => {
@@ -294,6 +298,38 @@ describe('Workflows, Boards, Sprints, Comments, Activity (e2e)', () => {
         expect(Array.isArray(res.body)).toBe(true);
       });
 
+      it('rejects adding issues from another project', async () => {
+        const otherProject = await authedRequest()
+          .post('/api/v1/projects')
+          .send({ name: 'Other Sprint Project', key: 'OSP' })
+          .expect(201);
+        const otherIssue = await authedRequest()
+          .post(`/api/v1/projects/${otherProject.body.key}/issues`)
+          .send({ summary: 'Issue from another project' })
+          .expect(201);
+
+        await authedRequest()
+          .post(`/api/v1/sprints/${sprintId}/issues`)
+          .send({ issueIds: [otherIssue.body.id] })
+          .expect(400);
+      });
+
+      it('clears issue assignments when deleting a planned sprint', async () => {
+        const temporarySprint = await authedRequest()
+          .post(`/api/v1/sprints?projectId=${projectId}`)
+          .send({ name: 'Temporary Sprint' })
+          .expect(201);
+
+        await authedRequest()
+          .post(`/api/v1/sprints/${temporarySprint.body.id}/issues`)
+          .send({ issueIds: [issueId] })
+          .expect(201);
+        await authedRequest().delete(`/api/v1/sprints/${temporarySprint.body.id}`).expect(204);
+
+        const issue = await authedRequest().get(`/api/v1/issues/${issueKey}`).expect(200);
+        expect(issue.body.sprintId).toBeNull();
+      });
+
       it('POST /sprints/:id/start - should start sprint', async () => {
         const res = await authedRequest()
           .post(`/api/v1/sprints/${sprintId}/start`);
@@ -306,6 +342,14 @@ describe('Workflows, Boards, Sprints, Comments, Activity (e2e)', () => {
           .post(`/api/v1/sprints/${sprintId}/complete`);
         expect(res.status).toBeLessThan(300);
         expect(res.body.status).toBe('completed');
+      });
+
+      it('rejects editing or deleting a completed sprint', async () => {
+        await authedRequest()
+          .patch(`/api/v1/sprints/${sprintId}`)
+          .send({ name: 'Rewritten History' })
+          .expect(400);
+        await authedRequest().delete(`/api/v1/sprints/${sprintId}`).expect(400);
       });
     });
 
@@ -388,6 +432,18 @@ describe('Workflows, Boards, Sprints, Comments, Activity (e2e)', () => {
 
       it('DELETE /issue-links/:id - should delete link', async () => {
         await authedRequest().delete(`/api/v1/issue-links/${linkId}`).expect(204);
+      });
+    });
+
+    describe('Referential integrity', () => {
+      it('rejects deleting a status that is still used by an issue', async () => {
+        await authedRequest()
+          .delete(`/api/v1/workflows/${projectWorkflowId}/statuses/${issueStatusId}`)
+          .expect(409);
+      });
+
+      it('rejects deleting a workflow that is still assigned to a project', async () => {
+        await authedRequest().delete(`/api/v1/workflows/${projectWorkflowId}`).expect(409);
       });
     });
 

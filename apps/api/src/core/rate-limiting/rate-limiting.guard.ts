@@ -1,90 +1,184 @@
 import {
-  Injectable,
   CanActivate,
   ExecutionContext,
   HttpException,
   HttpStatus,
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+  ServiceUnavailableException,
   SetMetadata,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Reflector } from '@nestjs/core';
+import { JwtService } from '@nestjs/jwt';
+import Redis from 'ioredis';
 
 export const RATE_LIMIT_KEY = 'rateLimit';
 
 export const RateLimit = (limit: number, windowMs = 60_000) =>
   SetMetadata(RATE_LIMIT_KEY, { limit, windowMs });
 
-interface RateLimitEntry {
-  timestamps: number[];
-}
+const INCREMENT_WINDOW = `
+local count = redis.call('INCR', KEYS[1])
+if count == 1 then
+  redis.call('PEXPIRE', KEYS[1], ARGV[1])
+end
+local ttl = redis.call('PTTL', KEYS[1])
+return { count, ttl }
+`;
 
 @Injectable()
-export class RateLimitingGuard implements CanActivate {
-  private readonly store = new Map<string, RateLimitEntry>();
+export class RateLimitingGuard implements CanActivate, OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(RateLimitingGuard.name);
+  private readonly redis: Redis;
+  private readonly touchedKeys = new Set<string>();
   private readonly DEFAULT_AUTHENTICATED_LIMIT = 1000;
   private readonly DEFAULT_UNAUTHENTICATED_LIMIT = 30;
   private readonly DEFAULT_WINDOW_MS = 60_000;
+  private readonly keyPrefix: string;
 
-  constructor(private readonly reflector: Reflector) {
-    // Clean up stale entries every 5 minutes
-    setInterval(() => this.cleanup(), 5 * 60_000);
+  constructor(
+    private readonly reflector: Reflector,
+    private readonly config: ConfigService,
+    private readonly jwtService: JwtService,
+  ) {
+    this.keyPrefix = config.get<string>('RATE_LIMIT_PREFIX', 'weaver:rate-limit');
+    this.redis = new Redis({
+      host: config.get<string>('REDIS_HOST', 'localhost'),
+      port: config.get<number>('REDIS_PORT', 6379),
+      password: config.get<string>('REDIS_PASSWORD') || undefined,
+      lazyConnect: true,
+      enableOfflineQueue: false,
+      maxRetriesPerRequest: 1,
+    });
+    this.redis.on('error', (error) => {
+      this.logger.warn(`Redis rate-limit store error: ${error.message}`);
+    });
   }
 
-  canActivate(context: ExecutionContext): boolean {
+  async onModuleInit(): Promise<void> {
+    try {
+      await this.redis.connect();
+    } catch (error) {
+      this.logger.error(
+        `Unable to connect to the Redis rate-limit store: ${(error as Error).message}`,
+      );
+    }
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    if (
+      this.config.get<string>('RATE_LIMIT_RESET_ON_SHUTDOWN') === 'true' &&
+      this.redis.status === 'ready' &&
+      this.touchedKeys.size > 0
+    ) {
+      await this.redis.del(...this.touchedKeys);
+    }
+    if (this.redis.status === 'ready') {
+      await this.redis.quit();
+    } else {
+      this.redis.disconnect();
+    }
+  }
+
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
+    const meta = this.reflector.getAllAndOverride<
+      { limit: number; windowMs: number } | undefined
+    >(RATE_LIMIT_KEY, [context.getHandler(), context.getClass()]);
 
-    const meta = this.reflector.getAllAndOverride<{ limit: number; windowMs: number } | undefined>(
-      RATE_LIMIT_KEY,
-      [context.getHandler(), context.getClass()],
+    const credential = this.isAuthenticationEndpoint(request)
+      ? undefined
+      : this.getCredential(request);
+    const verifiedUserId = request.user?.userId
+      ?? await this.verifyAccessCredential(credential);
+    const isAuthenticated = !!verifiedUserId;
+    const limit = meta?.limit ?? (
+      isAuthenticated
+        ? this.DEFAULT_AUTHENTICATED_LIMIT
+        : this.DEFAULT_UNAUTHENTICATED_LIMIT
     );
-
-    const isAuthenticated = !!request.user;
-    const limit = meta?.limit ?? (isAuthenticated ? this.DEFAULT_AUTHENTICATED_LIMIT : this.DEFAULT_UNAUTHENTICATED_LIMIT);
     const windowMs = meta?.windowMs ?? this.DEFAULT_WINDOW_MS;
+    const key = `${this.keyPrefix}:${limit}:${windowMs}:${this.getIdentityKey(request, verifiedUserId)}`;
 
-    const key = this.getKey(request, isAuthenticated);
-    const now = Date.now();
-
-    let entry = this.store.get(key);
-    if (!entry) {
-      entry = { timestamps: [] };
-      this.store.set(key, entry);
+    if (this.redis.status !== 'ready') {
+      throw new ServiceUnavailableException('Rate-limit store unavailable');
     }
 
-    // Sliding window: remove timestamps outside the window
-    entry.timestamps = entry.timestamps.filter((ts) => now - ts < windowMs);
+    this.touchedKeys.add(key);
+    let count: number;
+    let ttl: number;
+    try {
+      const result = await this.redis.eval(
+        INCREMENT_WINDOW,
+        1,
+        key,
+        String(windowMs),
+      ) as [number, number];
+      [count, ttl] = result.map(Number) as [number, number];
+    } catch {
+      throw new ServiceUnavailableException('Rate-limit store unavailable');
+    }
 
-    if (entry.timestamps.length >= limit) {
+    if (count > limit) {
       throw new HttpException(
         {
           statusCode: HttpStatus.TOO_MANY_REQUESTS,
           message: 'Rate limit exceeded',
-          retryAfter: Math.ceil(windowMs / 1000),
+          retryAfter: Math.max(1, Math.ceil(ttl / 1000)),
         },
         HttpStatus.TOO_MANY_REQUESTS,
       );
     }
 
-    entry.timestamps.push(now);
     return true;
   }
 
-  private getKey(request: any, isAuthenticated: boolean): string {
-    if (isAuthenticated && request.user?.userId) {
-      return `user:${request.user.userId}`;
+  private getIdentityKey(request: any, verifiedUserId?: string): string {
+    if (verifiedUserId) {
+      return `user:${verifiedUserId}`;
     }
     const ip = request.ip || request.connection?.remoteAddress || 'unknown';
     return `ip:${ip}`;
   }
 
-  private cleanup() {
-    const now = Date.now();
-    const maxWindow = 5 * 60_000;
+  private async verifyAccessCredential(credential?: string): Promise<string | undefined> {
+    if (!credential) {
+      return undefined;
+    }
 
-    for (const [key, entry] of this.store.entries()) {
-      entry.timestamps = entry.timestamps.filter((ts) => now - ts < maxWindow);
-      if (entry.timestamps.length === 0) {
-        this.store.delete(key);
+    try {
+      const payload = await this.jwtService.verifyAsync<{
+        sub?: unknown;
+        tokenType?: unknown;
+      }>(credential);
+      return payload.tokenType === 'access' && typeof payload.sub === 'string'
+        ? payload.sub
+        : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private getCredential(request: any): string | undefined {
+    const authorization = request.headers?.authorization;
+    if (typeof authorization === 'string') {
+      const bearer = authorization.match(/^Bearer\s+(.+)$/i);
+      if (bearer) {
+        return bearer[1];
       }
     }
+    return request.cookies?.weaver_token;
+  }
+
+  private isAuthenticationEndpoint(request: any): boolean {
+    const path = String(request.originalUrl || request.url || '')
+      .split('?')[0]
+      .replace(/\/+$/, '');
+    return ['/auth/login', '/auth/register', '/auth/refresh'].some((suffix) =>
+      path.endsWith(suffix),
+    );
   }
 }

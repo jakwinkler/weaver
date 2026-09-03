@@ -43,7 +43,7 @@ describe('Mentions (e2e)', () => {
       });
 
     tokenA = resA.body.accessToken;
-    tenantId = resA.body.tenant?.id ?? resA.body.tenantId;
+    tenantId = resA.body.tenantId;
     userAId = resA.body.user.id;
 
     // Register User B (separate tenant, then add to tenant A)
@@ -57,7 +57,6 @@ describe('Mentions (e2e)', () => {
         orgSlug: 'mention-test-org-b',
       });
 
-    tokenB = resB.body.accessToken;
     userBId = resB.body.user.id;
 
     // Add User B to User A's tenant
@@ -65,6 +64,17 @@ describe('Mentions (e2e)', () => {
       `INSERT INTO public.tenant_memberships (tenant_id, user_id, role) VALUES ($1, $2, 'member') ON CONFLICT DO NOTHING`,
       [tenantId, userBId],
     );
+
+    tokenB = (
+      await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({
+          email: 'mention-b@example.com',
+          password: 'password123',
+          tenantId,
+        })
+        .expect(201)
+    ).body.accessToken;
 
     // Create workflow + initial status for the tenant
     const wfRes = await request(app.getHttpServer())

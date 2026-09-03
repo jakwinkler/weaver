@@ -40,7 +40,7 @@ describe('Real-Time WebSocket (e2e)', () => {
       });
 
     accessToken = res.body.accessToken;
-    tenantId = res.body.tenant?.id ?? res.body.tenantId;
+    tenantId = res.body.tenantId;
   });
 
   afterAll(async () => {
@@ -281,7 +281,7 @@ describe('Real-Time WebSocket (e2e)', () => {
         });
 
       tenantBToken = res.body.accessToken;
-      tenantBId = res.body.tenant?.id ?? res.body.tenantId;
+      tenantBId = res.body.tenantId;
 
       // Create workflow for tenant B
       const wfRes = await request(httpServer)

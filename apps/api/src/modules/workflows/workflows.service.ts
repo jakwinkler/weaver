@@ -1,5 +1,12 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ConflictException,
+} from '@nestjs/common';
+import {
+  IssueEntity,
+  ProjectEntity,
   WorkflowEntity,
   WorkflowStatusEntity,
   WorkflowTransitionEntity,
@@ -10,6 +17,7 @@ import {
   CreateWorkflowTransitionDto,
 } from '@weaver/shared';
 import { TenantConnectionProvider } from '../../core/tenant';
+import { In } from 'typeorm';
 
 @Injectable()
 export class WorkflowsService {
@@ -71,24 +79,29 @@ export class WorkflowsService {
     await this.findById(id);
     const em = await this.tenantConnections.getEntityManager();
 
-    // Delete transitions first, then statuses, then the workflow
-    await em.getRepository(WorkflowTransitionEntity)
-      .createQueryBuilder()
-      .delete()
-      .where('workflow_id = :id', { id })
-      .execute();
+    const assignedProjects = await em.getRepository(ProjectEntity).countBy({ workflowId: id });
+    if (assignedProjects > 0) {
+      throw new ConflictException('Workflow cannot be deleted while assigned to a project');
+    }
 
-    await em.getRepository(WorkflowStatusEntity)
-      .createQueryBuilder()
-      .delete()
-      .where('workflow_id = :id', { id })
-      .execute();
+    const statusIds = (
+      await em.getRepository(WorkflowStatusEntity).find({
+        where: { workflowId: id },
+        select: ['id'],
+      })
+    ).map(({ id: statusId }) => statusId);
+    if (
+      statusIds.length > 0 &&
+      (await em.getRepository(IssueEntity).countBy({ statusId: In(statusIds) })) > 0
+    ) {
+      throw new ConflictException('Workflow cannot be deleted while its statuses are in use');
+    }
 
-    await em.getRepository(WorkflowEntity)
-      .createQueryBuilder()
-      .delete()
-      .where('id = :id', { id })
-      .execute();
+    await em.transaction(async (manager) => {
+      await manager.getRepository(WorkflowTransitionEntity).delete({ workflowId: id });
+      await manager.getRepository(WorkflowStatusEntity).delete({ workflowId: id });
+      await manager.getRepository(WorkflowEntity).delete({ id });
+    });
   }
 
   // ── Statuses ──
@@ -144,14 +157,19 @@ export class WorkflowsService {
       throw new NotFoundException(`Status "${statusId}" not found`);
     }
 
-    const transitionRepo = em.getRepository(WorkflowTransitionEntity);
-    await transitionRepo
-      .createQueryBuilder()
-      .delete()
-      .where('from_status_id = :statusId OR to_status_id = :statusId', { statusId })
-      .execute();
+    if ((await em.getRepository(IssueEntity).countBy({ statusId })) > 0) {
+      throw new ConflictException('Status cannot be deleted while it is used by an issue');
+    }
 
-    await statusRepo.remove(status);
+    await em.transaction(async (manager) => {
+      await manager
+        .getRepository(WorkflowTransitionEntity)
+        .createQueryBuilder()
+        .delete()
+        .where('from_status_id = :statusId OR to_status_id = :statusId', { statusId })
+        .execute();
+      await manager.getRepository(WorkflowStatusEntity).delete({ id: statusId, workflowId });
+    });
   }
 
   // ── Transitions ──

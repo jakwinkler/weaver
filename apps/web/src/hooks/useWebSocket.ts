@@ -150,7 +150,7 @@ function createToastContainer(): HTMLElement {
 export function useWebSocket() {
   const socketRef = useRef<Socket | null>(null);
   const queryClient = useQueryClient();
-  const accessToken = useAuthStore((s) => s.accessToken);
+  const tenantId = useAuthStore((s) => s.tenantId);
   const currentUserId = useAuthStore((s) => s.user?.id);
 
   const handleEvent = useCallback(
@@ -176,7 +176,7 @@ export function useWebSocket() {
   );
 
   useEffect(() => {
-    if (!accessToken) {
+    if (!tenantId) {
       return;
     }
 
@@ -184,7 +184,7 @@ export function useWebSocket() {
     const wsUrl = API_BASE_URL.replace('/api/v1', '');
 
     const socket = io(`${wsUrl}/ws`, {
-      auth: { token: accessToken },
+      withCredentials: true,
       transports: ['websocket'],
       reconnection: true,
       reconnectionDelay: 1000,
@@ -234,7 +234,7 @@ export function useWebSocket() {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [accessToken, handleEvent]);
+  }, [tenantId, handleEvent]);
 
   /** Join a project room for project-scoped events */
   const joinProject = useCallback((projectKey: string) => {

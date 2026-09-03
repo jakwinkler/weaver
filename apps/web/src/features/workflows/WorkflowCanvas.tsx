@@ -67,7 +67,6 @@ export function WorkflowCanvas({
     (transitionId: string) => {
       deleteTransitionMutation.mutate({ workflowId, transitionId });
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [workflowId],
   );
 

@@ -10,8 +10,27 @@ import {
 import { Injectable, Logger } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
+import { InjectRepository } from '@nestjs/typeorm';
+import { TenantEntity, TenantMembershipEntity } from '@weaver/db';
+import { Repository } from 'typeorm';
+import { validateCorsOrigin } from '../security/cors.config';
+import type { RequestUser } from '../auth';
+import { ProjectAccessService } from '../tenant/project-access.service';
+import { tenantStorage } from '../tenant/tenant.context';
 
-@WebSocketGateway({ cors: { origin: '*' }, namespace: '/ws' })
+function readCookie(cookieHeader: string | undefined, name: string): string | undefined {
+  return cookieHeader
+    ?.split(';')
+    .map((cookie) => cookie.trim().split('='))
+    .find(([key]) => key === name)
+    ?.slice(1)
+    .join('=');
+}
+
+@WebSocketGateway({
+  cors: { origin: validateCorsOrigin, credentials: true },
+  namespace: '/ws',
+})
 @Injectable()
 export class WeaverGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
@@ -19,13 +38,21 @@ export class WeaverGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   private readonly logger = new Logger(WeaverGateway.name);
 
-  constructor(private readonly jwtService: JwtService) {}
+  constructor(
+    private readonly jwtService: JwtService,
+    @InjectRepository(TenantEntity)
+    private readonly tenantRepo: Repository<TenantEntity>,
+    @InjectRepository(TenantMembershipEntity)
+    private readonly membershipRepo: Repository<TenantMembershipEntity>,
+    private readonly projectAccess: ProjectAccessService,
+  ) {}
 
   async handleConnection(client: Socket) {
     try {
       const token =
         client.handshake.auth?.token ||
-        client.handshake.headers?.authorization?.replace('Bearer ', '');
+        client.handshake.headers?.authorization?.replace('Bearer ', '') ||
+        readCookie(client.handshake.headers?.cookie, 'weaver_token');
 
       if (!token) {
         client.disconnect();
@@ -33,8 +60,26 @@ export class WeaverGateway implements OnGatewayConnection, OnGatewayDisconnect {
       }
 
       const payload = this.jwtService.verify(token);
+      if (payload.tokenType !== 'access') {
+        client.disconnect();
+        return;
+      }
+      const [tenant, membership] = await Promise.all([
+        this.tenantRepo.findOneBy({ id: payload.tenantId }),
+        this.membershipRepo.findOneBy({
+          tenantId: payload.tenantId,
+          userId: payload.sub,
+        }),
+      ]);
+      if (!tenant || !membership) {
+        client.disconnect();
+        return;
+      }
       (client as any).userId = payload.sub;
       (client as any).tenantId = payload.tenantId;
+      (client as any).tenantSchemaName = tenant.schemaName;
+      (client as any).role = membership.role;
+      (client as any).userEmail = payload.email;
 
       if (payload.tenantId) {
         client.join(`tenant:${payload.tenantId}`);
@@ -51,12 +96,37 @@ export class WeaverGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   @SubscribeMessage('join:project')
-  handleJoinProject(
+  async handleJoinProject(
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { projectKey: string },
   ) {
-    client.join(`project:${data.projectKey}`);
-    this.logger.debug(`Client ${client.id} joined project:${data.projectKey}`);
+    const tenantId = (client as any).tenantId as string | undefined;
+    const schemaName = (client as any).tenantSchemaName as string | undefined;
+    const userId = (client as any).userId as string | undefined;
+    const role = (client as any).role as string | undefined;
+    if (!tenantId || !schemaName || !userId || !role || !data?.projectKey) {
+      return;
+    }
+
+    const user: RequestUser = {
+      userId,
+      tenantId,
+      role,
+      email: ((client as any).userEmail as string | undefined) ?? '',
+    };
+    try {
+      await tenantStorage.run(
+        { tenantId, schemaName },
+        () => this.projectAccess.assertProjectKey(data.projectKey, user, 'read'),
+      );
+    } catch {
+      this.logger.warn(`Client ${client.id} denied project room ${data.projectKey}`);
+      return;
+    }
+
+    const room = this.projectRoom(tenantId, data.projectKey);
+    client.join(room);
+    this.logger.debug(`Client ${client.id} joined ${room}`);
   }
 
   @SubscribeMessage('leave:project')
@@ -64,15 +134,20 @@ export class WeaverGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { projectKey: string },
   ) {
-    client.leave(`project:${data.projectKey}`);
+    const tenantId = (client as any).tenantId as string | undefined;
+    if (!tenantId || !data?.projectKey) {
+      return;
+    }
+
+    client.leave(this.projectRoom(tenantId, data.projectKey));
   }
 
   emitToTenant(tenantId: string, event: string, data: unknown) {
     this.server.to(`tenant:${tenantId}`).emit(event, data);
   }
 
-  emitToProject(projectKey: string, event: string, data: unknown) {
-    this.server.to(`project:${projectKey}`).emit(event, data);
+  emitToProject(tenantId: string, projectKey: string, event: string, data: unknown) {
+    this.server.to(this.projectRoom(tenantId, projectKey)).emit(event, data);
   }
 
   emitToUser(userId: string, event: string, data: unknown) {
@@ -81,5 +156,9 @@ export class WeaverGateway implements OnGatewayConnection, OnGatewayDisconnect {
         socket.emit(event, data);
       }
     }
+  }
+
+  private projectRoom(tenantId: string, projectKey: string): string {
+    return `tenant:${tenantId}:project:${projectKey}`;
   }
 }

@@ -35,7 +35,7 @@ describe('Phase 5: Real-Time, Notifications, Webhooks, RBAC, Teams (e2e)', () =>
       });
 
     accessToken = res.body.accessToken;
-    tenantId = res.body.tenant.id;
+    tenantId = res.body.tenantId;
   });
 
   afterAll(async () => {
@@ -74,7 +74,7 @@ describe('Phase 5: Real-Time, Notifications, Webhooks, RBAC, Teams (e2e)', () =>
   describe('Notifications', () => {
     it('GET /notifications - should return empty list initially', async () => {
       const res = await authedRequest().get('/api/v1/notifications').expect(200);
-      expect(Array.isArray(res.body)).toBe(true);
+      expect(res.body).toEqual({ items: [], total: 0 });
     });
 
     it('GET /notifications/unread-count - should return zero', async () => {

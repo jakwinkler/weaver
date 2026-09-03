@@ -1,7 +1,28 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import type { EntityManager } from 'typeorm';
 import type { PluginContext, RequestOptions } from '@weaver/sdk';
 import { TenantConnectionProvider, requireTenantContext } from '../core/tenant';
 import { EventDispatcherService } from '../modules/events';
+import {
+  fetchWithSafeRedirects,
+  readLimitedResponseText,
+} from '../core/security/outbound-http';
+
+const ISSUE_UPDATE_FIELDS = new Set([
+  'summary',
+  'description',
+  'priority',
+  'assignee_id',
+  'custom_fields',
+  'sprint_id',
+  'parent_id',
+  'epic_id',
+  'labels',
+  'sort_order',
+  'start_date',
+  'due_date',
+  'percent_done',
+]);
 
 @Injectable()
 export class PluginContextFactory {
@@ -16,21 +37,18 @@ export class PluginContextFactory {
     user?: { id: string; email: string; displayName: string },
   ): Promise<PluginContext> {
     const tenant = requireTenantContext();
-    const em = await this.tenantConnections.getEntityManager();
 
-    // Ensure raw SQL queries run in the tenant schema
-    const runInSchema = async <T>(fn: () => Promise<T>): Promise<T> => {
-      await em.query(`SET search_path TO "${tenant.schemaName}", public`);
-      return fn();
-    };
+    const runInSchema = <T>(
+      fn: (manager: EntityManager) => Promise<T>,
+    ): Promise<T> => this.tenantConnections.runInTenantTransaction(fn);
 
     return {
       db: {
         query: async (sql: string, params?: unknown[]) => {
-          return runInSchema(() => em.query(sql, params));
+          return runInSchema((em) => em.query(sql, params));
         },
         runMigration: async (sql: string) => {
-          return runInSchema(() => em.query(sql));
+          return runInSchema((em) => em.query(sql));
         },
       },
       http: {
@@ -61,14 +79,26 @@ export class PluginContextFactory {
       api: {
         issues: {
           get: async (key: string) =>
-            runInSchema(() =>
+            runInSchema((em) =>
               em.query(`SELECT * FROM issues WHERE key = $1`, [key]),
             ).then((r) => r[0]),
           update: async (key: string, data: Record<string, unknown>) => {
-            const sets = Object.entries(data)
+            const fields = Object.entries(data);
+            if (fields.length === 0) {
+              throw new BadRequestException('At least one issue update field is required');
+            }
+            for (const [field] of fields) {
+              if (!ISSUE_UPDATE_FIELDS.has(field)) {
+                throw new BadRequestException(
+                  `Unsupported issue update field: ${field}`,
+                );
+              }
+            }
+
+            const sets = fields
               .map(([k], i) => `"${k}" = $${i + 2}`)
               .join(', ');
-            return runInSchema(() =>
+            return runInSchema((em) =>
               em.query(
                 `UPDATE issues SET ${sets} WHERE key = $1 RETURNING *`,
                 [key, ...Object.values(data)],
@@ -76,11 +106,11 @@ export class PluginContextFactory {
             ).then((r) => r[0]);
           },
           addComment: async (key: string, body: string) => {
-            const issue = await runInSchema(() =>
+            const issue = await runInSchema((em) =>
               em.query(`SELECT id FROM issues WHERE key = $1`, [key]),
             );
             if (!issue[0]) return null;
-            return runInSchema(() =>
+            return runInSchema((em) =>
               em.query(
                 `INSERT INTO comments (issue_id, author_id, body) VALUES ($1, $2, $3) RETURNING *`,
                 [
@@ -102,10 +132,10 @@ export class PluginContextFactory {
         },
         projects: {
           get: async (key: string) =>
-            runInSchema(() =>
+            runInSchema((em) =>
               em.query(`SELECT * FROM projects WHERE key = $1`, [key]),
             ).then((r) => r[0]),
-          list: async () => runInSchema(() => em.query(`SELECT * FROM projects`)),
+          list: async () => runInSchema((em) => em.query(`SELECT * FROM projects`)),
         },
         users: {
           get: async (id: string) => {
@@ -121,11 +151,11 @@ export class PluginContextFactory {
             oldValue?: string | null;
             newValue?: string | null;
           }) => {
-            const issue = await runInSchema(() =>
+            const issue = await runInSchema((em) =>
               em.query(`SELECT id FROM issues WHERE key = $1`, [issueKey]),
             );
             if (!issue[0]) return null;
-            const result = await runInSchema(() =>
+            const result = await runInSchema((em) =>
               em.query(
                 `INSERT INTO activity_logs (issue_id, user_id, action, field_name, old_value, new_value)
                  VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
@@ -151,7 +181,7 @@ export class PluginContextFactory {
             options?: Record<string, unknown>;
             required?: boolean;
           }) => {
-            const existing = await runInSchema(() =>
+            const existing = await runInSchema((em) =>
               em.query(
                 `SELECT id FROM custom_field_definitions WHERE slug = $1 AND entity_type = $2`,
                 [definition.slug, definition.entityType],
@@ -160,7 +190,7 @@ export class PluginContextFactory {
             if (existing.length > 0) {
               return existing[0];
             }
-            const result = await runInSchema(() =>
+            const result = await runInSchema((em) =>
               em.query(
                 `INSERT INTO custom_field_definitions (name, slug, field_type, entity_type, plugin_id, options, required)
                VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)
@@ -179,7 +209,7 @@ export class PluginContextFactory {
             return result[0];
           },
           unregisterAll: async () => {
-            await runInSchema(() =>
+            await runInSchema((em) =>
               em.query(
                 `DELETE FROM custom_field_definitions WHERE plugin_id = $1`,
                 [pluginId],
@@ -230,7 +260,7 @@ export class PluginContextFactory {
     const timer = setTimeout(() => controller.abort(), timeout);
 
     try {
-      const res = await fetch(url, {
+      const res = await fetchWithSafeRedirects(url, {
         method,
         headers: {
           'Content-Type': 'application/json',
@@ -239,7 +269,13 @@ export class PluginContextFactory {
         body: body ? JSON.stringify(body) : undefined,
         signal: controller.signal,
       });
-      const data = await res.json().catch(() => null);
+      const responseText = await readLimitedResponseText(res, 1024 * 1024);
+      let data: unknown = null;
+      try {
+        data = responseText ? JSON.parse(responseText) : null;
+      } catch {
+        data = null;
+      }
       const responseHeaders: Record<string, string> = {};
       res.headers.forEach((v, k) => {
         responseHeaders[k] = v;

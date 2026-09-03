@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { TimeEntryEntity, IssueEntity } from '@weaver/db';
 import { TenantConnectionProvider } from '../../core/tenant';
 import { EventDispatcherService } from '../events';
@@ -71,11 +71,29 @@ export class TimeTrackingService {
     return entry;
   }
 
+  private async findByIssueAndId(
+    issueKey: string,
+    id: string,
+  ): Promise<TimeEntryEntity> {
+    const issueId = await this.resolveIssueId(issueKey);
+    const em = await this.tenantConnections.getEntityManager();
+    const entry = await em.getRepository(TimeEntryEntity).findOneBy({ id, issueId });
+    if (!entry) {
+      throw new NotFoundException(`Time entry "${id}" not found for issue "${issueKey}"`);
+    }
+    return entry;
+  }
+
   async update(
+    issueKey: string,
     id: string,
     dto: Partial<{ minutes: number; description: string }>,
+    userId: string,
   ): Promise<TimeEntryEntity> {
-    const entry = await this.findById(id);
+    const entry = await this.findByIssueAndId(issueKey, id);
+    if (entry.userId !== userId) {
+      throw new ForbiddenException('Only the time entry owner can update this entry');
+    }
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(TimeEntryEntity);
 
@@ -89,8 +107,11 @@ export class TimeTrackingService {
     return repo.save(entry);
   }
 
-  async delete(id: string): Promise<void> {
-    const entry = await this.findById(id);
+  async delete(issueKey: string, id: string, userId: string): Promise<void> {
+    const entry = await this.findByIssueAndId(issueKey, id);
+    if (entry.userId !== userId) {
+      throw new ForbiddenException('Only the time entry owner can delete this entry');
+    }
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(TimeEntryEntity);
     await repo.remove(entry);

@@ -86,6 +86,33 @@ export class TenantConnectionProvider {
     return ds.manager;
   }
 
+  async runInTenantTransaction<T>(
+    callback: (manager: EntityManager) => Promise<T>,
+  ): Promise<T> {
+    const { schemaName } = requireTenantContext();
+    const ds = await this.getConnection(schemaName);
+    const queryRunner = ds.createQueryRunner();
+    let transactionStarted = false;
+
+    await queryRunner.connect();
+    try {
+      await queryRunner.startTransaction();
+      transactionStarted = true;
+      const quotedSchema = `"${schemaName.replace(/"/g, '""')}"`;
+      await queryRunner.query(`SET LOCAL search_path TO ${quotedSchema}`);
+      const result = await callback(queryRunner.manager);
+      await queryRunner.commitTransaction();
+      return result;
+    } catch (error) {
+      if (transactionStarted) {
+        await queryRunner.rollbackTransaction();
+      }
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
   async closeAll(): Promise<void> {
     for (const [, ds] of this.connections) {
       if (ds.isInitialized) {

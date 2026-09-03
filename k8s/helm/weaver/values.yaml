@@ -49,5 +49,5 @@ autoscaling:
   targetCPUUtilization: 70
 
 env:
-  JWT_SECRET: change-me-in-production
+  JWT_SECRET: ""
   NODE_ENV: production

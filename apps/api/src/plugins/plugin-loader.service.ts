@@ -1,5 +1,5 @@
 import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
-import type { PluginManifest } from '@weaver/sdk';
+import type { PluginManifest, RouteHandler } from '@weaver/sdk';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -14,7 +14,7 @@ export class PluginLoaderService implements OnModuleInit, OnModuleDestroy {
   private reloadTimer: ReturnType<typeof setTimeout> | null = null;
 
   async onModuleInit(): Promise<void> {
-    this.pluginsDir = path.resolve(process.cwd(), '../../plugins');
+    this.pluginsDir = this.resolveDefaultPluginsDirectory();
     await this.loadPlugins(this.pluginsDir);
 
     if (process.env.NODE_ENV !== 'production') {
@@ -199,7 +199,8 @@ export class PluginLoaderService implements OnModuleInit, OnModuleDestroy {
 
     try {
       const entrypoint = path.join(pluginDir, manifest.entrypoints.server);
-      const mod = this.requirePlugin(entrypoint);
+      const loaded = this.requirePlugin(entrypoint);
+      const mod = loaded.plugin ?? loaded;
       this.modules.set(pluginId, mod);
       return mod;
     } catch (err) {
@@ -208,23 +209,41 @@ export class PluginLoaderService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  async getHandler(pluginId: string, handlerName: string): Promise<Function | undefined> {
+  async getHandler(pluginId: string, handlerName: string): Promise<RouteHandler | undefined> {
     const manifest = this.manifests.get(pluginId);
     const pluginDir = this.getPluginDir(pluginId);
     if (!manifest || !pluginDir || !manifest.entrypoints.server) {
       return undefined;
     }
 
-    try {
-      // Handlers are in the same directory as the server entrypoint
-      const serverDir = path.dirname(path.join(pluginDir, manifest.entrypoints.server));
-      const handlersPath = path.join(serverDir, 'handlers');
-      const handlers = this.requirePlugin(handlersPath);
-      return handlers[handlerName];
-    } catch (err) {
-      this.logger.error(`Failed to load handler ${handlerName} for plugin ${pluginId}: ${err}`);
-      return undefined;
+    const sourceServerDir = path.dirname(
+      path.join(pluginDir, manifest.entrypoints.server),
+    );
+    const runtimeServerDir = this.toRuntimeServerPath(sourceServerDir);
+    const candidates = [path.join(sourceServerDir, 'handlers')];
+    if (fs.existsSync(runtimeServerDir)) {
+      for (const filename of fs.readdirSync(runtimeServerDir)) {
+        if (/\.handler\.(?:js|ts)$/.test(filename)) {
+          candidates.push(path.join(sourceServerDir, filename.replace(/\.(?:js|ts)$/, '')));
+        }
+      }
     }
+
+    for (const candidate of candidates) {
+      try {
+        const handlers = this.requirePlugin(candidate);
+        if (typeof handlers[handlerName] === 'function') {
+          return handlers[handlerName];
+        }
+      } catch {
+        // Try the next supported handler module convention.
+      }
+    }
+
+    this.logger.error(
+      `Failed to load handler ${handlerName} for plugin ${pluginId}`,
+    );
+    return undefined;
   }
 
   /** Resolve and load a plugin module, trying .ts then .js extensions */
@@ -238,6 +257,7 @@ export class PluginLoaderService implements OnModuleInit, OnModuleDestroy {
   }
 
   private resolvePluginPath(modulePath: string): string {
+    modulePath = this.toRuntimeServerPath(modulePath);
     // Try exact path first (already has extension)
     if (fs.existsSync(modulePath)) return modulePath;
     // Try .ts (source)
@@ -249,5 +269,28 @@ export class PluginLoaderService implements OnModuleInit, OnModuleDestroy {
     if (fs.existsSync(path.join(modulePath, 'index.js'))) return path.join(modulePath, 'index.js');
     // Fallback — let require() throw its own error
     return modulePath;
+  }
+
+  private toRuntimeServerPath(modulePath: string): string {
+    if (process.env.NODE_ENV !== 'production') return modulePath;
+
+    return modulePath
+      .replace(
+        `${path.sep}src${path.sep}server`,
+        `${path.sep}dist${path.sep}server`,
+      )
+      .replace(/\.ts$/, '.js');
+  }
+
+  private resolveDefaultPluginsDirectory(): string {
+    if (process.env.WEAVER_PLUGINS_DIR) {
+      return path.resolve(process.env.WEAVER_PLUGINS_DIR);
+    }
+
+    const candidates = [
+      path.resolve(process.cwd(), 'plugins'),
+      path.resolve(process.cwd(), '../../plugins'),
+    ];
+    return candidates.find((candidate) => fs.existsSync(candidate)) ?? candidates[0];
   }
 }

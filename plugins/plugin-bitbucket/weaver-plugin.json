@@ -13,7 +13,7 @@
   "permissions": ["issues:read", "issues:write", "webhooks:manage"],
   "settings": {
     "schema": {
-      "webhookSecret": { "type": "string", "required": true, "description": "Bitbucket webhook secret for HMAC verification" }
+      "webhookSecret": { "type": "string", "required": true, "description": "Secret token included in the Bitbucket webhook URL" }
     }
   },
   "events": {
@@ -26,8 +26,8 @@
     ]
   },
   "routes": [
-    { "method": "POST", "path": "/webhook", "handler": "handleWebhook" },
-    { "method": "GET", "path": "/links/:issueKey", "handler": "getLinks" }
+    { "method": "POST", "path": "/webhook/:tenantId/:token", "handler": "handleBitbucketWebhook", "public": true },
+    { "method": "GET", "path": "/links/:issueKey", "handler": "getBitbucketLinks", "requiredPermissions": ["issues.read"] }
   ],
   "migrations": ["./migrations/001_create_bitbucket_links.sql"]
 }

@@ -48,7 +48,6 @@ export function TimerWidget({ issueKey, userId, onLogTime }: TimerWidgetProps) {
     setShowDialog(false);
   };
 
-  // @ts-ignore
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-4">
       <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500">

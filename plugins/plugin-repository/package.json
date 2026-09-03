@@ -2,5 +2,16 @@
   "name": "@weaver/plugin-repository",
   "version": "1.0.0",
   "private": true,
-  "main": "src/server/index.ts"
+  "main": "dist/server/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.server.json",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit -p tsconfig.server.json"
+  },
+  "dependencies": {
+    "@weaver/sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
 }

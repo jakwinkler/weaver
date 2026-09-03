@@ -2,6 +2,12 @@ import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { WebhookEntity } from '@weaver/db';
 import { TenantConnectionProvider } from '../../core/tenant';
 import * as crypto from 'crypto';
+import type { CreateWebhookDto, UpdateWebhookDto } from '@weaver/shared';
+import {
+  assertSafeOutboundUrl,
+  fetchWithSafeRedirects,
+  readLimitedResponseText,
+} from '../../core/security/outbound-http';
 
 export interface WebhookDeliveryRecord {
   id: string;
@@ -14,24 +20,22 @@ export interface WebhookDeliveryRecord {
   delivered_at: Date;
 }
 
+type WebhookResponse = Omit<WebhookEntity, 'secret' | 'tenant'>;
+
 @Injectable()
 export class WebhooksService {
   private readonly logger = new Logger(WebhooksService.name);
 
   constructor(private readonly tenantConnections: TenantConnectionProvider) {}
 
-  async create(dto: {
-    url: string;
-    secret: string;
-    events: string[];
-    projectId?: string;
-  }): Promise<WebhookEntity> {
+  async create(dto: CreateWebhookDto): Promise<WebhookEntity> {
+    await assertSafeOutboundUrl(dto.url);
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(WebhookEntity);
 
     const webhook = repo.create({
       url: dto.url,
-      secret: dto.secret,
+      secret: dto.secret || crypto.randomBytes(32).toString('hex'),
       events: dto.events,
       projectId: dto.projectId ?? null,
       active: true,
@@ -40,7 +44,7 @@ export class WebhooksService {
     return repo.save(webhook);
   }
 
-  async findAll(projectId?: string): Promise<WebhookEntity[]> {
+  async findAll(projectId?: string): Promise<WebhookResponse[]> {
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(WebhookEntity);
 
@@ -49,10 +53,15 @@ export class WebhooksService {
       where.projectId = projectId;
     }
 
-    return repo.find({ where, order: { createdAt: 'DESC' } });
+    const webhooks = await repo.find({ where, order: { createdAt: 'DESC' } });
+    return webhooks.map((webhook) => this.toResponse(webhook));
   }
 
-  async findById(id: string): Promise<WebhookEntity> {
+  async findById(id: string): Promise<WebhookResponse> {
+    return this.toResponse(await this.findEntityById(id));
+  }
+
+  private async findEntityById(id: string): Promise<WebhookEntity> {
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(WebhookEntity);
 
@@ -66,18 +75,21 @@ export class WebhooksService {
 
   async update(
     id: string,
-    dto: Partial<{ url: string; secret: string; events: string[]; active: boolean }>,
-  ): Promise<WebhookEntity> {
-    const webhook = await this.findById(id);
+    dto: UpdateWebhookDto,
+  ): Promise<WebhookResponse> {
+    if (dto.url) {
+      await assertSafeOutboundUrl(dto.url);
+    }
+    const webhook = await this.findEntityById(id);
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(WebhookEntity);
 
     Object.assign(webhook, dto);
-    return repo.save(webhook);
+    return this.toResponse(await repo.save(webhook));
   }
 
   async delete(id: string): Promise<void> {
-    const webhook = await this.findById(id);
+    const webhook = await this.findEntityById(id);
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(WebhookEntity);
 
@@ -89,7 +101,7 @@ export class WebhooksService {
     event: string,
     payload: Record<string, unknown>,
   ): Promise<{ success: boolean; statusCode: number | null }> {
-    const webhook = await this.findById(webhookId);
+    const webhook = await this.findEntityById(webhookId);
 
     if (!webhook.active) {
       return { success: false, statusCode: null };
@@ -106,7 +118,7 @@ export class WebhooksService {
     let success = false;
 
     try {
-      const response = await fetch(webhook.url, {
+      const response = await fetchWithSafeRedirects(webhook.url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -118,7 +130,7 @@ export class WebhooksService {
       });
 
       responseStatus = response.status;
-      responseBody = await response.text();
+      responseBody = await readLimitedResponseText(response, 64 * 1024);
       success = response.ok;
     } catch (err) {
       this.logger.warn(`Webhook delivery failed for ${webhookId}: ${err}`);
@@ -126,11 +138,12 @@ export class WebhooksService {
     }
 
     // Store delivery record via raw SQL
-    const em = await this.tenantConnections.getEntityManager();
-    await em.query(
-      `INSERT INTO webhook_deliveries (webhook_id, event, payload, response_status, response_body, success, delivered_at)
-       VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
-      [webhookId, event, JSON.stringify(payload), responseStatus, responseBody, success],
+    await this.tenantConnections.runInTenantTransaction((em) =>
+      em.query(
+        `INSERT INTO webhook_deliveries (webhook_id, event, payload, response_status, response_body, success, delivered_at)
+         VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+        [webhookId, event, JSON.stringify(payload), responseStatus, responseBody, success],
+      ),
     );
 
     return { success, statusCode: responseStatus };
@@ -139,16 +152,22 @@ export class WebhooksService {
   async getDeliveries(webhookId: string): Promise<WebhookDeliveryRecord[]> {
     await this.findById(webhookId);
 
-    const em = await this.tenantConnections.getEntityManager();
-    const rows = await em.query(
-      `SELECT id, webhook_id, event, payload, response_status, response_body, success, delivered_at
-       FROM webhook_deliveries
-       WHERE webhook_id = $1
-       ORDER BY delivered_at DESC
-       LIMIT 50`,
-      [webhookId],
+    const rows = await this.tenantConnections.runInTenantTransaction((em) =>
+      em.query(
+        `SELECT id, webhook_id, event, payload, response_status, response_body, success, delivered_at
+         FROM webhook_deliveries
+         WHERE webhook_id = $1
+         ORDER BY delivered_at DESC
+         LIMIT 50`,
+        [webhookId],
+      ),
     );
 
     return rows;
+  }
+
+  private toResponse(webhook: WebhookEntity): WebhookResponse {
+    const { secret: _secret, ...response } = webhook;
+    return response;
   }
 }

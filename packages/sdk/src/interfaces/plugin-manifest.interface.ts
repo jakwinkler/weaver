@@ -77,4 +77,6 @@ export interface PluginRouteDefinition {
   path: string;
   handler: string;
   requiredPermissions?: string[];
+  /** Allows signed third-party webhooks to call this route without a Weaver session. */
+  public?: boolean;
 }

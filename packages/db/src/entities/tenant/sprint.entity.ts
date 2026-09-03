@@ -34,7 +34,7 @@ export class SprintEntity {
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;
 
-  @ManyToOne(() => ProjectEntity, (project) => project.sprints)
+  @ManyToOne(() => ProjectEntity, (project) => project.sprints, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'project_id' })
   project!: ProjectEntity;
 }

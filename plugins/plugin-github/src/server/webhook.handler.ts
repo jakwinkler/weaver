@@ -1,9 +1,14 @@
 import type { PluginRequest, PluginResponse, PluginContext } from '@weaver/sdk';
-import { createHmac } from 'crypto';
+import { createHmac, timingSafeEqual } from 'crypto';
 
 function verifySignature(payload: string, signature: string, secret: string): boolean {
   const expected = 'sha256=' + createHmac('sha256', secret).update(payload).digest('hex');
-  return expected === signature;
+  const expectedBuffer = Buffer.from(expected);
+  const signatureBuffer = Buffer.from(signature);
+  return (
+    expectedBuffer.length === signatureBuffer.length &&
+    timingSafeEqual(expectedBuffer, signatureBuffer)
+  );
 }
 
 export async function handleGitHubWebhook(req: PluginRequest, context: PluginContext): Promise<PluginResponse> {
@@ -15,7 +20,9 @@ export async function handleGitHubWebhook(req: PluginRequest, context: PluginCon
     return { status: 401, body: { message: 'Missing signature or secret' } };
   }
 
-  const payload = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+  const payload =
+    req.rawBody ??
+    (typeof req.body === 'string' ? req.body : JSON.stringify(req.body));
   if (!verifySignature(payload, signature, secret)) {
     return { status: 401, body: { message: 'Invalid signature' } };
   }

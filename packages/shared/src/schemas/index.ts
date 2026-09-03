@@ -33,6 +33,7 @@ export type RegisterDto = z.infer<typeof registerSchema>;
 export const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
+  tenantId: z.string().uuid().optional(),
 });
 export type LoginDto = z.infer<typeof loginSchema>;
 
@@ -196,8 +197,15 @@ export const createWebhookSchema = z.object({
   url: z.string().url(),
   events: z.array(z.string()).min(1),
   projectId: z.string().uuid().optional(),
+  secret: z.string().min(1).max(255).optional(),
 });
 export type CreateWebhookDto = z.infer<typeof createWebhookSchema>;
+
+export const updateWebhookSchema = createWebhookSchema
+  .omit({ projectId: true })
+  .partial()
+  .extend({ active: z.boolean().optional() });
+export type UpdateWebhookDto = z.infer<typeof updateWebhookSchema>;
 
 // ── Time Entry Schema ──
 

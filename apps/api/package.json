@@ -10,9 +10,11 @@
     "start:debug": "nest start --debug --watch --builder swc",
     "test": "jest --passWithNoTests",
     "test:watch": "jest --watch",
-    "test:e2e": "jest --config ./test/jest-e2e.config.js --passWithNoTests"
+    "test:e2e": "jest --config ./test/jest-e2e.config.js --passWithNoTests",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1125.0",
     "@nestjs/common": "^10.4.15",
     "@nestjs/config": "^3.3.0",
     "@nestjs/core": "^10.4.15",
@@ -32,6 +34,7 @@
     "cookie-parser": "^1.4.7",
     "express": "^5.2.1",
     "handlebars": "^4.7.8",
+    "ioredis": "^5.4.2",
     "multer": "^2.0.2",
     "nodemailer": "^8.0.1",
     "passport": "^0.7.0",

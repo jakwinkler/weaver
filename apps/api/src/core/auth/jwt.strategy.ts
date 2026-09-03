@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
@@ -18,15 +18,23 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       jwtFromRequest: cookieOrBearerExtractor,
       ignoreExpiration: false,
       secretOrKey: configService.get<string>('JWT_SECRET'),
+      passReqToCallback: true,
     });
   }
 
-  validate(payload: JwtPayload) {
+  validate(
+    req: Request & { tenantMembershipRole?: string },
+    payload: JwtPayload,
+  ) {
+    if (payload.tokenType !== 'access') {
+      throw new UnauthorizedException('Access token required');
+    }
+
     return {
       userId: payload.sub,
       email: payload.email,
       tenantId: payload.tenantId,
-      role: payload.role,
+      role: req.tenantMembershipRole || payload.role,
     };
   }
 }

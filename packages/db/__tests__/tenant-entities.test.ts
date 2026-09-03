@@ -24,7 +24,7 @@ import {
 describe('Tenant Schema Entities', () => {
   const storage = getMetadataArgsStorage();
 
-  const entityCases: [string, Function, string][] = [
+  const entityCases: [string, new () => object, string][] = [
     ['ProjectEntity', ProjectEntity, 'projects'],
     ['IssueEntity', IssueEntity, 'issues'],
     ['IssueTypeEntity', IssueTypeEntity, 'issue_types'],

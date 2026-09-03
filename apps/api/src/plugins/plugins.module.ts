@@ -10,6 +10,7 @@ import { PluginEventBridgeService } from './plugin-event-bridge.service';
 import { PluginsController } from './plugins.controller';
 import { PluginRouteController } from './plugin-route.controller';
 import { PluginAssetsController } from './plugin-assets.controller';
+import { PluginRouteAuthGuard } from './plugin-route-auth.guard';
 
 @Module({
   imports: [TypeOrmModule.forFeature([InstalledPluginEntity]), TenantModule, EventsModule],
@@ -19,6 +20,7 @@ import { PluginAssetsController } from './plugin-assets.controller';
     PluginRegistryService,
     PluginContextFactory,
     PluginEventBridgeService,
+    PluginRouteAuthGuard,
   ],
   exports: [PluginLoaderService, PluginRegistryService, PluginContextFactory],
 })

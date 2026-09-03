@@ -1,14 +1,32 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { IssueEntity, WorkflowStatusEntity, ActivityLogEntity, SprintEntity } from '@weaver/db';
+import {
+  ActivityLogEntity,
+  AttachmentEntity,
+  CommentEntity,
+  IssueEntity,
+  IssueLinkEntity,
+  ProjectEntity,
+  SprintEntity,
+  WorkflowEntity,
+  WorkflowStatusEntity,
+  WorkflowTransitionEntity,
+  TimeEntryEntity,
+} from '@weaver/db';
 import { UserEntity } from '@weaver/db';
 import { CreateIssueDto, UpdateIssueDto, ReorderIssuesDto, PaginatedResponse } from '@weaver/shared';
-import { Repository, In } from 'typeorm';
-import { TenantConnectionProvider } from '../../core/tenant';
+import { EntityManager, Repository, In } from 'typeorm';
+import { requireTenantContext, TenantConnectionProvider } from '../../core/tenant';
 import { ProjectsService } from '../projects';
 import { WorkflowsService } from '../workflows';
 import { EventDispatcherService } from '../events';
 import { PaginationParams, paginate } from '../../common';
+import {
+  ConditionEvaluatorRegistry,
+  PostFunctionRegistry,
+} from '../workflows';
+import { CustomFieldsService } from '../custom-fields/custom-fields.service';
+import { StorageService } from '../../core/storage';
 
 export interface IssueFilters {
   statusId?: string;
@@ -29,6 +47,10 @@ export class IssuesService {
     private readonly projectsService: ProjectsService,
     private readonly workflowsService: WorkflowsService,
     private readonly eventDispatcher: EventDispatcherService,
+    private readonly conditionEvaluators: ConditionEvaluatorRegistry,
+    private readonly postFunctions: PostFunctionRegistry,
+    private readonly customFieldsService: CustomFieldsService,
+    private readonly storage: StorageService,
   ) {}
 
   private async resolveUserName(userId: string | null): Promise<string | null> {
@@ -52,6 +74,8 @@ export class IssuesService {
   async create(projectKey: string, dto: CreateIssueDto, reporterId: string): Promise<IssueEntity> {
     const project = await this.projectsService.findByKey(projectKey);
     const em = await this.tenantConnections.getEntityManager();
+
+    await this.customFieldsService.validateCustomFields(dto.customFields ?? {});
 
     // Resolve workflow: project-specific or default
     const workflowId = project.workflowId
@@ -146,6 +170,10 @@ export class IssuesService {
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(IssueEntity);
 
+    if (dto.customFields !== undefined) {
+      await this.customFieldsService.validateCustomFields(dto.customFields);
+    }
+
     const previousAssigneeId = issue.assigneeId;
     const previousStatusId = issue.statusId;
     const previousSprintId = issue.sprintId;
@@ -155,12 +183,23 @@ export class IssuesService {
     const previousSummary = issue.summary;
     const previousPercentDone = issue.percentDone;
 
+    if (dto.statusId !== undefined && dto.statusId !== issue.statusId) {
+      if (!userId) {
+        throw new BadRequestException('A user is required to transition an issue');
+      }
+      const transitioned = await this.transitionToStatus(
+        issueKey,
+        dto.statusId,
+        userId,
+      );
+      issue.statusId = transitioned.statusId;
+    }
+
     // Handle nullable fields explicitly
     if (dto.assigneeId !== undefined) issue.assigneeId = dto.assigneeId ?? null;
     if (dto.parentId !== undefined) issue.parentId = dto.parentId ?? null;
     if (dto.epicId !== undefined) issue.epicId = dto.epicId ?? null;
     if (dto.sprintId !== undefined) issue.sprintId = dto.sprintId ?? null;
-    if (dto.statusId !== undefined) issue.statusId = dto.statusId;
     if (dto.summary !== undefined) issue.summary = dto.summary;
     if (dto.description !== undefined) issue.description = dto.description;
     if (dto.priority !== undefined) issue.priority = dto.priority;
@@ -199,13 +238,6 @@ export class IssuesService {
           this.resolveUserName(dto.assigneeId ?? null),
         ]);
         trackedChanges.push({ field: 'assignee', oldVal: oldName, newVal: newName });
-      }
-      if (dto.statusId !== undefined && dto.statusId !== previousStatusId) {
-        const [oldName, newName] = await Promise.all([
-          this.resolveStatusName(em, previousStatusId),
-          this.resolveStatusName(em, dto.statusId),
-        ]);
-        trackedChanges.push({ field: 'status', oldVal: oldName, newVal: newName });
       }
       if (dto.sprintId !== undefined && dto.sprintId !== previousSprintId) {
         const [oldName, newName] = await Promise.all([
@@ -255,9 +287,8 @@ export class IssuesService {
     }
 
     // Emit issue.moved event if status or sprint changed
-    const statusChanged = dto.statusId !== undefined && dto.statusId !== previousStatusId;
     const sprintChanged = dto.sprintId !== undefined && dto.sprintId !== previousSprintId;
-    if (statusChanged || sprintChanged) {
+    if (sprintChanged) {
       this.eventDispatcher.emit('issue.moved', {
         issueKey,
         projectKey: issueKey.split('-')[0],
@@ -292,66 +323,241 @@ export class IssuesService {
   }
 
   async transition(issueKey: string, transitionId: string, userId: string): Promise<IssueEntity> {
-    const issue = await this.findByKey(issueKey);
-    const em = await this.tenantConnections.getEntityManager();
+    return this.performTransition(issueKey, userId, { transitionId });
+  }
 
-    // Look up the transition
-    const { WorkflowTransitionEntity } = await import('@weaver/db');
-    const transitionRepo = em.getRepository(WorkflowTransitionEntity);
-    const transition = await transitionRepo.findOne({
-      where: { id: transitionId },
-      relations: ['toStatus'],
-    });
+  private async transitionToStatus(
+    issueKey: string,
+    statusId: string,
+    userId: string,
+  ): Promise<IssueEntity> {
+    return this.performTransition(issueKey, userId, { statusId });
+  }
 
-    if (!transition) {
-      throw new BadRequestException(`Transition "${transitionId}" not found`);
-    }
+  private async performTransition(
+    issueKey: string,
+    userId: string,
+    selector: { transitionId: string } | { statusId: string },
+  ): Promise<IssueEntity> {
+    const { tenantId } = requireTenantContext();
+    const result = await this.tenantConnections.runInTenantTransaction(
+      async (em) => {
+        const issueRepo = em.getRepository(IssueEntity);
+        const issue = await issueRepo.findOneBy({ key: issueKey });
+        if (!issue) {
+          throw new NotFoundException(`Issue "${issueKey}" not found`);
+        }
 
-    // Validate the transition starts from the current status
-    if (transition.fromStatusId !== issue.statusId) {
-      throw new BadRequestException(
-        `Transition is not valid from the current status`,
-      );
-    }
+        const project = await em
+          .getRepository(ProjectEntity)
+          .findOneBy({ id: issue.projectId });
+        if (!project) {
+          throw new NotFoundException('Issue project not found');
+        }
+        const workflowId =
+          project.workflowId ??
+          (
+            await em
+              .getRepository(WorkflowEntity)
+              .findOneBy({ isDefault: true })
+          )?.id;
+        if (!workflowId) {
+          throw new BadRequestException('Issue has no workflow');
+        }
 
-    const oldStatusId = issue.statusId;
-    issue.statusId = transition.toStatusId;
+        const transitionRepo = em.getRepository(WorkflowTransitionEntity);
+        const transition = await transitionRepo.findOne({
+          where:
+            'transitionId' in selector
+              ? { id: selector.transitionId, workflowId }
+              : {
+                  workflowId,
+                  fromStatusId: issue.statusId,
+                  toStatusId: selector.statusId,
+                },
+          relations: ['toStatus'],
+        });
+        if (!transition || transition.fromStatusId !== issue.statusId) {
+          throw new BadRequestException(
+            'Transition is not valid for the issue workflow and current status',
+          );
+        }
 
-    const issueRepo = em.getRepository(IssueEntity);
-    const saved = await issueRepo.save(issue);
+        const conditionContext = {
+          userId,
+          issueId: issue.id,
+          tenantId,
+          currentStatusId: issue.statusId,
+          targetStatusId: transition.toStatusId,
+          issueData: { ...issue },
+        };
+        const conditions = this.parseTransitionRules(
+          transition.conditions,
+          'condition',
+        );
+        const validators = this.parseTransitionRules(
+          transition.validators,
+          'validator',
+        );
+        try {
+          if (
+            !(await this.conditionEvaluators.evaluateAll(
+              conditions,
+              conditionContext,
+            ))
+          ) {
+            throw new BadRequestException('Transition conditions were not met');
+          }
+          if (
+            !(await this.conditionEvaluators.evaluateAll(
+              validators,
+              conditionContext,
+            ))
+          ) {
+            throw new BadRequestException('Transition validation failed');
+          }
+        } catch (error) {
+          if (error instanceof BadRequestException) throw error;
+          throw new BadRequestException((error as Error).message);
+        }
 
-    // Log activity with human-readable status names
-    const [oldStatusName, newStatusName] = await Promise.all([
-      this.resolveStatusName(em, oldStatusId),
-      this.resolveStatusName(em, transition.toStatusId),
-    ]);
-    const activityRepo = em.getRepository(ActivityLogEntity);
-    const activity = activityRepo.create({
-      issueId: issue.id,
-      userId,
-      action: 'transitioned',
-      fieldName: 'status',
-      oldValue: oldStatusName,
-      newValue: newStatusName,
-    });
-    await activityRepo.save(activity);
+        const oldStatusId = issue.statusId;
+        issue.statusId = transition.toStatusId;
+        const saved = await issueRepo.save(issue);
+        await this.logTransitionActivity(
+          em,
+          saved,
+          userId,
+          oldStatusId,
+          transition.toStatusId,
+        );
 
-    this.eventDispatcher.emit('issue.status_changed', {
+        const postFunctions = this.parseTransitionRules(
+          transition.postFunctions,
+          'post-function',
+        );
+        try {
+          await this.postFunctions.executeAll(postFunctions, {
+            userId,
+            issueId: saved.id,
+            tenantId,
+            fromStatusId: oldStatusId,
+            toStatusId: transition.toStatusId,
+            issueData: { ...saved },
+          });
+        } catch (error) {
+          throw new BadRequestException((error as Error).message);
+        }
+
+        return { issue: saved, oldStatusId };
+      },
+    );
+
+    const event = {
       issueKey,
       projectKey: issueKey.split('-')[0],
-      fromStatus: oldStatusId,
-      toStatus: transition.toStatusId,
+      fromStatus: result.oldStatusId,
+      toStatus: result.issue.statusId,
       userId,
-    });
+    };
+    this.eventDispatcher.emit('issue.status_changed', event);
+    this.eventDispatcher.emit('issue.moved', event);
+    return result.issue;
+  }
 
-    return saved;
+  private parseTransitionRules(
+    value: unknown,
+    label: string,
+  ): Array<{ type: string; params: Record<string, unknown> }> {
+    if (!Array.isArray(value)) {
+      throw new BadRequestException(`Transition ${label} configuration is invalid`);
+    }
+
+    return value.map((rule) => {
+      if (
+        typeof rule !== 'object' ||
+        rule === null ||
+        typeof (rule as Record<string, unknown>).type !== 'string'
+      ) {
+        throw new BadRequestException(
+          `Transition ${label} configuration is invalid`,
+        );
+      }
+      const params = (rule as Record<string, unknown>).params;
+      return {
+        type: (rule as Record<string, unknown>).type as string,
+        params:
+          typeof params === 'object' && params !== null && !Array.isArray(params)
+            ? (params as Record<string, unknown>)
+            : {},
+      };
+    });
+  }
+
+  private async logTransitionActivity(
+    em: EntityManager,
+    issue: IssueEntity,
+    userId: string,
+    oldStatusId: string,
+    newStatusId: string,
+  ): Promise<void> {
+    const [oldStatusName, newStatusName] = await Promise.all([
+      this.resolveStatusName(em, oldStatusId),
+      this.resolveStatusName(em, newStatusId),
+    ]);
+    const activityRepo = em.getRepository(ActivityLogEntity);
+    await activityRepo.save(
+      activityRepo.create({
+        issueId: issue.id,
+        userId,
+        action: 'transitioned',
+        fieldName: 'status',
+        oldValue: oldStatusName,
+        newValue: newStatusName,
+      }),
+    );
   }
 
   async delete(issueKey: string): Promise<void> {
     const issue = await this.findByKey(issueKey);
-    const em = await this.tenantConnections.getEntityManager();
-    const repo = em.getRepository(IssueEntity);
-    await repo.remove(issue);
+    const attachments = await this.tenantConnections.runInTenantTransaction(
+      async (manager) => {
+        const attachmentRepo = manager.getRepository(AttachmentEntity);
+        const issueAttachments = await attachmentRepo.findBy({ issueId: issue.id });
+
+        await manager.getRepository(IssueEntity).update(
+          { parentId: issue.id },
+          { parentId: null },
+        );
+        await manager.getRepository(IssueEntity).update(
+          { epicId: issue.id },
+          { epicId: null },
+        );
+        await manager
+          .getRepository(IssueLinkEntity)
+          .createQueryBuilder()
+          .delete()
+          .where('source_issue_id = :issueId OR target_issue_id = :issueId', {
+            issueId: issue.id,
+          })
+          .execute();
+        await manager.getRepository(CommentEntity).delete({ issueId: issue.id });
+        await manager.getRepository(ActivityLogEntity).delete({ issueId: issue.id });
+        await manager.getRepository(TimeEntryEntity).delete({ issueId: issue.id });
+        await attachmentRepo.delete({ issueId: issue.id });
+        await manager.getRepository(IssueEntity).delete({ id: issue.id });
+
+        return issueAttachments;
+      },
+    );
+
+    for (const attachment of attachments) {
+      try {
+        await this.storage.delete(attachment.storageKey);
+      } catch {
+        // The database deletion is authoritative; missing legacy objects are ignored.
+      }
+    }
 
     this.eventDispatcher.emit('issue.deleted', { issueKey, projectKey: issueKey.split('-')[0] });
   }

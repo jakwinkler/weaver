@@ -9,7 +9,11 @@ import {
   HttpStatus,
   UseGuards,
 } from '@nestjs/common';
-import { JwtAuthGuard } from '../core/auth';
+import {
+  JwtAuthGuard,
+  PermissionGuard,
+  RequirePermission,
+} from '../core/auth';
 import { PluginRegistryService } from './plugin-registry.service';
 import { PluginLoaderService } from './plugin-loader.service';
 
@@ -58,31 +62,48 @@ export class PluginsController {
 
   @Get()
   async listInstalled() {
-    return this.registry.getInstalled();
+    const installed = await this.registry.getInstalled();
+    return installed.map(({ id, pluginId, version, enabled, installedAt }) => ({
+      id,
+      pluginId,
+      version,
+      enabled,
+      installedAt,
+    }));
   }
 
   @Post('install')
+  @UseGuards(PermissionGuard)
+  @RequirePermission('admin', 'manage_plugins')
   async install(@Body('pluginId') pluginId: string) {
     return this.registry.install(pluginId);
   }
 
   @Post('uninstall')
+  @UseGuards(PermissionGuard)
+  @RequirePermission('admin', 'manage_plugins')
   @HttpCode(HttpStatus.NO_CONTENT)
   async uninstall(@Body('pluginId') pluginId: string) {
     return this.registry.uninstall(pluginId);
   }
 
   @Post('enable')
+  @UseGuards(PermissionGuard)
+  @RequirePermission('admin', 'manage_plugins')
   async enable(@Body('pluginId') pluginId: string) {
     return this.registry.enable(pluginId);
   }
 
   @Post('disable')
+  @UseGuards(PermissionGuard)
+  @RequirePermission('admin', 'manage_plugins')
   async disable(@Body('pluginId') pluginId: string) {
     return this.registry.disable(pluginId);
   }
 
   @Patch('settings')
+  @UseGuards(PermissionGuard)
+  @RequirePermission('admin', 'manage_plugins')
   async updateSettings(
     @Body('pluginId') pluginId: string,
     @Body('settings') settings: Record<string, unknown>,

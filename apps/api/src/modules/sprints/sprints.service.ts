@@ -45,6 +45,7 @@ export class SprintsService {
 
   async update(id: string, dto: { name?: string; goal?: string | null; startDate?: string | null; endDate?: string | null }): Promise<SprintEntity> {
     const sprint = await this.findById(id);
+    this.assertPlanned(sprint, 'edited');
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(SprintEntity);
 
@@ -54,9 +55,12 @@ export class SprintsService {
 
   async delete(id: string): Promise<void> {
     const sprint = await this.findById(id);
+    this.assertPlanned(sprint, 'deleted');
     const em = await this.tenantConnections.getEntityManager();
-    const repo = em.getRepository(SprintEntity);
-    await repo.remove(sprint);
+    await em.transaction(async (manager) => {
+      await manager.getRepository(IssueEntity).update({ sprintId: id }, { sprintId: null });
+      await manager.getRepository(SprintEntity).remove(sprint);
+    });
   }
 
   async start(id: string): Promise<SprintEntity> {
@@ -96,15 +100,32 @@ export class SprintsService {
   }
 
   async addIssues(id: string, issueIds: string[]): Promise<void> {
-    await this.findById(id);
+    const sprint = await this.findById(id);
     const em = await this.tenantConnections.getEntityManager();
     const issueRepo = em.getRepository(IssueEntity);
+    const uniqueIssueIds = [...new Set(issueIds)];
+    const matchingIssueCount = await issueRepo.countBy({
+      id: In(uniqueIssueIds),
+      projectId: sprint.projectId,
+    });
+
+    if (matchingIssueCount !== uniqueIssueIds.length) {
+      throw new BadRequestException('Every issue must exist in the sprint project');
+    }
 
     await issueRepo
       .createQueryBuilder()
       .update(IssueEntity)
       .set({ sprintId: id })
-      .where({ id: In(issueIds) })
+      .where({ id: In(uniqueIssueIds) })
       .execute();
+  }
+
+  private assertPlanned(sprint: SprintEntity, action: string): void {
+    if (sprint.status !== 'planned') {
+      throw new BadRequestException(
+        `Only planned sprints can be ${action}; current status is "${sprint.status}"`,
+      );
+    }
   }
 }

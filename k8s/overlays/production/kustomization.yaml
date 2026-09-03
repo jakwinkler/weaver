@@ -21,8 +21,5 @@ configMapGenerator:
       - REDIS_HOST=weaver-redis.example.com
       - REDIS_PORT=6379
       - NODE_ENV=production
-secretGenerator:
-  - name: weaver-secrets
-    literals:
-      - DATABASE_PASSWORD=CHANGE_ME_IN_PRODUCTION
-      - JWT_SECRET=CHANGE_ME_IN_PRODUCTION
+# Provision the weaver-secrets Secret out of band before applying this overlay.
+# It must contain DATABASE_PASSWORD and a strong, randomly generated JWT_SECRET.

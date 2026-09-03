@@ -5,10 +5,15 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
-import { UserEntity, TenantMembershipEntity } from '@weaver/db';
-import { RegisterDto, LoginDto } from '@weaver/shared';
+import { createHash, randomUUID } from 'crypto';
+import {
+  UserEntity,
+  TenantMembershipEntity,
+  RefreshSessionEntity,
+} from '@weaver/db';
+import type { AuthResponse, RegisterDto, LoginDto } from '@weaver/shared';
 import { TenantService, TenantProvisioningService } from '../tenant';
 
 export interface JwtPayload {
@@ -16,11 +21,16 @@ export interface JwtPayload {
   email: string;
   tenantId: string;
   role: string;
+  tokenType: 'access' | 'refresh';
+  jti?: string;
 }
 
 const BCRYPT_ROUNDS = 10;
 const ACCESS_TOKEN_EXPIRY = '15m';
 const REFRESH_TOKEN_EXPIRY = '7d';
+const REFRESH_TOKEN_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
+
+type SanitizedUser = Omit<UserEntity, 'passwordHash'>;
 
 @Injectable()
 export class AuthService {
@@ -29,12 +39,14 @@ export class AuthService {
     private readonly userRepo: Repository<UserEntity>,
     @InjectRepository(TenantMembershipEntity)
     private readonly membershipRepo: Repository<TenantMembershipEntity>,
+    @InjectRepository(RefreshSessionEntity)
+    private readonly refreshSessionRepo: Repository<RefreshSessionEntity>,
     private readonly jwtService: JwtService,
     private readonly tenantService: TenantService,
     private readonly tenantProvisioningService: TenantProvisioningService,
   ) {}
 
-  async register(dto: RegisterDto) {
+  async register(dto: RegisterDto): Promise<AuthResponse<SanitizedUser>> {
     const existing = await this.userRepo.findOneBy({ email: dto.email });
     if (existing) {
       throw new ConflictException('A user with this email already exists');
@@ -64,52 +76,48 @@ export class AuthService {
     });
     await this.membershipRepo.save(membership);
 
-    const payload: JwtPayload = {
+    const payload = {
       sub: user.id,
       email: user.email,
       tenantId: tenant.id,
       role: 'owner',
     };
 
-    const accessToken = this.jwtService.sign(payload, {
-      expiresIn: ACCESS_TOKEN_EXPIRY,
-    });
-    const refreshToken = this.jwtService.sign(payload, {
-      expiresIn: REFRESH_TOKEN_EXPIRY,
-    });
+    const { accessToken, refreshToken } = await this.issueTokenPair(payload);
 
     return {
       accessToken,
       refreshToken,
       user: this.sanitizeUser(user),
-      tenant,
+      tenantId: tenant.id,
     };
   }
 
-  async login(dto: LoginDto) {
+  async login(dto: LoginDto): Promise<AuthResponse<SanitizedUser>> {
     const user = await this.validateUser(dto.email, dto.password);
 
-    const membership = await this.membershipRepo.findOneBy({
-      userId: user.id,
-    });
+    const membership = dto.tenantId
+      ? await this.membershipRepo.findOneBy({
+          userId: user.id,
+          tenantId: dto.tenantId,
+        })
+      : await this.membershipRepo.findOne({
+          where: { userId: user.id },
+          order: { createdAt: 'ASC' },
+        });
 
     if (!membership) {
       throw new UnauthorizedException('User has no tenant membership');
     }
 
-    const payload: JwtPayload = {
+    const payload = {
       sub: user.id,
       email: user.email,
       tenantId: membership.tenantId,
       role: membership.role,
     };
 
-    const accessToken = this.jwtService.sign(payload, {
-      expiresIn: ACCESS_TOKEN_EXPIRY,
-    });
-    const refreshToken = this.jwtService.sign(payload, {
-      expiresIn: REFRESH_TOKEN_EXPIRY,
-    });
+    const { accessToken, refreshToken } = await this.issueTokenPair(payload);
 
     return {
       accessToken,
@@ -119,29 +127,55 @@ export class AuthService {
     };
   }
 
-  async refreshToken(userId: string) {
-    const user = await this.userRepo.findOneBy({ id: userId });
-    if (!user) {
-      throw new UnauthorizedException('User not found');
-    }
+  async rotateRefreshToken(refreshToken: string) {
+    const payload = await this.verifyRefreshToken(refreshToken);
+    const tokenHash = this.hashToken(refreshToken);
 
-    const membership = await this.membershipRepo.findOneBy({ userId });
-    if (!membership) {
-      throw new UnauthorizedException('User has no tenant membership');
-    }
+    return this.refreshSessionRepo.manager.transaction(async (manager) => {
+      const sessionRepo = manager.getRepository(RefreshSessionEntity);
+      const session = await sessionRepo.findOne({
+        where: { tokenHash },
+        lock: { mode: 'pessimistic_write' },
+      });
 
-    const payload: JwtPayload = {
-      sub: user.id,
-      email: user.email,
-      tenantId: membership.tenantId,
-      role: membership.role,
-    };
+      if (
+        !session ||
+        session.userId !== payload.sub ||
+        session.tenantId !== payload.tenantId ||
+        session.expiresAt.getTime() <= Date.now()
+      ) {
+        throw new UnauthorizedException('Invalid refresh token');
+      }
 
-    const accessToken = this.jwtService.sign(payload, {
-      expiresIn: ACCESS_TOKEN_EXPIRY,
+      const user = await manager.getRepository(UserEntity).findOneBy({ id: payload.sub });
+      const membership = await manager.getRepository(TenantMembershipEntity).findOneBy({
+        userId: payload.sub,
+        tenantId: payload.tenantId,
+      });
+      if (!user || !membership) {
+        throw new UnauthorizedException('Refresh session is no longer valid');
+      }
+
+      await sessionRepo.delete({ id: session.id });
+
+      return this.issueTokenPair(
+        {
+          sub: user.id,
+          email: user.email,
+          tenantId: membership.tenantId,
+          role: membership.role,
+        },
+        manager,
+      );
     });
+  }
 
-    return { accessToken };
+  async revokeRefreshToken(refreshToken: string | undefined): Promise<void> {
+    if (!refreshToken) {
+      return;
+    }
+
+    await this.refreshSessionRepo.delete({ tokenHash: this.hashToken(refreshToken) });
   }
 
   async validateUser(email: string, password: string): Promise<UserEntity> {
@@ -167,8 +201,55 @@ export class AuthService {
     return this.sanitizeUser(user);
   }
 
-  private sanitizeUser(user: UserEntity) {
+  private sanitizeUser(user: UserEntity): SanitizedUser {
     const { passwordHash, ...rest } = user;
     return rest;
+  }
+
+  private async issueTokenPair(
+    payload: Omit<JwtPayload, 'tokenType' | 'jti'>,
+    manager?: EntityManager,
+  ): Promise<{ accessToken: string; refreshToken: string }> {
+    const accessToken = this.jwtService.sign(
+      { ...payload, tokenType: 'access' } satisfies JwtPayload,
+      { expiresIn: ACCESS_TOKEN_EXPIRY },
+    );
+    const jti = randomUUID();
+    const refreshToken = this.jwtService.sign(
+      { ...payload, tokenType: 'refresh', jti } satisfies JwtPayload,
+      { expiresIn: REFRESH_TOKEN_EXPIRY },
+    );
+    const repo = manager
+      ? manager.getRepository(RefreshSessionEntity)
+      : this.refreshSessionRepo;
+    await repo.save(
+      repo.create({
+        userId: payload.sub,
+        tenantId: payload.tenantId,
+        tokenHash: this.hashToken(refreshToken),
+        expiresAt: new Date(Date.now() + REFRESH_TOKEN_LIFETIME_MS),
+      }),
+    );
+
+    return { accessToken, refreshToken };
+  }
+
+  private async verifyRefreshToken(token: string): Promise<JwtPayload> {
+    let payload: JwtPayload;
+    try {
+      payload = await this.jwtService.verifyAsync<JwtPayload>(token);
+    } catch {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+
+    if (payload.tokenType !== 'refresh' || !payload.jti) {
+      throw new UnauthorizedException('Refresh token required');
+    }
+
+    return payload;
+  }
+
+  private hashToken(token: string): string {
+    return createHash('sha256').update(token).digest('hex');
   }
 }

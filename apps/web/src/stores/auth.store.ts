@@ -6,8 +6,9 @@ interface AuthState {
   accessToken: string | null;
   tenantId: string | null;
   role: string | null;
-  login: (token: string, user: User, tenantId: string, refreshToken?: string) => void;
+  login: (token: string, user: User, tenantId: string) => void;
   logout: () => void;
+  setUser: (user: User) => void;
   updateUser: (partial: Partial<User>) => void;
   isAuthenticated: () => boolean;
   isAdmin: () => boolean;
@@ -22,31 +23,36 @@ function decodeJwtRole(token: string): string | null {
   }
 }
 
+const browserStorage = typeof window === 'undefined' ? null : window.localStorage;
+
+// Remove credentials left behind by older clients. Authentication is cookie-based.
+browserStorage?.removeItem('accessToken');
+browserStorage?.removeItem('refreshToken');
+
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
-  accessToken: localStorage.getItem('accessToken'),
-  tenantId: localStorage.getItem('tenantId'),
-  role: (() => {
-    const token = localStorage.getItem('accessToken');
-    return token ? decodeJwtRole(token) : null;
-  })(),
+  accessToken: null,
+  tenantId: browserStorage?.getItem('tenantId') ?? null,
+  role: browserStorage?.getItem('role') ?? null,
 
-  login: (token: string, user: User, tenantId: string, refreshToken?: string) => {
-    localStorage.setItem('accessToken', token);
-    localStorage.setItem('tenantId', tenantId);
-    if (refreshToken) {
-      localStorage.setItem('refreshToken', refreshToken);
-    }
+  login: (token: string, user: User, tenantId: string) => {
+    browserStorage?.removeItem('accessToken');
+    browserStorage?.removeItem('refreshToken');
+    browserStorage?.setItem('tenantId', tenantId);
     const role = decodeJwtRole(token);
+    if (role) browserStorage?.setItem('role', role);
     set({ accessToken: token, user, tenantId, role });
   },
 
   logout: () => {
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('refreshToken');
-    localStorage.removeItem('tenantId');
+    browserStorage?.removeItem('accessToken');
+    browserStorage?.removeItem('refreshToken');
+    browserStorage?.removeItem('tenantId');
+    browserStorage?.removeItem('role');
     set({ accessToken: null, user: null, tenantId: null, role: null });
   },
+
+  setUser: (user: User) => set({ user }),
 
   updateUser: (partial: Partial<User>) => {
     const current = get().user;
@@ -56,7 +62,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   isAuthenticated: () => {
-    return get().accessToken !== null;
+    return get().tenantId !== null;
   },
 
   isAdmin: () => {

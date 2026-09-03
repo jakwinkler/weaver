@@ -1,26 +1,28 @@
-import { Injectable, NestMiddleware, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NestMiddleware,
+  BadRequestException,
+  ForbiddenException,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Request, Response, NextFunction } from 'express';
-import { TenantEntity } from '@weaver/db';
+import { TenantEntity, TenantMembershipEntity } from '@weaver/db';
+import type { JwtPayload } from '../auth/auth.service';
 import { tenantStorage } from './tenant.context';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-function decodeTenantFromCookie(req: Request): string | undefined {
-  const token = req.cookies?.weaver_token;
-  if (!token) return undefined;
-  try {
-    const payload = JSON.parse(
-      Buffer.from(token.split('.')[1], 'base64url').toString(),
-    );
-    if (payload.tenantId && UUID_RE.test(payload.tenantId)) {
-      return payload.tenantId;
-    }
-  } catch {
-    // ignore malformed tokens
+function extractToken(req: Request): string | undefined {
+  const authorization = req.headers.authorization;
+  const bearerMatch = authorization?.match(/^Bearer\s+(.+)$/i);
+  if (bearerMatch) {
+    return bearerMatch[1];
   }
-  return undefined;
+
+  return req.cookies?.weaver_token;
 }
 
 @Injectable()
@@ -28,6 +30,9 @@ export class TenantMiddleware implements NestMiddleware {
   constructor(
     @InjectRepository(TenantEntity)
     private readonly tenantRepo: Repository<TenantEntity>,
+    @InjectRepository(TenantMembershipEntity)
+    private readonly membershipRepo: Repository<TenantMembershipEntity>,
+    private readonly jwtService: JwtService,
   ) {}
 
   async use(req: Request, _res: Response, next: NextFunction) {
@@ -37,16 +42,27 @@ export class TenantMiddleware implements NestMiddleware {
       return;
     }
 
-    const tenantId = this.resolveTenantId(req);
+    const identity = await this.resolveIdentity(req);
 
-    if (!tenantId) {
+    if (!identity) {
       next();
       return;
     }
 
-    const tenant = await this.tenantRepo.findOneBy({ id: tenantId });
+    const membership = await this.membershipRepo.findOneBy({
+      tenantId: identity.tenantId,
+      userId: identity.userId,
+    });
+    if (!membership) {
+      throw new ForbiddenException('Tenant membership required');
+    }
+
+    (req as Request & { tenantMembershipRole?: string }).tenantMembershipRole =
+      membership.role;
+
+    const tenant = await this.tenantRepo.findOneBy({ id: identity.tenantId });
     if (!tenant) {
-      throw new BadRequestException(`Tenant not found: ${tenantId}`);
+      throw new BadRequestException(`Tenant not found: ${identity.tenantId}`);
     }
 
     tenantStorage.run(
@@ -55,29 +71,41 @@ export class TenantMiddleware implements NestMiddleware {
     );
   }
 
-  private resolveTenantId(req: Request): string | undefined {
-    // Priority: X-Tenant-ID header > JWT cookie > subdomain
-    const fromHeader = req.headers['x-tenant-id'] as string | undefined;
-    if (fromHeader && UUID_RE.test(fromHeader)) return fromHeader;
-
-    // Extract tenantId from JWT cookie (for browser requests like <img src>)
-    const fromCookie = decodeTenantFromCookie(req);
-    if (fromCookie) return fromCookie;
-
-    // JWT-based tenant will be set later by auth guard
-    const user = (req as any).user;
-    if (user?.tenantId) return user.tenantId;
-
-    // Subdomain extraction (e.g., acme.weaver.dev)
-    const host = req.headers.host;
-    if (host) {
-      const parts = host.split('.');
-      if (parts.length > 2) {
-        // This would need a DB lookup by slug, not ID
-        // For now, only support header-based resolution
-      }
+  private async resolveIdentity(
+    req: Request,
+  ): Promise<{ tenantId: string; userId: string } | undefined> {
+    const token = extractToken(req);
+    if (!token) {
+      return undefined;
     }
 
-    return undefined;
+    let payload: JwtPayload;
+    try {
+      payload = await this.jwtService.verifyAsync<JwtPayload>(token);
+    } catch {
+      return undefined;
+    }
+
+    if (
+      payload.tokenType !== 'access' ||
+      !payload.sub ||
+      !payload.tenantId ||
+      !UUID_RE.test(payload.tenantId)
+    ) {
+      throw new UnauthorizedException('Invalid tenant claim');
+    }
+
+    const tenantHeader = req.headers['x-tenant-id'];
+    if (Array.isArray(tenantHeader)) {
+      throw new BadRequestException('X-Tenant-ID must be a single UUID');
+    }
+    if (tenantHeader && !UUID_RE.test(tenantHeader)) {
+      throw new BadRequestException('X-Tenant-ID must be a UUID');
+    }
+    if (tenantHeader && tenantHeader !== payload.tenantId) {
+      throw new ForbiddenException('X-Tenant-ID does not match authenticated tenant');
+    }
+
+    return { tenantId: payload.tenantId, userId: payload.sub };
   }
 }

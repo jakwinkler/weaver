@@ -73,6 +73,8 @@ export class PluginRegistryService {
       }
     } catch (err) {
       this.logger.error(`Failed to run onInstall for plugin ${pluginId}: ${err}`);
+      await this.repo.delete({ id: saved.id });
+      throw err;
     }
 
     return saved;

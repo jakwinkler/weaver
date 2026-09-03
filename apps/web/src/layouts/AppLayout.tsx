@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore, useThemeStore } from '@/stores';
-import { useProjects, useUnreadCount, useInstalledPlugins, useAvailablePlugins, useMyPermissions } from '@/api';
+import { useProjects, useUnreadCount, useInstalledPlugins, useAvailablePlugins, useMyPermissions, useCurrentUser } from '@/api';
 import { ProjectIcon } from '@/features/projects/ProjectSettingsPage';
 import { UserAvatar } from '@/components/UserAvatar';
 import { Button } from '@/components/ui/button';
@@ -38,6 +39,7 @@ import { cn } from '@/lib/utils';
 import { getNavigationEntries } from '@/plugins/plugin-slot-registry';
 import { getPluginIcon } from '@/plugins/plugin-icons';
 import { useWebSocket } from '@/hooks/useWebSocket';
+import { endSession } from '@/auth/logout-session';
 
 const adminNavItems = [
   { to: '/admin/workflows', label: 'Workflows', icon: GitBranch },
@@ -53,10 +55,12 @@ const adminNavItems = [
 
 export function AppLayout() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const location = useLocation();
   const user = useAuthStore((s) => s.user);
   const isAdmin = useAuthStore((s) => s.isAdmin());
-  const logout = useAuthStore((s) => s.logout);
+  const setUser = useAuthStore((s) => s.setUser);
+  const { data: currentUser } = useCurrentUser();
   const { data: projectsData } = useProjects();
   const { data: unreadCount } = useUnreadCount();
   const { data: installedPlugins } = useInstalledPlugins();
@@ -68,6 +72,10 @@ export function AppLayout() {
   const theme = useThemeStore((s) => s.theme);
   const setTheme = useThemeStore((s) => s.setTheme);
   const [appsOpen, setAppsOpen] = useState(location.pathname.startsWith('/apps'));
+
+  useEffect(() => {
+    if (currentUser) setUser(currentUser);
+  }, [currentUser, setUser]);
 
   // Initialize WebSocket connection for real-time updates
   useWebSocket();
@@ -84,8 +92,8 @@ export function AppLayout() {
       permissions.includes('*') || entry.requiredPermissions.every((perm) => permissions.includes(perm)),
     );
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await endSession(queryClient);
     navigate('/login');
   };
 

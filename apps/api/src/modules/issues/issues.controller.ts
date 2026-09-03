@@ -21,14 +21,16 @@ import {
 } from '../../core/auth';
 import { ZodValidationPipe, parsePagination } from '../../common';
 import { IssuesService } from './issues.service';
+import { ProjectAccessGuard, RequireProjectAccess } from '../../core/tenant';
 
 @Controller()
-@UseGuards(JwtAuthGuard, PermissionGuard)
+@UseGuards(JwtAuthGuard, PermissionGuard, ProjectAccessGuard)
 export class IssuesController {
   constructor(private readonly issuesService: IssuesService) {}
 
   @Post('projects/:projectKey/issues')
   @RequirePermission('issues', 'create')
+  @RequireProjectAccess('project-key', 'write')
   async create(
     @Param('projectKey') projectKey: string,
     @Body(new ZodValidationPipe(createIssueSchema)) dto: any,
@@ -39,6 +41,7 @@ export class IssuesController {
 
   @Get('projects/:projectKey/issues')
   @RequirePermission('issues', 'read')
+  @RequireProjectAccess('project-key')
   async findByProject(
     @Param('projectKey') projectKey: string,
     @Query() query: any,
@@ -57,6 +60,7 @@ export class IssuesController {
 
   @Patch('issues/reorder')
   @RequirePermission('issues', 'update')
+  @RequireProjectAccess('issue-ids', 'write')
   @HttpCode(HttpStatus.NO_CONTENT)
   async reorder(
     @Body(new ZodValidationPipe(reorderIssuesSchema)) dto: any,
@@ -66,12 +70,14 @@ export class IssuesController {
 
   @Get('issues/:issueKey')
   @RequirePermission('issues', 'read')
+  @RequireProjectAccess('issue-key')
   async findByKey(@Param('issueKey') issueKey: string) {
     return this.issuesService.findByKey(issueKey);
   }
 
   @Patch('issues/:issueKey')
   @RequirePermission('issues', 'update')
+  @RequireProjectAccess('issue-key', 'write')
   async update(
     @Param('issueKey') issueKey: string,
     @Body(new ZodValidationPipe(updateIssueSchema)) dto: any,
@@ -82,6 +88,7 @@ export class IssuesController {
 
   @Post('issues/:issueKey/transition')
   @RequirePermission('issues', 'transition')
+  @RequireProjectAccess('issue-key', 'write')
   async transition(
     @Param('issueKey') issueKey: string,
     @Body() body: { transitionId: string },
@@ -92,6 +99,7 @@ export class IssuesController {
 
   @Delete('issues/:issueKey')
   @RequirePermission('issues', 'delete')
+  @RequireProjectAccess('issue-key', 'write')
   @HttpCode(HttpStatus.NO_CONTENT)
   async delete(@Param('issueKey') issueKey: string) {
     await this.issuesService.delete(issueKey);
