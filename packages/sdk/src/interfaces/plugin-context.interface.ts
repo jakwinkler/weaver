@@ -86,7 +86,9 @@ export interface PluginCoreApi {
     createBatch(request: PluginTimeEntryBatchRequest): Promise<PluginTimeEntryBatchResult>;
     update(id: string, changes: PluginTimeEntryChanges): Promise<PluginTimeEntry>;
     delete(id: string): Promise<void>;
+    deleteBatch(ids: string[]): Promise<{ deleted: number }>;
     list(filters?: PluginTimeEntryFilters): Promise<PluginTimeEntry[]>;
+    countOwnBySource(filters?: PluginTimeEntryDateFilters): Promise<PluginTimeEntrySourceCounts>;
     getLockState(ids: string[]): Promise<PluginTimeEntryLockState[]>;
   };
 }
@@ -142,6 +144,17 @@ export interface PluginTimeEntryFilters {
   sourceReferences?: string[];
   loggedFrom?: string;
   loggedTo?: string;
+}
+
+export interface PluginTimeEntryDateFilters {
+  loggedFrom?: string;
+  loggedTo?: string;
+}
+
+export interface PluginTimeEntrySourceCounts {
+  manual: number;
+  timer: number;
+  plugin: number;
 }
 
 export interface PluginTimeEntry {

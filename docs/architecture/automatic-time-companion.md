@@ -4,6 +4,9 @@
 - Date: 2026-08-29
 - Scope: Automatic Time companion technology and Phase 0 operating defaults
 
+The Phase 7 privacy review and remaining distribution findings are recorded in
+[`../security/automatic-time-threat-model.md`](../security/automatic-time-threat-model.md).
+
 ## Context
 
 Automatic Time needs a separately installed macOS companion. The companion must collect a deliberately narrow metadata set, segment work locally, protect short-lived evidence at rest, and send only derived private drafts to Weaver. It must remain useful when Weaver is offline and must not broaden the plugin's authority to release official time.
@@ -17,10 +20,16 @@ Build the first companion as a native Swift menu bar application targeting macOS
 - Put the production application in `companion/automatic-time-macos/`. Keep the Phase 0 proof under `spikes/` disposable.
 - Use `NSWorkspace.frontmostApplication` for the active application process.
 - Treat window-title access as an optional Accessibility capability. Check trust without prompting during ordinary startup. Request access only from an explicit onboarding or settings action.
+- Keep browser metadata disabled by default. When explicitly enabled, use a fixed browser allowlist and Apple Events to read only the active tab URL and title, immediately reduce the URL to its normalized domain, and never persist the full URL. Domain exclusions remove both domain and title evidence.
+- Read Git branch and commit identifiers only from an explicitly configured local repository. Persist a SHA-256 repository fingerprint with the branch and commit, while keeping the path inside the encrypted local configuration and never reading file contents or diffs.
 - Use CryptoKit AES-GCM for authenticated encryption of local evidence.
 - Store the evidence encryption key and device credential as small secrets in macOS Keychain. Do not store the evidence body in Keychain.
 - Keep capture adapters separate from segmentation, assignment, encrypted storage, and sync so every boundary can be fixture-tested.
 - Run segmentation and assignment locally. The companion may sync derived drafts, confidence, reasons, alternatives, durations, and a non-reversible evidence digest. Raw application events, window titles, browser titles, repository paths, and Git history do not leave the device.
+- Bound assignment to the latest 100 issue candidates and 200 enabled correction memories. Every primary result and alternative must remain inside the candidate snapshot.
+- Run exact issue keys, repository and branch mappings, correction memories, Weaver context, and recency before semantic ranking. Record the ruleset version and human-readable reasons on every derived draft.
+- Permit semantic ranking only through an explicitly enabled loopback OpenAI-compatible endpoint. Reject non-loopback hosts, configure the model locally, and keep deterministic assignment available when the service is stopped or fails.
+- Finalize clusters before synchronization. Keep the active cluster local, remember synchronized source references in encrypted storage, and avoid overlapping replacement drafts as a cluster grows.
 - Use synthetic metadata in automated tests. A diagnostic command may report capability booleans but must not print or persist the active application or window title.
 
 This accepts native Swift for the first macOS-only release. A cross-platform runtime can be reconsidered only when another supported desktop platform becomes a real requirement and an equal-condition spike proves that the native bridges do not weaken privacy, reliability, or maintainability.
@@ -69,8 +78,7 @@ The capability command reports only whether the APIs are available and authorize
 
 ## Remaining Decisions
 
-- Local inference model and runtime
-- Browser metadata mechanism and permission experience
+- Default local inference model after equal-condition alpha evaluation. The runtime contract is loopback-only and model-agnostic.
 - Exact issue-candidate lookback window
 - Final-total adjustment policy beyond the default rounding rule
 - Companion signing, notarization, update, and delivery mechanism

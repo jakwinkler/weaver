@@ -1,13 +1,4 @@
-import {
-  Controller,
-  All,
-  Param,
-  Req,
-  Res,
-  HttpStatus,
-  UseGuards,
-  Logger,
-} from '@nestjs/common';
+import { Controller, All, Param, Req, Res, HttpStatus, UseGuards, Logger } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { JwtAuthGuard } from '../core/auth';
 import type { PluginRouteDefinition, PluginResponse } from '@weaver/sdk';
@@ -30,10 +21,7 @@ export class PluginRouteController {
   ) {}
 
   @All('*')
-  async handlePluginRoute(
-    @Req() req: Request,
-    @Res() res: Response,
-  ) {
+  async handlePluginRoute(@Req() req: Request, @Res() res: Response) {
     // Parse pluginId and sub-path from the raw URL.
     // Scoped IDs like @weaver/plugin-checklist use ~ for the slash:
     //   /plugin-routes/@weaver~plugin-checklist/issues/QM-2/checklist
@@ -52,9 +40,7 @@ export class PluginRouteController {
     try {
       const installed = await this.registry.findInstalled(pluginId);
       if (!installed.enabled) {
-        return res
-          .status(HttpStatus.SERVICE_UNAVAILABLE)
-          .json({ message: 'Plugin is disabled' });
+        return res.status(HttpStatus.SERVICE_UNAVAILABLE).json({ message: 'Plugin is disabled' });
       }
 
       const manifest = this.loader.getManifest(pluginId);
@@ -70,13 +56,15 @@ export class PluginRouteController {
       const normalizedPath = `/${routePath}`;
       const matchedRoute = manifest.routes?.find(
         (r: PluginRouteDefinition) =>
-          r.method === method && this.matchPath(r.path, normalizedPath),
+          (r.auth ?? 'interactive') === 'interactive' &&
+          r.method === method &&
+          this.matchPath(r.path, normalizedPath),
       );
 
       if (!matchedRoute) {
         this.logger.warn(
           `No matching route for ${method} ${normalizedPath} in plugin ${pluginId}. ` +
-          `Available: ${manifest.routes?.map((r) => `${r.method} ${r.path}`).join(', ')}`,
+            `Available: ${manifest.routes?.map((r) => `${r.method} ${r.path}`).join(', ')}`,
         );
         return res
           .status(HttpStatus.NOT_FOUND)
@@ -93,9 +81,7 @@ export class PluginRouteController {
           });
           const perms = (role?.permissions ?? {}) as Record<string, unknown>;
           if (perms['*'] !== true) {
-            const missing = matchedRoute.requiredPermissions.filter(
-              (p) => perms[p] !== true,
-            );
+            const missing = matchedRoute.requiredPermissions.filter((p) => perms[p] !== true);
             if (missing.length > 0) {
               return res.status(HttpStatus.FORBIDDEN).json({
                 message: 'Missing required permissions',
@@ -134,6 +120,7 @@ export class PluginRouteController {
         query: (req.query || {}) as Record<string, string>,
         body: req.body,
         headers: req.headers as Record<string, string>,
+        auth: { type: 'interactive' as const },
       };
 
       // Call handler
@@ -151,9 +138,7 @@ export class PluginRouteController {
       if (err.status) {
         return res.status(err.status).json({ message: err.message });
       }
-      return res
-        .status(HttpStatus.INTERNAL_SERVER_ERROR)
-        .json({ message: 'Plugin route error' });
+      return res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({ message: 'Plugin route error' });
     }
   }
 
@@ -161,9 +146,7 @@ export class PluginRouteController {
     const patternParts = pattern.split('/').filter(Boolean);
     const actualParts = actual.split('/').filter(Boolean);
     if (patternParts.length !== actualParts.length) return false;
-    return patternParts.every(
-      (part, i) => part.startsWith(':') || part === actualParts[i],
-    );
+    return patternParts.every((part, i) => part.startsWith(':') || part === actualParts[i]);
   }
 
   private extractParams(pattern: string, actual: string): Record<string, string> {

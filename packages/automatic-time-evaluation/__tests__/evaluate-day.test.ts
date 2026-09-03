@@ -17,6 +17,8 @@ describe('Automatic Time labeled-day evaluation', () => {
       reviewDurationSeconds: 95,
       reviewUnderTwoMinutes: true,
       meetsDestinationTarget: true,
+      inventedSuggestionCount: 0,
+      meetsAssignmentGate: true,
     });
   });
 
@@ -25,6 +27,7 @@ describe('Automatic Time labeled-day evaluation', () => {
       schemaVersion: 1,
       day: '2026-08-25',
       synthetic: true,
+      candidateIssueKeys: ['WEAV-29'],
       segments: [
         {
           id: 'lunch',
@@ -52,6 +55,7 @@ describe('Automatic Time labeled-day evaluation', () => {
         schemaVersion: 1,
         day: '2026-08-25',
         synthetic: true,
+        candidateIssueKeys: ['WEAV-29'],
         segments: [
           {
             id: 'first',
@@ -87,5 +91,15 @@ describe('Automatic Time labeled-day evaluation', () => {
     invalid.segments[0].prediction.confidence = 1.1;
 
     expect(() => validateDayFixture(invalid)).toThrow('confidence must be between 0 and 1');
+  });
+
+  it('fails the assignment gate when a prediction invents an issue outside the snapshot', () => {
+    const invented = structuredClone(exampleDay);
+    invented.segments[0].prediction.issueKey = 'GHOST-99';
+
+    const metrics = evaluateDay(invented);
+
+    expect(metrics.inventedSuggestionCount).toBe(1);
+    expect(metrics.meetsAssignmentGate).toBe(false);
   });
 });

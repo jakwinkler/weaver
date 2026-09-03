@@ -230,10 +230,22 @@ export class PluginContextFactory {
             const userId = this.requireUserId(pluginId, user);
             return this.timeTracking.deletePluginEntry(pluginId, id, userId);
           },
+          deleteBatch: async (ids) => {
+            await this.assertCapability(pluginId, 'time-entries', options?.capabilityState);
+            const userId = this.requireUserId(pluginId, user);
+            return this.timeTracking.deletePluginEntriesBatch(pluginId, ids, userId);
+          },
           list: async (filters = {}) => {
             await this.assertCapability(pluginId, 'time-entries', options?.capabilityState);
             const userId = this.requireUserId(pluginId, user);
             return this.timeTracking.listPluginEntries(pluginId, filters, userId);
+          },
+          countOwnBySource: async (filters = {}) => {
+            await this.assertCapability(pluginId, 'time-entries', options?.capabilityState);
+            const userId = this.requireUserId(pluginId, user);
+            return runInSchema((manager) =>
+              this.timeTracking.countOwnEntriesBySource(filters, userId, manager),
+            );
           },
           getLockState: async (ids) => {
             await this.assertCapability(pluginId, 'time-entries', options?.capabilityState);

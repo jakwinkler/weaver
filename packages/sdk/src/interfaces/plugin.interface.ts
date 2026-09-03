@@ -50,6 +50,10 @@ export interface PluginRequest {
   query: Record<string, string>;
   body: unknown;
   headers: Record<string, string>;
+  auth?:
+    | { type: 'interactive' }
+    | { type: 'pairing' }
+    | { type: 'device'; deviceId: string; scopes: string[] };
 }
 
 export interface PluginResponse {

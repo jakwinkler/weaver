@@ -4,7 +4,7 @@
 
 ## Status
 
-- Phases 0, 1, and 2 complete; Phase 3 not started
+- Phases 0 through 6 complete; Phase 7 local-alpha tooling complete, ten-working-day trial pending
 - First user: Matt, single-user workflow
 - Initial platform: macOS
 - Distribution: bundled first-party plugin, disabled by default
@@ -493,67 +493,118 @@ Phase 2 evidence:
 
 ### Phase 3: Companion foundation and pairing
 
-- [ ] Create the macOS companion project and reproducible build configuration.
-- [ ] Implement Keychain-backed device credentials.
-- [ ] Implement short-lived pairing and user approval.
-- [ ] Implement encrypted local storage and durable outbox.
-- [ ] Implement device status, revocation, and version display in plugin settings.
-- [ ] Add offline, expiration, revocation, and retry tests.
+- [x] Create the macOS companion project and reproducible build configuration.
+- [x] Implement Keychain-backed device credentials.
+- [x] Implement short-lived pairing and user approval.
+- [x] Implement encrypted local storage and durable outbox.
+- [x] Implement device status, revocation, and version display in plugin settings.
+- [x] Add offline, expiration, revocation, and retry tests.
 
 Gate: a paired companion can sync a synthetic derived draft but cannot release official time or access unrelated Weaver data.
 
+Phase 3 evidence:
+
+- `companion/automatic-time-macos/` is a Swift Package Manager project with a native menu bar application, a reproducible test-and-release-build script, an HTTP client, and separate library targets for storage and synchronization. The local build is intentionally unsigned and is not a distribution artifact.
+- Device credentials and the local encryption key use macOS Keychain entries restricted to the current device. Derived drafts and the durable outbox are stored in an AES-GCM encrypted, owner-only file, with stable source references and persisted retry state across restart.
+- Pairing requests expire after ten minutes, store only a digest of the one-time secret, require browser approval, enforce bounded attempts, and can be exchanged only once. Device credentials expire after ninety days, are stored as digests by the server, and are returned only during exchange.
+- Companion routes use a separate manifest-declared authentication boundary rather than browser JWT handling. Every device route declares its required scopes, derives user context from the paired device, records companion version and last-seen time, and rejects revoked or expired credentials immediately.
+- The plugin settings page shows the exact requesting device, platform, companion version, user code, expiry, requested scopes, and the explicit inability to release official time. Its device list exposes current status, version, last seen, credential expiry, and revocation.
+- Database-backed pairing tests cover single-use exchange, hashed secrets and tokens, scoped synthetic draft sync, raw-signal rejection, unrelated-data denial, release denial, scope removal, revocation, and expiry. Swift tests cover encrypted-storage plaintext absence, restart recovery, offline retry, revocation, and credential expiration.
+- Browser acceptance at 1920 by 1080 verifies approval, one-time exchange, the scoped device heartbeat, version and last-seen display, revocation, and rejection of the revoked credential on its next request. The browser console is clean.
+
 ### Phase 4: Metadata capture and segmentation
 
-- [ ] Implement active application and window metadata capture.
-- [ ] Implement browser domain and title capture with explicit permission boundaries.
-- [ ] Implement idle, pause, lock, sleep, and wake handling.
-- [ ] Implement Git repository, branch, and commit metadata capture without contents.
-- [ ] Implement Weaver candidate and recent-context synchronization.
-- [ ] Implement deterministic segmentation and interruption smoothing.
-- [ ] Implement retention deletion and verification.
-- [ ] Add fixture-driven unit and recovery tests.
+- [x] Implement active application and window metadata capture.
+- [x] Implement browser domain and title capture with explicit permission boundaries.
+- [x] Implement idle, pause, lock, sleep, and wake handling.
+- [x] Implement Git repository, branch, and commit metadata capture without contents.
+- [x] Implement Weaver candidate and recent-context synchronization.
+- [x] Implement deterministic segmentation and interruption smoothing.
+- [x] Implement retention deletion and verification.
+- [x] Add fixture-driven unit and recovery tests.
 
 Gate: a synthetic workday produces stable activity blocks with no idle inflation, no raw-signal upload, and no loss across restart.
 
+Phase 4 evidence:
+
+- The companion samples the frontmost application through AppKit. Window-title capture remains off by default, checks Accessibility trust without prompting, and requests permission only through the explicit menu action.
+- Browser metadata remains off by default. An explicit toggle enables a fixed Safari, Chrome, Brave, and Edge Apple Events adapter that immediately reduces the active URL to a normalized domain, discards paths, queries, and fragments, and applies domain exclusions to both the domain and title.
+- Idle detection, indefinite and timed pause, screen lock and unlock, sleep and wake, and missing-signal gaps create explicit segmentation boundaries. Capture does not sample optional context while paused, idle, locked, or asleep.
+- Git capture runs only for an explicitly configured repository. It records a SHA-256 repository fingerprint, branch, and commit identifier without reading file contents, diffs, or history, and supports repository exclusions.
+- The scoped companion client caches at most 100 current or recently updated Weaver issue candidates. A separate device route returns only the user's released local dates and release times so the companion can enforce post-release retention without gaining release authority.
+- Repository paths, exclusions, raw signals, activity blocks, bounded candidates, released-day state, outbox items, and deletion tombstones share the AES-GCM encrypted owner-only local store. Raw evidence expires 48 hours after a synchronized release or after an absolute seven days, and each deletion run persists count-only verification.
+- The deterministic segmenter closes on durable context changes, smooths interruptions shorter than two minutes, preserves exact issue-key transitions, omits idle and lifecycle gaps, refuses to infer missing intervals, and splits at the local-day boundary without losing captured duration.
+- Nineteen synthetic Swift tests cover privacy filters, browser sanitization, path-free Git metadata, timed pause and lock suppression, segmentation rules, encrypted restart recovery, bounded candidates, released-day synchronization, retention, and the durable outbox. The representative workday deterministically produces three blocks totaling 70 minutes, excludes idle and sleep time, retains no readable raw evidence at rest, emits no raw upload fields, and recovers the same signals and blocks after restart.
+
 ### Phase 5: Assignment, confidence, and descriptions
 
-- [ ] Implement bounded issue-candidate snapshots.
-- [ ] Implement exact issue-key matching.
-- [ ] Implement repository and branch mappings.
-- [ ] Implement recency and Weaver-context scoring.
-- [ ] Implement correction-memory scoring.
-- [ ] Add local semantic ranking only after deterministic evidence.
-- [ ] Add local activity clustering and concise descriptions.
-- [ ] Store confidence, reasons, alternatives, and ruleset version on every draft.
-- [ ] Add deterministic and labeled-fixture evaluation suites.
+- [x] Implement bounded issue-candidate snapshots.
+- [x] Implement exact issue-key matching.
+- [x] Implement repository and branch mappings.
+- [x] Implement recency and Weaver-context scoring.
+- [x] Implement correction-memory scoring.
+- [x] Add local semantic ranking only after deterministic evidence.
+- [x] Add local activity clustering and concise descriptions.
+- [x] Store confidence, reasons, alternatives, and ruleset version on every draft.
+- [x] Add deterministic and labeled-fixture evaluation suites.
 
 Gate: the assignment harness reaches the agreed accuracy threshold without inventing issues or sending raw metadata remotely.
 
+Phase 5 evidence:
+
+- The native assignment engine intersects every exact, mapped, remembered, and semantic result with a maximum 100-candidate snapshot. Unknown issue keys remain unassigned and cannot appear as alternatives.
+- Exact Weaver or local-context issue keys run first. Repository fingerprints, branch mappings, confirmed correction memories, candidate recency, and active Weaver context provide inspectable deterministic reasons before optional semantic ranking.
+- Correction rules synchronize through a device-scoped read route, are bounded to 200 enabled user-owned memories, and remain encrypted in companion storage.
+- Optional semantic ranking accepts only `localhost`, `127.0.0.1`, or `::1` OpenAI-compatible endpoints. It is disabled by default, runs only after structural deterministic evidence, cannot expand the candidate set, and falls back to deterministic scoring if the local service is unavailable.
+- Stable adjacent blocks are clustered locally. The active cluster is withheld until it is finalized, synchronized source references are remembered to prevent duplicate drafts, and descriptions contain concise derived text rather than raw evidence.
+- Plugin version `0.4.0` adds assignment alternatives and ruleset version to every stored draft. The device route rejects missing explainability metadata, unknown primary issues, unknown alternatives, and raw extra fields.
+- The time-weighted labeled-day evaluator requires an explicit candidate snapshot, reports invented suggestions, and passes the 80 percent destination target with zero inventions. The native labeled harness scores 100 percent on its four synthetic deterministic, mapping, correction-memory, and local-semantic cases.
+- Verification uses synthetic application, repository, branch, issue, and description data only. No private captured metadata is used by the suites.
+
 ### Phase 6: Complete live and daily review UX
 
-- [ ] Connect live companion drafts to the Drafts timeline.
-- [ ] Add confidence and "Why this issue?" details.
-- [ ] Add merge, split, offline work, and current-activity states.
-- [ ] Add keyboard-first Daily Review.
-- [ ] Add final reported-total adjustment with explicit preview.
-- [ ] Add reopen behavior for unlocked days and clear handling for partially locked days.
-- [ ] Add loading, offline, stale-device, failure, and empty states.
-- [ ] Add component, integration, and browser tests.
+- [x] Connect live companion drafts to the Drafts timeline.
+- [x] Add confidence and "Why this issue?" details.
+- [x] Add merge, split, offline work, and current-activity states.
+- [x] Add keyboard-first Daily Review.
+- [x] Add final reported-total adjustment with explicit preview.
+- [x] Add reopen behavior for unlocked days and clear handling for partially locked days.
+- [x] Add loading, offline, stale-device, failure, and empty states.
+- [x] Add component, integration, and browser tests.
 
 Gate: a representative day can be reviewed and released in under two minutes without using a timer.
 
+Phase 6 evidence:
+
+- Plugin version `0.5.0` adds a live timeline status route, manual offline drafts, validated interval editing, proportional split, adjacent merge, exact release previews, and resumable reopen behavior.
+- Drafts distinguish captured, offline, split, and merged work. They expose confidence, deterministic reasons, alternatives, editable descriptions and intervals, issue assignment, and live unpaired, active, stale, and offline companion states.
+- Daily Review presents one card at a time with arrow-key navigation, Enter-to-keep, H-to-hide, number-key alternatives, an explicit final total, and a preview of the exact official entries before release.
+- Reopen deletes the plugin's unlocked official entries in one transaction before restoring private drafts. A durable `reopening` state safely resumes after interruption. A locked entry blocks the full delete, preserves every official entry, and returns a partially locked state rather than a partial reopen.
+- Component coverage exercises editing, assignment, confidence, merge, offline work, keyboard review, release preview, loading, failure, stale, offline, partially locked, resumable, and unlocked reopen states. API integration coverage exercises interval editing, split, merge, offline work, adjusted release, interruption recovery, all-or-nothing core deletion, and locked-day refusal.
+- A disposable Full HD browser run installed and enabled the plugin, created and assigned offline work, split and merged adjacent drafts, previewed a 30-to-35-minute adjustment, released exactly one 35-minute official entry, and reopened it back to private review in 63 seconds. The disposable tenant and user were removed after verification.
+
 ### Phase 7: Learning, privacy, and local alpha
 
-- [ ] Update correction memories from confirmed reassignment and rejection.
-- [ ] Add memory inspection, disable, deletion, and recomputation.
-- [ ] Add local-only quality and review-time metrics.
-- [ ] Run privacy threat modeling for companion, pairing, sync, and uninstall.
-- [ ] Verify raw retention with time-controlled tests.
-- [ ] Verify no screenshots, content, credentials, or raw signals cross the network.
+- [x] Update correction memories from confirmed reassignment and rejection.
+- [x] Add memory inspection, disable, deletion, and recomputation.
+- [x] Add local-only quality and review-time metrics.
+- [x] Run privacy threat modeling for companion, pairing, sync, and uninstall.
+- [x] Verify raw retention with time-controlled tests.
+- [x] Verify no screenshots, content, credentials, or raw signals cross the network.
 - [ ] Run a ten-working-day single-user alpha.
 - [ ] Compare assignment accuracy, review time, unmatched rate, correction rate, and manual-timer use against acceptance criteria.
 
 Gate: the full acceptance criteria pass on a representative local trial and unresolved privacy or reliability findings are documented.
+
+Phase 7 implementation evidence:
+
+- Plugin version `0.6.0` learns positive and negative issue-targeted correction memories from reassignment, hide, and delete review actions. Learning uses an opaque context digest rather than server-visible application, title, browser, repository, or Git fields.
+- Correction memories are owner-scoped and inspectable. Enable or disable, delete, and recompute actions advance a per-user revision so the companion requeues only matching unreleased drafts. Released drafts and official time are not rewritten.
+- The private local-alpha view reports working days, captured and released drafts, destination accuracy, corrections, unmatched work, hidden or deleted work, median review time, and manual or timer usage. The core capability returns only the current user's source counts.
+- The [Automatic Time privacy threat model](../security/automatic-time-threat-model.md) covers companion capture, local inference, pairing, credentials, sync, correction learning, metrics, disable, and uninstall. The review also closed a transport gap by requiring HTTPS for every non-loopback Weaver API host.
+- Thirty-seven synthetic Swift tests cover correction learning, revision-based recomputation, exact 48-hour and seven-day retention cutoffs, encrypted state, transport policy, and an exact derived-draft network allowlist. API and web coverage exercise the reversible learning flow and private-alpha controls.
+- Full HD browser acceptance verified the empty and populated settings states, a 90-second median review, one of ten working days, correction statistics, and disable, recompute, confirmation, and deletion behavior. The disposable tenant, user, schema, and plugin data were removed after verification.
+- Automated and synthetic checks do not satisfy the ten-working-day gate. The real trial and its day two, five, and ten comparisons remain pending.
 
 ## Expected Code Surface
 

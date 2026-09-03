@@ -68,6 +68,7 @@ const manifestSchema = z
         downloadArtifact: nonEmptyString,
         minimumVersion: semverSchema,
         pairingRoute: z.string().startsWith('/'),
+        authenticator: nonEmptyString.optional(),
       })
       .strict()
       .optional(),
@@ -153,7 +154,9 @@ const manifestSchema = z
             method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']),
             path: z.string().startsWith('/'),
             handler: nonEmptyString,
+            auth: z.enum(['interactive', 'pairing', 'device']).optional(),
             requiredPermissions: permissionList.optional(),
+            requiredDeviceScopes: permissionList.optional(),
           })
           .strict(),
       )
@@ -176,7 +179,26 @@ const manifestSchema = z
       )
       .optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((manifest, context) => {
+    const deviceRoutes = manifest.routes?.filter((route) => route.auth === 'device') ?? [];
+    if (deviceRoutes.length > 0 && !manifest.companion?.authenticator) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'device routes require a companion authenticator',
+        path: ['companion', 'authenticator'],
+      });
+    }
+    for (const [index, route] of (manifest.routes ?? []).entries()) {
+      if (route.auth === 'device' && !route.requiredDeviceScopes?.length) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'device routes require at least one device scope',
+          path: ['routes', index, 'requiredDeviceScopes'],
+        });
+      }
+    }
+  });
 
 export function parsePluginManifest(value: unknown): PluginManifest {
   return manifestSchema.parse(value) as PluginManifest;

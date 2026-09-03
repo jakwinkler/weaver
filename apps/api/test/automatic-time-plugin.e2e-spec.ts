@@ -53,7 +53,7 @@ describe('Automatic Time Phase 2 plugin (e2e)', () => {
       .expect(201);
 
     accessToken = registration.body.accessToken;
-    tenantId = registration.body.tenant.id;
+    tenantId = registration.body.tenantId;
     userId = registration.body.user.id;
   });
 

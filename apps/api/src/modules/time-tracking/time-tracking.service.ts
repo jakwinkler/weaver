@@ -10,8 +10,10 @@ import type {
   PluginTimeEntryBatchRequest,
   PluginTimeEntryBatchResult,
   PluginTimeEntryChanges,
+  PluginTimeEntryDateFilters,
   PluginTimeEntryFilters,
   PluginTimeEntryLockState,
+  PluginTimeEntrySourceCounts,
 } from '@weaver/sdk';
 import { In, type EntityManager } from 'typeorm';
 import { TenantConnectionProvider } from '../../core/tenant';
@@ -265,6 +267,41 @@ export class TimeTrackingService {
       .catch(() => {});
   }
 
+  async deletePluginEntriesBatch(
+    pluginId: string,
+    ids: string[],
+    userId: string,
+  ): Promise<{ deleted: number }> {
+    if (ids.length === 0 || new Set(ids).size !== ids.length) {
+      throw new BadRequestException('Plugin time-entry batch IDs must be non-empty and unique');
+    }
+
+    const em = await this.tenantConnections.getEntityManager();
+    const deletedEntries = await em.transaction(async (manager) => {
+      const repo = manager.getRepository(TimeEntryEntity);
+      const entries = await repo.find({
+        where: { id: In(ids), sourcePluginId: pluginId, userId },
+      });
+      if (entries.length !== ids.length) {
+        throw new NotFoundException('One or more plugin time entries were not found');
+      }
+      for (const entry of entries) this.assertUnlocked(entry);
+      await repo.remove(entries);
+      return entries;
+    });
+
+    for (const entry of deletedEntries) {
+      this.eventDispatcher
+        .emit('time.deleted', {
+          entryId: entry.id,
+          userId,
+          sourcePluginId: pluginId,
+        })
+        .catch(() => {});
+    }
+    return { deleted: deletedEntries.length };
+  }
+
   async listPluginEntries(
     pluginId: string,
     filters: PluginTimeEntryFilters,
@@ -294,6 +331,26 @@ export class TimeTrackingService {
     }
 
     return qb.orderBy('entry.logged_at', 'DESC').getMany();
+  }
+
+  async countOwnEntriesBySource(
+    filters: PluginTimeEntryDateFilters,
+    userId: string,
+    manager?: EntityManager,
+  ): Promise<PluginTimeEntrySourceCounts> {
+    const em = manager ?? (await this.tenantConnections.getEntityManager());
+    const rows = (await em.query(
+      `SELECT source, COUNT(*)::integer AS entry_count
+         FROM time_entries
+        WHERE user_id = $1::uuid
+          AND ($2::timestamptz IS NULL OR logged_at >= $2::timestamptz)
+          AND ($3::timestamptz IS NULL OR logged_at <= $3::timestamptz)
+        GROUP BY source`,
+      [userId, filters.loggedFrom ?? null, filters.loggedTo ?? null],
+    )) as Array<{ source: 'manual' | 'timer' | 'plugin'; entry_count: number | string }>;
+    const result: PluginTimeEntrySourceCounts = { manual: 0, timer: 0, plugin: 0 };
+    for (const row of rows) result[row.source] = Number(row.entry_count);
+    return result;
   }
 
   async getPluginLockState(
