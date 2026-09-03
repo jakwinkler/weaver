@@ -4,7 +4,8 @@
   "private": true,
   "main": "./src/client/index.ts",
   "scripts": {
-    "build": "vite build",
+    "build": "vite build && tsc -p tsconfig.server.json",
+    "typecheck": "tsc --noEmit -p tsconfig.server.json",
     "dev": "vite",
     "clean": "rm -rf dist"
   },

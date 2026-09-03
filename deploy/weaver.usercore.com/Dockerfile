@@ -10,6 +10,7 @@ RUN pnpm install --frozen-lockfile
 ARG VITE_API_URL=/api/v1
 ENV VITE_API_URL=${VITE_API_URL}
 RUN pnpm build
+RUN node deploy/weaver.usercore.com/verify-plugin-runtime.cjs
 
 FROM node:20-alpine AS api
 
