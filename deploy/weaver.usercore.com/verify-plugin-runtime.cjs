@@ -22,6 +22,10 @@ for (const dir of fs.readdirSync(root)) {
     if (manifest.companion?.authenticator) assert.equal(typeof exports[manifest.companion.authenticator], 'function');
   }
   if (manifest.entrypoints.client) assert(fs.existsSync(path.join(location, 'dist/client/remoteEntry.js')), `Missing client bundle: ${manifest.id}`);
+  if (manifest.id === '@weaver/plugin-automatic-time') {
+    const federation = JSON.parse(fs.readFileSync(path.join(location, 'dist/client/mf-manifest.json'), 'utf8'));
+    assert(federation.shared.some(dependency => dependency.name === 'react-router-dom' && dependency.singleton), 'Automatic Time must share the host router context');
+  }
   checked++;
 }
 console.log(`Verified production bundles and route handlers for ${checked} plugins`);

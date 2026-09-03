@@ -37,6 +37,11 @@ export default defineConfig({
       dev: { remoteHmr: true },
       disableRemote: true,
       shared: {
+        'react-router-dom': {
+          singleton: true,
+          requiredVersion: false,
+          import: false,
+        },
         react: {
           singleton: true,
           requiredVersion: false,

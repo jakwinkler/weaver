@@ -10,6 +10,7 @@ export default createModuleFederationConfig({
     'react/jsx-runtime': { singleton: true, requiredVersion: '^18.3.1' },
     'react/jsx-dev-runtime': { singleton: true, requiredVersion: '^18.3.1' },
     'react-dom': { singleton: true, requiredVersion: '^18.3.1' },
+    'react-router-dom': { singleton: true, requiredVersion: '^7.0.0' },
     zustand: { singleton: true, requiredVersion: '^5.0.2' },
     '@tanstack/react-query': {
       singleton: true,
