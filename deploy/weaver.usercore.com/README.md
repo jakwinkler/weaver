@@ -40,3 +40,86 @@ Caddy terminates HTTPS at `weaver.usercore.com`, serves the deployment-specific
 `robots.txt`, and applies an `X-Robots-Tag` noindex header to every response.
 
 The deployed source revision is recorded in `/opt/weaver/DEPLOYED_REVISION`.
+
+## Google and GitHub sign-in
+
+Each provider needs its own registered OAuth application and a client ID/secret
+pair. A `503` response saying `OAuth is not configured` means the API cannot see
+one or both credentials for that provider. The sign-in links alone do not prove
+the provider is configured.
+
+Use these settings for this deployment:
+
+| Provider | Application type | Callback URL |
+| --- | --- | --- |
+| Google | Web application | `https://weaver.usercore.com/api/v1/auth/google/callback` |
+| GitHub | OAuth App | `https://weaver.usercore.com/api/v1/auth/github/callback` |
+
+For Google, configure the consent screen and create the client in
+[Google Auth Platform](https://console.cloud.google.com/auth/clients). Register
+the exact callback above as an authorized redirect URI. See Google's
+[web server OAuth instructions](https://developers.google.com/identity/protocols/oauth2/web-server#creatingcred).
+
+For GitHub, follow the
+[OAuth App registration instructions](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/creating-an-oauth-app).
+Use `Weaver` as the application name, `https://weaver.usercore.com` as the
+homepage, and the exact GitHub callback above. Generate a client secret after
+registering the app. The login flow requests `user:email` access.
+
+Store the four values in `/opt/weaver/shared/.env` on the host, keeping mode
+`0600`. Supply them through a secure editor or credential manager; never put
+them in Git, chat, command arguments, or build arguments:
+
+```dotenv
+GOOGLE_CLIENT_ID=<Google client ID>
+GOOGLE_CLIENT_SECRET=<Google client secret>
+GITHUB_CLIENT_ID=<GitHub client ID>
+GITHUB_CLIENT_SECRET=<GitHub client secret>
+```
+
+Compose passes these values only to the API at runtime. Either provider can
+remain unset, but its sign-in endpoint will return `503`. The callback URLs are
+derived from the API's fixed public URL and prefix in `compose.yaml`.
+
+Before an approved live change, retain protected copies of the existing
+environment and Compose files, record the current API image ID, and review a
+redacted diff. The configuration change affects four API environment variables
+and requires recreating the API container. Retain the release-specific
+`release.env` so the current image tags remain pinned. From the release's
+`deploy/weaver.usercore.com` directory, validate without printing secrets:
+
+```sh
+docker compose --env-file /opt/weaver/shared/.env --env-file ../../release.env config --quiet
+```
+
+After approval, apply the configuration to the existing API image:
+
+```sh
+docker compose --env-file /opt/weaver/shared/.env --env-file ../../release.env \
+  up -d --no-deps --no-build --force-recreate api
+```
+
+Once the API is healthy, reload the web proxy so Nginx resolves the recreated
+API container's address:
+
+```sh
+docker compose --env-file /opt/weaver/shared/.env --env-file ../../release.env exec -T web nginx -t
+docker compose --env-file /opt/weaver/shared/.env --env-file ../../release.env exec -T web nginx -s reload
+```
+
+Check `/api/v1/health` and both public sign-in endpoints. Each configured provider
+must return `302` to its own authorization page with the exact callback URL and
+a secure, HTTP-only state cookie. Complete a real browser sign-in for each
+provider to verify the credential exchange and Weaver session. A redirect
+alone does not prove the whole login works.
+
+To roll back, restore the protected environment and Compose copies, then
+recreate only the API using the same pinned image and reload the web proxy after
+API health passes. This configuration change
+does not require a database migration or an application image rebuild.
+
+Run the local configuration regression check with synthetic credentials:
+
+```sh
+node --test deploy/weaver.usercore.com/oauth-config.test.cjs
+```
