@@ -21,20 +21,13 @@ export class EventDispatcherService {
     this.pluginDispatchers.push(fn);
   }
 
-  async emit(
-    event: string,
-    payload: Record<string, unknown>,
-  ): Promise<void> {
+  async emit(event: string, payload: Record<string, unknown>): Promise<void> {
     // Push to WebSocket for real-time updates
     const tenantCtx = getTenantContext();
     if (tenantCtx) {
       const wsPayload = { event, data: payload, timestamp: new Date().toISOString() };
-      this.gateway.emitToTenant(tenantCtx.tenantId, event, wsPayload);
-
-      // Also emit to project room if projectKey is present
-      if (payload.projectKey) {
-        this.gateway.emitToProject(payload.projectKey as string, event, wsPayload);
-      }
+      const projectKey = typeof payload.projectKey === 'string' ? payload.projectKey : undefined;
+      this.gateway.emitToTenant(tenantCtx.tenantId, event, wsPayload, projectKey);
 
       this.logger.debug(`WS event "${event}" sent to tenant ${tenantCtx.tenantId}`);
     }
@@ -54,9 +47,7 @@ export class EventDispatcherService {
           this.webhooksService
             .deliver(wh.id, event, payload)
             .catch((err) =>
-              this.logger.warn(
-                `Failed to deliver event ${event} to webhook ${wh.id}: ${err}`,
-              ),
+              this.logger.warn(`Failed to deliver event ${event} to webhook ${wh.id}: ${err}`),
             ),
         );
         await Promise.allSettled(deliveries);

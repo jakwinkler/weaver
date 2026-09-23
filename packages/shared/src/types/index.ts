@@ -100,14 +100,14 @@ export interface Issue {
   projectId: string;
   key: string;
   summary: string;
-  description?: Record<string, unknown>;
+  description?: Record<string, unknown> | null;
   statusId: string;
   issueTypeId?: string;
   priority: IssuePriority;
   assigneeId?: string;
   reporterId: string;
   customFields: Record<string, unknown>;
-  sprintId?: string;
+  sprintId?: string | null;
   parentId?: string;
   epicId?: string;
   labels: string[];

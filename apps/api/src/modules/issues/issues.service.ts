@@ -2,7 +2,12 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { InjectRepository } from '@nestjs/typeorm';
 import { IssueEntity, WorkflowStatusEntity, ActivityLogEntity, SprintEntity } from '@weaver/db';
 import { UserEntity } from '@weaver/db';
-import { CreateIssueDto, UpdateIssueDto, ReorderIssuesDto, PaginatedResponse } from '@weaver/shared';
+import {
+  CreateIssueDto,
+  UpdateIssueDto,
+  ReorderIssuesDto,
+  PaginatedResponse,
+} from '@weaver/shared';
 import { Repository, In } from 'typeorm';
 import { TenantConnectionProvider } from '../../core/tenant';
 import { ProjectsService } from '../projects';
@@ -54,8 +59,7 @@ export class IssuesService {
     const em = await this.tenantConnections.getEntityManager();
 
     // Resolve workflow: project-specific or default
-    const workflowId = project.workflowId
-      || (await this.workflowsService.getDefaultWorkflow()).id;
+    const workflowId = project.workflowId || (await this.workflowsService.getDefaultWorkflow()).id;
 
     const initialStatus = await em.getRepository(WorkflowStatusEntity).findOneBy({
       workflowId,
@@ -84,7 +88,7 @@ export class IssuesService {
       parentId: dto.parentId,
       epicId: dto.epicId,
       labels: dto.labels || [],
-      sortOrder: 0,
+      sortOrder: (counter - 1) * 1000,
       startDate: dto.startDate ?? null,
       dueDate: dto.dueDate ?? null,
       percentDone: dto.percentDone ?? 0,
@@ -129,16 +133,37 @@ export class IssuesService {
       .where('issue.projectId = :projectId', { projectId: project.id });
 
     if (filters) {
-      if (filters.statusId) qb.andWhere('issue.statusId = :statusId', { statusId: filters.statusId });
-      if (filters.assigneeId) qb.andWhere('issue.assigneeId = :assigneeId', { assigneeId: filters.assigneeId });
-      if (filters.priority) qb.andWhere('issue.priority = :priority', { priority: filters.priority });
-      if (filters.startDateFrom) qb.andWhere('issue.startDate >= :startDateFrom', { startDateFrom: filters.startDateFrom });
-      if (filters.startDateTo) qb.andWhere('issue.startDate <= :startDateTo', { startDateTo: filters.startDateTo });
-      if (filters.dueDateFrom) qb.andWhere('issue.dueDate >= :dueDateFrom', { dueDateFrom: filters.dueDateFrom });
-      if (filters.dueDateTo) qb.andWhere('issue.dueDate <= :dueDateTo', { dueDateTo: filters.dueDateTo });
+      if (filters.statusId)
+        qb.andWhere('issue.statusId = :statusId', { statusId: filters.statusId });
+      if (filters.assigneeId)
+        qb.andWhere('issue.assigneeId = :assigneeId', { assigneeId: filters.assigneeId });
+      if (filters.priority)
+        qb.andWhere('issue.priority = :priority', { priority: filters.priority });
+      if (filters.startDateFrom)
+        qb.andWhere('issue.startDate >= :startDateFrom', { startDateFrom: filters.startDateFrom });
+      if (filters.startDateTo)
+        qb.andWhere('issue.startDate <= :startDateTo', { startDateTo: filters.startDateTo });
+      if (filters.dueDateFrom)
+        qb.andWhere('issue.dueDate >= :dueDateFrom', { dueDateFrom: filters.dueDateFrom });
+      if (filters.dueDateTo)
+        qb.andWhere('issue.dueDate <= :dueDateTo', { dueDateTo: filters.dueDateTo });
     }
 
-    return paginate(qb, params, ['summary', 'priority', 'createdAt', 'updatedAt', 'key', 'sortOrder', 'startDate', 'dueDate', 'percentDone']);
+    if (!params.sort) {
+      qb.orderBy('issue.sortOrder', 'ASC').addOrderBy('issue.createdAt', 'ASC');
+    }
+
+    return paginate(qb, params, [
+      'summary',
+      'priority',
+      'createdAt',
+      'updatedAt',
+      'key',
+      'sortOrder',
+      'startDate',
+      'dueDate',
+      'percentDone',
+    ]);
   }
 
   async update(issueKey: string, dto: UpdateIssueDto, userId?: string): Promise<IssueEntity> {
@@ -218,16 +243,28 @@ export class IssuesService {
         trackedChanges.push({ field: 'priority', oldVal: previousPriority, newVal: dto.priority });
       }
       if (dto.startDate !== undefined && (dto.startDate ?? null) !== (previousStartDate ?? null)) {
-        trackedChanges.push({ field: 'startDate', oldVal: previousStartDate ?? null, newVal: dto.startDate ?? null });
+        trackedChanges.push({
+          field: 'startDate',
+          oldVal: previousStartDate ?? null,
+          newVal: dto.startDate ?? null,
+        });
       }
       if (dto.dueDate !== undefined && (dto.dueDate ?? null) !== (previousDueDate ?? null)) {
-        trackedChanges.push({ field: 'dueDate', oldVal: previousDueDate ?? null, newVal: dto.dueDate ?? null });
+        trackedChanges.push({
+          field: 'dueDate',
+          oldVal: previousDueDate ?? null,
+          newVal: dto.dueDate ?? null,
+        });
       }
       if (dto.summary !== undefined && dto.summary !== previousSummary) {
         trackedChanges.push({ field: 'summary', oldVal: previousSummary, newVal: dto.summary });
       }
       if (dto.percentDone !== undefined && dto.percentDone !== previousPercentDone) {
-        trackedChanges.push({ field: 'percentDone', oldVal: String(previousPercentDone), newVal: String(dto.percentDone) });
+        trackedChanges.push({
+          field: 'percentDone',
+          oldVal: String(previousPercentDone),
+          newVal: String(dto.percentDone),
+        });
       }
 
       for (const change of trackedChanges) {
@@ -272,15 +309,23 @@ export class IssuesService {
     return saved;
   }
 
-  async reorder(dto: ReorderIssuesDto): Promise<void> {
+  async reorder(dto: ReorderIssuesDto, userId: string): Promise<void> {
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(IssueEntity);
 
     const ids = dto.issues.map((i) => i.id);
-    const issues = await repo.find({ where: { id: In(ids) } });
+    const issues = await repo.find({
+      where: { id: In(ids) },
+      relations: ['project'],
+    });
 
     if (issues.length !== ids.length) {
       throw new NotFoundException('One or more issues not found');
+    }
+
+    const projectIds = new Set(issues.map((issue) => issue.projectId));
+    if (projectIds.size !== 1) {
+      throw new BadRequestException('All reordered issues must belong to one project');
     }
 
     const orderMap = new Map(dto.issues.map((i) => [i.id, i.sortOrder]));
@@ -289,6 +334,12 @@ export class IssuesService {
     }
 
     await repo.save(issues);
+
+    this.eventDispatcher.emit('issue.reordered', {
+      projectKey: issues[0].project.key,
+      issueKeys: issues.map((issue) => issue.key),
+      userId,
+    });
   }
 
   async transition(issueKey: string, transitionId: string, userId: string): Promise<IssueEntity> {
@@ -309,9 +360,7 @@ export class IssuesService {
 
     // Validate the transition starts from the current status
     if (transition.fromStatusId !== issue.statusId) {
-      throw new BadRequestException(
-        `Transition is not valid from the current status`,
-      );
+      throw new BadRequestException(`Transition is not valid from the current status`);
     }
 
     const oldStatusId = issue.statusId;
@@ -347,12 +396,16 @@ export class IssuesService {
     return saved;
   }
 
-  async delete(issueKey: string): Promise<void> {
+  async delete(issueKey: string, userId: string): Promise<void> {
     const issue = await this.findByKey(issueKey);
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(IssueEntity);
     await repo.remove(issue);
 
-    this.eventDispatcher.emit('issue.deleted', { issueKey, projectKey: issueKey.split('-')[0] });
+    this.eventDispatcher.emit('issue.deleted', {
+      issueKey,
+      projectKey: issueKey.split('-')[0],
+      userId,
+    });
   }
 }

@@ -188,6 +188,13 @@ describe('updateIssueSchema', () => {
     });
     expect(result.success).toBe(true);
   });
+
+  it('should accept null description (clear rich text)', () => {
+    const result = updateIssueSchema.safeParse({
+      description: null,
+    });
+    expect(result.success).toBe(true);
+  });
 });
 
 describe('paginationSchema', () => {

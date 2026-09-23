@@ -9,6 +9,12 @@ import { common, createLowlight } from 'lowlight';
 import tippy, { type Instance as TippyInstance } from 'tippy.js';
 import { useCallback, useEffect, useRef } from 'react';
 import { useUploadAttachment, useGenericUploadAttachment, getAttachmentUrl } from '@/api';
+import {
+  extractPlainText,
+  normalizeCommentBody,
+  normalizeRichTextContent,
+  serializeDoc,
+} from '@/lib/richText';
 import { MentionList, fetchMentionUsers } from './MentionSuggestion';
 import type { MentionUser } from './MentionSuggestion';
 import {
@@ -34,59 +40,6 @@ interface RichTextEditorProps {
   onChange?: (json: Record<string, unknown>) => void;
   placeholder?: string;
   editable?: boolean;
-}
-
-export function normalizeCommentBody(body: unknown): Record<string, unknown> | null {
-  if (!body) return null;
-  if (typeof body === 'string') {
-    // Try parsing as JSON first (stored rich text)
-    if (body.startsWith('{')) {
-      try {
-        const parsed = JSON.parse(body);
-        if (parsed.type === 'doc') return parsed;
-      } catch {
-        // not JSON, treat as plain text
-      }
-    }
-    return {
-      type: 'doc',
-      content: [{ type: 'paragraph', content: [{ type: 'text', text: body }] }],
-    };
-  }
-  const obj = body as Record<string, unknown>;
-  if (obj.type === 'doc') return obj;
-  if (typeof obj.text === 'string') {
-    return {
-      type: 'doc',
-      content: [{ type: 'paragraph', content: [{ type: 'text', text: obj.text as string }] }],
-    };
-  }
-  return obj;
-}
-
-/** Serialize Tiptap JSON doc to a string for storage in a text column. */
-export function serializeDoc(doc: Record<string, unknown> | null): string {
-  if (!doc) return '';
-  return JSON.stringify(doc);
-}
-
-export function extractPlainText(doc: Record<string, unknown> | null): string {
-  if (!doc) return '';
-  const lines: string[] = [];
-  function walk(node: any) {
-    if (node.type === 'text') {
-      lines.push(node.text || '');
-    } else if (node.content) {
-      for (const child of node.content) {
-        walk(child);
-      }
-      if (node.type === 'paragraph' || node.type?.startsWith('heading')) {
-        lines.push('\n');
-      }
-    }
-  }
-  walk(doc);
-  return lines.join('').trim();
 }
 
 export function RichTextEditor({
@@ -177,7 +130,7 @@ export function RichTextEditor({
         },
       }),
     ],
-    content: normalizeCommentBody(content),
+    content: normalizeRichTextContent(content),
     editable,
     onUpdate: ({ editor: e }) => {
       onChangeRef.current?.(e.getJSON() as Record<string, unknown>);
@@ -227,23 +180,19 @@ export function RichTextEditor({
     },
   });
 
-  // Sync content from outside (e.g. draft restore)
+  // Sync content from outside, including query refreshes in read-only renderers.
   const contentKey = JSON.stringify(content);
   const initialContentRef = useRef(contentKey);
   useEffect(() => {
-    if (!editor || !editable) return;
+    if (!editor) return;
     if (initialContentRef.current !== contentKey) {
       initialContentRef.current = contentKey;
-      if (content === null) {
-        editor.commands.clearContent();
-      } else {
-        const normalized = normalizeCommentBody(content);
-        if (normalized) {
-          editor.commands.setContent(normalized);
-        }
-      }
+      const normalized = normalizeRichTextContent(content);
+      editor.commands.setContent(normalized ?? { type: 'doc', content: [{ type: 'paragraph' }] }, {
+        emitUpdate: false,
+      });
     }
-  }, [contentKey, editor, editable, content]);
+  }, [contentKey, editor, content]);
 
   if (!editor) return null;
 
@@ -257,6 +206,10 @@ export function RichTextEditor({
       <EditorContent editor={editor} />
     </div>
   );
+}
+
+export function RichTextRenderer({ content }: Pick<RichTextEditorProps, 'content'>) {
+  return <RichTextEditor content={content} editable={false} />;
 }
 
 function Toolbar({ editor }: { editor: ReturnType<typeof useEditor> }) {
@@ -281,49 +234,104 @@ function Toolbar({ editor }: { editor: ReturnType<typeof useEditor> }) {
 
   return (
     <div className="flex flex-wrap items-center gap-0.5 border-b border-border px-2 py-1">
-      <button type="button" onClick={() => editor.chain().focus().toggleBold().run()} className={btn(editor.isActive('bold'))} title="Bold">
+      <button
+        type="button"
+        onClick={() => editor.chain().focus().toggleBold().run()}
+        className={btn(editor.isActive('bold'))}
+        title="Bold"
+      >
         <Bold className="h-4 w-4" />
       </button>
-      <button type="button" onClick={() => editor.chain().focus().toggleItalic().run()} className={btn(editor.isActive('italic'))} title="Italic">
+      <button
+        type="button"
+        onClick={() => editor.chain().focus().toggleItalic().run()}
+        className={btn(editor.isActive('italic'))}
+        title="Italic"
+      >
         <Italic className="h-4 w-4" />
       </button>
-      <button type="button" onClick={() => editor.chain().focus().toggleStrike().run()} className={btn(editor.isActive('strike'))} title="Strikethrough">
+      <button
+        type="button"
+        onClick={() => editor.chain().focus().toggleStrike().run()}
+        className={btn(editor.isActive('strike'))}
+        title="Strikethrough"
+      >
         <Strikethrough className="h-4 w-4" />
       </button>
 
       <div className="mx-1 h-5 w-px bg-border" />
 
-      <button type="button" onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} className={btn(editor.isActive('heading', { level: 1 }))} title="Heading 1">
+      <button
+        type="button"
+        onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
+        className={btn(editor.isActive('heading', { level: 1 }))}
+        title="Heading 1"
+      >
         <Heading1 className="h-4 w-4" />
       </button>
-      <button type="button" onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} className={btn(editor.isActive('heading', { level: 2 }))} title="Heading 2">
+      <button
+        type="button"
+        onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+        className={btn(editor.isActive('heading', { level: 2 }))}
+        title="Heading 2"
+      >
         <Heading2 className="h-4 w-4" />
       </button>
-      <button type="button" onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()} className={btn(editor.isActive('heading', { level: 3 }))} title="Heading 3">
+      <button
+        type="button"
+        onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
+        className={btn(editor.isActive('heading', { level: 3 }))}
+        title="Heading 3"
+      >
         <Heading3 className="h-4 w-4" />
       </button>
 
       <div className="mx-1 h-5 w-px bg-border" />
 
-      <button type="button" onClick={() => editor.chain().focus().toggleBulletList().run()} className={btn(editor.isActive('bulletList'))} title="Bullet List">
+      <button
+        type="button"
+        onClick={() => editor.chain().focus().toggleBulletList().run()}
+        className={btn(editor.isActive('bulletList'))}
+        title="Bullet List"
+      >
         <List className="h-4 w-4" />
       </button>
-      <button type="button" onClick={() => editor.chain().focus().toggleOrderedList().run()} className={btn(editor.isActive('orderedList'))} title="Ordered List">
+      <button
+        type="button"
+        onClick={() => editor.chain().focus().toggleOrderedList().run()}
+        className={btn(editor.isActive('orderedList'))}
+        title="Ordered List"
+      >
         <ListOrdered className="h-4 w-4" />
       </button>
 
       <div className="mx-1 h-5 w-px bg-border" />
 
-      <button type="button" onClick={() => editor.chain().focus().toggleBlockquote().run()} className={btn(editor.isActive('blockquote'))} title="Blockquote">
+      <button
+        type="button"
+        onClick={() => editor.chain().focus().toggleBlockquote().run()}
+        className={btn(editor.isActive('blockquote'))}
+        title="Blockquote"
+      >
         <Quote className="h-4 w-4" />
       </button>
-      <button type="button" onClick={() => editor.chain().focus().toggleCodeBlock().run()} className={btn(editor.isActive('codeBlock'))} title="Code Block">
+      <button
+        type="button"
+        onClick={() => editor.chain().focus().toggleCodeBlock().run()}
+        className={btn(editor.isActive('codeBlock'))}
+        title="Code Block"
+      >
         <Code className="h-4 w-4" />
       </button>
 
       <div className="mx-1 h-5 w-px bg-border" />
 
-      <button type="button" onClick={handleLink} className={btn(editor.isActive('link'))} title="Link">
+      <button
+        type="button"
+        onClick={handleLink}
+        className={btn(editor.isActive('link'))}
+        title="Link"
+      >
         <LinkIcon className="h-4 w-4" />
       </button>
       <button type="button" onClick={handleImage} className={btn(false)} title="Image">
@@ -332,3 +340,5 @@ function Toolbar({ editor }: { editor: ReturnType<typeof useEditor> }) {
     </div>
   );
 }
+
+export { extractPlainText, normalizeCommentBody, normalizeRichTextContent, serializeDoc };

@@ -1,10 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import { HttpStatus, INestApplication } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import request from 'supertest';
 import { io, Socket } from 'socket.io-client';
 import { AppModule } from '../src/app.module';
 import { TenantConnectionProvider } from '../src/core/tenant';
+import { WeaverGateway } from '../src/core/websocket';
 
 describe('Real-Time WebSocket (e2e)', () => {
   let app: INestApplication;
@@ -12,6 +13,8 @@ describe('Real-Time WebSocket (e2e)', () => {
   let connections: TenantConnectionProvider;
   let accessToken: string;
   let tenantId: string;
+  let userId: string;
+  let gateway: WeaverGateway;
   let httpServer: any;
 
   beforeAll(async () => {
@@ -27,20 +30,20 @@ describe('Real-Time WebSocket (e2e)', () => {
     httpServer = app.getHttpServer();
     dataSource = app.get(DataSource);
     connections = app.get(TenantConnectionProvider);
+    gateway = app.get(WeaverGateway);
 
     // Register a user to get auth token and tenant
-    const res = await request(httpServer)
-      .post('/api/v1/auth/register')
-      .send({
-        email: 'ws-test@example.com',
-        password: 'password123',
-        displayName: 'WS Tester',
-        orgName: 'WS Test Org',
-        orgSlug: 'ws-test-org',
-      });
+    const res = await request(httpServer).post('/api/v1/auth/register').send({
+      email: 'ws-test@example.com',
+      password: 'password123',
+      displayName: 'WS Tester',
+      orgName: 'WS Test Org',
+      orgSlug: 'ws-test-org',
+    });
 
     accessToken = res.body.accessToken;
     tenantId = res.body.tenant?.id ?? res.body.tenantId;
+    userId = res.body.user.id;
   });
 
   afterAll(async () => {
@@ -121,6 +124,19 @@ describe('Real-Time WebSocket (e2e)', () => {
       socket.close();
       expect(stable).toBe(true);
     });
+
+    it('should scope project rooms to the authenticated tenant', async () => {
+      const socket = connectSocket(accessToken);
+      const stable = await waitForStableConnection(socket, 2000);
+      expect(stable).toBe(true);
+
+      socket.emit('join:project', { projectKey: 'WS' });
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      const room = gateway.server.adapter.rooms.get(`tenant:${tenantId}:project:WS`);
+      expect(room?.has(socket.id!)).toBe(true);
+      socket.close();
+    });
   });
 
   describe('Events', () => {
@@ -147,7 +163,12 @@ describe('Real-Time WebSocket (e2e)', () => {
         .post(`/api/v1/workflows/${wfRes.body.id}/statuses`)
         .set('Authorization', `Bearer ${accessToken}`)
         .set('X-Tenant-ID', tenantId)
-        .send({ name: 'Open', isInitial: true });
+        .send({
+          name: 'Open',
+          category: 'todo',
+          color: '#64748b',
+          isInitial: true,
+        });
     });
 
     /** Helper: connect, listen for event, run action, return payload */
@@ -192,16 +213,13 @@ describe('Real-Time WebSocket (e2e)', () => {
     }
 
     it('should receive issue.created event after creating an issue', async () => {
-      const payload = await waitForEvent(
-        'issue.created',
-        async () => {
-          await request(httpServer)
-            .post(`/api/v1/projects/${projectKey}/issues`)
-            .set('Authorization', `Bearer ${accessToken}`)
-            .set('X-Tenant-ID', tenantId)
-            .send({ summary: 'Real-time test issue' });
-        },
-      );
+      const payload = await waitForEvent('issue.created', async () => {
+        await request(httpServer)
+          .post(`/api/v1/projects/${projectKey}/issues`)
+          .set('Authorization', `Bearer ${accessToken}`)
+          .set('X-Tenant-ID', tenantId)
+          .send({ summary: 'Real-time test issue' });
+      });
 
       expect(payload).toBeDefined();
       expect(payload.event).toBe('issue.created');
@@ -254,13 +272,143 @@ describe('Real-Time WebSocket (e2e)', () => {
             .post(`/api/v1/issues/${issueKey}/comments`)
             .set('Authorization', `Bearer ${accessToken}`)
             .set('X-Tenant-ID', tenantId)
-            .send({ body: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Test comment' }] }] } });
+            .send({
+              body: {
+                type: 'doc',
+                content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Test comment' }] }],
+              },
+            });
         },
         (p) => p.data?.issueKey === issueKey,
       );
 
       expect(payload.data.commentId).toBeDefined();
       expect(payload.data.issueKey).toBe(issueKey);
+    }, 15000);
+
+    it('should receive comment.updated event after editing a comment', async () => {
+      const issueRes = await request(httpServer)
+        .post(`/api/v1/projects/${projectKey}/issues`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .set('X-Tenant-ID', tenantId)
+        .send({ summary: 'Comment update test issue' });
+
+      const issueKey = issueRes.body.key;
+      const commentRes = await request(httpServer)
+        .post(`/api/v1/issues/${issueKey}/comments`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .set('X-Tenant-ID', tenantId)
+        .send({ body: { type: 'doc', content: [] } });
+
+      const payload = await waitForEvent(
+        'comment.updated',
+        async () => {
+          await request(httpServer)
+            .patch(`/api/v1/issues/${issueKey}/comments/${commentRes.body.id}`)
+            .set('Authorization', `Bearer ${accessToken}`)
+            .set('X-Tenant-ID', tenantId)
+            .send({
+              body: {
+                type: 'doc',
+                content: [
+                  {
+                    type: 'paragraph',
+                    content: [{ type: 'text', text: 'Edited comment' }],
+                  },
+                ],
+              },
+            });
+        },
+        (p) => p.data?.commentId === commentRes.body.id,
+      );
+
+      expect(payload.data.issueKey).toBe(issueKey);
+      expect(payload.data.userId).toBe(userId);
+    }, 15000);
+
+    it('should include the actor in issue.deleted events', async () => {
+      const issueRes = await request(httpServer)
+        .post(`/api/v1/projects/${projectKey}/issues`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .set('X-Tenant-ID', tenantId)
+        .send({ summary: 'Delete event test issue' });
+
+      const issueKey = issueRes.body.key;
+      const payload = await waitForEvent(
+        'issue.deleted',
+        async () => {
+          await request(httpServer)
+            .delete(`/api/v1/issues/${issueKey}`)
+            .set('Authorization', `Bearer ${accessToken}`)
+            .set('X-Tenant-ID', tenantId);
+        },
+        (p) => p.data?.issueKey === issueKey,
+      );
+
+      expect(payload.data.userId).toBe(userId);
+    }, 15000);
+
+    it('should receive issue.reordered after changing issue order', async () => {
+      const firstIssue = await request(httpServer)
+        .post(`/api/v1/projects/${projectKey}/issues`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .set('X-Tenant-ID', tenantId)
+        .send({ summary: 'First reorder issue' });
+      const secondIssue = await request(httpServer)
+        .post(`/api/v1/projects/${projectKey}/issues`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .set('X-Tenant-ID', tenantId)
+        .send({ summary: 'Second reorder issue' });
+
+      const payload = await waitForEvent(
+        'issue.reordered',
+        async () => {
+          await request(httpServer)
+            .patch('/api/v1/issues/reorder')
+            .set('Authorization', `Bearer ${accessToken}`)
+            .set('X-Tenant-ID', tenantId)
+            .send({
+              issues: [
+                { id: firstIssue.body.id, sortOrder: 1 },
+                { id: secondIssue.body.id, sortOrder: 0 },
+              ],
+            });
+        },
+        (p) => p.data?.projectKey === projectKey,
+      );
+
+      expect(payload.data.issueKeys).toEqual(
+        expect.arrayContaining([firstIssue.body.key, secondIssue.body.key]),
+      );
+      expect(payload.data.userId).toBe(userId);
+    }, 15000);
+
+    it('should emit one issue event to a client in tenant and project rooms', async () => {
+      const socket = connectSocket(accessToken);
+      const stable = await waitForStableConnection(socket, 2000);
+      expect(stable).toBe(true);
+
+      socket.emit('join:project', { projectKey });
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      const summary = `Single delivery ${Date.now()}`;
+      let deliveryCount = 0;
+      socket.on('issue.created', (payload: any) => {
+        if (payload.data?.summary === summary) {
+          deliveryCount += 1;
+        }
+      });
+
+      await request(httpServer)
+        .post(`/api/v1/projects/${projectKey}/issues`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .set('X-Tenant-ID', tenantId)
+        .send({ summary });
+
+      await new Promise((resolve) => setTimeout(resolve, 750));
+      socket.close();
+
+      expect(deliveryCount).toBe(1);
     }, 15000);
   });
 
@@ -270,15 +418,13 @@ describe('Real-Time WebSocket (e2e)', () => {
 
     beforeAll(async () => {
       // Register a second tenant
-      const res = await request(httpServer)
-        .post('/api/v1/auth/register')
-        .send({
-          email: 'ws-test-b@example.com',
-          password: 'password123',
-          displayName: 'WS Tester B',
-          orgName: 'WS Test Org B',
-          orgSlug: 'ws-test-org-b',
-        });
+      const res = await request(httpServer).post('/api/v1/auth/register').send({
+        email: 'ws-test-b@example.com',
+        password: 'password123',
+        displayName: 'WS Tester B',
+        orgName: 'WS Test Org B',
+        orgSlug: 'ws-test-org-b',
+      });
 
       tenantBToken = res.body.accessToken;
       tenantBId = res.body.tenant?.id ?? res.body.tenantId;
@@ -294,7 +440,12 @@ describe('Real-Time WebSocket (e2e)', () => {
         .post(`/api/v1/workflows/${wfRes.body.id}/statuses`)
         .set('Authorization', `Bearer ${tenantBToken}`)
         .set('X-Tenant-ID', tenantBId)
-        .send({ name: 'Open', isInitial: true });
+        .send({
+          name: 'Open',
+          category: 'todo',
+          color: '#64748b',
+          isInitial: true,
+        });
 
       await request(httpServer)
         .post('/api/v1/projects')
@@ -338,6 +489,36 @@ describe('Real-Time WebSocket (e2e)', () => {
 
       expect(receivedCrossTenantEvent).toBe(false);
       socketA.close();
+    }, 15000);
+
+    it('should keep project rooms isolated across tenants', async () => {
+      const socketA = connectSocket(accessToken);
+      const stable = await waitForStableConnection(socketA, 2000);
+      expect(stable).toBe(true);
+
+      socketA.emit('join:project', { projectKey: 'WSB' });
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      const summary = `Tenant B same-key issue ${Date.now()}`;
+      let receivedCrossTenantEvent = false;
+      socketA.on('issue.created', (payload: any) => {
+        if (payload.data?.summary === summary) {
+          receivedCrossTenantEvent = true;
+        }
+      });
+
+      const createIssueResponse = await request(httpServer)
+        .post('/api/v1/projects/WSB/issues')
+        .set('Authorization', `Bearer ${tenantBToken}`)
+        .set('X-Tenant-ID', tenantBId)
+        .send({ summary });
+
+      expect(createIssueResponse.status).toBe(HttpStatus.CREATED);
+
+      await new Promise((resolve) => setTimeout(resolve, 750));
+      socketA.close();
+
+      expect(receivedCrossTenantEvent).toBe(false);
     }, 15000);
   });
 });

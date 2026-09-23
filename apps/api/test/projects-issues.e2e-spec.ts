@@ -25,15 +25,13 @@ describe('Projects & Issues (e2e)', () => {
     connections = app.get(TenantConnectionProvider);
 
     // Register a user to get auth token and tenant
-    const res = await request(app.getHttpServer())
-      .post('/api/v1/auth/register')
-      .send({
-        email: 'proj-test@example.com',
-        password: 'password123',
-        displayName: 'Project Tester',
-        orgName: 'Proj Test Org',
-        orgSlug: 'proj-test-org',
-      });
+    const res = await request(app.getHttpServer()).post('/api/v1/auth/register').send({
+      email: 'proj-test@example.com',
+      password: 'password123',
+      displayName: 'Project Tester',
+      orgName: 'Proj Test Org',
+      orgSlug: 'proj-test-org',
+    });
 
     accessToken = res.body.accessToken;
     tenantId = res.body.tenant.id;
@@ -41,7 +39,9 @@ describe('Projects & Issues (e2e)', () => {
 
   afterAll(async () => {
     await dataSource.query(`DROP SCHEMA IF EXISTS "tenant_proj_test_org" CASCADE`);
-    await dataSource.query(`DELETE FROM public.tenant_memberships WHERE tenant_id IN (SELECT id FROM public.tenants WHERE slug = 'proj-test-org')`);
+    await dataSource.query(
+      `DELETE FROM public.tenant_memberships WHERE tenant_id IN (SELECT id FROM public.tenants WHERE slug = 'proj-test-org')`,
+    );
     await dataSource.query(`DELETE FROM public.tenants WHERE slug = 'proj-test-org'`);
     await dataSource.query(`DELETE FROM public.users WHERE email = 'proj-test@example.com'`);
     await connections.closeAll();
@@ -155,17 +155,13 @@ describe('Projects & Issues (e2e)', () => {
     });
 
     it('GET /projects - should sort by name', async () => {
-      const res = await authedRequest()
-        .get('/api/v1/projects?sort=name')
-        .expect(200);
+      const res = await authedRequest().get('/api/v1/projects?sort=name').expect(200);
       expect(res.body.data[0].name).toBe('Mobile App');
       expect(res.body.data[1].name).toBe('Web Application');
     });
 
     it('GET /projects - should paginate', async () => {
-      const res = await authedRequest()
-        .get('/api/v1/projects?page=1&perPage=1')
-        .expect(200);
+      const res = await authedRequest().get('/api/v1/projects?page=1&perPage=1').expect(200);
       expect(res.body.data.length).toBe(1);
       expect(res.body.meta.total).toBe(2);
       expect(res.body.meta.totalPages).toBe(2);
@@ -208,9 +204,7 @@ describe('Projects & Issues (e2e)', () => {
     });
 
     it('GET /projects/:key/issues - should list project issues', async () => {
-      const res = await authedRequest()
-        .get('/api/v1/projects/WEB/issues')
-        .expect(200);
+      const res = await authedRequest().get('/api/v1/projects/WEB/issues').expect(200);
       expect(res.body.data.length).toBe(3);
       expect(res.body.meta.total).toBe(3);
     });
@@ -224,9 +218,7 @@ describe('Projects & Issues (e2e)', () => {
     });
 
     it('GET /issues/:key - should get issue by key', async () => {
-      const res = await authedRequest()
-        .get('/api/v1/issues/WEB-1')
-        .expect(200);
+      const res = await authedRequest().get('/api/v1/issues/WEB-1').expect(200);
       expect(res.body.summary).toBe('First issue');
     });
 
@@ -237,6 +229,43 @@ describe('Projects & Issues (e2e)', () => {
         .expect(200);
       expect(res.body.summary).toBe('Updated first issue');
       expect(res.body.priority).toBe('highest');
+    });
+
+    it('PATCH /issues/:key - should persist and clear a rich-text description', async () => {
+      const description = {
+        type: 'doc',
+        content: [
+          {
+            type: 'heading',
+            attrs: { level: 2 },
+            content: [{ type: 'text', text: 'Rich description', marks: [{ type: 'bold' }] }],
+          },
+          {
+            type: 'bulletList',
+            content: [
+              {
+                type: 'listItem',
+                content: [{ type: 'paragraph', content: [{ type: 'text', text: 'First item' }] }],
+              },
+            ],
+          },
+        ],
+      };
+
+      const updated = await authedRequest()
+        .patch('/api/v1/issues/WEB-1')
+        .send({ description })
+        .expect(200);
+      expect(updated.body.description).toEqual(description);
+
+      const fetched = await authedRequest().get('/api/v1/issues/WEB-1').expect(200);
+      expect(fetched.body.description).toEqual(description);
+
+      const cleared = await authedRequest()
+        .patch('/api/v1/issues/WEB-1')
+        .send({ description: null })
+        .expect(200);
+      expect(cleared.body.description).toBeNull();
     });
 
     it('PATCH /issues/:key - should set labels and custom fields', async () => {
@@ -257,36 +286,26 @@ describe('Projects & Issues (e2e)', () => {
     });
 
     it('should require authentication', async () => {
-      await request(app.getHttpServer())
-        .get('/api/v1/projects')
-        .expect(401);
+      await request(app.getHttpServer()).get('/api/v1/projects').expect(401);
     });
   });
 
   describe('Pagination & Sorting', () => {
     it('should reject invalid sort field', async () => {
-      await authedRequest()
-        .get('/api/v1/projects?sort=invalid')
-        .expect(400);
+      await authedRequest().get('/api/v1/projects?sort=invalid').expect(400);
     });
 
     it('should sort descending with - prefix', async () => {
-      const res = await authedRequest()
-        .get('/api/v1/projects?sort=-name')
-        .expect(200);
+      const res = await authedRequest().get('/api/v1/projects?sort=-name').expect(200);
       expect(res.body.data[0].name).toBe('Web Application');
     });
 
     it('should reject perPage > 200', async () => {
-      await authedRequest()
-        .get('/api/v1/projects?perPage=201')
-        .expect(400);
+      await authedRequest().get('/api/v1/projects?perPage=201').expect(400);
     });
 
     it('should handle empty results', async () => {
-      const res = await authedRequest()
-        .get('/api/v1/projects?page=999')
-        .expect(200);
+      const res = await authedRequest().get('/api/v1/projects?page=999').expect(200);
       expect(res.body.data.length).toBe(0);
       expect(res.body.meta.total).toBe(2);
     });
@@ -294,17 +313,11 @@ describe('Projects & Issues (e2e)', () => {
 
   describe('Validation', () => {
     it('should reject empty project name', async () => {
-      await authedRequest()
-        .post('/api/v1/projects')
-        .send({ name: '', key: 'TST' })
-        .expect(400);
+      await authedRequest().post('/api/v1/projects').send({ name: '', key: 'TST' }).expect(400);
     });
 
     it('should reject empty issue summary', async () => {
-      await authedRequest()
-        .post('/api/v1/projects/WEB/issues')
-        .send({ summary: '' })
-        .expect(400);
+      await authedRequest().post('/api/v1/projects/WEB/issues').send({ summary: '' }).expect(400);
     });
 
     it('should reject invalid priority', async () => {

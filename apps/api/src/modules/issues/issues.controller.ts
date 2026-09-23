@@ -60,8 +60,9 @@ export class IssuesController {
   @HttpCode(HttpStatus.NO_CONTENT)
   async reorder(
     @Body(new ZodValidationPipe(reorderIssuesSchema)) dto: any,
+    @CurrentUser() user: RequestUser,
   ) {
-    await this.issuesService.reorder(dto);
+    await this.issuesService.reorder(dto, user.userId);
   }
 
   @Get('issues/:issueKey')
@@ -93,7 +94,7 @@ export class IssuesController {
   @Delete('issues/:issueKey')
   @RequirePermission('issues', 'delete')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async delete(@Param('issueKey') issueKey: string) {
-    await this.issuesService.delete(issueKey);
+  async delete(@Param('issueKey') issueKey: string, @CurrentUser() user: RequestUser) {
+    await this.issuesService.delete(issueKey, user.userId);
   }
 }
