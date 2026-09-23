@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 env:
-  NODE_VERSION: '20'
+  NODE_VERSION: '22'
 
 jobs:
   lint-and-typecheck:
@@ -61,7 +61,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
-      - run: pnpm turbo test
+      - run: pnpm turbo test --concurrency=2
       - run: pnpm --filter @weaver/api test:e2e
       - run: node --test deploy/weaver.usercore.com/oauth-config.test.cjs
 
