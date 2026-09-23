@@ -29,7 +29,7 @@ export class CommentEntity {
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt!: Date;
 
-  @ManyToOne(() => IssueEntity, (issue) => issue.comments)
+  @ManyToOne(() => IssueEntity, (issue) => issue.comments, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'issue_id' })
   issue!: IssueEntity;
 }

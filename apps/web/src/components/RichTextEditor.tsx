@@ -4,7 +4,6 @@ import Image from '@tiptap/extension-image';
 import Placeholder from '@tiptap/extension-placeholder';
 import Link from '@tiptap/extension-link';
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
-import Mention from '@tiptap/extension-mention';
 import { common, createLowlight } from 'lowlight';
 import tippy, { type Instance as TippyInstance } from 'tippy.js';
 import { useCallback, useEffect, useRef } from 'react';
@@ -15,8 +14,8 @@ import {
   normalizeRichTextContent,
   serializeDoc,
 } from '@/lib/richText';
-import { MentionList, fetchMentionUsers } from './MentionSuggestion';
-import type { MentionUser } from './MentionSuggestion';
+import { MentionList } from './MentionSuggestion';
+import { MentionWithAvatar } from './MentionNode';
 import {
   Bold,
   Italic,
@@ -40,6 +39,7 @@ interface RichTextEditorProps {
   onChange?: (json: Record<string, unknown>) => void;
   placeholder?: string;
   editable?: boolean;
+  editorClassName?: string;
 }
 
 export function RichTextEditor({
@@ -48,6 +48,7 @@ export function RichTextEditor({
   onChange,
   placeholder = 'Write something...',
   editable = true,
+  editorClassName,
 }: RichTextEditorProps) {
   const issueUpload = useUploadAttachment(issueKey || '__noop__');
   const genericUpload = useGenericUploadAttachment();
@@ -74,15 +75,12 @@ export function RichTextEditor({
       Placeholder.configure({ placeholder }),
       Link.configure({ openOnClick: !editable }),
       CodeBlockLowlight.configure({ lowlight }),
-      Mention.configure({
+      MentionWithAvatar.configure({
         HTMLAttributes: {
           class: 'mention',
         },
         suggestion: {
-          items: async ({ query }: { query: string }): Promise<MentionUser[]> => {
-            if (!query) return [];
-            return fetchMentionUsers(query);
-          },
+          items: () => [],
           render: () => {
             let component: ReactRenderer<any> | null = null;
             let popup: TippyInstance[] | null = null;
@@ -137,9 +135,10 @@ export function RichTextEditor({
     },
     editorProps: {
       attributes: {
-        class: editable
+        class: `${editable
           ? 'prose prose-sm max-w-none focus:outline-none min-h-[80px] px-3 py-2'
-          : 'prose prose-sm max-w-none',
+          : 'prose prose-sm max-w-none'} ${editorClassName ?? ''}`,
+        'aria-label': placeholder,
       },
       handlePaste: (_view, event) => {
         const items = event.clipboardData?.items;

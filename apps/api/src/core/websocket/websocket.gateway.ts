@@ -10,14 +10,27 @@ import {
 import { Injectable, Logger } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
-import { PROJECT_KEY_REGEX } from '@weaver/shared';
+import { InjectRepository } from '@nestjs/typeorm';
+import { TenantEntity, TenantMembershipEntity } from '@weaver/db';
+import { Repository } from 'typeorm';
+import { validateCorsOrigin } from '../security/cors.config';
+import type { RequestUser } from '../auth';
+import { ProjectAccessService } from '../tenant/project-access.service';
+import { tenantStorage } from '../tenant/tenant.context';
 
-interface WebSocketJwtPayload {
-  sub?: unknown;
-  tenantId?: unknown;
+function readCookie(cookieHeader: string | undefined, name: string): string | undefined {
+  return cookieHeader
+    ?.split(';')
+    .map((cookie) => cookie.trim().split('='))
+    .find(([key]) => key === name)
+    ?.slice(1)
+    .join('=');
 }
 
-@WebSocketGateway({ cors: { origin: '*' }, namespace: '/ws' })
+@WebSocketGateway({
+  cors: { origin: validateCorsOrigin, credentials: true },
+  namespace: '/ws',
+})
 @Injectable()
 export class WeaverGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
@@ -25,29 +38,52 @@ export class WeaverGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   private readonly logger = new Logger(WeaverGateway.name);
 
-  constructor(private readonly jwtService: JwtService) {}
+  constructor(
+    private readonly jwtService: JwtService,
+    @InjectRepository(TenantEntity)
+    private readonly tenantRepo: Repository<TenantEntity>,
+    @InjectRepository(TenantMembershipEntity)
+    private readonly membershipRepo: Repository<TenantMembershipEntity>,
+    private readonly projectAccess: ProjectAccessService,
+  ) {}
 
   async handleConnection(client: Socket) {
     try {
       const token =
         client.handshake.auth?.token ||
-        client.handshake.headers?.authorization?.replace('Bearer ', '');
+        client.handshake.headers?.authorization?.replace('Bearer ', '') ||
+        readCookie(client.handshake.headers?.cookie, 'weaver_token');
 
       if (!token) {
         client.disconnect();
         return;
       }
 
-      const payload = this.jwtService.verify<WebSocketJwtPayload>(token);
-      if (typeof payload.sub !== 'string' || typeof payload.tenantId !== 'string') {
+      const payload = this.jwtService.verify(token);
+      if (payload.tokenType !== 'access') {
         client.disconnect();
         return;
       }
+      const [tenant, membership] = await Promise.all([
+        this.tenantRepo.findOneBy({ id: payload.tenantId }),
+        this.membershipRepo.findOneBy({
+          tenantId: payload.tenantId,
+          userId: payload.sub,
+        }),
+      ]);
+      if (!tenant || !membership) {
+        client.disconnect();
+        return;
+      }
+      (client as any).userId = payload.sub;
+      (client as any).tenantId = payload.tenantId;
+      (client as any).tenantSchemaName = tenant.schemaName;
+      (client as any).role = membership.role;
+      (client as any).userEmail = payload.email;
 
-      client.data.userId = payload.sub;
-      client.data.tenantId = payload.tenantId;
-
-      await client.join(this.tenantRoom(payload.tenantId));
+      if (payload.tenantId) {
+        client.join(this.userRoom(payload.tenantId, payload.sub));
+      }
 
       this.logger.log(`Client connected: ${client.id} (user: ${payload.sub})`);
     } catch {
@@ -63,63 +99,73 @@ export class WeaverGateway implements OnGatewayConnection, OnGatewayDisconnect {
   async handleJoinProject(
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { projectKey: string },
-  ) {
-    const tenantId = this.getTenantId(client);
-    if (!tenantId || !PROJECT_KEY_REGEX.test(data?.projectKey)) {
+  ): Promise<{ joined: boolean; projectKey?: string }> {
+    const tenantId = (client as any).tenantId as string | undefined;
+    const schemaName = (client as any).tenantSchemaName as string | undefined;
+    const userId = (client as any).userId as string | undefined;
+    const role = (client as any).role as string | undefined;
+    if (!tenantId || !schemaName || !userId || !role || !data?.projectKey) {
+      return { joined: false };
+    }
+
+    const user: RequestUser = {
+      userId,
+      tenantId,
+      role,
+      email: ((client as any).userEmail as string | undefined) ?? '',
+    };
+    try {
+      await tenantStorage.run(
+        { tenantId, schemaName },
+        () => this.projectAccess.assertProjectKey(data.projectKey, user, 'read'),
+      );
+    } catch {
+      this.logger.warn(`Client ${client.id} denied project room ${data.projectKey}`);
       return { joined: false };
     }
 
     const room = this.projectRoom(tenantId, data.projectKey);
-    await client.join(room);
+    client.join(room);
     this.logger.debug(`Client ${client.id} joined ${room}`);
-    return { joined: true };
+    return { joined: true, projectKey: data.projectKey };
   }
 
   @SubscribeMessage('leave:project')
-  async handleLeaveProject(
+  handleLeaveProject(
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { projectKey: string },
   ) {
-    const tenantId = this.getTenantId(client);
-    if (!tenantId || !PROJECT_KEY_REGEX.test(data?.projectKey)) {
-      return { left: false };
+    const tenantId = (client as any).tenantId as string | undefined;
+    if (!tenantId || !data?.projectKey) {
+      return;
     }
 
-    await client.leave(this.projectRoom(tenantId, data.projectKey));
-    return { left: true };
+    client.leave(this.projectRoom(tenantId, data.projectKey));
   }
 
-  emitToTenant(tenantId: string, event: string, data: unknown, projectKey?: string) {
-    const rooms = [this.tenantRoom(tenantId)];
-    if (projectKey) {
-      rooms.push(this.projectRoom(tenantId, projectKey));
-    }
-
-    // Socket.IO emits once to the union, even when a socket is in both rooms.
-    this.server.to(rooms).emit(event, data);
+  emitToTenant(tenantId: string, event: string, data: unknown) {
+    this.server.to(`tenant:${tenantId}`).emit(event, data);
   }
 
   emitToProject(tenantId: string, projectKey: string, event: string, data: unknown) {
     this.server.to(this.projectRoom(tenantId, projectKey)).emit(event, data);
   }
 
-  emitToUser(userId: string, event: string, data: unknown) {
-    for (const [, socket] of this.server.sockets.sockets) {
-      if (socket.data.userId === userId) {
-        socket.emit(event, data);
-      }
-    }
+  emitToUser(tenantId: string, userId: string, event: string, data: unknown) {
+    this.server.to(this.userRoom(tenantId, userId)).emit(event, data);
   }
 
-  private getTenantId(client: Socket): string | undefined {
-    return typeof client.data.tenantId === 'string' ? client.data.tenantId : undefined;
-  }
-
-  private tenantRoom(tenantId: string): string {
-    return `tenant:${tenantId}`;
+  disconnectUserFromTenant(userId: string, tenantId: string): void {
+    this.server
+      .in(this.userRoom(tenantId, userId))
+      .disconnectSockets(true);
   }
 
   private projectRoom(tenantId: string, projectKey: string): string {
-    return `${this.tenantRoom(tenantId)}:project:${projectKey}`;
+    return `tenant:${tenantId}:project:${projectKey}`;
+  }
+
+  private userRoom(tenantId: string, userId: string): string {
+    return `tenant:${tenantId}:user:${userId}`;
   }
 }

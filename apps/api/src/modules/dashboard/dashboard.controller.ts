@@ -9,6 +9,6 @@ export class DashboardController {
 
   @Get()
   async getDashboard(@CurrentUser() user: RequestUser) {
-    return this.dashboardService.getDashboard(user.userId);
+    return this.dashboardService.getDashboard(user);
   }
 }

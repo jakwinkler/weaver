@@ -34,15 +34,15 @@ export class WorkflowTransitionEntity {
   @Column({ name: 'post_functions', type: 'jsonb', default: [] })
   postFunctions!: unknown[];
 
-  @ManyToOne(() => WorkflowEntity, (workflow) => workflow.transitions)
+  @ManyToOne(() => WorkflowEntity, (workflow) => workflow.transitions, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'workflow_id' })
   workflow!: WorkflowEntity;
 
-  @ManyToOne(() => WorkflowStatusEntity)
+  @ManyToOne(() => WorkflowStatusEntity, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'from_status_id' })
   fromStatus!: WorkflowStatusEntity;
 
-  @ManyToOne(() => WorkflowStatusEntity)
+  @ManyToOne(() => WorkflowStatusEntity, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'to_status_id' })
   toStatus!: WorkflowStatusEntity;
 }

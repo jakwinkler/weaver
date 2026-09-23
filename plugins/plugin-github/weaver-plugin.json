@@ -28,8 +28,8 @@
     ]
   },
   "routes": [
-    { "method": "POST", "path": "/webhook", "handler": "handleWebhook" },
-    { "method": "GET", "path": "/links/:issueKey", "handler": "getLinks" }
+    { "method": "POST", "path": "/webhook/:tenantId", "handler": "handleGitHubWebhook", "public": true },
+    { "method": "GET", "path": "/links/:issueKey", "handler": "getGitHubLinks", "requiredPermissions": ["issues.read"] }
   ],
   "migrations": ["./migrations/001_create_github_links.sql"]
 }

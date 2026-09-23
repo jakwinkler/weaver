@@ -147,12 +147,7 @@ interface SearchResult {
     status: string;
     assigneeId?: string;
   }>;
-  meta: {
-    page: number;
-    perPage: number;
-    total: number;
-    totalPages: number;
-  };
+  meta: { total: number; page: number; perPage: number; totalPages: number };
 }
 
 export function useSearch() {

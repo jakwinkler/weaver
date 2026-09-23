@@ -11,13 +11,23 @@ export class MentionService {
 
     const ids = new Set<string>();
 
-    function walk(node: any) {
-      if (!node) return;
-      if (node.type === 'mention' && node.attrs?.id) {
-        ids.add(node.attrs.id);
+    function walk(node: unknown) {
+      if (!node || typeof node !== 'object') return;
+
+      const richTextNode = node as {
+        type?: unknown;
+        attrs?: { id?: unknown };
+        content?: unknown;
+      };
+      if (
+        richTextNode.type === 'mention' &&
+        typeof richTextNode.attrs?.id === 'string' &&
+        richTextNode.attrs.id.length > 0
+      ) {
+        ids.add(richTextNode.attrs.id);
       }
-      if (Array.isArray(node.content)) {
-        for (const child of node.content) {
+      if (Array.isArray(richTextNode.content)) {
+        for (const child of richTextNode.content) {
           walk(child);
         }
       }

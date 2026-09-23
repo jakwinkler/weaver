@@ -1,7 +1,14 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import { API_BASE_URL } from './client';
-import type { Project, Issue, PaginatedResponse, WorkflowStatus } from '@weaver/shared';
+import type {
+  Project,
+  Issue,
+  PaginatedResponse,
+  PublicForm,
+  PublicFormSubmissionDto,
+  WorkflowStatus,
+} from '@weaver/shared';
 
 const publicClient = axios.create({
   baseURL: API_BASE_URL,
@@ -25,9 +32,7 @@ export function usePublicProject(tenantSlug: string, projectKey: string) {
   return useQuery({
     queryKey: ['public-project', tenantSlug, projectKey],
     queryFn: async () => {
-      const res = await publicClient.get<Project>(
-        `/public/${tenantSlug}/projects/${projectKey}`,
-      );
+      const res = await publicClient.get<Project>(`/public/${tenantSlug}/projects/${projectKey}`);
       return res.data;
     },
     enabled: !!tenantSlug && !!projectKey,
@@ -63,5 +68,31 @@ export function usePublicProjectBoard(tenantSlug: string, projectKey: string) {
       return res.data;
     },
     enabled: !!tenantSlug && !!projectKey,
+  });
+}
+
+export function usePublicForm(tenantSlug: string, formSlug: string) {
+  return useQuery({
+    queryKey: ['public-form', tenantSlug, formSlug],
+    queryFn: async () => {
+      const response = await publicClient.get<PublicForm>(
+        `/public/${tenantSlug}/forms/${formSlug}`,
+      );
+      return response.data;
+    },
+    enabled: !!tenantSlug && !!formSlug,
+    retry: false,
+  });
+}
+
+export function useSubmitPublicForm(tenantSlug: string, formSlug: string) {
+  return useMutation({
+    mutationFn: async (data: PublicFormSubmissionDto) => {
+      const response = await publicClient.post<{ submissionId: string; issueKey: string }>(
+        `/public/${tenantSlug}/forms/${formSlug}/submit`,
+        data,
+      );
+      return response.data;
+    },
   });
 }

@@ -3,14 +3,20 @@ import { INestApplication } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
+import { TenantProvisioningService } from '../src/core/tenant';
 import { TenantConnectionProvider } from '../src/core/tenant';
 
 describe('Auth (e2e)', () => {
+  const UUID_PATTERN =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
   let app: INestApplication;
   let dataSource: DataSource;
   let connections: TenantConnectionProvider;
+  let provisioning: TenantProvisioningService;
   let accessToken: string;
   let refreshToken: string;
+  let tenantId: string;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -23,19 +29,52 @@ describe('Auth (e2e)', () => {
 
     dataSource = app.get(DataSource);
     connections = app.get(TenantConnectionProvider);
+    provisioning = app.get(TenantProvisioningService);
   });
 
   afterAll(async () => {
     // Clean up test data
     await dataSource.query(`DROP SCHEMA IF EXISTS "tenant_auth_test_org" CASCADE`);
+    await dataSource.query(`DROP SCHEMA IF EXISTS "tenant_retry_registration" CASCADE`);
     await dataSource.query(`DELETE FROM public.tenant_memberships WHERE tenant_id IN (SELECT id FROM public.tenants WHERE slug = 'auth-test-org')`);
     await dataSource.query(`DELETE FROM public.tenants WHERE slug = 'auth-test-org'`);
-    await dataSource.query(`DELETE FROM public.users WHERE email = 'auth-test@example.com'`);
+    await dataSource.query(`DELETE FROM public.tenants WHERE slug = 'retry-registration'`);
+    await dataSource.query(
+      `DELETE FROM public.users WHERE email IN ('auth-test@example.com', 'retry-registration@example.com')`,
+    );
     await connections.closeAll();
     await app.close();
   });
 
   describe('POST /api/v1/auth/register', () => {
+    it('can retry registration after tenant provisioning fails', async () => {
+      jest
+        .spyOn(provisioning, 'provisionSchema')
+        .mockRejectedValueOnce(new Error('simulated provisioning failure'));
+
+      await request(app.getHttpServer())
+        .post('/api/v1/auth/register')
+        .send({
+          email: 'retry-registration@example.com',
+          password: 'password123',
+          displayName: 'Retry Registration',
+          orgName: 'Retry Registration',
+          orgSlug: 'retry-registration',
+        })
+        .expect(500);
+
+      await request(app.getHttpServer())
+        .post('/api/v1/auth/register')
+        .send({
+          email: 'retry-registration@example.com',
+          password: 'password123',
+          displayName: 'Retry Registration',
+          orgName: 'Retry Registration',
+          orgSlug: 'retry-registration',
+        })
+        .expect(201);
+    });
+
     it('should register a new user and create a tenant', async () => {
       const res = await request(app.getHttpServer())
         .post('/api/v1/auth/register')
@@ -53,11 +92,21 @@ describe('Auth (e2e)', () => {
       expect(res.body.user.email).toBe('auth-test@example.com');
       expect(res.body.user.displayName).toBe('Auth Test User');
       expect(res.body.user.passwordHash).toBeUndefined();
-      expect(res.body.tenant.slug).toBe('auth-test-org');
-      expect(res.body.tenant.schemaName).toBe('tenant_auth_test_org');
+      expect(res.body.tenantId).toMatch(UUID_PATTERN);
+      expect(res.body.tenant).toBeUndefined();
+
+      const [tenant] = await dataSource.query(
+        `SELECT slug, schema_name AS "schemaName" FROM public.tenants WHERE id = $1`,
+        [res.body.tenantId],
+      );
+      expect(tenant).toEqual({
+        slug: 'auth-test-org',
+        schemaName: 'tenant_auth_test_org',
+      });
 
       accessToken = res.body.accessToken;
       refreshToken = res.body.refreshToken;
+      tenantId = res.body.tenantId;
     });
 
     it('should reject duplicate email', async () => {
@@ -100,6 +149,10 @@ describe('Auth (e2e)', () => {
       expect(res.body.accessToken).toBeDefined();
       expect(res.body.refreshToken).toBeDefined();
       expect(res.body.user.email).toBe('auth-test@example.com');
+      expect(res.body.user.passwordHash).toBeUndefined();
+      expect(res.body.tenantId).toBe(tenantId);
+      expect(res.body.tenantId).toMatch(UUID_PATTERN);
+      expect(res.body.tenant).toBeUndefined();
 
       accessToken = res.body.accessToken;
     });
@@ -134,6 +187,7 @@ describe('Auth (e2e)', () => {
 
       expect(res.body.email).toBe('auth-test@example.com');
       expect(res.body.displayName).toBe('Auth Test User');
+      expect(res.body.role).toBe('owner');
       expect(res.body.passwordHash).toBeUndefined();
     });
 
@@ -152,15 +206,57 @@ describe('Auth (e2e)', () => {
   });
 
   describe('POST /api/v1/auth/refresh', () => {
-    it('should issue a new access token', async () => {
-      const res = await request(app.getHttpServer())
+    it('rejects access tokens on the refresh endpoint', async () => {
+      await request(app.getHttpServer())
         .post('/api/v1/auth/refresh')
         .set('Authorization', `Bearer ${accessToken}`)
+        .expect(401);
+    });
+
+    it('rotates a valid refresh token and rejects reuse', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/auth/refresh')
+        .set('Authorization', `Bearer ${refreshToken}`)
         .expect(201);
 
       expect(res.body.accessToken).toBeDefined();
       expect(typeof res.body.accessToken).toBe('string');
       expect(res.body.accessToken.split('.').length).toBe(3);
+      expect(res.body.refreshToken).toBeDefined();
+      expect(res.body.refreshToken).not.toBe(refreshToken);
+
+      await request(app.getHttpServer())
+        .post('/api/v1/auth/refresh')
+        .set('Authorization', `Bearer ${refreshToken}`)
+        .expect(401);
+
+      refreshToken = res.body.refreshToken;
+      accessToken = res.body.accessToken;
+    });
+
+    it('does not accept refresh tokens as access tokens', async () => {
+      await request(app.getHttpServer())
+        .get('/api/v1/auth/me')
+        .set('Authorization', `Bearer ${refreshToken}`)
+        .expect(401);
+    });
+  });
+
+  describe('POST /api/v1/auth/logout', () => {
+    it('revokes the refresh session and clears both cookies', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/auth/logout')
+        .set('Authorization', `Bearer ${refreshToken}`)
+        .expect(204);
+
+      const cookies = res.headers['set-cookie'] as unknown as string[];
+      expect(cookies.join(';')).toContain('weaver_token=;');
+      expect(cookies.join(';')).toContain('weaver_refresh=;');
+
+      await request(app.getHttpServer())
+        .post('/api/v1/auth/refresh')
+        .set('Authorization', `Bearer ${refreshToken}`)
+        .expect(401);
     });
   });
 });

@@ -8,6 +8,7 @@ interface InlineDatePickerProps {
   editable?: boolean;
   className?: string;
   placeholder?: string;
+  ariaLabel?: string;
 }
 
 export function InlineDatePicker({
@@ -16,6 +17,7 @@ export function InlineDatePicker({
   editable = true,
   className,
   placeholder = '-',
+  ariaLabel,
 }: InlineDatePickerProps) {
   const [saving, setSaving] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -53,6 +55,8 @@ export function InlineDatePicker({
       <input
         ref={inputRef}
         type="date"
+        aria-label={ariaLabel}
+        data-inline-editable-focus
         value={inputValue}
         onChange={(e) => handleChange(e.target.value)}
         disabled={saving}
@@ -63,7 +67,9 @@ export function InlineDatePicker({
           saving && 'opacity-60',
         )}
       />
-      {saving && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+      {saving && (
+        <Loader2 aria-label="Saving" className="h-3 w-3 animate-spin text-muted-foreground" />
+      )}
     </div>
   );
 }

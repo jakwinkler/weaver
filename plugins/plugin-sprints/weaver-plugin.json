@@ -24,6 +24,12 @@
   "ui": {
     "projectViews": [
       {
+        "label": "Backlog",
+        "icon": "list-tree",
+        "viewPath": "backlog",
+        "requiredPermissions": ["sprints.view"]
+      },
+      {
         "label": "Sprints",
         "icon": "zap",
         "viewPath": "sprints",

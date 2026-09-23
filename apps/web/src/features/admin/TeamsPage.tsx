@@ -45,7 +45,7 @@ export function TeamsPage() {
 
   return (
     <div>
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Teams</h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -111,7 +111,7 @@ export function TeamsPage() {
                     <div>
                       <h3 className="text-sm font-medium text-foreground">{team.name}</h3>
                       <p className="text-xs text-muted-foreground">
-                        Created {new Date(team.createdAt).toLocaleDateString()}
+                        Created {new Date(team.createdAt ?? team.created_at).toLocaleDateString()}
                       </p>
                     </div>
                     <Button

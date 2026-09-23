@@ -26,7 +26,7 @@ export function getSlotEntries(
         pluginId: manifest.id,
         slotName: slot.slot,
         componentName: slot.component,
-        component: getPluginComponent(manifest.id, slot.component),
+        component: getPluginComponent(manifest.id, slot.component, manifest.clientBundle),
         requiredPermissions: slot.requiredPermissions ?? [],
       });
     }
@@ -87,7 +87,7 @@ export function getPageEntry(
           pluginId: manifest.id,
           path: page.path,
           componentName: page.component,
-          component: getPluginComponent(manifest.id, page.component),
+          component: getPluginComponent(manifest.id, page.component, manifest.clientBundle),
           requiredPermissions: page.requiredPermissions ?? [],
         };
       }

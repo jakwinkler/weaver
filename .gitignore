@@ -3,6 +3,7 @@ node_modules/
 
 # Build outputs
 dist/
+.build/
 .turbo/
 *.tsbuildinfo
 
@@ -36,3 +37,4 @@ docker/data/
 # Misc
 *.tgz
 .cache/
+uploads/

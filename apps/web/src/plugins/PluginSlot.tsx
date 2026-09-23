@@ -2,6 +2,8 @@ import { Suspense } from 'react';
 import { useInstalledPlugins, useAvailablePlugins, useMyPermissions } from '@/api';
 import { getSlotEntries } from './plugin-slot-registry';
 import { createPluginContext } from './plugin-context';
+import { PluginErrorBoundary } from './PluginErrorBoundary';
+import { PluginLoading } from './PluginLoading';
 
 interface PluginSlotProps {
   name: string;
@@ -15,9 +17,7 @@ export function PluginSlot({ name, ...props }: PluginSlotProps) {
 
   if (!installedPlugins || !availablePlugins) return null;
 
-  const enabledPluginIds = installedPlugins
-    .filter((p) => p.enabled)
-    .map((p) => p.pluginId);
+  const enabledPluginIds = installedPlugins.filter((p) => p.enabled).map((p) => p.pluginId);
 
   const entries = getSlotEntries(name, availablePlugins, enabledPluginIds);
 
@@ -38,9 +38,11 @@ export function PluginSlot({ name, ...props }: PluginSlotProps) {
         const Component = entry.component!;
         const pluginContext = createPluginContext(entry.pluginId);
         return (
-          <Suspense key={entry.pluginId} fallback={null}>
-            <Component pluginContext={pluginContext} {...props} />
-          </Suspense>
+          <PluginErrorBoundary key={entry.pluginId} pluginId={entry.pluginId}>
+            <Suspense fallback={<PluginLoading />}>
+              <Component pluginContext={pluginContext} {...props} />
+            </Suspense>
+          </PluginErrorBoundary>
         );
       })}
     </>

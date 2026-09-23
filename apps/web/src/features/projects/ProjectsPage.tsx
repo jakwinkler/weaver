@@ -110,7 +110,7 @@ export function ProjectsPage() {
 
   return (
     <div>
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-foreground">Projects</h1>
         {canCreate && (
           <Button onClick={() => setShowForm(!showForm)} variant={showForm ? 'outline' : 'default'}>
@@ -123,7 +123,7 @@ export function ProjectsPage() {
         <Card className="mb-6">
           <CardContent className="pt-5">
             <form onSubmit={handleCreate}>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-1">
                   <Label htmlFor="projectName">Name</Label>
                   <Input
@@ -213,7 +213,7 @@ export function ProjectsPage() {
                   </span>
                 </TableCell>
                 <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
-                  {project.issueCounter}
+                  {project.key}
                 </TableCell>
               </TableRow>
             ))}

@@ -1,24 +1,34 @@
 import {
-  Controller,
   All,
-  Param,
+  Controller,
+  HttpStatus,
+  Logger,
   Req,
   Res,
-  HttpStatus,
   UseGuards,
-  Logger,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
-import { JwtAuthGuard } from '../core/auth';
-import type { PluginRouteDefinition, PluginResponse } from '@weaver/sdk';
+import type { PluginResponse, PluginRouteDefinition } from '@weaver/sdk';
 import { RoleEntity } from '@weaver/db';
+import { tenantStorage } from '../core/tenant/tenant.context';
 import { TenantConnectionProvider } from '../core/tenant/tenant-connection.provider';
+import { TenantService } from '../core/tenant/tenant.service';
+import { ProjectAccessService } from '../core/tenant/project-access.service';
+import type { RequestUser } from '../core/auth';
 import { PluginRegistryService } from './plugin-registry.service';
 import { PluginLoaderService } from './plugin-loader.service';
 import { PluginContextFactory } from './plugin-context.factory';
+import { PluginRouteAuthGuard } from './plugin-route-auth.guard';
+import {
+  matchPluginRoute,
+  type MatchedPluginRoute,
+} from './plugin-route.matcher';
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 @Controller('plugin-routes')
-@UseGuards(JwtAuthGuard)
+@UseGuards(PluginRouteAuthGuard)
 export class PluginRouteController {
   private readonly logger = new Logger(PluginRouteController.name);
 
@@ -27,97 +37,91 @@ export class PluginRouteController {
     private readonly loader: PluginLoaderService,
     private readonly contextFactory: PluginContextFactory,
     private readonly tenantConnections: TenantConnectionProvider,
+    private readonly tenantService: TenantService,
+    private readonly projectAccess: ProjectAccessService,
   ) {}
 
   @All('*')
-  async handlePluginRoute(
-    @Req() req: Request,
-    @Res() res: Response,
-  ) {
-    // Parse pluginId and sub-path from the raw URL.
-    // Scoped IDs like @weaver/plugin-checklist use ~ for the slash:
-    //   /plugin-routes/@weaver~plugin-checklist/issues/QM-2/checklist
-    // We strip the controller prefix and split on the first / after the pluginId.
-    const stripped = req.path.replace(/^.*\/plugin-routes\//, '');
-    const firstSlash = stripped.indexOf('/');
-    if (firstSlash === -1) {
-      return res.status(HttpStatus.NOT_FOUND).json({ message: 'Missing route path' });
+  async handlePluginRoute(@Req() req: Request, @Res() res: Response) {
+    const match = matchPluginRoute(this.loader, req);
+    if (!match) {
+      return res
+        .status(HttpStatus.NOT_FOUND)
+        .json({ message: 'Plugin route not found' });
     }
-    const rawPluginId = decodeURIComponent(stripped.substring(0, firstSlash));
-    const routePath = stripped.substring(firstSlash + 1);
-    const pluginId = rawPluginId.replace('~', '/');
 
-    this.logger.debug(`Plugin route: ${req.method} pluginId=${pluginId} path=/${routePath}`);
+    this.logger.debug(
+      `Plugin route: ${req.method} pluginId=${match.pluginId} path=${match.normalizedPath}`,
+    );
 
+    if (!match.route.public) {
+      return this.dispatch(req, res, match);
+    }
+
+    const tenantId = match.params.tenantId;
+    if (!tenantId || !UUID_RE.test(tenantId)) {
+      return res
+        .status(HttpStatus.BAD_REQUEST)
+        .json({ message: 'Public plugin routes require a valid tenantId' });
+    }
+
+    const tenant = await this.tenantService.findById(tenantId);
+    if (!tenant) {
+      return res.status(HttpStatus.NOT_FOUND).json({ message: 'Tenant not found' });
+    }
+
+    return tenantStorage.run(
+      { tenantId: tenant.id, schemaName: tenant.schemaName },
+      () => this.dispatch(req, res, match),
+    );
+  }
+
+  private async dispatch(
+    req: Request,
+    res: Response,
+    match: MatchedPluginRoute,
+  ) {
     try {
-      const installed = await this.registry.findInstalled(pluginId);
+      const installed = await this.registry.findInstalled(match.pluginId);
       if (!installed.enabled) {
-        return res
-          .status(HttpStatus.SERVICE_UNAVAILABLE)
-          .json({ message: 'Plugin is disabled' });
+        return res.status(HttpStatus.SERVICE_UNAVAILABLE).json({ message: 'Plugin is disabled' });
       }
 
-      const manifest = this.loader.getManifest(pluginId);
-      if (!manifest) {
-        this.logger.warn(`Plugin manifest not found: ${pluginId}`);
-        return res
-          .status(HttpStatus.NOT_FOUND)
-          .json({ message: `Plugin manifest not found: ${pluginId}` });
+      const permissionFailure = await this.checkPermissions(req, match.route);
+      if (permissionFailure) {
+        return res.status(HttpStatus.FORBIDDEN).json(permissionFailure);
       }
 
-      // Find matching route in manifest
-      const method = req.method.toUpperCase();
-      const normalizedPath = `/${routePath}`;
-      const matchedRoute = manifest.routes?.find(
-        (r: PluginRouteDefinition) =>
-          r.method === method && this.matchPath(r.path, normalizedPath),
-      );
-
-      if (!matchedRoute) {
-        this.logger.warn(
-          `No matching route for ${method} ${normalizedPath} in plugin ${pluginId}. ` +
-          `Available: ${manifest.routes?.map((r) => `${r.method} ${r.path}`).join(', ')}`,
-        );
-        return res
-          .status(HttpStatus.NOT_FOUND)
-          .json({ message: `Plugin route not found: ${method} ${normalizedPath}` });
-      }
-
-      // Check route-level permissions
-      if (matchedRoute.requiredPermissions?.length) {
-        const reqUser = (req as any).user;
-        if (reqUser?.role !== 'owner') {
-          const em = await this.tenantConnections.getEntityManager();
-          const role = await em.getRepository(RoleEntity).findOne({
-            where: { name: reqUser?.role },
-          });
-          const perms = (role?.permissions ?? {}) as Record<string, unknown>;
-          if (perms['*'] !== true) {
-            const missing = matchedRoute.requiredPermissions.filter(
-              (p) => perms[p] !== true,
-            );
-            if (missing.length > 0) {
-              return res.status(HttpStatus.FORBIDDEN).json({
-                message: 'Missing required permissions',
-                missing,
-              });
-            }
-          }
+      if (!match.route.public) {
+        const reqUser = (req as Request & { user?: RequestUser }).user;
+        if (!reqUser) {
+          return res
+            .status(HttpStatus.UNAUTHORIZED)
+            .json({ message: 'Authentication required' });
+        }
+        const mode = req.method === 'GET' ? 'read' : 'write';
+        if (match.params.issueKey) {
+          await this.projectAccess.assertIssueKey(match.params.issueKey, reqUser, mode);
+        }
+        if (match.params.projectKey) {
+          await this.projectAccess.assertProjectKey(match.params.projectKey, reqUser, mode);
         }
       }
 
-      // Load the handler
-      const handler = await this.loader.getHandler(pluginId, matchedRoute.handler);
+      const handler = await this.loader.getHandler(
+        match.pluginId,
+        match.route.handler,
+      );
       if (!handler) {
-        return res
-          .status(HttpStatus.NOT_IMPLEMENTED)
-          .json({ message: `Handler not found: ${matchedRoute.handler}` });
+        return res.status(HttpStatus.NOT_IMPLEMENTED).json({
+          message: `Handler not found: ${match.route.handler}`,
+        });
       }
 
-      const reqUser = (req as any).user;
+      const reqUser = (req as Request & { user?: Record<string, string> }).user;
       const context = await this.contextFactory.create(
-        pluginId,
-        installed.settings,
+        match.pluginId,
+        this.registry.mergeSettingsWithDefaults(match.pluginId, installed.settings),
         reqUser
           ? {
               id: reqUser.userId || reqUser.id,
@@ -126,57 +130,55 @@ export class PluginRouteController {
             }
           : undefined,
       );
-
-      // Build PluginRequest
-      const params = this.extractParams(matchedRoute.path, normalizedPath);
+      const rawBody = (
+        req as Request & { rawBody?: Buffer }
+      ).rawBody?.toString('utf8');
       const pluginRequest = {
-        params,
+        params: match.params,
         query: (req.query || {}) as Record<string, string>,
         body: req.body,
-        headers: req.headers as Record<string, string>,
+        ...(rawBody === undefined ? {} : { rawBody }),
+        headers: Object.fromEntries(Object.entries(req.headers).flatMap(([key, value]) => typeof value === 'string' ? [[key, value]] : [])),
+        auth: { type: 'interactive' as const },
       };
 
-      // Call handler
       const result: PluginResponse = await handler(pluginRequest, context);
-
-      // Return PluginResponse
       if (result.headers) {
         for (const [key, value] of Object.entries(result.headers)) {
           res.setHeader(key, value);
         }
       }
       return res.status(result.status).json(result.body);
-    } catch (err: any) {
-      this.logger.error(`Plugin route error: ${err.message}`, err.stack);
-      if (err.status) {
-        return res.status(err.status).json({ message: err.message });
+    } catch (error: any) {
+      this.logger.error(`Plugin route error: ${error.message}`, error.stack);
+      if (error.status) {
+        return res.status(error.status).json({ message: error.message });
       }
-      return res
-        .status(HttpStatus.INTERNAL_SERVER_ERROR)
-        .json({ message: 'Plugin route error' });
+      return res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({ message: 'Plugin route error' });
     }
   }
 
-  private matchPath(pattern: string, actual: string): boolean {
-    const patternParts = pattern.split('/').filter(Boolean);
-    const actualParts = actual.split('/').filter(Boolean);
-    if (patternParts.length !== actualParts.length) return false;
-    return patternParts.every(
-      (part, i) => part.startsWith(':') || part === actualParts[i],
+  private async checkPermissions(
+    req: Request,
+    route: PluginRouteDefinition,
+  ): Promise<{ message: string; missing: string[] } | undefined> {
+    if (!route.requiredPermissions?.length) return undefined;
+
+    const reqUser = (req as Request & { user?: Record<string, string> }).user;
+    if (reqUser?.role === 'owner') return undefined;
+
+    const em = await this.tenantConnections.getEntityManager();
+    const role = await em.getRepository(RoleEntity).findOne({
+      where: { name: reqUser?.role },
+    });
+    const permissions = (role?.permissions ?? {}) as Record<string, unknown>;
+    if (permissions['*'] === true) return undefined;
+
+    const missing = route.requiredPermissions.filter(
+      (permission) => permissions[permission] !== true,
     );
-  }
-
-  private extractParams(pattern: string, actual: string): Record<string, string> {
-    const patternParts = pattern.split('/').filter(Boolean);
-    const actualParts = actual.split('/').filter(Boolean);
-    const params: Record<string, string> = {};
-
-    for (let i = 0; i < patternParts.length; i++) {
-      if (patternParts[i].startsWith(':')) {
-        params[patternParts[i].slice(1)] = actualParts[i];
-      }
-    }
-
-    return params;
+    return missing.length > 0
+      ? { message: 'Missing required permissions', missing }
+      : undefined;
   }
 }

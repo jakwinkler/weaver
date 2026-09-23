@@ -35,7 +35,7 @@ describe('Phase 3: Custom Fields, Search, Saved Filters, Time Tracking (e2e)', (
       });
 
     accessToken = res.body.accessToken;
-    tenantId = res.body.tenant.id;
+    tenantId = res.body.tenantId;
   });
 
   afterAll(async () => {
@@ -72,6 +72,7 @@ describe('Phase 3: Custom Fields, Search, Saved Filters, Time Tracking (e2e)', (
 
   describe('Custom Fields', () => {
     let fieldId: string;
+    let numberFieldId: string;
 
     it('POST /custom-fields - should create a text field', async () => {
       const res = await authedRequest()
@@ -88,6 +89,7 @@ describe('Phase 3: Custom Fields, Search, Saved Filters, Time Tracking (e2e)', (
         .post('/api/v1/custom-fields')
         .send({ name: 'Story Points', slug: 'story-points', fieldType: 'number', required: false })
         .expect(201);
+      numberFieldId = res.body.id;
       expect(res.body.fieldType).toBe('number');
     });
 
@@ -95,6 +97,51 @@ describe('Phase 3: Custom Fields, Search, Saved Filters, Time Tracking (e2e)', (
       const res = await authedRequest().get('/api/v1/custom-fields').expect(200);
       expect(Array.isArray(res.body)).toBe(true);
       expect(res.body.length).toBe(2);
+    });
+
+    it('validates issue custom fields on create and update', async () => {
+      const project = await authedRequest()
+        .post('/api/v1/projects')
+        .send({ name: 'Custom Field Test', key: 'CFT' })
+        .expect(201);
+
+      await authedRequest()
+        .patch(`/api/v1/custom-fields/${numberFieldId}`)
+        .send({ required: true })
+        .expect(200);
+
+      await authedRequest()
+        .post(`/api/v1/projects/${project.body.key}/issues`)
+        .send({ summary: 'Missing required custom field' })
+        .expect(400);
+      await authedRequest()
+        .post(`/api/v1/projects/${project.body.key}/issues`)
+        .send({ summary: 'Wrong custom field type', customFields: { 'story-points': 'five' } })
+        .expect(400);
+      await authedRequest()
+        .post(`/api/v1/projects/${project.body.key}/issues`)
+        .send({ summary: 'Unknown custom field', customFields: { 'story-points': 5, mystery: true } })
+        .expect(400);
+
+      const issue = await authedRequest()
+        .post(`/api/v1/projects/${project.body.key}/issues`)
+        .send({ summary: 'Valid custom field', customFields: { 'story-points': 5 } })
+        .expect(201);
+
+      await authedRequest()
+        .patch(`/api/v1/issues/${issue.body.key}`)
+        .send({ customFields: { 'story-points': 'eight' } })
+        .expect(400);
+      const updated = await authedRequest()
+        .patch(`/api/v1/issues/${issue.body.key}`)
+        .send({ customFields: { 'story-points': 8 } })
+        .expect(200);
+      expect(updated.body.customFields).toEqual({ 'story-points': 8 });
+
+      await authedRequest()
+        .patch(`/api/v1/custom-fields/${numberFieldId}`)
+        .send({ required: false })
+        .expect(200);
     });
 
     it('PATCH /custom-fields/:id - should update field', async () => {
@@ -210,13 +257,42 @@ describe('Phase 3: Custom Fields, Search, Saved Filters, Time Tracking (e2e)', (
   });
 
   describe('Search', () => {
+    it('POST /search - should return paginated results with response metadata', async () => {
+      await authedRequest()
+        .post('/api/v1/projects')
+        .send({ name: 'Search Test', key: 'SRC' })
+        .expect(201);
+
+      await authedRequest()
+        .post('/api/v1/projects/SRC/issues')
+        .send({ summary: 'Paginated search alpha' })
+        .expect(201);
+      await authedRequest()
+        .post('/api/v1/projects/SRC/issues')
+        .send({ summary: 'Paginated search beta' })
+        .expect(201);
+
+      const res = await authedRequest()
+        .post('/api/v1/search')
+        .send({ query: 'summary ~ "Paginated search"', page: 2, perPage: 1 })
+        .expect(201);
+
+      expect(res.body.data).toHaveLength(1);
+      expect(res.body.meta).toEqual({
+        page: 2,
+        perPage: 1,
+        total: 2,
+        totalPages: 2,
+      });
+    });
+
     it('POST /search - should search issues by priority', async () => {
       const res = await authedRequest()
         .post('/api/v1/search')
         .send({ query: 'priority = "medium"' })
         .expect(201);
       expect(res.body.data).toBeDefined();
-      expect(res.body.total).toBeDefined();
+      expect(res.body.meta.total).toBeDefined();
     });
 
     it('POST /search - should search by summary', async () => {

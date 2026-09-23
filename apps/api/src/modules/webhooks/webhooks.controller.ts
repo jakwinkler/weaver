@@ -11,8 +11,16 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
+import {
+  createWebhookSchema,
+  updateWebhookSchema,
+  type CreateWebhookDto,
+  type UpdateWebhookDto,
+} from '@weaver/shared';
 import { JwtAuthGuard, PermissionGuard, RequirePermission } from '../../core/auth';
+import { ZodValidationPipe } from '../../common';
 import { WebhooksService } from './webhooks.service';
+import { Audit } from '../audit';
 
 @Controller('webhooks')
 @UseGuards(JwtAuthGuard, PermissionGuard)
@@ -21,9 +29,8 @@ export class WebhooksController {
   constructor(private readonly webhooksService: WebhooksService) {}
 
   @Post()
-  async create(
-    @Body() dto: { url: string; secret: string; events: string[]; projectId?: string },
-  ) {
+  @Audit({ action: 'webhook.created', resource: 'webhook' })
+  async create(@Body(new ZodValidationPipe(createWebhookSchema)) dto: CreateWebhookDto) {
     return this.webhooksService.create(dto);
   }
 
@@ -38,15 +45,17 @@ export class WebhooksController {
   }
 
   @Patch(':id')
+  @Audit({ action: 'webhook.updated', resource: 'webhook', captureBefore: true })
   async update(
     @Param('id') id: string,
-    @Body() dto: Partial<{ url: string; secret: string; events: string[]; active: boolean }>,
+    @Body(new ZodValidationPipe(updateWebhookSchema)) dto: UpdateWebhookDto,
   ) {
     return this.webhooksService.update(id, dto);
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @Audit({ action: 'webhook.deleted', resource: 'webhook', captureBefore: true })
   async delete(@Param('id') id: string) {
     await this.webhooksService.delete(id);
   }
@@ -57,6 +66,7 @@ export class WebhooksController {
   }
 
   @Post(':id/test')
+  @Audit({ action: 'webhook.tested', resource: 'webhook', captureBefore: true })
   async testDelivery(@Param('id') id: string) {
     return this.webhooksService.deliver(id, 'webhook.test', {
       message: 'This is a test webhook delivery',

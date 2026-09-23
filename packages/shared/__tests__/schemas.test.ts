@@ -3,10 +3,17 @@ import {
   loginSchema,
   createProjectSchema,
   createIssueSchema,
+  createSprintSchema,
+  moveIssueSprintSchema,
   updateIssueSchema,
   paginationSchema,
   createWorkflowStatusSchema,
   issueKeySchema,
+  recurrenceRuleSchema,
+  notificationPreferencesSchema,
+  updateNotificationPreferencesSchema,
+  updateTenantSettingsSchema,
+  createWebhookSchema,
 } from '../src/schemas';
 
 describe('registerSchema', () => {
@@ -154,8 +161,15 @@ describe('createIssueSchema', () => {
       labels: ['bug', 'auth'],
       assigneeId: '550e8400-e29b-41d4-a716-446655440000',
       customFields: { severity: 'critical' },
+      storyPoints: 5,
     });
     expect(result.success).toBe(true);
+  });
+
+  it('should reject negative story points', () => {
+    expect(
+      createIssueSchema.safeParse({ summary: 'Invalid estimate', storyPoints: -1 }).success,
+    ).toBe(false);
   });
 
   it('should reject invalid priority', () => {
@@ -195,6 +209,52 @@ describe('updateIssueSchema', () => {
     });
     expect(result.success).toBe(true);
   });
+
+  it('should accept setting and clearing story points', () => {
+    expect(updateIssueSchema.safeParse({ storyPoints: 8 }).success).toBe(true);
+    expect(updateIssueSchema.safeParse({ storyPoints: null }).success).toBe(true);
+  });
+});
+
+describe('sprint planning schemas', () => {
+  it('accepts a nullable sprint target and explicit sort order', () => {
+    expect(moveIssueSprintSchema.safeParse({ sprintId: null, sortOrder: 2000 }).success).toBe(true);
+  });
+
+  it('accepts optional sprint capacity and rejects negative capacity', () => {
+    expect(createSprintSchema.safeParse({ name: 'Sprint 1', capacity: 20 }).success).toBe(true);
+    expect(createSprintSchema.safeParse({ name: 'Sprint 1', capacity: -1 }).success).toBe(false);
+  });
+});
+
+describe('recurrenceRuleSchema', () => {
+  it.each([
+    { frequency: 'daily', interval: 2 },
+    { frequency: 'weekly', interval: 1, daysOfWeek: [1, 3, 5] },
+    { frequency: 'monthly', interval: 1, dayOfMonth: 31, maxOccurrences: 12 },
+  ])('accepts a valid $frequency rule', (rule) => {
+    expect(recurrenceRuleSchema.safeParse(rule).success).toBe(true);
+  });
+
+  it('rejects duplicate or out-of-range weekdays', () => {
+    expect(
+      recurrenceRuleSchema.safeParse({
+        frequency: 'weekly',
+        interval: 1,
+        daysOfWeek: [1, 1, 7],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('rejects frequency-specific fields on other frequencies', () => {
+    expect(
+      recurrenceRuleSchema.safeParse({
+        frequency: 'daily',
+        interval: 1,
+        dayOfMonth: 15,
+      }).success,
+    ).toBe(false);
+  });
 });
 
 describe('paginationSchema', () => {
@@ -223,6 +283,35 @@ describe('paginationSchema', () => {
 
   it('should reject perPage > 200', () => {
     const result = paginationSchema.safeParse({ perPage: 201 });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('notificationPreferencesSchema', () => {
+  it('defaults every email notification preference to true', () => {
+    const result = notificationPreferencesSchema.parse({});
+
+    expect(result).toEqual({
+      emailOnAssign: true,
+      emailOnMention: true,
+      emailOnComment: true,
+      emailOnStatusChange: true,
+    });
+  });
+
+  it('accepts a partial notification preference update', () => {
+    const result = updateNotificationPreferencesSchema.safeParse({
+      emailOnMention: false,
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects unknown notification preference keys', () => {
+    const result = updateNotificationPreferencesSchema.safeParse({
+      emailOnEverything: false,
+    });
+
     expect(result.success).toBe(false);
   });
 });
@@ -256,6 +345,16 @@ describe('createWorkflowStatusSchema', () => {
   });
 });
 
+describe('createWebhookSchema', () => {
+  it('rejects user-supplied webhook secrets shorter than 32 characters', () => {
+    expect(createWebhookSchema.safeParse({
+      url: 'https://example.com/hook',
+      events: ['issue.created'],
+      secret: 'short',
+    }).success).toBe(false);
+  });
+});
+
 describe('issueKeySchema', () => {
   it('should accept valid issue keys', () => {
     expect(issueKeySchema.safeParse('WEB-1').success).toBe(true);
@@ -268,5 +367,29 @@ describe('issueKeySchema', () => {
     expect(issueKeySchema.safeParse('WEB').success).toBe(false);
     expect(issueKeySchema.safeParse('WEB-').success).toBe(false);
     expect(issueKeySchema.safeParse('W-1').success).toBe(false);
+  });
+});
+
+describe('updateTenantSettingsSchema', () => {
+  it('accepts complete social, SAML, and OIDC settings', () => {
+    const result = updateTenantSettingsSchema.safeParse({
+      sso: {
+        google: { enabled: true },
+        github: { enabled: false },
+        saml: {
+          enabled: true,
+          idpUrl: 'https://idp.example.com/saml',
+          cert: 'certificate',
+        },
+        oidc: {
+          enabled: true,
+          discoveryUrl: 'https://login.example.com',
+          clientId: 'client-id',
+          clientSecret: 'client-secret',
+        },
+      },
+    });
+
+    expect(result.success).toBe(true);
   });
 });

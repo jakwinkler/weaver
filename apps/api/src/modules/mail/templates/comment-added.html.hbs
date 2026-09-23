@@ -1,0 +1,97 @@
+<html lang='en'>
+  <head>
+    <meta charset='utf-8' />
+    <meta name='viewport' content='width=device-width, initial-scale=1' />
+    <style>
+      body {
+        margin: 0;
+        background: #f3f4f6;
+        color: #111827;
+        font-family: Arial, sans-serif;
+      }
+      .shell {
+        padding: 32px 16px;
+      }
+      .card {
+        width: 100%;
+        max-width: 560px;
+        margin: 0 auto;
+        background: #ffffff;
+        border: 1px solid #e5e7eb;
+      }
+      .content {
+        padding: 32px;
+      }
+      .eyebrow {
+        color: #6b7280;
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+      h1 {
+        margin: 8px 0 16px;
+        font-size: 24px;
+        line-height: 1.3;
+      }
+      p {
+        margin: 0 0 16px;
+        color: #374151;
+        font-size: 15px;
+        line-height: 1.6;
+      }
+      .quote {
+        margin: 16px 0 24px;
+        padding: 14px 16px;
+        border-left: 3px solid #2563eb;
+        background: #f9fafb;
+        color: #374151;
+      }
+      .button {
+        display: inline-block;
+        padding: 12px 18px;
+        background: #2563eb;
+        color: #ffffff !important;
+        font-weight: 700;
+        text-decoration: none;
+      }
+      .footer {
+        padding: 20px 32px;
+        border-top: 1px solid #e5e7eb;
+        color: #6b7280;
+        font-size: 12px;
+        line-height: 1.5;
+      }
+      .footer a {
+        color: #4b5563;
+      }
+      @media only screen and (max-width: 600px) {
+        .shell {
+          padding: 0;
+        }
+        .content,
+        .footer {
+          padding: 24px 20px;
+        }
+        h1 {
+          font-size: 21px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class='shell'>
+      <div class='card'>
+        <div class='content'>
+          <div class='eyebrow'>{{projectName}} · {{issueKey}}</div>
+          <h1>{{actorName}} added a comment</h1>
+          <p>Hi {{recipientName}}, there is a new comment on <strong>{{issueSummary}}</strong>.</p>
+          <div class='quote'>{{commentExcerpt}}</div>
+          <a class='button' href='{{issueUrl}}'>View comment</a>
+        </div>
+        <div class='footer'>You received this because comment emails are enabled.
+          <a href='{{unsubscribeUrl}}'>Unsubscribe from comment emails</a>.</div>
+      </div>
+    </div>
+  </body>
+</html>

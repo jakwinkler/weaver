@@ -1,0 +1,46 @@
+{
+  "id": "@weaver/plugin-template",
+  "name": "Plugin Template",
+  "version": "1.0.0",
+  "description": "Minimal runtime-loaded Weaver plugin",
+  "author": "Weaver",
+  "icon": "puzzle",
+  "type": "app",
+  "entrypoints": {
+    "server": "src/server/index.ts",
+    "client": "src/client/index.ts"
+  },
+  "permissions": ["template.view"],
+  "declaredPermissions": [
+    {
+      "key": "template.view",
+      "label": "View template plugin",
+      "description": "Open the template plugin page"
+    }
+  ],
+  "ui": {
+    "navigation": [
+      {
+        "label": "Plugin Template",
+        "icon": "puzzle",
+        "path": "/apps/plugin-template",
+        "requiredPermissions": ["template.view"]
+      }
+    ],
+    "pages": [
+      {
+        "path": "/apps/plugin-template",
+        "component": "TemplatePage",
+        "requiredPermissions": ["template.view"]
+      }
+    ]
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/hello",
+      "handler": "getHello",
+      "requiredPermissions": ["template.view"]
+    }
+  ]
+}

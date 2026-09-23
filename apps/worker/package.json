@@ -7,16 +7,23 @@
     "dev": "tsx watch src/main.ts",
     "start": "node dist/main.js",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "bullmq": "^5.34.8",
     "ioredis": "^5.4.2",
+    "pg": "^8.13.1",
+    "reflect-metadata": "^0.2.2",
+    "typeorm": "^0.3.31",
+    "@weaver/jira-import": "workspace:*",
     "@weaver/shared": "workspace:*",
-    "@weaver/db": "workspace:*"
+    "@weaver/db": "workspace:*",
+    "nodemailer": "^9.1.1"
   },
   "devDependencies": {
     "@weaver/config": "workspace:*",
+    "@types/nodemailer": "^7.0.11",
     "typescript": "^5.7.3",
     "tsx": "^4.19.2",
     "vitest": "^3.0.4"

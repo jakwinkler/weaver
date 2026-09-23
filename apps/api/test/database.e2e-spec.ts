@@ -4,6 +4,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { TenantEntity } from '@weaver/db';
 import { AppModule } from '../src/app.module';
+import { cleanupDatabaseTestTenants } from '../src/test-utils/database-test-cleanup';
 
 describe('Database Module (e2e)', () => {
   let app: INestApplication;
@@ -24,7 +25,7 @@ describe('Database Module (e2e)', () => {
 
   afterAll(async () => {
     if (dataSource?.isInitialized) {
-      await tenantRepo.createQueryBuilder().delete().from(TenantEntity).execute();
+      await cleanupDatabaseTestTenants(tenantRepo);
     }
     await app.close();
   });

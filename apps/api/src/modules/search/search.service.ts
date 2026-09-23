@@ -1,6 +1,9 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { IssueEntity, WorkflowStatusEntity } from '@weaver/db';
+import { PaginatedResponse } from '@weaver/shared';
 import { TenantConnectionProvider } from '../../core/tenant';
+import { ProjectAccessService } from '../../core/tenant';
+import type { RequestUser } from '../../core/auth';
 
 interface WqlToken {
   field: string;
@@ -15,14 +18,17 @@ interface ParsedWql {
 
 @Injectable()
 export class SearchService {
-  constructor(private readonly tenantConnections: TenantConnectionProvider) {}
+  constructor(
+    private readonly tenantConnections: TenantConnectionProvider,
+    private readonly projectAccess: ProjectAccessService,
+  ) {}
 
   async search(query: {
     query: string;
     page?: number;
     perPage?: number;
     sort?: string;
-  }): Promise<{ data: IssueEntity[]; total: number; page: number; perPage: number }> {
+  }, user: RequestUser): Promise<PaginatedResponse<IssueEntity>> {
     const page = query.page ?? 1;
     const perPage = query.perPage ?? 50;
     const em = await this.tenantConnections.getEntityManager();
@@ -35,7 +41,16 @@ export class SearchService {
       .createQueryBuilder('issue');
 
     if (whereClause) {
-      qb.where(whereClause, parameters);
+      qb.where(`(${whereClause})`, parameters);
+    }
+
+    const projectIds = await this.projectAccess.accessibleProjectIds(user);
+    if (projectIds !== null) {
+      if (projectIds.length === 0) {
+        qb.andWhere('1 = 0');
+      } else {
+        qb.andWhere('issue.project_id IN (:...projectIds)', { projectIds });
+      }
     }
 
     if (query.sort) {
@@ -50,7 +65,15 @@ export class SearchService {
 
     const [data, total] = await qb.getManyAndCount();
 
-    return { data, total, page, perPage };
+    return {
+      data,
+      meta: {
+        page,
+        perPage,
+        total,
+        totalPages: Math.ceil(total / perPage),
+      },
+    };
   }
 
   private parseWql(wql: string): ParsedWql {

@@ -27,7 +27,14 @@ import { RolesModule } from './modules/roles';
 import { TeamsModule } from './modules/teams';
 import { DashboardModule } from './modules/dashboard';
 import { SettingsModule } from './modules/settings';
+import { AutomationsModule } from './modules/automations';
+import { ImportModule } from './modules/import';
+import { PagesModule } from './modules/pages';
+import { FormsModule } from './modules/forms';
+import { ApiKeysModule } from './modules/api-keys';
+import { AuditModule } from './modules/audit';
 import { HealthController } from './health.controller';
+import { StorageModule } from './core/storage';
 
 @Module({
   imports: [
@@ -36,6 +43,7 @@ import { HealthController } from './health.controller';
       envFilePath: ['.env', '../../.env'],
     }),
     DatabaseModule,
+    StorageModule,
     TenantModule,
     AuthModule,
     UsersModule,
@@ -62,6 +70,12 @@ import { HealthController } from './health.controller';
     TeamsModule,
     DashboardModule,
     SettingsModule,
+    AutomationsModule,
+    ImportModule,
+    PagesModule,
+    FormsModule,
+    ApiKeysModule,
+    AuditModule,
   ],
   controllers: [HealthController],
 })

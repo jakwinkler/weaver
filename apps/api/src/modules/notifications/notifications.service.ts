@@ -1,6 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { NotificationEntity } from '@weaver/db';
-import { TenantConnectionProvider } from '../../core/tenant';
+import type { PaginatedResponse } from '@weaver/shared';
+import { requireTenantContext, TenantConnectionProvider } from '../../core/tenant';
 import { WeaverGateway } from '../../core/websocket';
 
 @Injectable()
@@ -29,7 +30,7 @@ export class NotificationsService {
 
     const saved = await repo.save(notification);
 
-    this.gateway.emitToUser(userId, 'notification:new', saved);
+    this.gateway.emitToUser(requireTenantContext().tenantId, userId, 'notification:new', saved);
 
     return saved;
   }
@@ -38,7 +39,7 @@ export class NotificationsService {
     userId: string,
     page = 1,
     perPage = 20,
-  ): Promise<{ items: NotificationEntity[]; total: number }> {
+  ): Promise<PaginatedResponse<NotificationEntity>> {
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(NotificationEntity);
 
@@ -49,7 +50,15 @@ export class NotificationsService {
       take: perPage,
     });
 
-    return { items, total };
+    return {
+      data: items,
+      meta: {
+        page,
+        perPage,
+        total,
+        totalPages: Math.ceil(total / perPage),
+      },
+    };
   }
 
   async markRead(id: string, userId: string): Promise<NotificationEntity> {
@@ -58,7 +67,7 @@ export class NotificationsService {
 
     const notification = await repo.findOneBy({ id, userId });
     if (!notification) {
-      throw new Error('Notification not found');
+      throw new NotFoundException('Notification not found');
     }
 
     notification.isRead = true;

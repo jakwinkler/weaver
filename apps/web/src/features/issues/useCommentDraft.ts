@@ -1,8 +1,18 @@
+import { useAuthStore } from '@/stores';
+
 const DRAFT_PREFIX = 'weaver:comment-draft:';
+
+function draftKey(issueKey: string): string | null {
+  const { tenantId, user } = useAuthStore.getState();
+  if (!tenantId || !user?.id) return null;
+  return `${DRAFT_PREFIX}${tenantId}:${user.id}:${issueKey}`;
+}
 
 export function loadDraft(issueKey: string): Record<string, unknown> | null {
   try {
-    const raw = localStorage.getItem(`${DRAFT_PREFIX}${issueKey}`);
+    const key = draftKey(issueKey);
+    if (!key) return null;
+    const raw = localStorage.getItem(key);
     if (!raw) return null;
     return JSON.parse(raw);
   } catch {
@@ -11,6 +21,8 @@ export function loadDraft(issueKey: string): Record<string, unknown> | null {
 }
 
 export function saveDraft(issueKey: string, content: Record<string, unknown>): void {
+  const key = draftKey(issueKey);
+  if (!key) return;
   // Skip empty docs (single empty paragraph)
   const doc = content as { type?: string; content?: Array<{ type?: string; content?: unknown[] }> };
   if (
@@ -21,9 +33,19 @@ export function saveDraft(issueKey: string, content: Record<string, unknown>): v
   ) {
     return;
   }
-  localStorage.setItem(`${DRAFT_PREFIX}${issueKey}`, JSON.stringify(content));
+  localStorage.setItem(key, JSON.stringify(content));
 }
 
 export function clearDraft(issueKey: string): void {
-  localStorage.removeItem(`${DRAFT_PREFIX}${issueKey}`);
+  const key = draftKey(issueKey);
+  if (key) localStorage.removeItem(key);
+}
+
+export function clearAllCommentDrafts(): void {
+  for (let index = localStorage.length - 1; index >= 0; index -= 1) {
+    const key = localStorage.key(index);
+    if (key?.startsWith(DRAFT_PREFIX)) {
+      localStorage.removeItem(key);
+    }
+  }
 }

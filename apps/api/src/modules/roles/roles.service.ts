@@ -95,6 +95,9 @@ export class RolesService {
           'comments.create': true,
           'comments.read': true,
           'comments.update': true,
+          'pages.create': true,
+          'pages.read': true,
+          'pages.update': true,
           'sprints.read': true,
           'custom_fields.read': true,
         },
@@ -106,6 +109,7 @@ export class RolesService {
           'projects.read': true,
           'issues.read': true,
           'comments.read': true,
+          'pages.read': true,
           'sprints.read': true,
         },
         isSystem: true,
@@ -116,6 +120,15 @@ export class RolesService {
       const existing = await repo.findOneBy({ name: def.name });
       if (!existing) {
         await repo.save(repo.create(def));
+        continue;
+      }
+
+      if (existing.isSystem) {
+        existing.permissions = {
+          ...def.permissions,
+          ...existing.permissions,
+        };
+        await repo.save(existing);
       }
     }
   }

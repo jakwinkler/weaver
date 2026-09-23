@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, type FormEvent } from 'react';
+import { useState, useCallback, useEffect, useRef, type FormEvent } from 'react';
 import { useParams, Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -19,24 +19,36 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical } from 'lucide-react';
+import { GripVertical, Repeat2, X } from 'lucide-react';
 import {
   useProjectIssues,
   useCreateIssue,
   useProject,
   useIssueTypes,
   useWorkflow,
+  useSprints,
   useHasPermission,
   useUpdateIssueDynamic,
   useReorderIssues,
+  useTransitionIssueDynamic,
+  useUsers,
 } from '@/api';
-import type { IssuePriority, Issue, PaginatedResponse } from '@weaver/shared';
+import type {
+  IssuePriority,
+  Issue,
+  PaginatedResponse,
+  RecurrenceRule,
+  UpdateIssueDto,
+} from '@weaver/shared';
 import { IssueTypeIcon } from '@/components/IconPicker';
+import { RecurrencePicker } from '@/components/RecurrencePicker';
 import { Pagination, getStoredPerPage } from '@/components/Pagination';
 import { SortableHeader, type SortDirection } from '@/components/SortableHeader';
 import { EditableCell } from '@/components/EditableCell';
 import { InlineSelect, type InlineSelectOption } from '@/components/InlineSelect';
 import { InlineDatePicker } from '@/components/InlineDatePicker';
+import { StoryPointsField } from '@/components/StoryPointsField';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -50,7 +62,16 @@ import {
   TableCell,
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
+import { useHotkeys } from '@/hooks/useHotkeys';
 import { buildReorderPayload, reorderIssueList } from './dragAndDrop';
+import { BulkActionBar } from './BulkActionBar';
+import {
+  getPageSelectionState,
+  setCurrentPageSelection,
+  toggleIssueSelection as toggleIssueSelectionInRange,
+} from './issueSelection';
+
+const UNASSIGNED_VALUE = '__unassigned__';
 
 const PRIORITY_OPTIONS: InlineSelectOption[] = [
   { value: 'lowest', label: 'lowest' },
@@ -75,21 +96,44 @@ interface SortableIssueRowProps {
   issue: Issue;
   index: number;
   focused: boolean;
+  selected: boolean;
+  canBulkSelect: boolean;
   canEdit: boolean;
   canReorder: boolean;
-  statusOptions: InlineSelectOption[];
+  canTransition: boolean;
+  assigneeOptions: InlineSelectOption[];
+  getStatusOptions: (currentStatusId: string) => InlineSelectOption[];
   getStatusInfo: (statusId: string) => { name: string; color: string };
-  onInlineUpdate: (issueKey: string, field: string, value: unknown) => Promise<void>;
+  getAssigneeName: (assigneeId: string | null | undefined) => string;
+  onInlineUpdate: (
+    issueKey: string,
+    field: keyof UpdateIssueDto,
+    value: UpdateIssueDto[keyof UpdateIssueDto],
+  ) => Promise<void>;
+  onStatusUpdate: (issueKey: string, fromStatusId: string, toStatusId: string) => Promise<void>;
+  onSelectionChange: (issueId: string, index: number, rangeSelection?: boolean) => void;
+  onKeyboardFocus: (index: number) => void;
+  setRowRef: (issueId: string, node: HTMLTableRowElement | null) => void;
 }
 
 function SortableIssueRow({
   issue,
+  index,
   focused,
+  selected,
+  canBulkSelect,
   canEdit,
   canReorder,
-  statusOptions,
+  canTransition,
+  assigneeOptions,
+  getStatusOptions,
   getStatusInfo,
+  getAssigneeName,
   onInlineUpdate,
+  onStatusUpdate,
+  onSelectionChange,
+  onKeyboardFocus,
+  setRowRef,
 }: SortableIssueRowProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: issue.id,
@@ -99,11 +143,21 @@ function SortableIssueRow({
 
   return (
     <TableRow
-      ref={setNodeRef}
+      ref={(node) => {
+        setNodeRef(node);
+        setRowRef(issue.id, node);
+      }}
       style={{ transform: CSS.Transform.toString(transform), transition }}
       data-testid="issue-row"
+      tabIndex={focused ? 0 : -1}
+      data-keyboard-active={focused ? 'true' : 'false'}
+      aria-selected={selected}
+      onFocus={(event) => {
+        if (event.currentTarget === event.target) onKeyboardFocus(index);
+      }}
       className={cn(
-        'hover:bg-muted/50',
+        'hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset',
+        selected && 'bg-primary/5',
         focused && 'bg-accent ring-2 ring-primary/30 ring-inset',
         isDragging && 'relative z-10 bg-card opacity-35',
       )}
@@ -123,6 +177,15 @@ function SortableIssueRow({
           <GripVertical className="h-4 w-4" aria-hidden="true" />
         </button>
       </TableCell>
+      {canBulkSelect && (
+        <TableCell className="w-10">
+          <Checkbox
+            aria-label={`Select ${issue.key}`}
+            checked={selected}
+            onClick={(event) => onSelectionChange(issue.id, index, event.shiftKey)}
+          />
+        </TableCell>
+      )}
       <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
         {issue.issueType ? (
           <span className="inline-flex items-center gap-1.5" title={issue.issueType.name}>
@@ -138,7 +201,12 @@ function SortableIssueRow({
         )}
       </TableCell>
       <TableCell className="whitespace-nowrap text-sm font-medium text-primary">
-        <Link to={`/issues/${issue.key}`}>{issue.key}</Link>
+        <span className="inline-flex items-center gap-1.5">
+          <Link to={`/issues/${issue.key}`}>{issue.key}</Link>
+          {(issue.recurrenceRule || issue.recurrenceParentId) && (
+            <Repeat2 className="h-3.5 w-3.5 text-muted-foreground" aria-label="Recurring issue" />
+          )}
+        </span>
       </TableCell>
       <TableCell className="text-sm text-foreground">
         {canEdit ? (
@@ -154,17 +222,28 @@ function SortableIssueRow({
         <InlineSelect
           value={issue.priority}
           options={PRIORITY_OPTIONS}
-          onSave={(val) => onInlineUpdate(issue.key, 'priority', val)}
+          onSave={(val) => onInlineUpdate(issue.key, 'priority', val as IssuePriority)}
           editable={canEdit}
+          ariaLabel={`Edit ${issue.key} priority`}
           renderValue={(val) => <PriorityBadge priority={val} />}
+        />
+      </TableCell>
+      <TableCell className="whitespace-nowrap">
+        <StoryPointsField
+          value={issue.storyPoints}
+          onChange={(value) => onInlineUpdate(issue.key, 'storyPoints', value)}
+          disabled={!canEdit}
+          showChips={false}
+          compact
         />
       </TableCell>
       <TableCell className="whitespace-nowrap">
         <InlineSelect
           value={issue.statusId}
-          options={statusOptions}
-          onSave={(val) => onInlineUpdate(issue.key, 'statusId', val)}
-          editable={canEdit}
+          options={getStatusOptions(issue.statusId)}
+          onSave={(val) => onStatusUpdate(issue.key, issue.statusId, val)}
+          editable={canEdit && canTransition}
+          ariaLabel={`Edit ${issue.key} status`}
           renderValue={(val, opt) => {
             const info = opt
               ? { name: opt.label, color: opt.color || '#6b7280' }
@@ -181,10 +260,27 @@ function SortableIssueRow({
         />
       </TableCell>
       <TableCell className="whitespace-nowrap">
+        <InlineSelect
+          value={issue.assigneeId || UNASSIGNED_VALUE}
+          options={assigneeOptions}
+          onSave={(val) =>
+            onInlineUpdate(issue.key, 'assigneeId', val === UNASSIGNED_VALUE ? null : val)
+          }
+          editable={canEdit}
+          ariaLabel={`Edit ${issue.key} assignee`}
+          renderValue={(val) => (
+            <span className="text-sm text-foreground">
+              {getAssigneeName(val === UNASSIGNED_VALUE ? null : val)}
+            </span>
+          )}
+        />
+      </TableCell>
+      <TableCell className="whitespace-nowrap">
         <InlineDatePicker
           value={issue.dueDate || null}
           onSave={(val) => onInlineUpdate(issue.key, 'dueDate', val)}
           editable={canEdit}
+          ariaLabel={`Edit ${issue.key} due date`}
         />
       </TableCell>
       <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
@@ -243,32 +339,68 @@ export function IssueListPage() {
   const createIssue = useCreateIssue(projectKey!);
   const updateIssue = useUpdateIssueDynamic();
   const reorderIssues = useReorderIssues();
+  const transitionIssue = useTransitionIssueDynamic();
   const { data: issueTypes } = useIssueTypes();
   const { data: workflow } = useWorkflow(project?.workflowId || '');
+  const { data: sprints } = useSprints(project?.id || '');
+  const { data: users } = useUsers();
   const canCreate = useHasPermission('issues.create');
   const canEdit = useHasPermission('issues.update');
+  const canTransition = useHasPermission('issues.transition');
+  const canDelete = useHasPermission('issues.delete');
+  const canBulkSelect = canEdit || canDelete;
   const canReorder = canEdit && !sortParam;
 
   const [localIssues, setLocalIssues] = useState<Issue[] | null>(null);
   const [activeIssue, setActiveIssue] = useState<Issue | null>(null);
   const [reorderError, setReorderError] = useState<string | null>(null);
+  const [inlineEditError, setInlineEditError] = useState<string | null>(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
-  const statusOptions: InlineSelectOption[] = (workflow?.statuses || []).map((s: any) => ({
+  const statusOptions: InlineSelectOption[] = (workflow?.statuses || []).map((s) => ({
     value: s.id,
     label: s.name,
     color: s.color || '#6b7280',
   }));
 
+  const assigneeOptions: InlineSelectOption[] = [
+    { value: UNASSIGNED_VALUE, label: 'Unassigned' },
+    ...(users || []).map((user) => ({
+      value: user.id,
+      label: user.displayName || user.email,
+    })),
+  ];
+
+  const getStatusOptions = (currentStatusId: string) => {
+    const transitionTargets = new Set([
+      currentStatusId,
+      ...(workflow?.transitions || [])
+        .filter((transition) => transition.fromStatusId === currentStatusId)
+        .map((transition) => transition.toStatusId),
+    ]);
+    return statusOptions.filter((option) => transitionTargets.has(option.value));
+  };
+
   const getStatusInfo = (statusId: string) => {
-    const status = workflow?.statuses?.find((s: any) => s.id === statusId);
+    const status = workflow?.statuses?.find((s) => s.id === statusId);
     return { name: status?.name || statusId.slice(0, 8), color: status?.color || '#6b7280' };
   };
 
-  const handleInlineUpdate = async (issueKey: string, field: string, value: unknown) => {
+  const getAssigneeName = (assigneeId: string | null | undefined) => {
+    if (!assigneeId) return 'Unassigned';
+    const assignee = users?.find((user) => user.id === assigneeId);
+    return assignee?.displayName || assignee?.email || assigneeId.slice(0, 8);
+  };
+
+  const handleOptimisticChange = async <K extends keyof UpdateIssueDto>(
+    issueKey: string,
+    field: K,
+    value: UpdateIssueDto[K],
+    persist: () => Promise<unknown>,
+  ) => {
     // Optimistic update
     const queryKeyPrefix = ['issues', projectKey];
     const previousData = queryClient.getQueriesData<PaginatedResponse<Issue>>({
@@ -286,15 +418,45 @@ export function IssueListPage() {
     });
 
     try {
-      await updateIssue.mutateAsync({ issueKey, [field]: value } as any);
-    } catch {
+      await persist();
+    } catch (error) {
       // Rollback on error
       for (const [key, data] of previousData) {
         if (data) {
           queryClient.setQueryData(key, data);
         }
       }
+      setInlineEditError(`Could not update ${issueKey}. Your change was reverted.`);
+      throw error;
     }
+  };
+
+  const handleInlineUpdate = <K extends keyof UpdateIssueDto>(
+    issueKey: string,
+    field: K,
+    value: UpdateIssueDto[K],
+  ) =>
+    handleOptimisticChange(issueKey, field, value, () =>
+      updateIssue.mutateAsync({ issueKey, [field]: value } as UpdateIssueDto & {
+        issueKey: string;
+      }),
+    );
+
+  const handleStatusUpdate = (issueKey: string, fromStatusId: string, toStatusId: string) => {
+    const transition = workflow?.transitions?.find(
+      (candidate) => candidate.fromStatusId === fromStatusId && candidate.toStatusId === toStatusId,
+    );
+
+    if (!transition) {
+      setInlineEditError(`Could not update ${issueKey}. That transition is not available.`);
+      return Promise.reject(
+        new Error(`No workflow transition from ${fromStatusId} to ${toStatusId}`),
+      );
+    }
+
+    return handleOptimisticChange(issueKey, 'statusId', toStatusId, () =>
+      transitionIssue.mutateAsync({ issueKey, transitionId: transition.id }),
+    );
   };
 
   const [showForm, setShowForm] = useState(false);
@@ -303,45 +465,100 @@ export function IssueListPage() {
   const [priority, setPriority] = useState<IssuePriority>('medium');
   const [startDate, setStartDate] = useState('');
   const [dueDate, setDueDate] = useState('');
+  const [storyPoints, setStoryPoints] = useState<number | null>(null);
+  const [recurrenceRule, setRecurrenceRule] = useState<RecurrenceRule | null>(null);
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
+  const [selectedIssueIds, setSelectedIssueIds] = useState<Set<string>>(() => new Set());
+  const lastSelectedIndex = useRef<number | null>(null);
+  const rowRefs = useRef(new Map<string, HTMLTableRowElement>());
+  const issues = localIssues ?? data?.data ?? [];
+  const issueKeys = issues.map((issue) => issue.key).join('|');
 
-  // Reset focused index when data or page changes
+  const clearSelection = useCallback(() => {
+    setSelectedIssueIds(new Set());
+    lastSelectedIndex.current = null;
+  }, []);
+
+  const handleIssueSelection = useCallback(
+    (issueId: string, index: number, rangeSelection = false) => {
+      const orderedIssueIds = data?.data.map((issue) => issue.id) ?? [];
+      setSelectedIssueIds((current) =>
+        toggleIssueSelectionInRange(
+          current,
+          orderedIssueIds,
+          issueId,
+          lastSelectedIndex.current,
+          rangeSelection,
+        ),
+      );
+      lastSelectedIndex.current = index;
+    },
+    [data?.data],
+  );
+
+  const handleSelectAll = useCallback(
+    (selected: boolean) => {
+      const currentPageIssueIds = data?.data.map((issue) => issue.id) ?? [];
+      setSelectedIssueIds((current) =>
+        setCurrentPageSelection(current, currentPageIssueIds, selected),
+      );
+      lastSelectedIndex.current = null;
+    },
+    [data?.data],
+  );
+
+  // Reset keyboard state when the visible result set changes.
   useEffect(() => {
     setFocusedIndex(-1);
+    clearSelection();
     setLocalIssues(null);
-  }, [data, page]);
+  }, [clearSelection, data, page, perPage, projectKey, sortParam]);
 
-  // j/k/Enter keyboard navigation for issue list
   useEffect(() => {
-    const issues = localIssues ?? data?.data;
-    if (!issues || issues.length === 0) return;
+    const focusedIssue = issues[focusedIndex];
+    if (!focusedIssue) return;
+    const row = rowRefs.current.get(focusedIssue.id);
+    row?.focus({ preventScroll: true });
+    row?.scrollIntoView({ block: 'nearest' });
+  }, [focusedIndex, issueKeys]);
 
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement;
-      const tagName = target.tagName.toLowerCase();
-      const isInput = tagName === 'input' || tagName === 'textarea' || tagName === 'select';
-      if (isInput || target.isContentEditable) return;
+  useEffect(() => {
+    if (searchParams.get('create') !== '1') return;
+    setShowForm(true);
+    updateParams({ create: undefined });
+  }, [searchParams, updateParams]);
 
-      if (e.key === 'j') {
-        e.preventDefault();
-        setFocusedIndex((prev) => Math.min(prev + 1, issues.length - 1));
-      } else if (e.key === 'k') {
-        e.preventDefault();
-        setFocusedIndex((prev) => Math.max(prev - 1, 0));
-      } else if (e.key === 'Enter') {
-        setFocusedIndex((prev) => {
-          if (prev >= 0 && prev < issues.length) {
-            e.preventDefault();
-            navigate(`/issues/${issues[prev].key}`);
-          }
-          return prev;
-        });
-      }
-    };
+  const moveFocus = (delta: -1 | 1) => {
+    if (issues.length === 0) return;
+    setFocusedIndex((previous) => {
+      if (previous < 0) return 0;
+      return Math.max(0, Math.min(previous + delta, issues.length - 1));
+    });
+  };
 
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [data, localIssues, navigate]);
+  useHotkeys(
+    [
+      { keys: 'j', handler: () => moveFocus(1) },
+      { keys: 'k', handler: () => moveFocus(-1) },
+      {
+        keys: 'Enter',
+        handler: () => {
+          const focusedIssue = issues[focusedIndex];
+          if (focusedIssue) navigate(`/issues/${focusedIssue.key}`);
+        },
+        enabled: focusedIndex >= 0,
+      },
+      {
+        keys: 'x',
+        handler: () => {
+          const focusedIssue = issues[focusedIndex];
+          if (focusedIssue) handleIssueSelection(focusedIssue.id, focusedIndex);
+        },
+        enabled: canBulkSelect && focusedIndex >= 0,
+      },
+    ],
+    { context: 'list', ignoreInteractiveElements: true },
+  );
 
   const handleCreate = async (e: FormEvent) => {
     e.preventDefault();
@@ -351,15 +568,19 @@ export function IssueListPage() {
       labels: [],
       customFields: {},
       percentDone: 0,
+      ...(storyPoints !== null ? { storyPoints } : {}),
       ...(issueTypeId ? { issueTypeId } : {}),
       ...(startDate ? { startDate } : {}),
       ...(dueDate ? { dueDate } : {}),
+      recurrenceRule,
     });
     setSummary('');
     setIssueTypeId('');
     setPriority('medium');
     setStartDate('');
     setDueDate('');
+    setStoryPoints(null);
+    setRecurrenceRule(null);
     setShowForm(false);
   };
 
@@ -375,6 +596,12 @@ export function IssueListPage() {
     const sort = buildSortParam(field, direction);
     updateParams({ sort, page: undefined });
   };
+
+  const currentPageIssueIds = data?.data.map((issue) => issue.id) ?? [];
+  const { allSelected, someSelected } = getPageSelectionState(
+    selectedIssueIds,
+    currentPageIssueIds,
+  );
 
   const handleDragStart = (event: DragStartEvent) => {
     const issue = event.active.data.current?.issue as Issue | undefined;
@@ -438,6 +665,11 @@ export function IssueListPage() {
             <span>Issues</span>
           </div>
           <h1 className="mt-1 text-2xl font-bold text-foreground">Issues</h1>
+          {selectedIssueIds.size > 0 && (
+            <p className="mt-1 text-sm text-primary" aria-live="polite">
+              {selectedIssueIds.size} selected
+            </p>
+          )}
         </div>
         {canCreate && (
           <Button onClick={() => setShowForm(!showForm)}>
@@ -456,6 +688,7 @@ export function IssueListPage() {
                   <Input
                     id="issueSummary"
                     type="text"
+                    autoFocus
                     required
                     value={summary}
                     onChange={(e) => setSummary(e.target.value)}
@@ -501,7 +734,18 @@ export function IssueListPage() {
                   </select>
                 </div>
               </div>
-              <div className="mt-4 grid grid-cols-2 gap-4">
+              <div className="mt-4 grid grid-cols-3 gap-4">
+                <div>
+                  <Label htmlFor="issueStoryPoints">Story Points</Label>
+                  <div className="mt-1">
+                    <StoryPointsField
+                      id="issueStoryPoints"
+                      value={storyPoints}
+                      onChange={setStoryPoints}
+                      values={[1, 2, 3, 5, 8, 13]}
+                    />
+                  </div>
+                </div>
                 <div>
                   <Label htmlFor="issueStartDate">Start Date</Label>
                   <Input
@@ -522,6 +766,14 @@ export function IssueListPage() {
                     className="mt-1"
                   />
                 </div>
+              </div>
+              <div className="mt-4 max-w-md rounded-md border border-border p-4">
+                <RecurrencePicker
+                  value={recurrenceRule}
+                  onChange={setRecurrenceRule}
+                  disabled={createIssue.isPending}
+                  idPrefix="create-recurrence"
+                />
               </div>
               {createIssue.isError && (
                 <p className="mt-2 text-sm text-red-600">Failed to create issue.</p>
@@ -545,6 +797,24 @@ export function IssueListPage() {
         </p>
       )}
 
+      {canBulkSelect && (
+        <BulkActionBar
+          selectedIssueIds={[...selectedIssueIds]}
+          statusOptions={statusOptions}
+          assigneeOptions={(users || []).map((user) => ({
+            value: user.id,
+            label: user.displayName || user.email,
+          }))}
+          sprintOptions={(sprints || []).map((sprint) => ({
+            value: sprint.id,
+            label: sprint.name,
+          }))}
+          canUpdate={canEdit}
+          canDelete={canDelete}
+          onClearSelection={clearSelection}
+        />
+      )}
+
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
@@ -559,6 +829,15 @@ export function IssueListPage() {
                 <TableHead className="w-10 px-2">
                   <span className="sr-only">Reorder</span>
                 </TableHead>
+                {canBulkSelect && (
+                  <TableHead className="w-10">
+                    <Checkbox
+                      aria-label="Select all issues on this page"
+                      checked={allSelected ? true : someSelected ? 'indeterminate' : false}
+                      onCheckedChange={(checked) => handleSelectAll(checked === true)}
+                    />
+                  </TableHead>
+                )}
                 <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                   Type
                 </TableHead>
@@ -584,7 +863,13 @@ export function IssueListPage() {
                   onSort={handleSort}
                 />
                 <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  Points
+                </TableHead>
+                <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                   Status
+                </TableHead>
+                <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  Assignee
                 </TableHead>
                 <SortableHeader
                   label="Due Date"
@@ -616,18 +901,30 @@ export function IssueListPage() {
                     issue={issue}
                     index={index}
                     focused={focusedIndex === index}
+                    selected={selectedIssueIds.has(issue.id)}
+                    canBulkSelect={canBulkSelect}
                     canEdit={canEdit}
                     canReorder={canReorder}
-                    statusOptions={statusOptions}
+                    canTransition={canTransition}
+                    assigneeOptions={assigneeOptions}
+                    getStatusOptions={getStatusOptions}
                     getStatusInfo={getStatusInfo}
+                    getAssigneeName={getAssigneeName}
                     onInlineUpdate={handleInlineUpdate}
+                    onStatusUpdate={handleStatusUpdate}
+                    onSelectionChange={handleIssueSelection}
+                    onKeyboardFocus={setFocusedIndex}
+                    setRowRef={(issueId, node) => {
+                      if (node) rowRefs.current.set(issueId, node);
+                      else rowRefs.current.delete(issueId);
+                    }}
                   />
                 ))}
               </SortableContext>
               {data?.data.length === 0 && (
                 <TableRow>
                   <TableCell
-                    colSpan={9}
+                    colSpan={canBulkSelect ? 12 : 11}
                     className="px-6 py-8 text-center text-sm text-muted-foreground"
                   >
                     No issues yet. Create your first issue to get started.
@@ -658,6 +955,23 @@ export function IssueListPage() {
           onPageChange={handlePageChange}
           onPerPageChange={handlePerPageChange}
         />
+      )}
+
+      {inlineEditError && (
+        <div
+          role="alert"
+          className="fixed bottom-4 right-4 z-50 flex max-w-sm items-start gap-3 rounded-md border border-destructive/40 bg-background px-4 py-3 text-sm text-foreground shadow-lg"
+        >
+          <span>{inlineEditError}</span>
+          <button
+            type="button"
+            className="rounded-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            aria-label="Dismiss inline edit error"
+            onClick={() => setInlineEditError(null)}
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
       )}
     </div>
   );

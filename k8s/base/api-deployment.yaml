@@ -17,10 +17,21 @@ spec:
         app.kubernetes.io/name: api
         app.kubernetes.io/component: backend
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: api
           image: weaver-api:latest
           imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           ports:
             - name: http
               containerPort: 3000
@@ -30,6 +41,9 @@ spec:
                 name: weaver-config
             - secretRef:
                 name: weaver-secrets
+          volumeMounts:
+            - name: uploads
+              mountPath: /tmp/weaver-uploads
           livenessProbe:
             httpGet:
               path: /api/v1/health
@@ -53,3 +67,6 @@ spec:
             limits:
               memory: "512Mi"
               cpu: "500m"
+      volumes:
+        - name: uploads
+          emptyDir: {}

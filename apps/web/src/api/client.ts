@@ -1,4 +1,6 @@
 import axios from 'axios';
+import { clearLocalSession } from '@/auth/clear-local-session';
+import { queryClient } from './query-client';
 
 export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1';
 
@@ -10,18 +12,9 @@ export const apiClient = axios.create({
   withCredentials: true,
 });
 
-const AUTH_PATHS = ['/auth/login', '/auth/register'];
-
 apiClient.interceptors.request.use((config) => {
-  const isAuthRoute = AUTH_PATHS.some((p) => config.url?.includes(p));
-
-  const token = localStorage.getItem('accessToken');
-  if (token && !isAuthRoute) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-
   const tenantId = localStorage.getItem('tenantId');
-  if (tenantId && !isAuthRoute) {
+  if (tenantId && !config.url?.includes('/auth/')) {
     config.headers['x-tenant-id'] = tenantId;
   }
 
@@ -29,11 +22,11 @@ apiClient.interceptors.request.use((config) => {
 });
 
 let isRefreshing = false;
-let refreshQueue: Array<{ resolve: (token: string) => void; reject: (err: unknown) => void }> = [];
+let refreshQueue: Array<{ resolve: () => void; reject: (err: unknown) => void }> = [];
 
-function processQueue(error: unknown, token: string | null) {
+function processQueue(error?: unknown) {
   refreshQueue.forEach((p) => {
-    if (token) p.resolve(token);
+    if (!error) p.resolve();
     else p.reject(error);
   });
   refreshQueue = [];
@@ -53,19 +46,10 @@ apiClient.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    const refreshToken = localStorage.getItem('refreshToken');
-    if (!refreshToken) {
-      localStorage.removeItem('accessToken');
-      localStorage.removeItem('tenantId');
-      window.location.href = '/login';
-      return Promise.reject(error);
-    }
-
     if (isRefreshing) {
       return new Promise((resolve, reject) => {
         refreshQueue.push({
-          resolve: (token: string) => {
-            originalRequest.headers.Authorization = `Bearer ${token}`;
+          resolve: () => {
             resolve(apiClient(originalRequest));
           },
           reject,
@@ -77,29 +61,19 @@ apiClient.interceptors.response.use(
     isRefreshing = true;
 
     try {
-      const res = await axios.post(
+      await axios.post(
         `${API_BASE_URL}/auth/refresh`,
         {},
         {
-          headers: {
-            Authorization: `Bearer ${refreshToken}`,
-            'x-tenant-id': localStorage.getItem('tenantId') || '',
-          },
           withCredentials: true,
         },
       );
 
-      const newAccessToken = res.data.accessToken;
-      localStorage.setItem('accessToken', newAccessToken);
-      processQueue(null, newAccessToken);
-
-      originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+      processQueue();
       return apiClient(originalRequest);
     } catch (refreshError) {
-      processQueue(refreshError, null);
-      localStorage.removeItem('accessToken');
-      localStorage.removeItem('refreshToken');
-      localStorage.removeItem('tenantId');
+      processQueue(refreshError);
+      clearLocalSession(queryClient);
       window.location.href = '/login';
       return Promise.reject(refreshError);
     } finally {

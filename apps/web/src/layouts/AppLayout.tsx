@@ -1,14 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore, useThemeStore } from '@/stores';
-import {
-  useProjects,
-  useUnreadCount,
-  useInstalledPlugins,
-  useAvailablePlugins,
-  useMyPermissions,
-} from '@/api';
+import { useProjects, useInstalledPlugins, useAvailablePlugins, useMyPermissions, useCurrentUser } from '@/api';
 import { ProjectIcon } from '@/features/projects/ProjectSettingsPage';
+import { NotificationPanel } from '@/features/notifications/NotificationPanel';
 import { UserAvatar } from '@/components/UserAvatar';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -21,9 +17,9 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import {
   Search,
-  Bell,
   ChevronDown,
   ChevronRight,
   GitBranch,
@@ -33,38 +29,49 @@ import {
   UsersRound,
   Plug,
   Webhook,
+  FileUp,
   Settings,
   LogOut,
   User,
   Sun,
   Moon,
   Cog,
+  Bot,
+  Menu,
+  FileClock,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getNavigationEntries } from '@/plugins/plugin-slot-registry';
 import { getPluginIcon } from '@/plugins/plugin-icons';
 import { useWebSocket } from '@/hooks/useWebSocket';
+import { HotkeysContext, getHotkeyContext, useHotkeys } from '@/hooks/useHotkeys';
+import { ShortcutsDialog } from '@/components/ShortcutsDialog';
+import { endSession } from '@/auth/logout-session';
 
-const adminNavItems = [
+export const adminNavItems = [
   { to: '/admin/workflows', label: 'Workflows', icon: GitBranch },
   { to: '/admin/issue-types', label: 'Issue Types', icon: Tags },
   { to: '/settings/custom-fields', label: 'Custom Fields', icon: Settings },
   { to: '/admin/roles', label: 'Roles & Permissions', icon: Shield },
   { to: '/admin/teams', label: 'Teams', icon: UsersRound },
   { to: '/admin/users', label: 'Users', icon: Users },
+  { to: '/admin/automations', label: 'Automations', icon: Bot },
+  { to: '/admin/audit-log', label: 'Audit Log', icon: FileClock },
   { to: '/settings/plugins', label: 'Plugins', icon: Plug },
   { to: '/settings/webhooks', label: 'Webhooks', icon: Webhook },
+  { to: '/settings/import-export', label: 'Import / Export', icon: FileUp },
   { to: '/settings/general', label: 'System Settings', icon: Cog },
 ];
 
 export function AppLayout() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const location = useLocation();
   const user = useAuthStore((s) => s.user);
   const isAdmin = useAuthStore((s) => s.isAdmin());
-  const logout = useAuthStore((s) => s.logout);
+  const setUser = useAuthStore((s) => s.setUser);
+  const { data: currentUser } = useCurrentUser();
   const { data: projectsData } = useProjects();
-  const { data: unreadCount } = useUnreadCount();
   const { data: installedPlugins } = useInstalledPlugins();
   const { data: availablePlugins } = useAvailablePlugins();
   const permissions = useMyPermissions();
@@ -74,9 +81,58 @@ export function AppLayout() {
   const theme = useThemeStore((s) => s.theme);
   const setTheme = useThemeStore((s) => s.setTheme);
   const [appsOpen, setAppsOpen] = useState(location.pathname.startsWith('/apps'));
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const pendingSearchFocus = useRef(false);
+  useEffect(() => { if (currentUser) setUser(currentUser); }, [currentUser, setUser]);
 
   // Initialize WebSocket connection for real-time updates
   useWebSocket();
+
+  useHotkeys(
+    [
+      { keys: '?', handler: () => setShortcutsOpen(true) },
+      {
+        keys: '/',
+        handler: () => {
+          const searchInput = document.querySelector<HTMLInputElement>(
+            '[data-shortcut-search]:not([readonly])',
+          );
+          if (searchInput) {
+            searchInput.focus();
+            return;
+          }
+
+          pendingSearchFocus.current = true;
+          if (location.pathname !== '/search') navigate('/search');
+        },
+      },
+      {
+        keys: 'c',
+        handler: () => {
+          const projectMatch = location.pathname.match(/^\/projects\/([^/]+)/);
+          if (projectMatch) navigate(`/projects/${projectMatch[1]}/issues?create=1`);
+        },
+        enabled: /^\/projects\/[^/]+/.test(location.pathname),
+      },
+      { keys: 'g p', handler: () => navigate('/projects') },
+      { keys: 'g d', handler: () => navigate('/') },
+    ],
+    { context: 'global', sequenceTimeout: 500 },
+  );
+
+  useEffect(() => {
+    if (!pendingSearchFocus.current || location.pathname !== '/search') return;
+
+    const frame = requestAnimationFrame(() => {
+      const searchInput = document.querySelector<HTMLInputElement>(
+        '[data-shortcut-search]:not([readonly])',
+      );
+      searchInput?.focus();
+      pendingSearchFocus.current = false;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [location.pathname]);
 
   const enabledPluginIds = (installedPlugins ?? []).filter((p) => p.enabled).map((p) => p.pluginId);
   const appTypePluginIds = new Set(
@@ -90,13 +146,13 @@ export function AppLayout() {
         entry.requiredPermissions.every((perm) => permissions.includes(perm)),
     );
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await endSession(queryClient);
     navigate('/login');
   };
 
   return (
-    <div className="flex h-screen bg-muted/50">
+    <div className="flex h-screen min-w-0 bg-background text-foreground">
       {/* Sidebar */}
       <aside className="relative z-10 hidden w-64 flex-col bg-slate-900 text-white md:flex">
         <div className="flex h-14 items-center border-b border-white/10 px-5">
@@ -233,19 +289,30 @@ export function AppLayout() {
       <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
         {/* Top bar */}
         <header className="flex h-14 items-center justify-between gap-3 bg-slate-900 px-3 sm:px-6">
-          <Link
-            to="/"
-            aria-label="Weaver home mobile"
-            className="text-lg font-bold text-white md:hidden"
-          >
-            Weaver
-          </Link>
+          <div className="flex min-w-0 flex-1 items-center gap-2 md:hidden">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="shrink-0 text-white/80 hover:bg-white/10 hover:text-white"
+              onClick={() => setMobileNavOpen(true)}
+              aria-label="Open navigation menu"
+              aria-expanded={mobileNavOpen}
+              aria-controls="mobile-navigation"
+            >
+              <Menu className="h-5 w-5" />
+            </Button>
+            <Link to="/" aria-label="Weaver home mobile" className="text-lg font-bold text-white">
+              Weaver
+            </Link>
+          </div>
 
           {/* Search bar */}
           <div className="relative hidden w-full max-w-md md:block">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/50" />
             <input
               type="text"
+              aria-label="Search issues, projects, and people"
+              data-shortcut-search
               placeholder="Search issues, projects, people..."
               className="w-full bg-white/10 py-1.5 pl-9 pr-4 text-sm text-white placeholder-white/50 border border-white/15 focus:bg-white/15 focus:outline-none focus:ring-1 focus:ring-white/30"
               onFocus={() => navigate('/search')}
@@ -264,25 +331,7 @@ export function AppLayout() {
               <Search className="h-5 w-5" />
             </Button>
 
-            {/* Notification bell */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="relative text-white/80 hover:text-white hover:bg-white/10"
-                  onClick={() => navigate('/search')}
-                >
-                  <Bell className="h-5 w-5" />
-                  {unreadCount != null && unreadCount > 0 && (
-                    <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-white">
-                      {unreadCount > 99 ? '99+' : unreadCount}
-                    </span>
-                  )}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Notifications</TooltipContent>
-            </Tooltip>
+            <NotificationPanel />
 
             {/* Theme toggle */}
             <Tooltip>
@@ -290,10 +339,9 @@ export function AppLayout() {
                 <Button
                   variant="ghost"
                   size="icon"
+                  aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
                   className="text-white/80 hover:text-white hover:bg-white/10"
-                  onClick={() =>
-                    setTheme(theme === 'dark' ? 'light' : theme === 'light' ? 'dark' : 'dark')
-                  }
+                  onClick={() => setTheme(theme === 'dark' ? 'light' : theme === 'light' ? 'dark' : 'dark')}
                 >
                   {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
                 </Button>
@@ -310,12 +358,13 @@ export function AppLayout() {
                 <Button
                   variant="ghost"
                   className="gap-2 text-white/80 hover:text-white hover:bg-white/10"
+                  aria-label="Account menu"
                 >
                   <UserAvatar user={user} size="sm" />
-                  <span className="hidden text-sm xl:inline">
+                  <span className="hidden text-sm lg:inline">
                     {user?.displayName || user?.email}
                   </span>
-                  <ChevronDown className="hidden h-3 w-3 sm:block" />
+                  <ChevronDown className="hidden h-3 w-3 lg:block" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
@@ -334,11 +383,152 @@ export function AppLayout() {
           </div>
         </header>
 
+        <Dialog open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
+          <DialogContent
+            id="mobile-navigation"
+            className="!left-0 !top-0 !h-screen !w-[min(86vw,320px)] !max-w-none !translate-x-0 !translate-y-0 !grid-rows-[auto_minmax(0,1fr)] !gap-0 !rounded-none border-y-0 border-l-0 border-r border-white/10 bg-slate-900 p-0 text-white data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left"
+          >
+            <DialogTitle className="border-b border-white/10 px-5 py-[18px] text-xl">
+              Weaver
+            </DialogTitle>
+            <DialogDescription className="sr-only">
+              Projects and administration navigation
+            </DialogDescription>
+            <nav
+              className="min-h-0 flex-1 overflow-y-auto px-3 py-4"
+              aria-label="Primary navigation"
+            >
+              <h3 className="mb-2 px-2 text-xs font-semibold uppercase tracking-wider text-white/50">
+                Projects
+              </h3>
+              <ul className="space-y-1">
+                {projectsData?.data.map((project) => (
+                  <li key={project.id} className="flex items-center gap-1">
+                    <Link
+                      to={`/projects/${project.key}`}
+                      onClick={() => setMobileNavOpen(false)}
+                      className={cn(
+                        'flex min-w-0 flex-1 items-center rounded-md px-2 py-2 text-sm text-white/80 hover:bg-white/10 hover:text-white',
+                        location.pathname.includes(`/projects/${project.key}`) &&
+                          'bg-white/15 font-medium text-white',
+                      )}
+                    >
+                      <span className="mr-2 shrink-0">
+                        <ProjectIcon
+                          iconAttachmentId={project.iconAttachmentId}
+                          projectKey={project.key}
+                          size="sm"
+                        />
+                      </span>
+                      <span className="truncate">{project.name}</span>
+                    </Link>
+                    <Link
+                      to={`/projects/${project.key}/settings`}
+                      onClick={() => setMobileNavOpen(false)}
+                      className="rounded p-2 text-white/60 hover:bg-white/10 hover:text-white"
+                      aria-label={`${project.name} settings`}
+                    >
+                      <Settings className="h-4 w-4" />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+
+              {navEntries.length > 0 && (
+                <div className="mt-6">
+                  <button
+                    type="button"
+                    onClick={() => setAppsOpen(!appsOpen)}
+                    className="flex w-full items-center gap-1 px-2 py-1 text-xs font-semibold uppercase tracking-wider text-white/50 hover:text-white"
+                  >
+                    {appsOpen ? (
+                      <ChevronDown className="h-3 w-3" />
+                    ) : (
+                      <ChevronRight className="h-3 w-3" />
+                    )}
+                    Apps
+                  </button>
+                  {appsOpen && (
+                    <ul className="mt-1 space-y-1">
+                      {navEntries.map((entry) => {
+                        const Icon = getPluginIcon(entry.icon);
+                        const isActive = location.pathname.startsWith(entry.path);
+                        return (
+                          <li key={entry.path}>
+                            <Link
+                              to={entry.path}
+                              onClick={() => setMobileNavOpen(false)}
+                              className={cn(
+                                'flex items-center gap-2 rounded-md px-2 py-2 text-sm',
+                                isActive
+                                  ? 'bg-white/15 font-medium text-white'
+                                  : 'text-white/70 hover:bg-white/10 hover:text-white',
+                              )}
+                            >
+                              <Icon className="h-4 w-4" />
+                              {entry.label}
+                            </Link>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+              )}
+
+              {isAdmin && (
+                <div className="mt-6">
+                  <button
+                    type="button"
+                    onClick={() => setAdminOpen(!adminOpen)}
+                    className="flex w-full items-center gap-1 px-2 py-1 text-xs font-semibold uppercase tracking-wider text-white/50 hover:text-white"
+                  >
+                    {adminOpen ? (
+                      <ChevronDown className="h-3 w-3" />
+                    ) : (
+                      <ChevronRight className="h-3 w-3" />
+                    )}
+                    Administration
+                  </button>
+                  {adminOpen && (
+                    <ul className="mt-1 space-y-1">
+                      {adminNavItems.map((item) => {
+                        const Icon = item.icon;
+                        const isActive = location.pathname === item.to;
+                        return (
+                          <li key={item.to}>
+                            <Link
+                              to={item.to}
+                              onClick={() => setMobileNavOpen(false)}
+                              className={cn(
+                                'flex items-center gap-2 rounded-md px-2 py-2 text-sm',
+                                isActive
+                                  ? 'bg-white/15 font-medium text-white'
+                                  : 'text-white/70 hover:bg-white/10 hover:text-white',
+                              )}
+                            >
+                              <Icon className="h-4 w-4" />
+                              {item.label}
+                            </Link>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </nav>
+          </DialogContent>
+        </Dialog>
+
         {/* Content */}
-        <main className="flex-1 overflow-y-auto px-4 py-5 sm:px-6">
-          <Outlet />
+        <main className="min-w-0 flex-1 overflow-y-auto bg-background px-3 py-5 sm:px-6">
+          <HotkeysContext.Provider value={getHotkeyContext(location.pathname)}>
+            <Outlet />
+          </HotkeysContext.Provider>
         </main>
       </div>
+      <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
     </div>
   );
 }

@@ -1,5 +1,5 @@
-import { useState, type FormEvent } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useEffect, useState, type FormEvent } from 'react';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   DndContext,
   DragOverlay,
@@ -21,10 +21,9 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useQueryClient } from '@tanstack/react-query';
-import { GripVertical } from 'lucide-react';
+import { ChevronDown, ChevronRight, GripVertical, Repeat2 } from 'lucide-react';
 import {
   useProject,
-  useProjectIssues,
   useWorkflow,
   useProjectPlugins,
   useUpdateIssueDynamic,
@@ -32,15 +31,25 @@ import {
   useHasPermission,
 } from '@/api';
 import { FeatureNotEnabled } from './FeatureNotEnabled';
-import { useBoards, useCreateBoard } from '@/api/hooks-phase2';
-import type { Issue } from '@weaver/shared';
+import { useBoardIssues, useBoards, useCreateBoard, useUpdateBoard } from '@/api/hooks-phase2';
+import type { BoardConfig, Issue, UpdateIssueDto } from '@weaver/shared';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { useHotkeys } from '@/hooks/useHotkeys';
+import { getNextBoardIssueId, type BoardKeyboardDirection } from './boardKeyboardNavigation';
 import { buildReorderPayload, moveIssueBetweenGroups } from '@/features/issues/dragAndDrop';
+import { BoardSettings } from './BoardSettings';
+import {
+  applySwimlaneValue,
+  buildSwimlanes,
+  getSwimlaneValue,
+  getWipLimitWarning,
+  isWipLimitReached,
+} from './boardLayout';
 
 interface StatusColumn {
   statusId: string;
@@ -48,6 +57,55 @@ interface StatusColumn {
   color: string;
   issues: Issue[];
   position: number;
+}
+
+interface WorkflowStatus {
+  id: string;
+  name: string;
+  color?: string | null;
+  category: string;
+}
+
+function buildStatusColumns(issues: Issue[], statuses: WorkflowStatus[]): StatusColumn[] {
+  const issuesByStatus = new Map<string, Issue[]>();
+  for (const issue of issues) {
+    const existing = issuesByStatus.get(issue.statusId) || [];
+    existing.push(issue);
+    issuesByStatus.set(issue.statusId, existing);
+  }
+
+  for (const columnIssues of issuesByStatus.values()) {
+    columnIssues.sort((left, right) => left.sortOrder - right.sortOrder);
+  }
+
+  const categoryOrder: Record<string, number> = { to_do: 0, in_progress: 1, done: 2 };
+  if (statuses.length > 0) {
+    return statuses
+      .map((status) => ({
+        statusId: status.id,
+        name: status.name,
+        color: status.color || '#6b7280',
+        issues: issuesByStatus.get(status.id) || [],
+        position: categoryOrder[status.category] ?? 1,
+      }))
+      .sort((left, right) => left.position - right.position);
+  }
+
+  if (issues.length > 0) {
+    return Array.from(issuesByStatus.entries()).map(([statusId, columnIssues]) => ({
+      statusId,
+      name: statusId.slice(0, 8),
+      color: '#6b7280',
+      issues: columnIssues,
+      position: 0,
+    }));
+  }
+
+  return [
+    { statusId: 'todo', name: 'To Do', color: '#6b7280', issues: [], position: 0 },
+    { statusId: 'in_progress', name: 'In Progress', color: '#3b82f6', issues: [], position: 1 },
+    { statusId: 'done', name: 'Done', color: '#22c55e', issues: [], position: 2 },
+  ];
 }
 
 function PriorityBadge({ priority }: { priority: string }) {
@@ -74,10 +132,25 @@ function PriorityBadge({ priority }: { priority: string }) {
 function IssueCardContent({ issue }: { issue: Issue }) {
   return (
     <>
-      <p className="text-sm font-medium text-foreground">{issue.summary}</p>
+      <div className="flex items-start gap-2">
+        <p className="flex-1 text-sm font-medium text-foreground">{issue.summary}</p>
+        {(issue.recurrenceRule || issue.recurrenceParentId) && (
+          <Repeat2
+            className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground"
+            aria-label="Recurring issue"
+          />
+        )}
+      </div>
       <div className="mt-2 flex items-center justify-between">
         <span className="text-xs font-medium text-primary">{issue.key}</span>
-        <PriorityBadge priority={issue.priority} />
+        <div className="flex items-center gap-1.5">
+          {issue.storyPoints !== null && issue.storyPoints !== undefined && (
+            <Badge variant="secondary" className="rounded-full px-2 py-0.5 text-xs font-medium">
+              {issue.storyPoints} pts
+            </Badge>
+          )}
+          <PriorityBadge priority={issue.priority} />
+        </div>
       </div>
       {issue.assigneeId && (
         <div className="mt-2 flex items-center gap-1">
@@ -91,10 +164,24 @@ function IssueCardContent({ issue }: { issue: Issue }) {
   );
 }
 
-function SortableIssueCard({ issue, disabled }: { issue: Issue; disabled: boolean }) {
+function SortableIssueCard({
+  issue,
+  disabled,
+  containerId,
+  swimlaneValue,
+  isKeyboardFocused,
+  onKeyboardFocus,
+}: {
+  issue: Issue;
+  disabled: boolean;
+  containerId: string;
+  swimlaneValue: string | null;
+  isKeyboardFocused: boolean;
+  onKeyboardFocus: () => void;
+}) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: issue.id,
-    data: { issue, type: 'issue', containerId: issue.statusId },
+    data: { issue, type: 'issue', containerId, statusId: issue.statusId, swimlaneValue },
     disabled,
   });
 
@@ -108,8 +195,13 @@ function SortableIssueCard({ issue, disabled }: { issue: Issue; disabled: boolea
       ref={setNodeRef}
       style={style}
       data-testid="kanban-card"
+      tabIndex={isKeyboardFocused ? 0 : -1}
+      data-board-issue-id={issue.id}
+      data-keyboard-active={isKeyboardFocused ? 'true' : 'false'}
+      onFocus={onKeyboardFocus}
       className={cn(
-        'group relative rounded-lg border border-border bg-card p-3 pr-9 shadow-sm transition hover:shadow-md',
+        'group relative rounded-lg border border-border bg-card p-3 pr-9 shadow-sm transition hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
+        isKeyboardFocused && 'ring-2 ring-primary ring-offset-2',
         isDragging && 'opacity-30',
       )}
     >
@@ -135,41 +227,79 @@ function DroppableColumn({
   column,
   isOver,
   canEdit,
+  containerId,
+  swimlaneValue,
+  totalIssueCount,
+  wipLimit,
+  focusedIssueId,
+  firstIssueId,
+  onIssueFocus,
 }: {
   column: StatusColumn;
   isOver: boolean;
   canEdit: boolean;
+  containerId: string;
+  swimlaneValue: string | null;
+  totalIssueCount: number;
+  wipLimit: number | undefined;
+  focusedIssueId: string | null;
+  firstIssueId: string | null;
+  onIssueFocus: (issueId: string) => void;
 }) {
+  const wipReached = isWipLimitReached(totalIssueCount, wipLimit);
   const { setNodeRef } = useDroppable({
-    id: `column-${column.statusId}`,
-    data: { type: 'column', statusId: column.statusId },
+    id: containerId,
+    data: { type: 'column', containerId, statusId: column.statusId, swimlaneValue },
   });
 
   const issueIds = column.issues.map((i) => i.id);
+  const pointTotal = column.issues.reduce((total, issue) => total + (issue.storyPoints ?? 0), 0);
 
   return (
     <div
       ref={setNodeRef}
       data-testid="kanban-column"
       data-status-id={column.statusId}
+      data-wip-reached={wipReached ? 'true' : 'false'}
       className={cn(
-        'flex w-72 flex-shrink-0 flex-col rounded-lg p-3 transition-colors',
+        'flex w-72 flex-shrink-0 flex-col rounded-lg border p-3 transition-colors',
         isOver ? 'bg-primary/10 ring-2 ring-primary/30' : 'bg-muted/50',
+        wipReached && 'border-red-300 bg-red-50/70 dark:border-red-900 dark:bg-red-950/20',
+        !wipReached && 'border-transparent',
       )}
     >
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="h-3 w-3 rounded-full" style={{ backgroundColor: column.color }} />
-          <h3 className="text-sm font-semibold text-foreground">{column.name}</h3>
+          <h3 className="text-sm font-semibold text-foreground">
+            {column.name} <span className="text-muted-foreground">({pointTotal} pts)</span>
+          </h3>
         </div>
-        <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-          {column.issues.length}
+        <span
+          className={cn(
+            'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
+            wipReached
+              ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300'
+              : 'bg-muted text-muted-foreground',
+          )}
+        >
+          {wipLimit ? `${totalIssueCount}/${wipLimit}` : totalIssueCount}
         </span>
       </div>
       <SortableContext items={issueIds} strategy={verticalListSortingStrategy}>
         <div className="flex min-h-[60px] flex-col gap-2">
           {column.issues.map((issue) => (
-            <SortableIssueCard key={issue.id} issue={issue} disabled={!canEdit} />
+            <SortableIssueCard
+              key={issue.id}
+              issue={issue}
+              disabled={!canEdit}
+              containerId={containerId}
+              swimlaneValue={swimlaneValue}
+              isKeyboardFocused={
+                focusedIssueId === issue.id || (!focusedIssueId && firstIssueId === issue.id)
+              }
+              onKeyboardFocus={() => onIssueFocus(issue.id)}
+            />
           ))}
           {column.issues.length === 0 && !isOver && (
             <p className="py-4 text-center text-xs text-muted-foreground">No issues</p>
@@ -230,39 +360,97 @@ function CreateBoardForm({ projectId, onCreated }: { projectId: string; onCreate
 
 export function KanbanBoard() {
   const { projectKey } = useParams<{ projectKey: string }>();
+  const navigate = useNavigate();
   const { data: projectPlugins } = useProjectPlugins(projectKey!);
   const { data: project, isLoading: projectLoading } = useProject(projectKey!);
-  const { data: issuesData, isLoading: issuesLoading } = useProjectIssues({
-    projectKey: projectKey!,
-    perPage: 200,
-    sort: 'sortOrder',
-  });
   const {
     data: boards,
     isLoading: boardsLoading,
     refetch: refetchBoards,
   } = useBoards(project?.id || '');
+  const activeBoardId = boards?.[0]?.id ?? '';
+  const { data: boardData, isLoading: boardIssuesLoading } = useBoardIssues(activeBoardId);
   const { data: workflow } = useWorkflow(project?.workflowId || '');
   const queryClient = useQueryClient();
   const updateIssue = useUpdateIssueDynamic();
   const reorderIssues = useReorderIssues();
+  const updateBoard = useUpdateBoard(activeBoardId, project?.id ?? '');
   const canEdit = useHasPermission('issues.update');
+  const canConfigure = useHasPermission('projects.update');
 
   const [activeIssue, setActiveIssue] = useState<Issue | null>(null);
-  const [overColumnId, setOverColumnId] = useState<string | null>(null);
+  const [overContainerId, setOverContainerId] = useState<string | null>(null);
   const [localIssues, setLocalIssues] = useState<Issue[] | null>(null);
   const [moveError, setMoveError] = useState<string | null>(null);
+  const [wipWarning, setWipWarning] = useState<string | null>(null);
+  const [collapsedLanes, setCollapsedLanes] = useState<Set<string>>(() => new Set());
+  const [focusedIssueId, setFocusedIssueId] = useState<string | null>(null);
+
+  const isLoading = projectLoading || boardsLoading || (!!boards?.length && boardIssuesLoading);
+  const hasBoards = Boolean(boards && boards.length > 0);
+  const boardEnabled =
+    projectPlugins === undefined ||
+    projectPlugins.some((plugin) => plugin.pluginId === '@weaver/plugin-board');
+  const keyboardIssues = localIssues ?? boardData?.issues ?? [];
+  const keyboardStatuses = (workflow?.statuses || []) as WorkflowStatus[];
+  const keyboardColumns = buildStatusColumns(keyboardIssues, keyboardStatuses).map((column) => ({
+    statusId: column.statusId,
+    issueIds: column.issues.map((issue) => issue.id),
+  }));
+  const firstIssueId =
+    keyboardColumns.find((column) => column.issueIds.length > 0)?.issueIds[0] ?? null;
+  const issueIds = keyboardIssues.map((issue) => issue.id).join('|');
+
+  const moveKeyboardFocus = (direction: BoardKeyboardDirection) => {
+    setFocusedIssueId((current) => getNextBoardIssueId(keyboardColumns, current, direction));
+  };
+
+  useHotkeys(
+    [
+      { keys: 'ArrowUp', handler: () => moveKeyboardFocus('up') },
+      { keys: 'ArrowDown', handler: () => moveKeyboardFocus('down') },
+      { keys: 'ArrowLeft', handler: () => moveKeyboardFocus('left') },
+      { keys: 'ArrowRight', handler: () => moveKeyboardFocus('right') },
+      {
+        keys: 'Enter',
+        handler: () => {
+          const focusedIssue = keyboardIssues.find((issue) => issue.id === focusedIssueId);
+          if (focusedIssue) navigate(`/issues/${focusedIssue.key}`);
+        },
+        enabled: Boolean(focusedIssueId),
+      },
+    ],
+    {
+      context: 'board',
+      enabled: boardEnabled && hasBoards && !isLoading,
+    },
+  );
+
+  useEffect(() => {
+    if (focusedIssueId && !keyboardIssues.some((issue) => issue.id === focusedIssueId)) {
+      setFocusedIssueId(null);
+      return;
+    }
+    if (!focusedIssueId) return;
+
+    const card = Array.from(document.querySelectorAll<HTMLElement>('[data-board-issue-id]')).find(
+      (element) => element.dataset.boardIssueId === focusedIssueId,
+    );
+    card?.focus({ preventScroll: true });
+    card?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [focusedIssueId, issueIds, keyboardIssues]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+      keyboardCodes: { start: ['Space'], cancel: ['Escape'], end: ['Space'] },
+    }),
   );
 
   if (projectPlugins && !projectPlugins.some((p) => p.pluginId === '@weaver/plugin-board')) {
     return <FeatureNotEnabled featureName="Kanban Board" projectKey={projectKey!} />;
   }
-
-  const isLoading = projectLoading || issuesLoading || boardsLoading;
 
   if (isLoading) {
     return (
@@ -280,8 +468,6 @@ export function KanbanBoard() {
     );
   }
 
-  const hasBoards = boards && boards.length > 0;
-
   if (!hasBoards) {
     return (
       <div>
@@ -297,69 +483,80 @@ export function KanbanBoard() {
     );
   }
 
-  const issues = localIssues ?? issuesData?.data ?? [];
-  const statuses = workflow?.statuses || [];
+  const board = boardData?.board ?? boards?.[0];
+  if (!board) return null;
+  const issues = localIssues ?? boardData?.issues ?? [];
+  const statuses = (workflow?.statuses || []) as WorkflowStatus[];
+  const swimlaneField = board.config.swimlaneField ?? 'none';
+  const wipLimits = board.config.wipLimits ?? {};
 
-  // Group issues by statusId
-  const issuesByStatus = new Map<string, Issue[]>();
-  for (const issue of issues) {
-    const existing = issuesByStatus.get(issue.statusId) || [];
-    existing.push(issue);
-    issuesByStatus.set(issue.statusId, existing);
-  }
-
-  // Sort issues within each column by sortOrder
-  for (const [, columnIssues] of issuesByStatus) {
-    columnIssues.sort((a, b) => a.sortOrder - b.sortOrder);
-  }
-
-  // Build columns from workflow statuses
   const categoryOrder: Record<string, number> = { to_do: 0, in_progress: 1, done: 2 };
-  let columns: StatusColumn[];
+  const buildColumns = (columnIssues: Issue[]): StatusColumn[] => {
+    const issuesByStatus = new Map<string, Issue[]>();
+    for (const issue of columnIssues) {
+      const existing = issuesByStatus.get(issue.statusId) || [];
+      existing.push(issue);
+      issuesByStatus.set(issue.statusId, existing);
+    }
+    for (const groupedIssues of issuesByStatus.values()) {
+      groupedIssues.sort((left, right) => left.sortOrder - right.sortOrder);
+    }
 
-  if (statuses.length > 0) {
-    columns = statuses
-      .map((status) => ({
-        statusId: status.id,
-        name: status.name,
-        color: status.color || '#6b7280',
-        issues: issuesByStatus.get(status.id) || [],
-        position: categoryOrder[status.category] ?? 1,
-      }))
-      .sort((a, b) => a.position - b.position);
-  } else if (issues.length > 0) {
-    columns = Array.from(issuesByStatus.entries()).map(([statusId, columnIssues]) => ({
-      statusId,
-      name: statusId.slice(0, 8),
-      color: '#6b7280',
-      issues: columnIssues,
-      position: 0,
-    }));
-  } else {
-    columns = [
+    if (statuses.length > 0) {
+      return statuses
+        .map((status) => ({
+          statusId: status.id,
+          name: status.name,
+          color: status.color || '#6b7280',
+          issues: issuesByStatus.get(status.id) || [],
+          position: categoryOrder[status.category] ?? 1,
+        }))
+        .sort((left, right) => left.position - right.position);
+    }
+    if (columnIssues.length > 0) {
+      return Array.from(issuesByStatus.entries()).map(([statusId, groupedIssues]) => ({
+        statusId,
+        name: statusId.slice(0, 8),
+        color: '#6b7280',
+        issues: groupedIssues,
+        position: 0,
+      }));
+    }
+    return [
       { statusId: 'todo', name: 'To Do', color: '#6b7280', issues: [], position: 0 },
       { statusId: 'in_progress', name: 'In Progress', color: '#3b82f6', issues: [], position: 1 },
       { statusId: 'done', name: 'Done', color: '#22c55e', issues: [], position: 2 },
     ];
-  }
+  };
 
-  // Resolve a droppable/sortable ID to a statusId
-  const resolveStatusId = (id: string): string | undefined => {
-    // Check if it's a column ID (e.g. "column-<statusId>")
-    if (id.startsWith('column-')) {
-      return id.slice(7);
+  const allColumns = buildColumns(issues);
+  const totalIssuesByStatus = new Map(
+    allColumns.map((column) => [column.statusId, column.issues.length]),
+  );
+  const swimlanes = buildSwimlanes(issues, swimlaneField, boardData?.groups ?? []);
+
+  const resolveDropTarget = (over: DragOverEvent['over']) => {
+    if (!over) return null;
+    const data = over.data.current;
+    if (data?.statusId) {
+      return {
+        containerId: String(data.containerId),
+        statusId: String(data.statusId),
+        swimlaneValue: (data.swimlaneValue as string | null | undefined) ?? null,
+      };
     }
-    // Otherwise it's an issue ID — find which column it's in
-    for (const col of columns) {
-      if (col.issues.some((i) => i.id === id)) {
-        return col.statusId;
-      }
-    }
-    return undefined;
+    const issue = issues.find((current) => current.id === String(over.id));
+    if (!issue) return null;
+    return {
+      containerId: String(issue.statusId),
+      statusId: issue.statusId,
+      swimlaneValue: getSwimlaneValue(issue, swimlaneField),
+    };
   };
 
   const handleDragStart = (event: DragStartEvent) => {
     setMoveError(null);
+    setWipWarning(null);
     const issue = event.active.data.current?.issue as Issue | undefined;
     if (issue) {
       setActiveIssue(issue);
@@ -368,20 +565,28 @@ export function KanbanBoard() {
   };
 
   const handleDragOver = (event: DragOverEvent) => {
-    const { over } = event;
-    if (!over) return;
+    const target = resolveDropTarget(event.over);
+    const issue = event.active.data.current?.issue as Issue | undefined;
+    if (!target || !issue) return;
 
-    const targetStatusId = resolveStatusId(over.id as string);
-
-    if (!targetStatusId) return;
-
-    setOverColumnId(targetStatusId);
+    setOverContainerId(target.containerId);
+    const targetColumn = allColumns.find((column) => column.statusId === target.statusId);
+    setWipWarning(
+      getWipLimitWarning({
+        sourceStatusId: issue.statusId,
+        targetStatusId: target.statusId,
+        targetName: targetColumn?.name ?? target.statusId,
+        targetCount: totalIssuesByStatus.get(target.statusId) ?? 0,
+        limit: wipLimits[target.statusId],
+      }),
+    );
   };
 
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
     setActiveIssue(null);
-    setOverColumnId(null);
+    setOverContainerId(null);
+    setWipWarning(null);
 
     if (!over || !localIssues) {
       setLocalIssues(null);
@@ -390,8 +595,8 @@ export function KanbanBoard() {
 
     const activeId = active.id as string;
     const draggedIssue = issues.find((issue) => issue.id === activeId);
-    const targetStatusId = resolveStatusId(over.id as string);
-    if (!draggedIssue || !targetStatusId) {
+    const target = resolveDropTarget(over);
+    if (!draggedIssue || !target) {
       setLocalIssues(null);
       return;
     }
@@ -399,7 +604,7 @@ export function KanbanBoard() {
     const result = moveIssueBetweenGroups(issues, {
       activeId,
       overId: over.id as string,
-      targetGroupId: targetStatusId,
+      targetGroupId: target.statusId,
       groupField: 'statusId',
     });
     if (!result.changed || !result.activeIssue) {
@@ -407,17 +612,35 @@ export function KanbanBoard() {
       return;
     }
 
-    setLocalIssues(result.issues);
+    const sourceSwimlaneValue = getSwimlaneValue(draggedIssue, swimlaneField);
+    const swimlaneChanged = sourceSwimlaneValue !== target.swimlaneValue;
+    const movedIssue = applySwimlaneValue(result.activeIssue, swimlaneField, target.swimlaneValue);
+    const nextIssues = result.issues.map((issue) =>
+      issue.id === movedIssue.id ? movedIssue : issue,
+    );
+    const affectedIssues = result.affectedIssues.map((issue) =>
+      issue.id === movedIssue.id ? movedIssue : issue,
+    );
+
+    setLocalIssues(nextIssues);
 
     try {
-      if (result.sourceGroupId !== result.targetGroupId) {
-        await updateIssue.mutateAsync({
+      if (result.sourceGroupId !== result.targetGroupId || swimlaneChanged) {
+        const update: UpdateIssueDto & { issueKey: string } = {
           issueKey: draggedIssue.key,
-          statusId: targetStatusId,
-          sortOrder: result.activeIssue.sortOrder,
-        });
+          statusId: target.statusId,
+          sortOrder: movedIssue.sortOrder,
+        };
+        if (swimlaneChanged && swimlaneField === 'assignee') {
+          update.assigneeId = target.swimlaneValue;
+        } else if (swimlaneChanged && swimlaneField === 'priority' && target.swimlaneValue) {
+          update.priority = target.swimlaneValue as Issue['priority'];
+        } else if (swimlaneChanged && swimlaneField === 'epic') {
+          update.epicId = target.swimlaneValue;
+        }
+        await updateIssue.mutateAsync(update);
       }
-      const reorderPayload = buildReorderPayload(result.affectedIssues);
+      const reorderPayload = buildReorderPayload(affectedIssues);
       if (reorderPayload.length > 0) {
         await reorderIssues.mutateAsync({ issues: reorderPayload });
       }
@@ -427,14 +650,29 @@ export function KanbanBoard() {
       );
     } finally {
       await queryClient.invalidateQueries({ queryKey: ['issues'] });
+      await queryClient.invalidateQueries({ queryKey: ['boardIssues', activeBoardId] });
       setLocalIssues(null);
     }
   };
 
   const handleDragCancel = () => {
     setActiveIssue(null);
-    setOverColumnId(null);
+    setOverContainerId(null);
+    setWipWarning(null);
     setLocalIssues(null);
+  };
+
+  const toggleSwimlane = (key: string) => {
+    setCollapsedLanes((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const handleConfigChange = async (config: BoardConfig) => {
+    await updateBoard.mutateAsync({ config });
   };
 
   return (
@@ -447,11 +685,21 @@ export function KanbanBoard() {
         <span className="text-foreground">Board</span>
       </div>
 
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-xl font-bold text-foreground">{boards![0].name}</h1>
-        <span className="text-sm text-muted-foreground">
-          {issues.length} issue{issues.length !== 1 ? 's' : ''}
-        </span>
+      <div className="mb-4 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <h1 className="text-xl font-bold text-foreground">{board.name}</h1>
+          <span className="text-sm text-muted-foreground">
+            {issues.length} issue{issues.length !== 1 ? 's' : ''}
+          </span>
+        </div>
+        <BoardSettings
+          config={board.config}
+          statuses={statuses.map((status) => ({ id: status.id, name: status.name }))}
+          canConfigure={canConfigure}
+          isSaving={updateBoard.isPending}
+          hasError={updateBoard.isError}
+          onConfigChange={handleConfigChange}
+        />
       </div>
 
       {moveError && (
@@ -463,6 +711,15 @@ export function KanbanBoard() {
         </p>
       )}
 
+      {wipWarning && (
+        <p
+          role="status"
+          className="mb-4 border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200"
+        >
+          {wipWarning}
+        </p>
+      )}
+
       <DndContext
         sensors={sensors}
         collisionDetection={closestCorners}
@@ -471,15 +728,86 @@ export function KanbanBoard() {
         onDragEnd={handleDragEnd}
         onDragCancel={handleDragCancel}
       >
-        <div data-testid="kanban-board" className="flex gap-4 overflow-x-auto pb-4">
-          {columns.map((column) => (
-            <DroppableColumn
-              key={column.statusId}
-              column={column}
-              isOver={overColumnId === column.statusId}
-              canEdit={canEdit}
-            />
-          ))}
+        <div
+          data-testid="kanban-board"
+          className={cn(swimlaneField === 'none' ? 'overflow-x-auto pb-4' : 'space-y-4')}
+        >
+          {swimlaneField === 'none' ? (
+            <div className="flex gap-4">
+              {buildColumns(swimlanes[0]?.issues ?? issues).map((column) => {
+                const containerId = `column-all-${column.statusId}`;
+                return (
+                  <DroppableColumn
+                    key={column.statusId}
+                    column={column}
+                    containerId={containerId}
+                    swimlaneValue={null}
+                    totalIssueCount={totalIssuesByStatus.get(column.statusId) ?? 0}
+                    wipLimit={wipLimits[column.statusId]}
+                    isOver={overContainerId === containerId}
+                    canEdit={canEdit}
+                    focusedIssueId={focusedIssueId}
+                    firstIssueId={firstIssueId}
+                    onIssueFocus={setFocusedIssueId}
+                  />
+                );
+              })}
+            </div>
+          ) : swimlanes.length > 0 ? (
+            swimlanes.map((swimlane) => {
+              const collapsed = collapsedLanes.has(swimlane.key);
+              return (
+                <section
+                  key={swimlane.key}
+                  className="rounded-lg border border-border bg-card/40 p-3"
+                >
+                  <button
+                    type="button"
+                    aria-expanded={!collapsed}
+                    aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${swimlane.label} swimlane`}
+                    className="mb-3 flex w-full items-center gap-2 rounded-md px-1 py-1 text-left text-sm font-semibold text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    onClick={() => toggleSwimlane(swimlane.key)}
+                  >
+                    {collapsed ? (
+                      <ChevronRight className="h-4 w-4" aria-hidden="true" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4" aria-hidden="true" />
+                    )}
+                    <span>{swimlane.label}</span>
+                    <span className="ml-auto text-xs font-normal text-muted-foreground">
+                      {swimlane.issues.length} issue{swimlane.issues.length !== 1 ? 's' : ''}
+                    </span>
+                  </button>
+                  {!collapsed && (
+                    <div className="flex gap-4 overflow-x-auto pb-2">
+                      {buildColumns(swimlane.issues).map((column) => {
+                        const containerId = `column-${swimlane.key}-${column.statusId}`;
+                        return (
+                          <DroppableColumn
+                            key={column.statusId}
+                            column={column}
+                            containerId={containerId}
+                            swimlaneValue={swimlane.value}
+                            totalIssueCount={totalIssuesByStatus.get(column.statusId) ?? 0}
+                            wipLimit={wipLimits[column.statusId]}
+                            isOver={overContainerId === containerId}
+                            canEdit={canEdit}
+                            focusedIssueId={focusedIssueId}
+                            firstIssueId={firstIssueId}
+                            onIssueFocus={setFocusedIssueId}
+                          />
+                        );
+                      })}
+                    </div>
+                  )}
+                </section>
+              );
+            })
+          ) : (
+            <p className="py-8 text-center text-sm text-muted-foreground">
+              No issues on this board.
+            </p>
+          )}
         </div>
 
         <DragOverlay>

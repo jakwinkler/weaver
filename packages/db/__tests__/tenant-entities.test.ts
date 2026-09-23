@@ -12,6 +12,7 @@ import {
   SprintEntity,
   CommentEntity,
   ActivityLogEntity,
+  AuditLogEntity,
   RoleEntity,
   CustomFieldDefinitionEntity,
   NotificationEntity,
@@ -19,12 +20,14 @@ import {
   SavedFilterEntity,
   TimeEntryEntity,
   AttachmentEntity,
+  ImportJobEntity,
+  ImportRecordEntity,
 } from '../src/entities/tenant';
 
 describe('Tenant Schema Entities', () => {
   const storage = getMetadataArgsStorage();
 
-  const entityCases: [string, Function, string][] = [
+  const entityCases: [string, new () => object, string][] = [
     ['ProjectEntity', ProjectEntity, 'projects'],
     ['IssueEntity', IssueEntity, 'issues'],
     ['IssueTypeEntity', IssueTypeEntity, 'issue_types'],
@@ -36,6 +39,7 @@ describe('Tenant Schema Entities', () => {
     ['SprintEntity', SprintEntity, 'sprints'],
     ['CommentEntity', CommentEntity, 'comments'],
     ['ActivityLogEntity', ActivityLogEntity, 'activity_logs'],
+    ['AuditLogEntity', AuditLogEntity, 'audit_logs'],
     ['RoleEntity', RoleEntity, 'roles'],
     ['CustomFieldDefinitionEntity', CustomFieldDefinitionEntity, 'custom_field_definitions'],
     ['NotificationEntity', NotificationEntity, 'notifications'],
@@ -43,6 +47,8 @@ describe('Tenant Schema Entities', () => {
     ['SavedFilterEntity', SavedFilterEntity, 'saved_filters'],
     ['TimeEntryEntity', TimeEntryEntity, 'time_entries'],
     ['AttachmentEntity', AttachmentEntity, 'attachments'],
+    ['ImportJobEntity', ImportJobEntity, 'import_jobs'],
+    ['ImportRecordEntity', ImportRecordEntity, 'import_records'],
   ];
 
   it.each(entityCases)('%s should be registered with table name %s', (_name, entity, tableName) => {
@@ -73,8 +79,9 @@ describe('Tenant Schema Entities', () => {
     });
 
     it('should have OneToMany relations', () => {
-      const relations = storage.relations
-        .filter((r) => r.target === ProjectEntity && r.relationType === 'one-to-many');
+      const relations = storage.relations.filter(
+        (r) => r.target === ProjectEntity && r.relationType === 'one-to-many',
+      );
       expect(relations.length).toBeGreaterThanOrEqual(3);
     });
   });
@@ -93,6 +100,7 @@ describe('Tenant Schema Entities', () => {
       expect(columns).toContain('customFields');
       expect(columns).toContain('labels');
       expect(columns).toContain('sortOrder');
+      expect(columns).toContain('storyPoints');
     });
 
     it('should have indexes on projectId and statusId', () => {
@@ -101,10 +109,20 @@ describe('Tenant Schema Entities', () => {
     });
   });
 
+  describe('SprintEntity', () => {
+    it('should have an optional capacity column', () => {
+      const columns = storage.columns
+        .filter((column) => column.target === SprintEntity)
+        .map((column) => column.propertyName);
+      expect(columns).toContain('capacity');
+    });
+  });
+
   describe('WorkflowEntity', () => {
     it('should have OneToMany to statuses and transitions', () => {
-      const relations = storage.relations
-        .filter((r) => r.target === WorkflowEntity && r.relationType === 'one-to-many');
+      const relations = storage.relations.filter(
+        (r) => r.target === WorkflowEntity && r.relationType === 'one-to-many',
+      );
       const names = relations.map((r) => r.propertyName);
       expect(names).toContain('statuses');
       expect(names).toContain('transitions');
@@ -113,8 +131,9 @@ describe('Tenant Schema Entities', () => {
 
   describe('WorkflowTransitionEntity', () => {
     it('should have relations to workflow, fromStatus, toStatus', () => {
-      const relations = storage.relations
-        .filter((r) => r.target === WorkflowTransitionEntity && r.relationType === 'many-to-one');
+      const relations = storage.relations.filter(
+        (r) => r.target === WorkflowTransitionEntity && r.relationType === 'many-to-one',
+      );
       const names = relations.map((r) => r.propertyName);
       expect(names).toContain('workflow');
       expect(names).toContain('fromStatus');
@@ -138,10 +157,46 @@ describe('Tenant Schema Entities', () => {
     });
   });
 
+  describe('TimeEntryEntity', () => {
+    it('should expose backward-compatible plugin source, interval, lock, and update columns', () => {
+      const columns = storage.columns
+        .filter((c) => c.target === TimeEntryEntity)
+        .map((c) => c.propertyName);
+
+      expect(columns).toEqual(
+        expect.arrayContaining([
+          'startedAt',
+          'endedAt',
+          'source',
+          'sourcePluginId',
+          'sourceReference',
+          'lockedAt',
+          'lockReason',
+          'updatedAt',
+        ]),
+      );
+    });
+
+    it('should enforce unique plugin source references when both values are present', () => {
+      const index = storage.indices.find(
+        (candidate) =>
+          candidate.target === TimeEntryEntity &&
+          candidate.unique === true &&
+          candidate.columns?.includes('sourcePluginId') &&
+          candidate.columns?.includes('sourceReference'),
+      );
+
+      expect(index).toBeDefined();
+      expect(index?.where).toContain('source_plugin_id');
+      expect(index?.where).toContain('source_reference');
+    });
+  });
+
   describe('CommentEntity', () => {
     it('should have ManyToOne relation to issue', () => {
-      const relations = storage.relations
-        .filter((r) => r.target === CommentEntity && r.relationType === 'many-to-one');
+      const relations = storage.relations.filter(
+        (r) => r.target === CommentEntity && r.relationType === 'many-to-one',
+      );
       const names = relations.map((r) => r.propertyName);
       expect(names).toContain('issue');
     });

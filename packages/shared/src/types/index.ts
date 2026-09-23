@@ -2,13 +2,18 @@ import type {
   IssuePriority,
   StatusCategory,
   BoardType,
+  BoardSwimlaneField,
   SprintStatus,
   TenantPlan,
   TenantRole,
   AuthProvider,
   IssueLinkType,
   CustomFieldType,
+  ApiKeyScope,
 } from '../constants';
+import type { RecurrenceRule } from '../schemas';
+
+export * from './import';
 
 // ── Public Schema Types ──
 
@@ -29,11 +34,65 @@ export interface User {
   displayName: string;
   passwordHash?: string;
   authProvider: AuthProvider;
+  authProviders: AuthProvider[];
   avatarUrl?: string;
+  notificationPreferences?: NotificationPreferences;
   createdAt: Date;
   updatedAt: Date;
 }
 
+export interface AuthResponse<TUser = User> {
+  accessToken: string;
+  refreshToken: string;
+  user: TUser;
+  tenantId: string;
+}
+
+export interface NotificationPreferences {
+  emailOnAssign: boolean;
+  emailOnMention: boolean;
+  emailOnComment: boolean;
+  emailOnStatusChange: boolean;
+}
+
+export type NotificationPreferenceKey = keyof NotificationPreferences;
+
+export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
+  emailOnAssign: true,
+  emailOnMention: true,
+  emailOnComment: true,
+  emailOnStatusChange: true,
+};
+
+export type EmailTemplateName =
+  | 'issue-assigned'
+  | 'mentioned-in-comment'
+  | 'issue-status-changed'
+  | 'comment-added'
+  | 'form-submission';
+
+export interface EmailNotificationJobData {
+  type: 'email';
+  userId: string;
+  tenantId: string;
+  to: string;
+  title: string;
+  body: string;
+  html: string;
+  headers: Record<string, string>;
+  data?: Record<string, unknown>;
+}
+
+export interface InAppNotificationJobData {
+  type: 'in_app';
+  userId: string;
+  tenantId: string;
+  title: string;
+  body: string;
+  data?: Record<string, unknown>;
+}
+
+export type NotificationJobData = EmailNotificationJobData | InAppNotificationJobData;
 export interface TenantMembership {
   tenantId: string;
   userId: string;
@@ -43,14 +102,16 @@ export interface TenantMembership {
 
 export interface ApiKey {
   id: string;
-  tenantId: string;
-  userId: string;
   name: string;
-  keyHash: string;
-  scopes: string[];
-  expiresAt?: Date;
-  lastUsedAt?: Date;
-  createdAt: Date;
+  maskedKey: string;
+  scopes: ApiKeyScope[];
+  expiresAt: string | null;
+  lastUsedAt: string | null;
+  createdAt: string;
+}
+
+export interface CreatedApiKey extends ApiKey {
+  key: string;
 }
 
 export interface InstalledPlugin {
@@ -80,6 +141,92 @@ export interface Project {
   updatedAt: Date;
 }
 
+export interface Page {
+  id: string;
+  projectId: string;
+  title: string;
+  slug: string;
+  body: Record<string, unknown>;
+  parentId: string | null;
+  sortOrder: number;
+  createdBy: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface PageTreeNode {
+  id: string;
+  title: string;
+  slug: string;
+  parentId: string | null;
+  sortOrder: number;
+  children: PageTreeNode[];
+}
+
+export interface PageVersion {
+  id: string;
+  pageId: string;
+  title: string;
+  slug: string;
+  body: Record<string, unknown>;
+  parentId: string | null;
+  sortOrder: number;
+  createdBy: string;
+  authorDisplayName: string;
+  createdAt: Date;
+}
+
+export type FormFieldType = 'text' | 'textarea' | 'select' | 'email';
+
+export type FormFieldMapping = 'summary' | 'description' | 'labels' | 'custom-field';
+
+export interface FormFieldDefinition {
+  id: string;
+  type: FormFieldType;
+  label: string;
+  required: boolean;
+  mapping: FormFieldMapping;
+  placeholder?: string;
+  options?: string[];
+  customFieldKey?: string;
+}
+
+export interface FormIssueDefaults {
+  issueTypeId?: string;
+  priority?: IssuePriority;
+  labels: string[];
+}
+
+export interface Form {
+  id: string;
+  projectId: string;
+  name: string;
+  slug: string;
+  description?: string | null;
+  fields: FormFieldDefinition[];
+  issueDefaults: FormIssueDefaults;
+  active: boolean;
+  createdBy: string;
+  createdAt: Date;
+  updatedAt: Date;
+  tenantSlug?: string;
+}
+
+export interface PublicForm {
+  name: string;
+  description?: string | null;
+  fields: FormFieldDefinition[];
+  captchaSiteKey?: string;
+}
+
+export interface FormSubmission {
+  id: string;
+  formId: string;
+  issueId?: string | null;
+  issueKey: string;
+  submittedAt: Date;
+}
+
 export interface TenantSettings {
   timezone: string;
   theme: 'light' | 'dark' | 'system';
@@ -93,6 +240,25 @@ export interface TenantSettings {
     fromName: string;
     fromEmail: string;
   } | null;
+  sso: {
+    google: {
+      enabled: boolean;
+    };
+    github: {
+      enabled: boolean;
+    };
+    saml: {
+      enabled: boolean;
+      idpUrl: string;
+      cert: string;
+    };
+    oidc: {
+      enabled: boolean;
+      discoveryUrl: string;
+      clientId: string;
+      clientSecret: string;
+    };
+  };
 }
 
 export interface Issue {
@@ -115,6 +281,10 @@ export interface Issue {
   startDate?: string;
   dueDate?: string;
   percentDone: number;
+  storyPoints?: number | null;
+  recurrenceRule: RecurrenceRule | null;
+  recurrenceParentId: string | null;
+  recurrenceOccurrence: number;
   createdAt: Date;
   updatedAt: Date;
   issueType?: IssueType | null;
@@ -137,6 +307,43 @@ export interface IssueLink {
   sourceIssueId: string;
   targetIssueId: string;
   createdAt: Date;
+}
+
+export interface RoadmapStatus {
+  id: string;
+  name: string;
+  category: string;
+  color: string;
+  isTerminal: boolean;
+}
+
+export interface RoadmapEpicChild {
+  id: string;
+  key: string;
+  summary: string;
+  statusId: string;
+  status: RoadmapStatus;
+  startDate: string | null;
+  dueDate: string | null;
+  storyPoints: number | null;
+}
+
+export interface RoadmapEpic {
+  id: string;
+  key: string;
+  summary: string;
+  statusId: string;
+  status: RoadmapStatus;
+  startDate: string | null;
+  dueDate: string | null;
+  childIssueCount: number;
+  completedChildCount: number;
+  totalStoryPoints: number;
+  completedStoryPoints: number;
+  progress: number;
+  pointsProgress: number;
+  blockingEpicIds: string[];
+  children: RoadmapEpicChild[];
 }
 
 export interface Workflow {
@@ -174,8 +381,27 @@ export interface Board {
   projectId: string;
   name: string;
   type: BoardType;
-  config: Record<string, unknown>;
+  config: BoardConfig;
   createdAt: Date;
+}
+
+export interface BoardConfig {
+  swimlaneField?: BoardSwimlaneField;
+  wipLimits?: Record<string, number>;
+}
+
+export interface BoardIssueGroup<TIssue = Issue> {
+  key: string;
+  value: string | null;
+  label: string;
+  issues: TIssue[];
+}
+
+export interface BoardIssuesResponse<TIssue = Issue, TBoard = Board> {
+  board: TBoard;
+  issues: TIssue[];
+  groups: BoardIssueGroup<TIssue>[];
+  columnPointTotals: Record<string, number>;
 }
 
 export interface Sprint {
@@ -183,10 +409,66 @@ export interface Sprint {
   projectId: string;
   name: string;
   goal?: string;
-  startDate?: Date;
-  endDate?: Date;
+  startDate?: Date | string;
+  endDate?: Date | string;
   status: SprintStatus;
+  capacity?: number | null;
+  initialScope?: SprintInitialScope | null;
   createdAt: Date;
+}
+
+export interface SprintScopeIssue {
+  issueId: string;
+  storyPoints: number;
+  statusId: string;
+}
+
+export interface SprintInitialScope {
+  capturedAt: string;
+  issues: SprintScopeIssue[];
+}
+
+export interface SprintStats {
+  sprintId: string;
+  capacity: number | null;
+  committedPoints: number;
+  issueCount: number;
+  completedCount: number;
+  completedPoints: number;
+}
+
+export interface BurndownDataPoint {
+  date: string;
+  totalPoints: number;
+  remainingPoints: number;
+  idealRemaining: number;
+}
+
+export interface SprintReportDates {
+  startDate: string | null;
+  endDate: string | null;
+}
+
+export interface SprintSummary {
+  sprintId: string;
+  sprintName: string;
+  dates: SprintReportDates;
+  totalIssues: number;
+  completedIssues: number;
+  addedMidSprint: number;
+  removedMidSprint: number;
+  totalPointsCommitted: number;
+  completedPoints: number;
+  carryOverPoints: number;
+  completionPercentage: number;
+}
+
+export interface SprintVelocity {
+  sprintId: string;
+  sprintName: string;
+  committedPoints: number;
+  completedPoints: number;
+  dates: SprintReportDates;
 }
 
 export interface Comment {
@@ -223,6 +505,25 @@ export interface ActivityLog {
   fieldName?: string;
   oldValue?: string;
   newValue?: string;
+  createdAt: Date;
+}
+
+export interface AuditLogUser {
+  id: string;
+  displayName: string;
+  email: string;
+}
+
+export interface AuditLog {
+  id: string;
+  userId: string | null;
+  user: AuditLogUser | null;
+  action: string;
+  resource: string;
+  resourceId: string;
+  metadata: Record<string, unknown>;
+  ipAddress: string | null;
+  userAgent: string | null;
   createdAt: Date;
 }
 
@@ -265,6 +566,14 @@ export interface Webhook {
   createdAt: Date;
 }
 
+export interface WebhookDeliveryJobData {
+  tenantId: string;
+  schemaName: string;
+  webhookId: string;
+  eventType: string;
+  payload: Record<string, unknown>;
+}
+
 export interface SavedFilter {
   id: string;
   name: string;
@@ -279,7 +588,15 @@ export interface TimeEntry {
   issueId: string;
   userId: string;
   minutes: number;
-  description?: string;
+  description: string | null;
   loggedAt: Date;
+  startedAt: Date | null;
+  endedAt: Date | null;
+  source: 'manual' | 'timer' | 'plugin';
+  sourcePluginId: string | null;
+  sourceReference: string | null;
+  lockedAt: Date | null;
+  lockReason: string | null;
   createdAt: Date;
+  updatedAt: Date;
 }

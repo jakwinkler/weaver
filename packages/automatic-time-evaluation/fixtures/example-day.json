@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "day": "2026-08-25",
+  "synthetic": true,
+  "candidateIssueKeys": ["WEAV-29", "WEAV-12"],
+  "reviewDurationSeconds": 95,
+  "segments": [
+    {
+      "id": "morning-planning",
+      "start": "2026-08-25T09:00:00-04:00",
+      "end": "2026-08-25T10:30:00-04:00",
+      "expectedIssueKey": "WEAV-29",
+      "prediction": {
+        "issueKey": "WEAV-29",
+        "confidence": 0.99,
+        "method": "deterministic",
+        "reasons": ["branch:29-automatic-time"]
+      }
+    },
+    {
+      "id": "capture-research",
+      "start": "2026-08-25T10:30:00-04:00",
+      "end": "2026-08-25T12:00:00-04:00",
+      "expectedIssueKey": "WEAV-29",
+      "prediction": {
+        "issueKey": "WEAV-29",
+        "confidence": 0.91,
+        "method": "ai",
+        "reasons": ["cluster:automatic-time-research"]
+      }
+    },
+    {
+      "id": "lunch",
+      "start": "2026-08-25T12:00:00-04:00",
+      "end": "2026-08-25T12:30:00-04:00",
+      "expectedIssueKey": null,
+      "prediction": {
+        "issueKey": null,
+        "confidence": 1,
+        "method": "none",
+        "reasons": ["idle:30m"]
+      }
+    },
+    {
+      "id": "storage-spike",
+      "start": "2026-08-25T12:30:00-04:00",
+      "end": "2026-08-25T14:00:00-04:00",
+      "expectedIssueKey": "WEAV-29",
+      "prediction": {
+        "issueKey": "WEAV-29",
+        "confidence": 0.96,
+        "method": "deterministic",
+        "reasons": ["repository:weaver", "branch:29-automatic-time"]
+      }
+    },
+    {
+      "id": "manual-contract-tests",
+      "start": "2026-08-25T14:00:00-04:00",
+      "end": "2026-08-25T15:30:00-04:00",
+      "expectedIssueKey": "WEAV-29",
+      "prediction": {
+        "issueKey": "WEAV-29",
+        "confidence": 0.88,
+        "method": "ai",
+        "reasons": ["cluster:time-tracking-tests"]
+      }
+    },
+    {
+      "id": "wrong-destination",
+      "start": "2026-08-25T15:30:00-04:00",
+      "end": "2026-08-25T16:15:00-04:00",
+      "expectedIssueKey": "WEAV-29",
+      "prediction": {
+        "issueKey": "WEAV-12",
+        "confidence": 0.72,
+        "method": "ai",
+        "reasons": ["cluster:time-entry-api"]
+      }
+    },
+    {
+      "id": "honest-uncertainty",
+      "start": "2026-08-25T16:15:00-04:00",
+      "end": "2026-08-25T17:00:00-04:00",
+      "expectedIssueKey": "WEAV-29",
+      "prediction": {
+        "issueKey": null,
+        "confidence": 0.42,
+        "method": "none",
+        "reasons": ["no-clear-match"]
+      }
+    }
+  ]
+}

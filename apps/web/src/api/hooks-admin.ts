@@ -5,7 +5,69 @@ import type {
   WorkflowTransition,
   IssueType,
   CustomFieldDefinition,
+  PaginatedResponse,
 } from '@weaver/shared';
+
+// ── Audit log ──
+
+export interface AuditLogFilters {
+  page: number;
+  perPage: number;
+  userId?: string;
+  resource?: string;
+  action?: string;
+  from?: string;
+  to?: string;
+  search?: string;
+}
+
+export interface AuditLogEntry {
+  id: string;
+  userId: string | null;
+  user: { id: string; displayName: string; email: string } | null;
+  action: string;
+  resource: string;
+  resourceId: string;
+  metadata: Record<string, unknown>;
+  ipAddress: string | null;
+  userAgent: string | null;
+  createdAt: string;
+}
+
+function auditLogParams(filters: AuditLogFilters) {
+  return Object.fromEntries(
+    Object.entries(filters).filter(([, value]) => value !== '' && value !== undefined),
+  );
+}
+
+export function useAuditLog(filters: AuditLogFilters) {
+  return useQuery({
+    queryKey: ['auditLog', filters],
+    queryFn: async () => {
+      const res = await apiClient.get<PaginatedResponse<AuditLogEntry>>('/audit-log', {
+        params: auditLogParams(filters),
+      });
+      return res.data;
+    },
+  });
+}
+
+export async function downloadAuditLog(filters: AuditLogFilters) {
+  const res = await apiClient.get<Blob>('/audit-log/export', {
+    params: auditLogParams(filters),
+    responseType: 'blob',
+  });
+  const disposition = res.headers['content-disposition'] as string | undefined;
+  const filename = disposition?.match(/filename="?([^";]+)"?/i)?.[1] ?? 'weaver-audit-log.csv';
+  const url = URL.createObjectURL(res.data);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
 
 // ── Users ──
 

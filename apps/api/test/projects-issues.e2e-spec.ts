@@ -34,7 +34,7 @@ describe('Projects & Issues (e2e)', () => {
     });
 
     accessToken = res.body.accessToken;
-    tenantId = res.body.tenant.id;
+    tenantId = res.body.tenantId;
   });
 
   afterAll(async () => {
@@ -229,6 +229,10 @@ describe('Projects & Issues (e2e)', () => {
         .expect(200);
       expect(res.body.summary).toBe('Updated first issue');
       expect(res.body.priority).toBe('highest');
+
+      const persisted = await authedRequest().get('/api/v1/issues/WEB-1').expect(200);
+      expect(persisted.body.summary).toBe('Updated first issue');
+      expect(persisted.body.priority).toBe('highest');
     });
 
     it('PATCH /issues/:key - should persist and clear a rich-text description', async () => {
@@ -269,6 +273,10 @@ describe('Projects & Issues (e2e)', () => {
     });
 
     it('PATCH /issues/:key - should set labels and custom fields', async () => {
+      await authedRequest()
+        .post('/api/v1/custom-fields')
+        .send({ name: 'Severity', slug: 'severity', fieldType: 'text' })
+        .expect(201);
       const res = await authedRequest()
         .patch('/api/v1/issues/WEB-2')
         .send({
@@ -281,6 +289,10 @@ describe('Projects & Issues (e2e)', () => {
     });
 
     it('DELETE /issues/:key - should delete issue', async () => {
+      await authedRequest()
+        .post('/api/v1/issues/WEB-3/comments')
+        .send({ body: { type: 'doc', content: [] } })
+        .expect(201);
       await authedRequest().delete('/api/v1/issues/WEB-3').expect(204);
       await authedRequest().get('/api/v1/issues/WEB-3').expect(404);
     });
@@ -330,6 +342,7 @@ describe('Projects & Issues (e2e)', () => {
 
   describe('Project Deletion', () => {
     it('DELETE /projects/:key - should delete project after removing its issues', async () => {
+      await authedRequest().delete('/api/v1/projects/MOB').expect(409);
       // First delete the issue in MOB project
       await authedRequest().delete('/api/v1/issues/MOB-1').expect(204);
       // Then delete the project

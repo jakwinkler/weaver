@@ -4,7 +4,10 @@ import {
   Column,
   CreateDateColumn,
   Index,
+  ManyToOne,
+  JoinColumn,
 } from 'typeorm';
+import { IssueEntity } from './issue.entity';
 
 @Entity({ name: 'activity_logs' })
 export class ActivityLogEntity {
@@ -32,4 +35,8 @@ export class ActivityLogEntity {
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;
+
+  @ManyToOne(() => IssueEntity, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'issue_id' })
+  issue!: IssueEntity;
 }

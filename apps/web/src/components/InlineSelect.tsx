@@ -22,6 +22,7 @@ interface InlineSelectProps {
   editable?: boolean;
   renderValue?: (value: string, option?: InlineSelectOption) => React.ReactNode;
   className?: string;
+  ariaLabel?: string;
 }
 
 export function InlineSelect({
@@ -31,6 +32,7 @@ export function InlineSelect({
   editable = true,
   renderValue,
   className,
+  ariaLabel,
 }: InlineSelectProps) {
   const [saving, setSaving] = useState(false);
 
@@ -60,6 +62,8 @@ export function InlineSelect({
     <div className={cn('inline-flex items-center gap-1', className)}>
       <Select value={value} onValueChange={handleChange} disabled={saving}>
         <SelectTrigger
+          aria-label={ariaLabel}
+          data-inline-editable-focus
           className={cn(
             'h-7 min-w-[6rem] border-transparent bg-transparent px-1 text-sm shadow-none hover:border-input hover:bg-muted/50 focus:ring-1',
             saving && 'opacity-60',
@@ -85,7 +89,9 @@ export function InlineSelect({
           ))}
         </SelectContent>
       </Select>
-      {saving && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+      {saving && (
+        <Loader2 aria-label="Saving" className="h-3 w-3 animate-spin text-muted-foreground" />
+      )}
     </div>
   );
 }

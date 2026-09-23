@@ -1,9 +1,11 @@
 import { Module } from '@nestjs/common';
-import { SprintsController } from './sprints.controller';
+import { ProjectSprintReportsController, SprintsController } from './sprints.controller';
 import { SprintsService } from './sprints.service';
+import { EventsModule } from '../events';
 
 @Module({
-  controllers: [SprintsController],
+  imports: [EventsModule],
+  controllers: [SprintsController, ProjectSprintReportsController],
   providers: [SprintsService],
   exports: [SprintsService],
 })

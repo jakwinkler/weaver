@@ -3,3 +3,4 @@ export { UserEntity } from './user.entity';
 export { TenantMembershipEntity } from './tenant-membership.entity';
 export { ApiKeyEntity } from './api-key.entity';
 export { InstalledPluginEntity } from './installed-plugin.entity';
+export { RefreshSessionEntity } from './refresh-session.entity';

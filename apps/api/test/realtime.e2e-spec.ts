@@ -42,8 +42,11 @@ describe('Real-Time WebSocket (e2e)', () => {
     });
 
     accessToken = res.body.accessToken;
-    tenantId = res.body.tenant?.id ?? res.body.tenantId;
+    tenantId = res.body.tenantId;
     userId = res.body.user.id;
+    await request(httpServer).post('/api/v1/projects')
+      .set('Authorization', `Bearer ${accessToken}`).set('X-Tenant-ID', tenantId)
+      .send({ key: 'WS', name: 'WS Test Project' }).expect(201);
   });
 
   afterAll(async () => {
@@ -130,8 +133,8 @@ describe('Real-Time WebSocket (e2e)', () => {
       const stable = await waitForStableConnection(socket, 2000);
       expect(stable).toBe(true);
 
-      socket.emit('join:project', { projectKey: 'WS' });
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      const subscription = await socket.timeout(3000).emitWithAck('join:project', { projectKey: 'WS' });
+      expect(subscription.joined).toBe(true);
 
       const room = gateway.server.adapter.rooms.get(`tenant:${tenantId}:project:WS`);
       expect(room?.has(socket.id!)).toBe(true);
@@ -143,12 +146,12 @@ describe('Real-Time WebSocket (e2e)', () => {
     let projectKey: string;
 
     beforeAll(async () => {
-      // Create a project for issue tests
+      // Reuse the project created before the room authorization tests.
       const createProjectRes = await request(httpServer)
-        .post('/api/v1/projects')
+        .get('/api/v1/projects/WS')
         .set('Authorization', `Bearer ${accessToken}`)
         .set('X-Tenant-ID', tenantId)
-        .send({ key: 'WS', name: 'WS Test Project' });
+        .expect(200);
 
       projectKey = createProjectRes.body.key;
 
@@ -185,6 +188,14 @@ describe('Real-Time WebSocket (e2e)', () => {
       if (!stable) {
         socket.close();
         throw new Error('Socket did not connect');
+      }
+
+      const subscription = await socket
+        .timeout(3000)
+        .emitWithAck('join:project', { projectKey });
+      if (!subscription?.joined) {
+        socket.close();
+        throw new Error(`Socket was not authorized for project ${projectKey}`);
       }
 
       return new Promise((resolve, reject) => {
@@ -427,7 +438,7 @@ describe('Real-Time WebSocket (e2e)', () => {
       });
 
       tenantBToken = res.body.accessToken;
-      tenantBId = res.body.tenant?.id ?? res.body.tenantId;
+      tenantBId = res.body.tenantId;
 
       // Create workflow for tenant B
       const wfRes = await request(httpServer)

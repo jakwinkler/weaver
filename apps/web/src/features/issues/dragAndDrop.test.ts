@@ -18,6 +18,9 @@ function issue(id: string, sortOrder: number, overrides: Partial<Issue> = {}): I
     createdAt: new Date('2026-01-01T00:00:00Z'),
     updatedAt: new Date('2026-01-01T00:00:00Z'),
     ...overrides,
+    recurrenceRule: overrides.recurrenceRule ?? null,
+    recurrenceParentId: overrides.recurrenceParentId ?? null,
+    recurrenceOccurrence: overrides.recurrenceOccurrence ?? 0,
   };
 }
 

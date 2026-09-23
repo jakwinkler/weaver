@@ -5,10 +5,14 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   OneToMany,
+  ManyToOne,
+  JoinColumn,
 } from 'typeorm';
 import { IssueEntity } from './issue.entity';
 import { BoardEntity } from './board.entity';
 import { SprintEntity } from './sprint.entity';
+import { PageEntity } from './page.entity';
+import { WorkflowEntity } from './workflow.entity';
 
 @Entity({ name: 'projects' })
 export class ProjectEntity {
@@ -56,4 +60,10 @@ export class ProjectEntity {
 
   @OneToMany(() => SprintEntity, (sprint) => sprint.project)
   sprints!: SprintEntity[];
+
+  @OneToMany(() => PageEntity, (page) => page.project)
+  pages!: PageEntity[];
+  @ManyToOne(() => WorkflowEntity, { nullable: true, onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'workflow_id' })
+  workflow!: WorkflowEntity | null;
 }

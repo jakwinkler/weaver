@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import { runAutomaticTimeCoreMigration } from '@weaver/db';
 import { TenantConnectionProvider, TENANT_ENTITIES } from './tenant-connection.provider';
 import { ConfigService } from '@nestjs/config';
 
@@ -34,6 +35,7 @@ export class TenantProvisioningService {
     });
 
     await tempDs.initialize();
+    await runAutomaticTimeCoreMigration(tempDs, schemaName);
     await tempDs.destroy();
 
     // Create GIN index for custom fields
@@ -156,6 +158,7 @@ export class TenantProvisioningService {
           'issues.create': true, 'issues.read': true, 'issues.update': true,
           'issues.transition': true, 'issues.assign': true,
           'comments.create': true, 'comments.read': true, 'comments.update': true,
+          'pages.create': true, 'pages.read': true, 'pages.update': true,
           'sprints.read': true, 'custom_fields.read': true,
           'timer.allow': true,
         },
@@ -165,7 +168,7 @@ export class TenantProvisioningService {
         name: 'viewer',
         permissions: {
           'projects.read': true, 'issues.read': true,
-          'comments.read': true, 'sprints.read': true,
+          'comments.read': true, 'pages.read': true, 'sprints.read': true,
         },
         isSystem: true,
       },

@@ -7,8 +7,14 @@ export interface WeaverPlugin {
   /** Called when plugin is first installed for a tenant */
   onInstall?(context: PluginContext): Promise<void>;
 
+  /** Called when an installed plugin has a newer manifest version */
+  onUpgrade?(fromVersion: string, toVersion: string, context: PluginContext): Promise<void>;
+
   /** Called when plugin is enabled for a tenant */
   onEnable?(context: PluginContext): Promise<void>;
+
+  /** Called inside an atomic migration when an installed plugin version advances */
+  onUpgrade?(fromVersion: string, toVersion: string, context: PluginContext): Promise<void>;
 
   /** Called when plugin is disabled for a tenant */
   onDisable?(context: PluginContext): Promise<void>;
@@ -43,7 +49,13 @@ export interface PluginRequest {
   params: Record<string, string>;
   query: Record<string, string>;
   body: unknown;
+  /** Exact UTF-8 request body for signature verification, when available. */
+  rawBody?: string;
   headers: Record<string, string>;
+  auth?:
+    | { type: 'interactive' }
+    | { type: 'pairing' }
+    | { type: 'device'; deviceId: string; scopes: string[] };
 }
 
 export interface PluginResponse {
@@ -56,10 +68,16 @@ export interface ConditionRegistry {
   register(name: string, evaluator: ConditionEvaluator): void;
 }
 
-export type ConditionEvaluator = (params: Record<string, unknown>, context: PluginContext) => Promise<boolean>;
+export type ConditionEvaluator = (
+  params: Record<string, unknown>,
+  context: PluginContext,
+) => Promise<boolean>;
 
 export interface PostFunctionRegistry {
   register(name: string, fn: PostFunction): void;
 }
 
-export type PostFunction = (params: Record<string, unknown>, context: PluginContext) => Promise<void>;
+export type PostFunction = (
+  params: Record<string, unknown>,
+  context: PluginContext,
+) => Promise<void>;

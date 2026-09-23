@@ -1,0 +1,27 @@
+{
+  "name": "@weaver/plugin-automatic-time",
+  "version": "0.6.0",
+  "private": true,
+  "main": "./src/client/index.ts",
+  "scripts": {
+    "build": "vite build && tsc -p tsconfig.server.json",
+    "typecheck": "tsc --noEmit -p tsconfig.server.json",
+    "dev": "vite",
+    "clean": "rm -rf dist"
+  },
+  "peerDependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "lucide-react": "*",
+    "react-router-dom": "^7.0.0"
+  },
+  "devDependencies": {
+    "@module-federation/vite": "^1.21.0",
+    "@weaver/config": "workspace:*",
+    "@weaver/sdk": "workspace:*",
+    "@types/react": "^18.3.18",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.7"
+  }
+}

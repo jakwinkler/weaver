@@ -12,10 +12,11 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { updateUserSchema } from '@weaver/shared';
+import { updateNotificationPreferencesSchema, updateUserSchema } from '@weaver/shared';
 import { JwtAuthGuard, AdminGuard, CurrentUser, RequestUser } from '../../core/auth';
 import { ZodValidationPipe } from '../../common';
 import { UsersService } from './users.service';
+import { Audit } from '../audit';
 
 @Controller('users')
 @UseGuards(JwtAuthGuard)
@@ -35,12 +36,17 @@ export class UsersController {
     return this.usersService.update(user.userId, dto);
   }
 
+  @Patch('me/notification-preferences')
+  async updateNotificationPreferences(
+    @CurrentUser() user: RequestUser,
+    @Body(new ZodValidationPipe(updateNotificationPreferencesSchema)) dto: any,
+  ) {
+    return this.usersService.updateNotificationPreferences(user.userId, dto);
+  }
+
   @Post('me/avatar')
   @UseInterceptors(FileInterceptor('file'))
-  async uploadAvatar(
-    @CurrentUser() user: RequestUser,
-    @UploadedFile() file: Express.Multer.File,
-  ) {
+  async uploadAvatar(@CurrentUser() user: RequestUser, @UploadedFile() file: Express.Multer.File) {
     if (!file) {
       throw new BadRequestException('File is required');
     }
@@ -59,11 +65,22 @@ export class UsersController {
 
   @Patch(':userId/role')
   @UseGuards(AdminGuard)
+  @Audit({
+    action: 'user.role_changed',
+    resource: 'user',
+    captureBefore: true,
+    resourceId: ({ request }) => String(request.params.userId),
+  })
   async updateRole(
     @Param('userId') userId: string,
     @Body() body: { role: string },
     @CurrentUser() user: RequestUser,
   ) {
-    return this.usersService.updateMemberRole(user.tenantId, userId, body.role);
+    return this.usersService.updateMemberRole(
+      user.tenantId,
+      userId,
+      body.role,
+      user.role,
+    );
   }
 }

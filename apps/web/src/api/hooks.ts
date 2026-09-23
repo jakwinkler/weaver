@@ -11,16 +11,11 @@ import type {
   UpdateIssueDto,
   ReorderIssuesDto,
   PaginatedResponse,
+  RoadmapEpic,
+  AuthResponse,
 } from '@weaver/shared';
 
 // ── Auth ──
-
-interface AuthResponse {
-  accessToken: string;
-  refreshToken?: string;
-  user: User;
-  tenantId: string;
-}
 
 export function useLogin() {
   return useMutation({
@@ -44,7 +39,7 @@ export function useCurrentUser() {
   return useQuery({
     queryKey: ['currentUser'],
     queryFn: async () => {
-      const res = await apiClient.get<User>('/auth/me');
+      const res = await apiClient.get<User & { role: string }>('/auth/me');
       return res.data;
     },
     retry: false,
@@ -135,13 +130,48 @@ export function useProjectIssues(params: UseProjectIssuesParams) {
   return useQuery({
     queryKey: ['issues', projectKey, { page, perPage, sort, ...activeFilters }],
     queryFn: async () => {
-      const res = await apiClient.get<PaginatedResponse<Issue>>(
-        `/projects/${projectKey}/issues`,
-        { params: { page, perPage, ...(sort ? { sort } : {}), ...activeFilters } },
-      );
+      const res = await apiClient.get<PaginatedResponse<Issue>>(`/projects/${projectKey}/issues`, {
+        params: { page, perPage, ...(sort ? { sort } : {}), ...activeFilters },
+      });
       return res.data;
     },
     enabled: !!projectKey,
+  });
+}
+
+export function useRoadmapEpics(projectKey: string) {
+  return useQuery({
+    queryKey: ['issues', projectKey, 'roadmap'],
+    queryFn: async () => {
+      const res = await apiClient.get<RoadmapEpic[]>(`/projects/${projectKey}/epics`);
+      return res.data;
+    },
+    enabled: !!projectKey,
+  });
+}
+
+export function useResizeRoadmapEpic(projectKey: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      issueKey,
+      startDate,
+      dueDate,
+    }: {
+      issueKey: string;
+      startDate: string;
+      dueDate: string;
+    }) => {
+      const res = await apiClient.patch<Issue>(`/issues/${issueKey}`, {
+        startDate,
+        dueDate,
+      });
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['issues', projectKey, 'roadmap'] });
+      queryClient.invalidateQueries({ queryKey: ['issues', projectKey] });
+    },
   });
 }
 
@@ -150,6 +180,17 @@ export function useIssue(key: string) {
     queryKey: ['issue', key],
     queryFn: async () => {
       const res = await apiClient.get<Issue>(`/issues/${key}`);
+      return res.data;
+    },
+    enabled: !!key,
+  });
+}
+
+export function useIssueRecurrence(key: string) {
+  return useQuery({
+    queryKey: ['issueRecurrence', key],
+    queryFn: async () => {
+      const res = await apiClient.get<Issue[]>(`/issues/${key}/recurrence`);
       return res.data;
     },
     enabled: !!key,
@@ -165,6 +206,7 @@ export function useCreateIssue(projectKey: string) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['issues', projectKey] });
+      queryClient.invalidateQueries({ queryKey: ['backlog', projectKey] });
     },
   });
 }
@@ -178,7 +220,9 @@ export function useUpdateIssue(issueKey: string) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['issue', issueKey] });
+      queryClient.invalidateQueries({ queryKey: ['issueRecurrence'] });
       queryClient.invalidateQueries({ queryKey: ['issues'] });
+      queryClient.invalidateQueries({ queryKey: ['sprints'] });
     },
   });
 }
@@ -192,6 +236,24 @@ export function useUpdateIssueDynamic() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['issues'] });
+      queryClient.invalidateQueries({ queryKey: ['sprints'] });
+    },
+  });
+}
+
+export function useTransitionIssueDynamic() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ issueKey, transitionId }: { issueKey: string; transitionId: string }) => {
+      const res = await apiClient.post<Issue>(`/issues/${issueKey}/transition`, {
+        transitionId,
+      });
+      return res.data;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['issue', variables.issueKey] });
+      queryClient.invalidateQueries({ queryKey: ['issues'] });
+      queryClient.invalidateQueries({ queryKey: ['activity', variables.issueKey] });
     },
   });
 }

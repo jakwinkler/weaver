@@ -3,7 +3,10 @@ import {
   PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
+  ManyToOne,
+  JoinColumn,
 } from 'typeorm';
+import { IssueEntity } from './issue.entity';
 
 @Entity({ name: 'attachments' })
 export class AttachmentEntity {
@@ -30,4 +33,8 @@ export class AttachmentEntity {
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;
+
+  @ManyToOne(() => IssueEntity, { nullable: true, onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'issue_id' })
+  issue!: IssueEntity | null;
 }

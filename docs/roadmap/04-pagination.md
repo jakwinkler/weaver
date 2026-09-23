@@ -22,7 +22,7 @@ Currently, list views fetch data with pagination params but the UI has no contro
 - [x] **Create SortableHeader component** — Table header that shows sort direction arrow. Clicking toggles asc/desc/none. _Files: `apps/web/src/components/SortableHeader.tsx`_
 - [x] **Add pagination to IssueListPage** — Wire Pagination component to page/perPage state. Pass to `useProjectIssues`. Add sortable headers for Key, Summary, Priority, Due Date, Created. _Files: `apps/web/src/features/issues/IssueListPage.tsx`_
 - [x] **Add pagination to ProjectsPage** — Wire Pagination to `useProjects`. Add sortable headers for Key, Name. _Files: `apps/web/src/features/projects/ProjectsPage.tsx`_
-- [ ] **Add pagination to search results** — Wire to search API response meta. _Files: `apps/web/src/features/search/SearchPage.tsx`_
+- [x] **Add pagination to search results** — Wire to search API response meta. _Files: `apps/web/src/features/search/SearchPage.tsx`_
 - [x] **Persist pagination preferences** — Store perPage in localStorage. Restore on page load. _Files: `apps/web/src/components/Pagination.tsx`_
 - [x] **URL sync** — Reflect page/sort in URL query params (`?page=2&sort=priority`). Restore from URL on load. _Files: all list pages_
 

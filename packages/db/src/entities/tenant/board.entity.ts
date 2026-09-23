@@ -28,7 +28,7 @@ export class BoardEntity {
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;
 
-  @ManyToOne(() => ProjectEntity, (project) => project.boards)
+  @ManyToOne(() => ProjectEntity, (project) => project.boards, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'project_id' })
   project!: ProjectEntity;
 }

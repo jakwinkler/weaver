@@ -7,6 +7,7 @@ import {
   JoinColumn,
 } from 'typeorm';
 import { ProjectEntity } from './project.entity';
+import type { SprintInitialScope } from '@weaver/shared';
 
 @Entity({ name: 'sprints' })
 export class SprintEntity {
@@ -31,10 +32,16 @@ export class SprintEntity {
   @Column({ length: 20, default: 'planned' })
   status!: string;
 
+  @Column({ type: 'int', nullable: true })
+  capacity!: number | null;
+
+  @Column({ name: 'initial_scope', type: 'jsonb', nullable: true })
+  initialScope!: SprintInitialScope | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;
 
-  @ManyToOne(() => ProjectEntity, (project) => project.sprints)
+  @ManyToOne(() => ProjectEntity, (project) => project.sprints, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'project_id' })
   project!: ProjectEntity;
 }

@@ -1,0 +1,124 @@
+name: weaver-live
+
+x-database-environment: &database-environment
+  DATABASE_HOST: postgres
+  DATABASE_PORT: 5432
+  DATABASE_USER: weaver
+  DATABASE_PASSWORD: ${DATABASE_PASSWORD:?DATABASE_PASSWORD is required}
+  DATABASE_NAME: weaver
+
+x-redis-environment: &redis-environment
+  REDIS_HOST: redis
+  REDIS_PORT: 6379
+  REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: weaver
+      POSTGRES_USER: weaver
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:?DATABASE_PASSWORD is required}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U weaver -d weaver']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+    command:
+      - redis-server
+      - --appendonly
+      - 'yes'
+      - --requirepass
+      - ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD-SHELL', 'redis-cli --no-auth-warning -a $$REDIS_PASSWORD ping']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  api:
+    image: ${WEAVER_API_IMAGE:-weaver-live-api}
+    build:
+      context: ../..
+      dockerfile: deploy/weaver.usercore.com/Dockerfile
+      target: api
+    restart: unless-stopped
+    environment:
+      <<: [*database-environment, *redis-environment]
+      NODE_ENV: production
+      TZ: UTC
+      API_PORT: 3000
+      API_PREFIX: api/v1
+      CORS_ORIGINS: https://weaver.usercore.com
+      WEB_URL: https://weaver.usercore.com
+      WEB_APP_URL: https://weaver.usercore.com
+      API_PUBLIC_URL: https://weaver.usercore.com
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?JWT_REFRESH_SECRET is required}
+      JWT_EXPIRES_IN: 15m
+      REFRESH_TOKEN_EXPIRES_IN: 7d
+      WEAVER_TRUSTED_PLUGINS: ${WEAVER_TRUSTED_PLUGINS:-}
+      STORAGE_LOCAL_PATH: /tmp/weaver-uploads
+    volumes:
+      - uploads:/tmp/weaver-uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:3000/api/v1/health >/dev/null || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  worker:
+    image: ${WEAVER_WORKER_IMAGE:-weaver-live-worker}
+    build:
+      context: ../..
+      dockerfile: deploy/weaver.usercore.com/Dockerfile
+      target: worker
+    restart: unless-stopped
+    environment:
+      <<: [*database-environment, *redis-environment]
+      NODE_ENV: production
+      TZ: UTC
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  web:
+    image: ${WEAVER_WEB_IMAGE:-weaver-live-web}
+    build:
+      context: ../..
+      dockerfile: deploy/weaver.usercore.com/Dockerfile
+      target: web
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:${WEB_PORT:-3400}:8080'
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  redis_data:
+  uploads:

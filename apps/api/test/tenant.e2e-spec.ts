@@ -113,9 +113,9 @@ describe('Tenant System (e2e)', () => {
       );
       expect(roles.length).toBe(3);
       const names = roles.map((r: any) => r.name);
-      expect(names).toContain('Admin');
-      expect(names).toContain('Member');
-      expect(names).toContain('Viewer');
+      expect(names).toContain('admin');
+      expect(names).toContain('member');
+      expect(names).toContain('viewer');
     });
 
     it('should seed workflow transitions', async () => {

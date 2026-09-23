@@ -19,10 +19,13 @@ function applyTheme(theme: Theme) {
 }
 
 export const useThemeStore = create<ThemeState>((set, get) => ({
-  theme: (localStorage.getItem('weaver-theme') as Theme) || 'system',
+  theme:
+    (typeof window === 'undefined'
+      ? null
+      : (window.localStorage.getItem('weaver-theme') as Theme)) || 'system',
 
   setTheme: (theme: Theme) => {
-    localStorage.setItem('weaver-theme', theme);
+    window.localStorage.setItem('weaver-theme', theme);
     applyTheme(theme);
     set({ theme });
   },

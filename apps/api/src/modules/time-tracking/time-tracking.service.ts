@@ -1,5 +1,21 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { TimeEntryEntity, IssueEntity } from '@weaver/db';
+import type {
+  PluginTimeEntryBatchRequest,
+  PluginTimeEntryBatchResult,
+  PluginTimeEntryChanges,
+  PluginTimeEntryDateFilters,
+  PluginTimeEntryFilters,
+  PluginTimeEntryLockState,
+  PluginTimeEntrySourceCounts,
+} from '@weaver/sdk';
+import { In, type EntityManager } from 'typeorm';
 import { TenantConnectionProvider } from '../../core/tenant';
 import { EventDispatcherService } from '../events';
 
@@ -10,8 +26,8 @@ export class TimeTrackingService {
     private readonly eventDispatcher: EventDispatcherService,
   ) {}
 
-  private async resolveIssueId(issueKey: string): Promise<string> {
-    const em = await this.tenantConnections.getEntityManager();
+  private async resolveIssueId(issueKey: string, manager?: EntityManager): Promise<string> {
+    const em = manager ?? (await this.tenantConnections.getEntityManager());
     const issue = await em.getRepository(IssueEntity).findOneBy({ key: issueKey });
     if (!issue) {
       throw new NotFoundException(`Issue "${issueKey}" not found`);
@@ -21,7 +37,7 @@ export class TimeTrackingService {
 
   async create(
     issueKey: string,
-    dto: { minutes: number; description?: string },
+    dto: { minutes: number; description?: string; source?: 'manual' | 'timer' },
     userId: string,
   ): Promise<TimeEntryEntity> {
     const issueId = await this.resolveIssueId(issueKey);
@@ -34,6 +50,11 @@ export class TimeTrackingService {
       minutes: dto.minutes,
       description: dto.description ?? null,
       loggedAt: new Date(),
+      startedAt: null,
+      endedAt: null,
+      source: dto.source ?? 'manual',
+      sourcePluginId: null,
+      sourceReference: null,
     });
 
     const saved = await repo.save(entry);
@@ -71,11 +92,30 @@ export class TimeTrackingService {
     return entry;
   }
 
+  private async findByIssueAndId(
+    issueKey: string,
+    id: string,
+  ): Promise<TimeEntryEntity> {
+    const issueId = await this.resolveIssueId(issueKey);
+    const em = await this.tenantConnections.getEntityManager();
+    const entry = await em.getRepository(TimeEntryEntity).findOneBy({ id, issueId });
+    if (!entry) {
+      throw new NotFoundException(`Time entry "${id}" not found for issue "${issueKey}"`);
+    }
+    return entry;
+  }
+
   async update(
+    issueKey: string,
     id: string,
     dto: Partial<{ minutes: number; description: string }>,
+    userId: string,
   ): Promise<TimeEntryEntity> {
-    const entry = await this.findById(id);
+    const entry = await this.findByIssueAndId(issueKey, id);
+    this.assertUnlocked(entry);
+    if (entry.userId !== userId) {
+      throw new ForbiddenException('Only the time entry owner can update this entry');
+    }
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(TimeEntryEntity);
 
@@ -86,14 +126,339 @@ export class TimeTrackingService {
       entry.description = dto.description;
     }
 
-    return repo.save(entry);
+    const saved = await repo.save(entry);
+    this.eventDispatcher
+      .emit('time.updated', {
+        entryId: saved.id,
+        userId: saved.userId,
+      })
+      .catch(() => {});
+    return saved;
   }
 
-  async delete(id: string): Promise<void> {
-    const entry = await this.findById(id);
+  async delete(issueKey: string, id: string, userId: string): Promise<void> {
+    const entry = await this.findByIssueAndId(issueKey, id);
+    this.assertUnlocked(entry);
+    if (entry.userId !== userId) {
+      throw new ForbiddenException('Only the time entry owner can delete this entry');
+    }
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(TimeEntryEntity);
     await repo.remove(entry);
+    this.eventDispatcher
+      .emit('time.deleted', {
+        entryId: entry.id,
+        userId: entry.userId,
+      })
+      .catch(() => {});
+  }
+
+  async createBatch(
+    pluginId: string,
+    request: PluginTimeEntryBatchRequest,
+    userId: string,
+  ): Promise<PluginTimeEntryBatchResult> {
+    if (request.entries.length === 0) {
+      throw new BadRequestException('A time-entry batch must contain at least one entry');
+    }
+
+    const references = request.entries.map((entry) => entry.sourceReference);
+    if (new Set(references).size !== references.length) {
+      throw new BadRequestException('Plugin source references must be unique within a batch');
+    }
+
+    const em = await this.tenantConnections.getEntityManager();
+    const result = await em.transaction(async (manager) => {
+      const repo = manager.getRepository(TimeEntryEntity);
+      const entries: TimeEntryEntity[] = [];
+      const createdEntries: Array<{ entry: TimeEntryEntity; issueKey: string }> = [];
+
+      for (const item of request.entries) {
+        this.validateBatchItem(item);
+        const existing = await repo.findOneBy({
+          sourcePluginId: pluginId,
+          sourceReference: item.sourceReference,
+        });
+
+        if (existing) {
+          if (existing.userId !== userId) {
+            throw new ForbiddenException('Plugin source reference belongs to another user');
+          }
+          entries.push(existing);
+          continue;
+        }
+
+        const issueId = await this.resolveIssueId(item.issueKey, manager);
+        const startedAt = item.startedAt ? new Date(item.startedAt) : null;
+        const endedAt = item.endedAt ? new Date(item.endedAt) : null;
+        const entry = repo.create({
+          issueId,
+          userId,
+          minutes: item.minutes,
+          description: item.description ?? null,
+          loggedAt: item.loggedAt ? new Date(item.loggedAt) : (startedAt ?? new Date()),
+          startedAt,
+          endedAt,
+          source: 'plugin',
+          sourcePluginId: pluginId,
+          sourceReference: item.sourceReference,
+          lockedAt: null,
+          lockReason: null,
+        });
+        const saved = await repo.save(entry);
+        entries.push(saved);
+        createdEntries.push({ entry: saved, issueKey: item.issueKey });
+      }
+
+      return { entries, createdEntries };
+    });
+
+    for (const { entry, issueKey } of result.createdEntries) {
+      this.eventDispatcher
+        .emit('time.logged', {
+          entryId: entry.id,
+          issueKey,
+          minutes: entry.minutes,
+          description: entry.description ?? undefined,
+          userId,
+          source: 'plugin',
+          sourcePluginId: pluginId,
+          sourceReference: entry.sourceReference,
+        })
+        .catch(() => {});
+    }
+
+    return { entries: result.entries, created: result.createdEntries.length };
+  }
+
+  async updatePluginEntry(
+    pluginId: string,
+    id: string,
+    changes: PluginTimeEntryChanges,
+    userId: string,
+  ): Promise<TimeEntryEntity> {
+    const entry = await this.findPluginEntry(pluginId, id, userId);
+    this.assertUnlocked(entry);
+
+    if (changes.minutes !== undefined) {
+      if (!Number.isInteger(changes.minutes) || changes.minutes < 1) {
+        throw new BadRequestException('Time-entry minutes must be a positive integer');
+      }
+      entry.minutes = changes.minutes;
+    }
+    if (changes.description !== undefined) {
+      if (changes.description && changes.description.length > 500) {
+        throw new BadRequestException('Time-entry description cannot exceed 500 characters');
+      }
+      entry.description = changes.description;
+    }
+    if (changes.startedAt !== undefined) {
+      entry.startedAt = this.parseNullableTimestamp(changes.startedAt, 'startedAt');
+    }
+    if (changes.endedAt !== undefined) {
+      entry.endedAt = this.parseNullableTimestamp(changes.endedAt, 'endedAt');
+    }
+    if (entry.startedAt && entry.endedAt && entry.endedAt <= entry.startedAt) {
+      throw new BadRequestException('endedAt must be after startedAt');
+    }
+
+    const em = await this.tenantConnections.getEntityManager();
+    const saved = await em.getRepository(TimeEntryEntity).save(entry);
+    this.eventDispatcher
+      .emit('time.updated', {
+        entryId: saved.id,
+        userId,
+        sourcePluginId: pluginId,
+      })
+      .catch(() => {});
+    return saved;
+  }
+
+  async deletePluginEntry(pluginId: string, id: string, userId: string): Promise<void> {
+    const entry = await this.findPluginEntry(pluginId, id, userId);
+    this.assertUnlocked(entry);
+    const em = await this.tenantConnections.getEntityManager();
+    await em.getRepository(TimeEntryEntity).remove(entry);
+    this.eventDispatcher
+      .emit('time.deleted', {
+        entryId: entry.id,
+        userId,
+        sourcePluginId: pluginId,
+      })
+      .catch(() => {});
+  }
+
+  async deletePluginEntriesBatch(
+    pluginId: string,
+    ids: string[],
+    userId: string,
+  ): Promise<{ deleted: number }> {
+    if (ids.length === 0 || new Set(ids).size !== ids.length) {
+      throw new BadRequestException('Plugin time-entry batch IDs must be non-empty and unique');
+    }
+
+    const em = await this.tenantConnections.getEntityManager();
+    const deletedEntries = await em.transaction(async (manager) => {
+      const repo = manager.getRepository(TimeEntryEntity);
+      const entries = await repo.find({
+        where: { id: In(ids), sourcePluginId: pluginId, userId },
+      });
+      if (entries.length !== ids.length) {
+        throw new NotFoundException('One or more plugin time entries were not found');
+      }
+      for (const entry of entries) this.assertUnlocked(entry);
+      await repo.remove(entries);
+      return entries;
+    });
+
+    for (const entry of deletedEntries) {
+      this.eventDispatcher
+        .emit('time.deleted', {
+          entryId: entry.id,
+          userId,
+          sourcePluginId: pluginId,
+        })
+        .catch(() => {});
+    }
+    return { deleted: deletedEntries.length };
+  }
+
+  async listPluginEntries(
+    pluginId: string,
+    filters: PluginTimeEntryFilters,
+    userId: string,
+  ): Promise<TimeEntryEntity[]> {
+    const em = await this.tenantConnections.getEntityManager();
+    const qb = em
+      .getRepository(TimeEntryEntity)
+      .createQueryBuilder('entry')
+      .innerJoin(IssueEntity, 'issue', 'issue.id = entry.issue_id')
+      .where('entry.source_plugin_id = :pluginId', { pluginId })
+      .andWhere('entry.user_id = :userId', { userId });
+
+    if (filters.issueKeys?.length) {
+      qb.andWhere('issue.key IN (:...issueKeys)', { issueKeys: filters.issueKeys });
+    }
+    if (filters.sourceReferences?.length) {
+      qb.andWhere('entry.source_reference IN (:...sourceReferences)', {
+        sourceReferences: filters.sourceReferences,
+      });
+    }
+    if (filters.loggedFrom) {
+      qb.andWhere('entry.logged_at >= :loggedFrom', { loggedFrom: filters.loggedFrom });
+    }
+    if (filters.loggedTo) {
+      qb.andWhere('entry.logged_at <= :loggedTo', { loggedTo: filters.loggedTo });
+    }
+
+    return qb.orderBy('entry.logged_at', 'DESC').getMany();
+  }
+
+  async countOwnEntriesBySource(
+    filters: PluginTimeEntryDateFilters,
+    userId: string,
+    manager?: EntityManager,
+  ): Promise<PluginTimeEntrySourceCounts> {
+    const em = manager ?? (await this.tenantConnections.getEntityManager());
+    const rows = (await em.query(
+      `SELECT source, COUNT(*)::integer AS entry_count
+         FROM time_entries
+        WHERE user_id = $1::uuid
+          AND ($2::timestamptz IS NULL OR logged_at >= $2::timestamptz)
+          AND ($3::timestamptz IS NULL OR logged_at <= $3::timestamptz)
+        GROUP BY source`,
+      [userId, filters.loggedFrom ?? null, filters.loggedTo ?? null],
+    )) as Array<{ source: 'manual' | 'timer' | 'plugin'; entry_count: number | string }>;
+    const result: PluginTimeEntrySourceCounts = { manual: 0, timer: 0, plugin: 0 };
+    for (const row of rows) result[row.source] = Number(row.entry_count);
+    return result;
+  }
+
+  async getPluginLockState(
+    pluginId: string,
+    ids: string[],
+    userId: string,
+  ): Promise<PluginTimeEntryLockState[]> {
+    if (ids.length === 0) return [];
+    const em = await this.tenantConnections.getEntityManager();
+    const entries = await em.getRepository(TimeEntryEntity).find({
+      where: { id: In(ids), sourcePluginId: pluginId, userId },
+    });
+    const byId = new Map(entries.map((entry) => [entry.id, entry]));
+
+    return ids.map((id) => {
+      const entry = byId.get(id);
+      if (!entry) {
+        throw new NotFoundException(`Time entry "${id}" not found`);
+      }
+      return {
+        id,
+        locked: entry.lockedAt !== null,
+        lockedAt: entry.lockedAt,
+        lockReason: entry.lockReason,
+      };
+    });
+  }
+
+  private async findPluginEntry(
+    pluginId: string,
+    id: string,
+    userId: string,
+  ): Promise<TimeEntryEntity> {
+    const em = await this.tenantConnections.getEntityManager();
+    const entry = await em.getRepository(TimeEntryEntity).findOneBy({
+      id,
+      sourcePluginId: pluginId,
+      userId,
+    });
+    if (!entry) {
+      throw new NotFoundException(`Time entry "${id}" not found`);
+    }
+    return entry;
+  }
+
+  private assertUnlocked(entry: TimeEntryEntity): void {
+    if (!entry.lockedAt) return;
+
+    const suffix = entry.lockReason ? `: ${entry.lockReason}` : '';
+    throw new ConflictException(`Time entry "${entry.id}" is locked${suffix}`);
+  }
+
+  private validateBatchItem(item: PluginTimeEntryBatchRequest['entries'][number]): void {
+    if (!item.sourceReference || item.sourceReference.length > 255) {
+      throw new BadRequestException('Plugin source reference must be between 1 and 255 characters');
+    }
+    if (!Number.isInteger(item.minutes) || item.minutes < 1) {
+      throw new BadRequestException('Time-entry minutes must be a positive integer');
+    }
+    if (item.description && item.description.length > 500) {
+      throw new BadRequestException('Time-entry description cannot exceed 500 characters');
+    }
+
+    const startedAt = item.startedAt ? Date.parse(item.startedAt) : null;
+    const endedAt = item.endedAt ? Date.parse(item.endedAt) : null;
+    const loggedAt = item.loggedAt ? Date.parse(item.loggedAt) : null;
+    if (startedAt !== null && !Number.isFinite(startedAt)) {
+      throw new BadRequestException('startedAt must be an ISO-8601 timestamp');
+    }
+    if (endedAt !== null && !Number.isFinite(endedAt)) {
+      throw new BadRequestException('endedAt must be an ISO-8601 timestamp');
+    }
+    if (loggedAt !== null && !Number.isFinite(loggedAt)) {
+      throw new BadRequestException('loggedAt must be an ISO-8601 timestamp');
+    }
+    if (startedAt !== null && endedAt !== null && endedAt <= startedAt) {
+      throw new BadRequestException('endedAt must be after startedAt');
+    }
+  }
+
+  private parseNullableTimestamp(value: string | null, label: string): Date | null {
+    if (value === null) return null;
+    const milliseconds = Date.parse(value);
+    if (!Number.isFinite(milliseconds)) {
+      throw new BadRequestException(`${label} must be an ISO-8601 timestamp`);
+    }
+    return new Date(milliseconds);
   }
 
   async getSummary(issueKey: string): Promise<{ totalMinutes: number }> {
