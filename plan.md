@@ -1,5 +1,7 @@
 # Weaver - Open Source Project Management Platform
 
+> Historical design proposal. This document is not the current feature, pricing, or licensing contract. See [LICENSE](LICENSE) for the project license and [README](README.md) for current entry points.
+
 ## Context
 
 Build "Weaver" - an open-source JIRA alternative for task/issue management, with a plugin architecture and visual workflow designer. The open-source core will be released under MIT/Apache 2.0, with a future paid tier adding enterprise features (SAML SSO, advanced reporting, audit logs, SLA management, portfolio management).

@@ -2,7 +2,7 @@
 
 Google and GitHub sign-in are implemented. For provider registration, callback
 URLs, credential changes, and API reload commands, use the
-[deployment guide](../../deploy/weaver.usercore.com/README.md#google-and-github-sign-in).
+[OAuth sign-in guide](../wiki/OAuth-Sign-In.md).
 The checklist below records the original implementation plan.
 
 > Sign in with Google, GitHub, and Microsoft. SAML/OIDC for enterprise SSO.

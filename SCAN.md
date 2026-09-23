@@ -1,5 +1,7 @@
 # Architecture Scan — Plugin System Issues & Fixes
 
+> Historical architecture review. The findings below describe an earlier implementation; consult the current [plugin architecture](docs/architecture/0001-dynamic-plugin-loading.md) and source before relying on them.
+
 ## Issue 1: Plugin Routes Had No Permission Checks
 
 **Problem:** Any authenticated user could call any plugin API endpoint regardless of their role permissions. The `PluginRouteController` only checked if the plugin was installed and enabled, but never verified the user had the required permissions for the specific route.

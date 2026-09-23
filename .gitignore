@@ -8,9 +8,11 @@ dist/
 *.tsbuildinfo
 
 # Environment
-.env
-.env.local
-.env.*.local
+.env*
+*.env
+*.env.*
+!.env.example
+!*.env.example
 
 # IDE
 .idea/
@@ -38,3 +40,15 @@ docker/data/
 *.tgz
 .cache/
 uploads/
+
+# Private operational records and local checkouts
+.worktrees/
+.private/
+secrets/
+backups/
+
+# Browser sessions and local test artifacts
+.auth/
+dogfood-output/
+playwright-report/
+test-results/

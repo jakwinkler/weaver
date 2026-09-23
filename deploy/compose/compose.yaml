@@ -1,4 +1,4 @@
-name: weaver-live
+name: ${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME is required; preserve it for existing volumes}
 
 x-database-environment: &database-environment
   DATABASE_HOST: postgres
@@ -48,10 +48,10 @@ services:
       retries: 12
 
   api:
-    image: ${WEAVER_API_IMAGE:-weaver-live-api}
+    image: ${WEAVER_API_IMAGE:-weaver-api}
     build:
       context: ../..
-      dockerfile: deploy/weaver.usercore.com/Dockerfile
+      dockerfile: deploy/compose/Dockerfile
       target: api
     restart: unless-stopped
     environment:
@@ -60,10 +60,10 @@ services:
       TZ: UTC
       API_PORT: 3000
       API_PREFIX: api/v1
-      CORS_ORIGINS: https://weaver.usercore.com
-      WEB_URL: https://weaver.usercore.com
-      WEB_APP_URL: https://weaver.usercore.com
-      API_PUBLIC_URL: https://weaver.usercore.com
+      CORS_ORIGINS: ${WEAVER_PUBLIC_URL:?WEAVER_PUBLIC_URL is required}
+      WEB_URL: ${WEAVER_PUBLIC_URL:?WEAVER_PUBLIC_URL is required}
+      WEB_APP_URL: ${WEAVER_PUBLIC_URL:?WEAVER_PUBLIC_URL is required}
+      API_PUBLIC_URL: ${WEAVER_PUBLIC_URL:?WEAVER_PUBLIC_URL is required}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
@@ -89,10 +89,10 @@ services:
       start_period: 20s
 
   worker:
-    image: ${WEAVER_WORKER_IMAGE:-weaver-live-worker}
+    image: ${WEAVER_WORKER_IMAGE:-weaver-worker}
     build:
       context: ../..
-      dockerfile: deploy/weaver.usercore.com/Dockerfile
+      dockerfile: deploy/compose/Dockerfile
       target: worker
     restart: unless-stopped
     environment:
@@ -106,10 +106,10 @@ services:
         condition: service_healthy
 
   web:
-    image: ${WEAVER_WEB_IMAGE:-weaver-live-web}
+    image: ${WEAVER_WEB_IMAGE:-weaver-web}
     build:
       context: ../..
-      dockerfile: deploy/weaver.usercore.com/Dockerfile
+      dockerfile: deploy/compose/Dockerfile
       target: web
     restart: unless-stopped
     ports:
