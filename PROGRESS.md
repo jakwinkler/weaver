@@ -1,5 +1,7 @@
 # Weaver - Development Progress
 
+> Historical implementation checklist. The counts and unchecked items below are not a current release-status report. See the current source, tests, and merged pull requests for implementation evidence.
+
 > **Overall: 95 / 125 tasks complete (76%)**
 
 ---

@@ -1,133 +1,76 @@
 # Google and GitHub sign-in
 
-Each provider needs its own registered OAuth application and a client ID/secret
-pair. A `503` response saying `OAuth is not configured` means the API cannot see
-one or both credentials for that provider. The sign-in links alone do not prove
-the provider is configured.
+The [Compose template](../../deploy/compose/README.md) configures social sign-in
+through the installation's protected environment file. Set `WEAVER_PUBLIC_URL`
+to the installation's HTTPS origin. Provider credentials are passed only to the
+API at runtime.
 
-Use these settings for this deployment:
+## Register the provider applications
 
-| Provider | Application type | Callback URL |
-| --- | --- | --- |
-| Google | Web application | `https://weaver.usercore.com/api/v1/auth/google/callback` |
-| GitHub | OAuth App | `https://weaver.usercore.com/api/v1/auth/github/callback` |
+For an example origin of `https://weaver.example.com`, register:
 
-For Google, configure the consent screen and create the client in
-[Google Auth Platform](https://console.cloud.google.com/auth/clients). Register
-the exact callback above as an authorized redirect URI. See Google's
-[web server OAuth instructions](https://developers.google.com/identity/protocols/oauth2/web-server#creatingcred).
+| Provider | Callback URL                                             |
+| -------- | -------------------------------------------------------- |
+| Google   | `https://weaver.example.com/api/v1/auth/google/callback` |
+| GitHub   | `https://weaver.example.com/api/v1/auth/github/callback` |
 
-For GitHub, follow the
-[OAuth App registration instructions](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/creating-an-oauth-app).
-Use `Weaver` as the application name, `https://weaver.usercore.com` as the
-homepage, and the exact GitHub callback above. Generate a client secret after
-registering the app. The login flow requests `user:email` access.
+Replace the example origin with the exact origin of your installation. Use
+[Google's web-server OAuth setup](https://developers.google.com/identity/protocols/oauth2/web-server)
+and [GitHub's OAuth application registration](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/creating-an-oauth-app).
 
-Store the four values in `/opt/weaver/shared/.env` on the host, keeping mode
-`0600`. Supply them through a secure editor or credential manager; never put
-them in Git, chat, command arguments, or build arguments:
+Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` for Google, and
+`GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` for GitHub. Either provider can
+remain unset; its sign-in endpoint then returns `503`. Keep the client ID and
+secret from the same provider application together.
 
-```dotenv
-GOOGLE_CLIENT_ID=<Google client ID>
-GOOGLE_CLIENT_SECRET=<Google client secret>
-GITHUB_CLIENT_ID=<GitHub client ID>
-GITHUB_CLIENT_SECRET=<GitHub client secret>
-```
+## Change credentials
 
-Compose passes these values only to the API at runtime. Either provider can
-remain unset, but its sign-in endpoint will return `503`. The callback URLs are
-derived from the API's fixed public URL and prefix in `compose.yaml`.
+Keep a protected backup of the environment file and record the deployed source,
+Compose project name, and image pins. Change the credentials in that private
+file. Retain restrictive file permissions and avoid printing values in logs.
 
-### Changing credentials and reloading the API
-
-When you select a different Google or GitHub OAuth application, update both its
-client ID and its matching client secret. Register the callback URL above on
-that same application. The Google app name shown during sign-in comes from its
-consent-screen branding; changing Weaver's environment does not rename it.
-
-Before changing the protected environment file, keep a mode-`0600` backup in a
-root-only directory and record the current API image ID. Preserve the deployed
-Compose file and `release.env` with the backup. Review variable names and
-presence without printing secret values.
-
-Edit `/opt/weaver/shared/.env` on the host and retain mode `0600`. Changing the
-file does not change the environment of a running container. A Docker restart
-also retains that container's old environment, so recreate the API with Compose.
-The following commands preserve the current image pins and wait for API health
-before reloading the web proxy. The API may be briefly unavailable during
-recreation.
-
-Connect to Penny with `ssh penny` from the configured operator workstation.
-Then run this block on the host after the credential change is approved:
+Updating the file or restarting a container does not replace its environment.
+Recreate the API using the same project name and reviewed images, then reload
+the web proxy so it resolves the API container's current address. Set
+`WEAVER_ENV_FILE` to the protected file's absolute path and run from the
+repository root:
 
 ```sh
 (
   set -eu
-  cd /opt/weaver/current
-
-  docker compose \
-    --env-file /opt/weaver/shared/.env \
-    --env-file release.env \
-    -f deploy/weaver.usercore.com/compose.yaml \
-    config --quiet
-
-  docker compose \
-    --env-file /opt/weaver/shared/.env \
-    --env-file release.env \
-    -f deploy/weaver.usercore.com/compose.yaml \
-    up -d --no-deps --no-build --force-recreate --wait --wait-timeout 90 api
-
-  docker exec weaver-live-web-1 nginx -t
-  docker exec weaver-live-web-1 nginx -s reload
-  curl --fail --silent --show-error https://weaver.usercore.com/api/v1/health
+  docker compose --env-file "$WEAVER_ENV_FILE" -f deploy/compose/compose.yaml config --quiet
+  docker compose --env-file "$WEAVER_ENV_FILE" -f deploy/compose/compose.yaml up -d --no-deps --no-build --force-recreate --wait --wait-timeout 90 api
+  docker compose --env-file "$WEAVER_ENV_FILE" -f deploy/compose/compose.yaml exec -T web nginx -t
+  docker compose --env-file "$WEAVER_ENV_FILE" -f deploy/compose/compose.yaml exec -T web nginx -s reload
 )
 ```
 
-The subshell stops at the first failed command. If API health does not pass,
-inspect the failure before continuing. Nginx needs the reload to resolve the
-recreated API container's address. No application image rebuild or database
-migration is required for a credential change.
+If the installation keeps image pins in a second private env file, supply that
+file with an additional `--env-file` on every Compose command. The API may be
+briefly unavailable during recreation. Stop and inspect any failed health check
+before proceeding.
 
-### Verify sign-in
+## Verify sign-in
 
-Start a new attempt from [Weaver's login page](https://weaver.usercore.com/login).
-Do not reuse a provider tab opened before the credential change. The public
-login page and `/api/v1/health` should return `200`. Each configured provider's
-start endpoint must return `302` to its authorization page:
+Open the installation's login page and start a fresh sign-in attempt. Each
+configured provider should redirect from `/api/v1/auth/google` or
+`/api/v1/auth/github` to its authorization page with the registered callback URL.
+In production, the state cookie should be HTTP-only, Secure, and SameSite=Lax.
+Do not share raw redirect headers or cookies.
 
-| Provider | Start endpoint | Expected destination |
-| --- | --- | --- |
-| Google | `/api/v1/auth/google` | `accounts.google.com` |
-| GitHub | `/api/v1/auth/github` | `github.com/login/oauth/authorize` |
+Complete sign-in for each provider and verify the Weaver session. A provider
+redirect alone does not verify the client secret or completed login.
 
-Check that the redirect uses the exact callback URL and sets an HTTP-only,
-Secure, SameSite=Lax state cookie matching the request state. Avoid sharing raw
-redirect headers, which include state and cookie values. Complete a real browser
-sign-in for each provider to verify the credential exchange and Weaver session.
-A working redirect alone does not verify the client secret or full login.
+| Symptom                              | Check                                                                                     |
+| ------------------------------------ | ----------------------------------------------------------------------------------------- |
+| `503` with `OAuth is not configured` | Both provider values must reach the API. Recreate it after changing the environment file. |
+| An old provider application appears  | Confirm the API was recreated with the intended env files, then start a fresh login.      |
+| Google `redirect_uri_mismatch`       | Register the exact callback URL on the selected client.                                   |
+| Invalid client after authorization   | Confirm the ID and secret belong to the same provider application.                        |
+| `Invalid OAuth state`                | Start again in the same browser with cookies enabled.                                     |
+| `502` after recreation               | Confirm API health, then validate and reload the web proxy.                               |
 
-### Troubleshooting
-
-| Symptom | Check |
-| --- | --- |
-| `503` with `OAuth is not configured` | Both credentials must be present in the API container. Confirm the four mappings in `compose.yaml`, then recreate the API after editing the host environment. |
-| Old Google application or client still appears | Confirm the API was recreated with `/opt/weaver/shared/.env` and the release's `release.env`, then start a fresh sign-in attempt. |
-| Google `redirect_uri_mismatch` | Register the exact Google callback URL on the client selected by `GOOGLE_CLIENT_ID`. |
-| Provider reports an invalid client, or login fails after authorization | Confirm the client ID and secret belong to the same provider application. A redirect can succeed before the secret is checked. |
-| `Invalid OAuth state` | Start again from Weaver's login page in the same browser with cookies enabled. Do not reuse an old callback URL. |
-| Public API returns `502` after recreation | Confirm API health, then validate and reload Nginx so it resolves the current API container address. |
-
-### Rollback
-
-To roll back, restore the protected environment and Compose copies, then
-recreate only the API using the same pinned image and reload the web proxy after
-API health passes. Restore the prior `release.env` if its image pins were changed.
-An old credential will only work if it remains valid at the provider.
-
-### Local configuration check
-
-Run the local configuration regression check with synthetic credentials:
-
-```sh
-node --test deploy/weaver.usercore.com/oauth-config.test.cjs
-```
+For rollback, restore the private environment and Compose configuration, retain
+the prior image pins and project name, and repeat API recreation and proxy
+reload. A prior provider credential will work only if the provider still accepts
+it.

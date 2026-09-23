@@ -1,0 +1,17 @@
+title = "Weaver secret scanning"
+
+[extend]
+useDefault = true
+
+# Synthetic runtime-validation fixtures only. Both path AND exact value must match.
+# Other values in this test, and these values in other files, remain detectable.
+[[allowlists]]
+description = "Reviewed runtime-config unit-test fixtures"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''(^|/)apps/api/src/core/security/runtime-config\.spec\.ts$''']
+regexTarget = "secret"
+regexes = [
+  '''^65b04e5cb780425d87e00418e658663de3f6a0c969ce43a1$''',
+  '''^d6f681c44a4f4ccfa85f7c4ab2d98c38ef87f9ba0f4cbbaa$''',
+]
