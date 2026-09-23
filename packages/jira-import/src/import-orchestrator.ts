@@ -206,7 +206,11 @@ export class ImportOrchestrator {
         await this.checkCancelled();
         const result = await this.ensureSprint(project, sprint);
         sprintIds.set(String(sprint.id), result.entity.id);
-        result.created ? this.importedItems++ : this.skippedItems++;
+        if (result.created) {
+          this.importedItems++;
+        } else {
+          this.skippedItems++;
+        }
       }
     } catch (error) {
       this.recordError('sprints', summary.id, error);

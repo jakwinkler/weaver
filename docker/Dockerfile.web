@@ -8,22 +8,18 @@ COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY packages/config/package.json ./packages/config/
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/ui/package.json ./packages/ui/
+COPY packages/sdk/package.json ./packages/sdk/
 COPY apps/web/package.json ./apps/web/
+COPY plugins ./plugins
 RUN pnpm install --frozen-lockfile
 
 # Build
 FROM base AS build
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/packages/config/node_modules ./packages/config/node_modules
-COPY --from=deps /app/packages/shared/node_modules ./packages/shared/node_modules
-COPY --from=deps /app/packages/ui/node_modules ./packages/ui/node_modules
-COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
+COPY --from=deps /app ./
 COPY . .
 ARG VITE_API_URL=/api/v1
 ENV VITE_API_URL=${VITE_API_URL}
-RUN pnpm --filter @weaver/shared build && \
-    pnpm --filter @weaver/ui build && \
-    pnpm --filter @weaver/web build
+RUN pnpm exec turbo run build --filter=@weaver/web...
 
 # Production - serve with nginx
 FROM nginxinc/nginx-unprivileged:alpine AS production

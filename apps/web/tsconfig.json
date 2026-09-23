@@ -4,6 +4,7 @@
     "baseUrl": ".",
     "skipLibCheck": true,
     "paths": {
+      "vitest": ["./node_modules/vitest"],
       "@/*": ["./src/*"]
     }
   },
