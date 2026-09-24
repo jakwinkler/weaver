@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { richTextDocumentSchema } from './rich-text';
+export * from './rich-text';
 import {
   ISSUE_PRIORITIES,
   TENANT_PLANS,
@@ -111,7 +113,7 @@ const emptyRichTextDocument = { type: 'doc', content: [] };
 
 export const createPageSchema = z.object({
   title: z.string().trim().min(1).max(255),
-  body: z.record(z.unknown()).default(emptyRichTextDocument),
+  body: richTextDocumentSchema.default(emptyRichTextDocument),
   parentId: z.string().uuid().nullable().optional(),
   sortOrder: z.number().int().optional(),
 });
@@ -120,7 +122,7 @@ export type CreatePageDto = z.infer<typeof createPageSchema>;
 export const updatePageSchema = z
   .object({
     title: z.string().trim().min(1).max(255).optional(),
-    body: z.record(z.unknown()).optional(),
+    body: richTextDocumentSchema.optional(),
     parentId: z.string().uuid().nullable().optional(),
     sortOrder: z.number().int().optional(),
   })
@@ -290,7 +292,7 @@ export type RecurrenceRule = z.infer<typeof recurrenceRuleSchema>;
 
 export const createIssueSchema = z.object({
   summary: z.string().min(1).max(500),
-  description: z.record(z.unknown()).optional(),
+  description: richTextDocumentSchema.optional(),
   priority: z.enum(ISSUE_PRIORITIES).default('medium'),
   issueTypeId: z.string().uuid().optional(),
   assigneeId: z.string().uuid().optional(),
@@ -308,7 +310,7 @@ export type CreateIssueDto = z.infer<typeof createIssueSchema>;
 
 export const updateIssueSchema = z.object({
   summary: z.string().min(1).max(500).optional(),
-  description: z.record(z.unknown()).nullable().optional(),
+  description: richTextDocumentSchema.nullable().optional(),
   priority: z.enum(ISSUE_PRIORITIES).optional(),
   statusId: z.string().uuid().optional(),
   sprintId: z.string().uuid().nullable().optional(),
@@ -428,7 +430,7 @@ export type CreateWorkflowTransitionDto = z.infer<typeof createWorkflowTransitio
 // ── Comment Schema ──
 
 export const createCommentSchema = z.object({
-  body: z.record(z.unknown()),
+  body: richTextDocumentSchema,
 });
 export type CreateCommentDto = z.infer<typeof createCommentSchema>;
 

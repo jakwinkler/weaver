@@ -14,6 +14,7 @@ export function validateSecurityConfiguration(
     JWT_REFRESH_SECRET: process.env.JWT_REFRESH_SECRET,
   },
 ): void {
+  assertRuntimeEnvironment(environment);
   if (environment.NODE_ENV !== 'production') {
     return;
   }
@@ -43,3 +44,4 @@ export function validateSecurityConfiguration(
     throw new Error('JWT_REFRESH_SECRET must differ from JWT_SECRET in production');
   }
 }
+import { assertRuntimeEnvironment } from '@weaver/server-common';

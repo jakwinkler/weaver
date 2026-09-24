@@ -52,6 +52,7 @@ describe('PluginContextFactory core capability enforcement', () => {
       installedPlugins as any,
       timeTracking as any,
       projectAccess as any,
+      { processOnce: jest.fn() } as any,
     );
   });
 

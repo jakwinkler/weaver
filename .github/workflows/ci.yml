@@ -71,6 +71,7 @@ jobs:
       - run: pnpm turbo test --concurrency=2
       - run: pnpm --filter @weaver/api test:e2e
       - run: node --test deploy/compose/oauth-config.test.cjs
+      - run: node --test docker/http-boundaries.test.cjs
 
   build:
     runs-on: ubuntu-latest

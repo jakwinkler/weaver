@@ -1,4 +1,6 @@
 export interface PluginContext {
+  /** Call only after provider authentication and payload validation. Deduplicates for seven days. */
+  webhooks: { processOnce(digest: string, process: () => Promise<void>): Promise<boolean> };
   /** Tenant-scoped database access */
   db: PluginDbAccess;
   /** HTTP client for external API calls */

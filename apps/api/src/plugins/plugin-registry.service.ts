@@ -1,3 +1,4 @@
+import { assertContainedPluginPath } from './plugin-path';
 import { preserveSettingsSecrets } from '../core/security/settings-secrets';
 import {
   BadRequestException,
@@ -384,6 +385,7 @@ export class PluginRegistryService implements OnApplicationBootstrap {
       if (!fs.existsSync(migrationPath)) {
         throw new Error(`Plugin migration not found: ${migrationFile}`);
       }
+      assertContainedPluginPath(resolvedPluginDir, migrationPath);
       await context.db.runMigration(fs.readFileSync(migrationPath, 'utf-8'));
       this.logger.log(`Ran migration: ${migrationFile} for ${pluginId}`);
     }

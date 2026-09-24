@@ -1,3 +1,4 @@
+import { runReviewReliabilityMigration } from '@weaver/db';
 import { assertTenantSchemaName } from '@weaver/server-common';
 import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
@@ -42,6 +43,7 @@ export class TenantProvisioningService {
     try {
       await tempDs.initialize();
       await runAutomaticTimeCoreMigration(tempDs, schemaName);
+      await runReviewReliabilityMigration(tempDs, schemaName);
     } finally {
       if (tempDs.isInitialized) await tempDs.destroy();
     }

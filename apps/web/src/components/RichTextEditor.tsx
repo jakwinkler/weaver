@@ -75,7 +75,7 @@ export function RichTextEditor({
       }),
       Image.configure({ inline: false }),
       Placeholder.configure({ placeholder }),
-      Link.configure({ openOnClick: !editable }),
+      Link.configure({ openOnClick: !editable, protocols: ['http', 'https', 'mailto', 'tel'] }),
       CodeBlockLowlight.configure({ lowlight }),
       MentionWithAvatar.configure({
         HTMLAttributes: {

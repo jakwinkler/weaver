@@ -56,6 +56,18 @@ describe('PluginLoaderService client bundles', () => {
     );
   });
 
+  it.each(['traversal', 'symlink'])('refuses server entrypoint %s outside its plugin', async (kind) => {
+    const pluginDir = path.join(pluginsDir, 'plugin-example');
+    const outside = path.join(pluginsDir, 'outside.js');
+    fs.writeFileSync(outside, 'module.exports = { escaped: true };');
+    fs.mkdirSync(path.join(pluginDir, 'src/server'), { recursive: true });
+    const entry = path.join(pluginDir, 'src/server/index.ts');
+    if (kind === 'symlink') fs.symlinkSync(outside, entry);
+    const manifest = service.getManifest('@example/plugin')!;
+    manifest.entrypoints.server = kind === 'traversal' ? '../outside.js' : 'src/server/index.ts';
+    expect(await service.getModule('@example/plugin')).toBeUndefined();
+  });
+
   it('resolves compiled assets without allowing traversal outside dist/client', () => {
     expect(service.resolveClientAsset('@example/plugin/remoteEntry.js')).toBe(
       path.join(pluginsDir, 'plugin-example/dist/client/remoteEntry.js'),

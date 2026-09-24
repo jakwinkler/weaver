@@ -31,9 +31,12 @@ export class WorkflowsService {
 
   async create(dto: CreateWorkflowDto): Promise<WorkflowEntity> {
     return this.tenantConnections.runInTenantTransaction(async (manager) => {
-      await manager.query('SELECT pg_advisory_xact_lock(hashtext(current_schema() || $1))', [':default-workflow']);
+      await manager.query('SELECT pg_advisory_xact_lock(hashtext(current_schema() || $1))', [
+        ':default-workflow',
+      ]);
       const repo = manager.getRepository(WorkflowEntity);
-      if (dto.isDefault) await repo.createQueryBuilder().update(WorkflowEntity).set({ isDefault: false }).execute();
+      if (dto.isDefault)
+        await repo.createQueryBuilder().update(WorkflowEntity).set({ isDefault: false }).execute();
       return repo.save(repo.create(dto));
     });
   }
@@ -59,11 +62,14 @@ export class WorkflowsService {
 
   async update(id: string, dto: Partial<CreateWorkflowDto>): Promise<WorkflowEntity> {
     return this.tenantConnections.runInTenantTransaction(async (manager) => {
-      await manager.query('SELECT pg_advisory_xact_lock(hashtext(current_schema() || $1))', [':default-workflow']);
+      await manager.query('SELECT pg_advisory_xact_lock(hashtext(current_schema() || $1))', [
+        ':default-workflow',
+      ]);
       const repo = manager.getRepository(WorkflowEntity);
       const workflow = await repo.findOneBy({ id });
       if (!workflow) throw new NotFoundException(`Workflow "${id}" not found`);
-      if (dto.isDefault) await repo.createQueryBuilder().update(WorkflowEntity).set({ isDefault: false }).execute();
+      if (dto.isDefault)
+        await repo.createQueryBuilder().update(WorkflowEntity).set({ isDefault: false }).execute();
       Object.assign(workflow, dto);
       return repo.save(workflow);
     });
@@ -101,21 +107,24 @@ export class WorkflowsService {
   // ── Statuses ──
 
   async addStatus(workflowId: string, dto: CreateWorkflowStatusDto): Promise<WorkflowStatusEntity> {
-    await this.findById(workflowId);
-    const em = await this.tenantConnections.getEntityManager();
-    const repo = em.getRepository(WorkflowStatusEntity);
-
-    if (dto.isInitial) {
-      await repo
-        .createQueryBuilder()
-        .update(WorkflowStatusEntity)
-        .set({ isInitial: false })
-        .where('workflow_id = :workflowId', { workflowId })
-        .execute();
-    }
-
-    const status = repo.create({ ...dto, workflowId });
-    return repo.save(status);
+    return this.tenantConnections.runInTenantTransaction(async (manager) => {
+      await manager.query('SELECT pg_advisory_xact_lock(hashtext(current_schema() || $1))', [
+        `:workflow-status:${workflowId}`,
+      ]);
+      if (!(await manager.getRepository(WorkflowEntity).findOneBy({ id: workflowId }))) {
+        throw new NotFoundException(`Workflow "${workflowId}" not found`);
+      }
+      const repo = manager.getRepository(WorkflowStatusEntity);
+      if (dto.isInitial) {
+        await repo
+          .createQueryBuilder()
+          .update(WorkflowStatusEntity)
+          .set({ isInitial: false })
+          .where('workflow_id = :workflowId', { workflowId })
+          .execute();
+      }
+      return repo.save(repo.create({ ...dto, workflowId }));
+    });
   }
 
   async updateStatus(
@@ -123,24 +132,24 @@ export class WorkflowsService {
     statusId: string,
     dto: Partial<CreateWorkflowStatusDto>,
   ): Promise<WorkflowStatusEntity> {
-    const em = await this.tenantConnections.getEntityManager();
-    const repo = em.getRepository(WorkflowStatusEntity);
-    const status = await repo.findOneBy({ id: statusId, workflowId });
-    if (!status) {
-      throw new NotFoundException(`Status "${statusId}" not found`);
-    }
-
-    if (dto.isInitial) {
-      await repo
-        .createQueryBuilder()
-        .update(WorkflowStatusEntity)
-        .set({ isInitial: false })
-        .where('workflow_id = :workflowId', { workflowId })
-        .execute();
-    }
-
-    Object.assign(status, dto);
-    return repo.save(status);
+    return this.tenantConnections.runInTenantTransaction(async (manager) => {
+      await manager.query('SELECT pg_advisory_xact_lock(hashtext(current_schema() || $1))', [
+        `:workflow-status:${workflowId}`,
+      ]);
+      const repo = manager.getRepository(WorkflowStatusEntity);
+      const status = await repo.findOneBy({ id: statusId, workflowId });
+      if (!status) throw new NotFoundException(`Status "${statusId}" not found`);
+      if (dto.isInitial) {
+        await repo
+          .createQueryBuilder()
+          .update(WorkflowStatusEntity)
+          .set({ isInitial: false })
+          .where('workflow_id = :workflowId', { workflowId })
+          .execute();
+      }
+      Object.assign(status, dto);
+      return repo.save(status);
+    });
   }
 
   async deleteStatus(workflowId: string, statusId: string): Promise<void> {
@@ -230,7 +239,10 @@ export class WorkflowsService {
 
   // ── Workflow Engine ──
 
-  async getAvailableTransitions(workflowId: string, currentStatusId: string): Promise<WorkflowTransitionEntity[]> {
+  async getAvailableTransitions(
+    workflowId: string,
+    currentStatusId: string,
+  ): Promise<WorkflowTransitionEntity[]> {
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(WorkflowTransitionEntity);
     return repo.find({
@@ -282,9 +294,7 @@ export class WorkflowsService {
       for (const rule of values) {
         const type = this.ruleType(rule, label);
         if (!this.conditionEvaluators.has(type)) {
-          throw new BadRequestException(
-            `Workflow ${label} evaluator "${type}" is not registered`,
-          );
+          throw new BadRequestException(`Workflow ${label} evaluator "${type}" is not registered`);
         }
       }
     }
@@ -292,9 +302,7 @@ export class WorkflowsService {
     for (const rule of rules.postFunctions ?? []) {
       const type = this.ruleType(rule, 'post-function');
       if (!this.postFunctions.has(type)) {
-        throw new BadRequestException(
-          `Workflow post-function "${type}" is not registered`,
-        );
+        throw new BadRequestException(`Workflow post-function "${type}" is not registered`);
       }
     }
   }

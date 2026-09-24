@@ -13,6 +13,16 @@ const {
   assertProductionDataCredentials,
 } = require('../dist');
 
+test('API and worker credential checks reject unknown modes and preserve explicit development/test modes', () => {
+  for (const NODE_ENV of [undefined, '', 'prod', 'staging', 'Production']) {
+    assert.throws(() => assertProductionDataCredentials({ NODE_ENV }), /NODE_ENV/);
+  }
+  for (const NODE_ENV of ['development', 'test']) {
+    assert.doesNotThrow(() => assertProductionDataCredentials({ NODE_ENV }));
+  }
+  assert.throws(() => assertProductionDataCredentials({ NODE_ENV: 'production' }), /DATABASE_PASSWORD/);
+});
+
 test('encrypted jobs are bound to a tenant and job and reject tampering', () => {
   const key = randomBytes(32).toString('base64');
   const input = { credentials: { token: 'synthetic-review-token' } };

@@ -1,3 +1,4 @@
+import { InboundWebhookService } from './inbound-webhook.service';
 import { BadRequestException, ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import type { PluginContext, PluginCoreCapability, PluginIssueCandidate, PluginIssueCandidateFilters, RequestOptions } from '@weaver/sdk';
@@ -21,6 +22,7 @@ export class PluginContextFactory {
     private readonly installedPlugins: Repository<InstalledPluginEntity>,
     private readonly timeTracking: TimeTrackingService,
     private readonly projectAccess: ProjectAccessService,
+    private readonly inboundWebhooks: InboundWebhookService,
   ) {}
 
   async create(
@@ -58,6 +60,9 @@ export class PluginContextFactory {
     const accessibleIds = async () => this.projectAccess.accessibleProjectIds(await actor());
 
     return {
+      webhooks: {
+        processOnce: (digest, process) => this.inboundWebhooks.processOnce(pluginId, digest, process),
+      },
       db: {
         query: async (sql: string, params?: unknown[]) => {
           return runInSchema((manager) => manager.query(sql, params));

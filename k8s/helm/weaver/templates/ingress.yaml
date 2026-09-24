@@ -6,6 +6,7 @@ metadata:
   labels:
     {{- include "weaver.labels" . | nindent 4 }}
   annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "11m"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-http-version: "1.1"

@@ -13,6 +13,7 @@ if (!/^weaver_e2e(?:_[a-z0-9_]+)?$/.test(process.env.DATABASE_NAME)) {
 process.env.JWT_SECRET = 'test-secret-key-for-e2e';
 process.env.RECURRENCE_SCHEDULER_ENABLED = 'false';
 process.env.AUDIT_LOG_RETENTION_ENABLED = 'false';
+process.env.ATTACHMENT_CLEANUP_ENABLED = 'false';
 process.env.GOOGLE_CLIENT_ID = 'test-google-client';
 process.env.GOOGLE_CLIENT_SECRET = 'test-google-secret';
 process.env.GITHUB_CLIENT_ID = 'test-github-client';
