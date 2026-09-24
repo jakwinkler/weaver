@@ -11,6 +11,8 @@ describe('outbound HTTP security', () => {
     'http://[::1]/admin',
     'ftp://example.com/file',
     'https://user:password@example.com/hook',
+    'http://[64:ff9b::7f00:1]/',
+    'http://[2002:7f00:1::]/',
   ])('rejects unsafe URL %s', async (url) => {
     await expect(assertSafeOutboundUrl(url)).rejects.toThrow();
   });
@@ -49,5 +51,18 @@ describe('outbound HTTP security', () => {
         { address: '10.20.30.40', family: 4 },
       ]),
     ).rejects.toThrow('private or reserved');
+  });
+
+  it('pins DNS for the fetch and drops credentials on a cross-origin redirect', async () => {
+    const fetcher = jest.fn()
+      .mockResolvedValueOnce(new Response(null, { status: 302, headers: { location: 'https://cdn.example/file' } }))
+      .mockResolvedValueOnce(new Response('ok'));
+    await fetchWithSafeRedirects('https://jira.example/file', {
+      headers: { Authorization: 'Bearer synthetic', Cookie: 'synthetic' },
+    }, { fetcher, lookup: async () => [{ address: '93.184.216.34', family: 4 }] });
+    expect(fetcher.mock.calls[0][1].dispatcher).toBeDefined();
+    const headers = new Headers(fetcher.mock.calls[1][1].headers);
+    expect(headers.has('authorization')).toBe(false);
+    expect(headers.has('cookie')).toBe(false);
   });
 });

@@ -30,6 +30,7 @@ export function IssueTypesPage() {
   const updateIssueType = useUpdateIssueType();
   const deleteIssueType = useDeleteIssueType();
   const uploadAttachment = useGenericUploadAttachment();
+  const [uploadError, setUploadError] = useState(false);
 
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -95,9 +96,12 @@ export function IssueTypesPage() {
   const handleIconUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    setUploadError(false);
+    try {
     const result = await uploadAttachment.mutateAsync(file);
     setIconAttachmentId(result.id);
     setIcon('');
+    } catch { setUploadError(true); }
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -210,6 +214,7 @@ export function IssueTypesPage() {
                       <Upload className="h-4 w-4" />
                       {uploadAttachment.isPending ? 'Uploading...' : 'Upload Image'}
                     </Button>
+                  {uploadError && <p role="alert" className="text-sm text-destructive">Icon upload failed. Check the file size and try again.</p>}
                   </div>
                 </div>
                 <div className="flex items-end">

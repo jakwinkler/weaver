@@ -11,7 +11,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - '${DATABASE_PORT:-5432}:5432'
+      - '127.0.0.1:${DATABASE_PORT:-5432}:5432'
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U ${DATABASE_USER:-weaver}']
       interval: 10s
@@ -21,13 +21,15 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    command: redis-server --requirepass ${REDIS_PASSWORD:-}
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+    command: ['redis-server', '--requirepass', '${REDIS_PASSWORD:?REDIS_PASSWORD is required}']
     volumes:
       - redis_data:/data
     ports:
-      - '${REDIS_PORT:-6379}:6379'
+      - '127.0.0.1:${REDIS_PORT:-6379}:6379'
     healthcheck:
-      test: ['CMD', 'redis-cli', 'ping']
+      test: ['CMD-SHELL', 'REDISCLI_AUTH="$$REDIS_PASSWORD" redis-cli ping']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -39,6 +41,7 @@ services:
     restart: unless-stopped
     environment:
       NODE_ENV: production
+      IMPORT_CREDENTIAL_KEY: ${IMPORT_CREDENTIAL_KEY:-}
       DATABASE_HOST: postgres
       DATABASE_PORT: 5432
       DATABASE_USER: ${DATABASE_USER:-weaver}
@@ -46,9 +49,11 @@ services:
       DATABASE_NAME: ${DATABASE_NAME:-weaver}
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      ALLOW_TENANT_SCHEMA_BOOTSTRAP: ${ALLOW_TENANT_SCHEMA_BOOTSTRAP:-false}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
-      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-${JWT_SECRET}}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?JWT_REFRESH_SECRET is required}
+      TRUST_PROXY: ${TRUST_PROXY:-uniquelocal}
       API_PUBLIC_URL: ${API_PUBLIC_URL:-http://localhost}
       WEB_URL: ${WEB_URL:-http://localhost}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
@@ -59,7 +64,7 @@ services:
       GITHUB_CALLBACK_URL: ${GITHUB_CALLBACK_URL:-}
       SAML_ISSUER: ${SAML_ISSUER:-weaver}
       STORAGE_DRIVER: ${STORAGE_DRIVER:-local}
-      STORAGE_LOCAL_PATH: /var/lib/weaver/uploads
+      STORAGE_LOCAL_PATH: /tmp/weaver-uploads
       ATTACHMENT_MAX_BYTES: ${ATTACHMENT_MAX_BYTES:-10485760}
       S3_BUCKET: ${S3_BUCKET:-}
       S3_REGION: ${S3_REGION:-}
@@ -68,7 +73,7 @@ services:
       S3_ENDPOINT: ${S3_ENDPOINT:-}
       S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-false}
     volumes:
-      - uploads_data:/var/lib/weaver/uploads
+      - uploads_data:/tmp/weaver-uploads
     depends_on:
       postgres:
         condition: service_healthy
@@ -87,6 +92,7 @@ services:
     restart: unless-stopped
     environment:
       NODE_ENV: production
+      IMPORT_CREDENTIAL_KEY: ${IMPORT_CREDENTIAL_KEY:-}
       DATABASE_HOST: postgres
       DATABASE_PORT: 5432
       DATABASE_USER: ${DATABASE_USER:-weaver}
@@ -94,10 +100,17 @@ services:
       DATABASE_NAME: ${DATABASE_NAME:-weaver}
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
-      UPLOAD_DIR: /var/lib/weaver/uploads
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      STORAGE_DRIVER: ${STORAGE_DRIVER:-local}
+      STORAGE_LOCAL_PATH: /tmp/weaver-uploads
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_REGION: ${S3_REGION:-}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-${S3_ACCESS_KEY:-}}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-${S3_SECRET_KEY:-}}
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-false}
     volumes:
-      - uploads_data:/var/lib/weaver/uploads
+      - uploads_data:/tmp/weaver-uploads
     depends_on:
       postgres:
         condition: service_healthy
@@ -110,7 +123,7 @@ services:
       dockerfile: docker/Dockerfile.web
     restart: unless-stopped
     ports:
-      - '${WEB_PORT:-80}:80'
+      - '${WEB_PORT:-80}:8080'
     depends_on:
       api:
         condition: service_healthy

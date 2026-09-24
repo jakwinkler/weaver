@@ -1,7 +1,7 @@
 {
   "id": "@weaver/plugin-repository",
   "name": "Repository Integration",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Link repositories and branches to projects and issues",
   "author": "Weaver",
   "icon": "git-branch",
@@ -9,7 +9,10 @@
   "entrypoints": {
     "server": "src/server/index.ts"
   },
-  "permissions": ["repository.read", "repository.manage"],
+  "permissions": [
+    "repository.read",
+    "repository.manage"
+  ],
   "declaredPermissions": [
     {
       "key": "repository.read",
@@ -27,19 +30,56 @@
       "defaultProvider": {
         "type": "select",
         "description": "Default Git provider",
-        "options": ["github", "gitlab", "bitbucket"],
+        "options": [
+          "github",
+          "gitlab",
+          "bitbucket"
+        ],
         "default": "github"
       }
     }
   },
   "events": {
-    "subscribes": ["issue.created", "project.created"]
+    "subscribes": [
+      "issue.created",
+      "project.created"
+    ]
   },
   "routes": [
-    { "method": "GET", "path": "/projects/:projectKey/repositories", "handler": "listRepositories", "requiredPermissions": ["repository.read"] },
-    { "method": "POST", "path": "/projects/:projectKey/repositories", "handler": "addRepository", "requiredPermissions": ["repository.manage"] },
-    { "method": "DELETE", "path": "/projects/:projectKey/repositories/:repoId", "handler": "removeRepository", "requiredPermissions": ["repository.manage"] },
-    { "method": "GET", "path": "/issues/:issueKey/repository-links", "handler": "listIssueLinks", "requiredPermissions": ["repository.read"] }
+    {
+      "method": "GET",
+      "path": "/projects/:projectKey/repositories",
+      "handler": "listRepositories",
+      "requiredPermissions": [
+        "repository.read"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectKey/repositories",
+      "handler": "addRepository",
+      "requiredPermissions": [
+        "repository.manage"
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/projects/:projectKey/repositories/:repoId",
+      "handler": "removeRepository",
+      "requiredPermissions": [
+        "repository.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/issues/:issueKey/repository-links",
+      "handler": "listIssueLinks",
+      "requiredPermissions": [
+        "repository.read"
+      ]
+    }
   ],
-  "migrations": ["migrations/001_create_repository_tables.sql"]
+  "migrations": [
+    "migrations/001_create_repository_tables.sql"
+  ]
 }

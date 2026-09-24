@@ -24,6 +24,7 @@ export class ApiKeyRateLimitGuard implements CanActivate, OnModuleDestroy {
       lazyConnect: true,
       maxRetriesPerRequest: 1,
     });
+    this.redis.on('error', () => undefined);
   }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -35,7 +36,9 @@ export class ApiKeyRateLimitGuard implements CanActivate, OnModuleDestroy {
     }
 
     const redisKey = `weaver:api-key-rate:${apiKeyId}`;
-    const count = Number(
+    let count: number;
+    try {
+      count = Number(
       await this.redis.eval(
         `local current = redis.call('INCR', KEYS[1])
          if current == 1 then
@@ -47,6 +50,10 @@ export class ApiKeyRateLimitGuard implements CanActivate, OnModuleDestroy {
         WINDOW_MS,
       ),
     );
+
+    } catch {
+      throw new HttpException('Rate limiting unavailable; retry shortly', HttpStatus.SERVICE_UNAVAILABLE);
+    }
 
     if (count > REQUEST_LIMIT) {
       throw new HttpException('API key rate limit exceeded', HttpStatus.TOO_MANY_REQUESTS);

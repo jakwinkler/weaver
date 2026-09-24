@@ -63,7 +63,7 @@ function CalendarViewContent({ projectKey }: { projectKey: string }) {
 
   const { data, isLoading } = useProjectIssues({
     projectKey,
-    perPage: 200,
+    all: true,
     dueDateFrom: formatDate(gridStart),
     dueDateTo: formatDate(gridEnd),
   });

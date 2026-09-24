@@ -10,7 +10,7 @@ import { ZodValidationPipe } from '../../common';
 import { SearchService } from './search.service';
 
 const searchSchema = z.object({
-  query: z.string().min(1),
+  query: z.string().min(1).max(10000),
   page: z.number().int().min(1).optional(),
   perPage: z.number().int().min(1).max(200).optional(),
   sort: z.string().optional(),

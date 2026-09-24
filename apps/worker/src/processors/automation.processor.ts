@@ -1,3 +1,4 @@
+import { assertTenantSchemaName } from '@weaver/server-common';
 import { Job, JobsOptions } from 'bullmq';
 
 export interface ScheduledAutomationJobData {
@@ -22,6 +23,7 @@ interface AutomationQueue {
 
 export function createScheduledAutomationProcessor(automationQueue: AutomationQueue) {
   return async (job: Job<ScheduledAutomationJobData>): Promise<void> => {
+    assertTenantSchemaName(job.data.schemaName);
     await automationQueue.add(
       'evaluate-schedule',
       {

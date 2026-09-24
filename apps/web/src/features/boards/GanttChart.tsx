@@ -1,3 +1,4 @@
+import { parseDateOnly, calendarDaysBetween } from '@/lib/date-only';
 import { useMemo, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { useProjectIssues, useProjectPlugins } from '@/api';
@@ -42,7 +43,7 @@ function addDays(date: Date, days: number): Date {
 }
 
 function daysBetween(a: Date, b: Date): number {
-  return Math.round((b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24));
+  return calendarDaysBetween(a, b);
 }
 
 function formatWeek(date: Date): string {
@@ -62,7 +63,7 @@ export function GanttChart() {
 }
 
 function GanttChartContent({ projectKey }: { projectKey: string }) {
-  const { data, isLoading, isError } = useProjectIssues({ projectKey, perPage: 100 });
+  const { data, isLoading, isError } = useProjectIssues({ projectKey, all: true });
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const { issues, timelineStart, totalDays, weeks } = useMemo(() => {
@@ -81,13 +82,13 @@ function GanttChartContent({ projectKey }: { projectKey: string }) {
       let end: Date;
 
       if (issue.startDate && issue.dueDate) {
-        start = new Date(issue.startDate);
-        end = new Date(issue.dueDate);
+        start = parseDateOnly(issue.startDate);
+        end = parseDateOnly(issue.dueDate);
       } else if (issue.startDate) {
-        start = new Date(issue.startDate);
+        start = parseDateOnly(issue.startDate);
         end = addDays(start, DEFAULT_DURATION_DAYS);
       } else {
-        end = new Date(issue.dueDate!);
+        end = parseDateOnly(issue.dueDate!);
         start = addDays(end, -DEFAULT_DURATION_DAYS);
       }
 

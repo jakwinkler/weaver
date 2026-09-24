@@ -66,9 +66,9 @@ PostgreSQL host
 */}}
 {{- define "weaver.postgresql.host" -}}
 {{- if .Values.postgresql.enabled }}
-{{- printf "%s-postgresql" (include "weaver.fullname" .) }}
+{{- fail "Bundled PostgreSQL is not supported; configure postgresql.external.host" }}
 {{- else }}
-{{- .Values.postgresql.external.host }}
+{{- required "postgresql.external.host is required" .Values.postgresql.external.host }}
 {{- end }}
 {{- end }}
 
@@ -77,8 +77,8 @@ Redis host
 */}}
 {{- define "weaver.redis.host" -}}
 {{- if .Values.redis.enabled }}
-{{- printf "%s-redis" (include "weaver.fullname" .) }}
+{{- fail "Bundled Redis is not supported; configure redis.external.host" }}
 {{- else }}
-{{- .Values.redis.external.host }}
+{{- required "redis.external.host is required" .Values.redis.external.host }}
 {{- end }}
 {{- end }}

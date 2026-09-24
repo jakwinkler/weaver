@@ -1,8 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Issue, MoveIssueSprintDto, PaginatedResponse, SprintStats } from '@weaver/shared';
+import { fetchAllPages } from './pagination';
 import { apiClient } from './client';
 
 export interface UseBacklogParams {
+  all?: boolean;
   projectKey: string;
   page?: number;
   perPage?: number;
@@ -12,12 +14,13 @@ export interface UseBacklogParams {
 }
 
 export function useBacklog(params: UseBacklogParams) {
-  const { projectKey, page = 1, perPage = 200, ...filters } = params;
+  const { projectKey, page = 1, perPage = 200, all = false, ...filters } = params;
   const activeFilters = Object.fromEntries(Object.entries(filters).filter(([, value]) => value));
 
   return useQuery({
-    queryKey: ['backlog', projectKey, { page, perPage, ...activeFilters }],
-    queryFn: async () => {
+    queryKey: ['backlog', projectKey, { page, perPage, all, ...activeFilters }],
+    queryFn: async ({ signal }) => {
+      if (all) return fetchAllPages<Issue>(`/projects/${projectKey}/backlog`, activeFilters, signal);
       const response = await apiClient.get<PaginatedResponse<Issue>>(
         `/projects/${projectKey}/backlog`,
         { params: { page, perPage, ...activeFilters } },

@@ -17,7 +17,7 @@ import { TimeTrackingService } from './time-tracking.service';
 import { ProjectAccessGuard, RequireProjectAccess } from '../../core/tenant';
 
 const createTimeEntrySchema = z.object({
-  minutes: z.number().int().min(1),
+  minutes: z.number().int().min(1).max(1440),
   description: z.string().max(500).optional(),
   source: z.enum(['manual', 'timer']).optional(),
 });

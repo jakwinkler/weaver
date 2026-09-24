@@ -1,5 +1,7 @@
 import { useState, useRef, type ChangeEvent } from 'react';
 import { useProjects } from '@/api';
+import type { Issue } from '@weaver/shared';
+import { fetchAllPages } from '@/api/pagination';
 import { apiClient } from '@/api/client';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -54,10 +56,7 @@ export function ImportExportPage() {
     if (!selectedProject) return;
     setExportLoading(true);
     try {
-      const res = await apiClient.get(`/projects/${selectedProject}/issues`, {
-        params: { perPage: 1000 },
-      });
-      const issues = res.data.data || res.data;
+      const { data: issues } = await fetchAllPages<Issue>(`/projects/${selectedProject}/issues`);
       const json = JSON.stringify(issues, null, 2);
       downloadBlob(json, `${selectedProject}-issues.json`, 'application/json');
     } catch {
@@ -71,10 +70,7 @@ export function ImportExportPage() {
     if (!selectedProject) return;
     setExportLoading(true);
     try {
-      const res = await apiClient.get(`/projects/${selectedProject}/issues`, {
-        params: { perPage: 1000 },
-      });
-      const issues = res.data.data || res.data;
+      const { data: issues } = await fetchAllPages<Issue>(`/projects/${selectedProject}/issues`);
       if (!Array.isArray(issues) || issues.length === 0) {
         downloadBlob('No issues found', `${selectedProject}-issues.csv`, 'text/csv');
         return;
@@ -85,10 +81,11 @@ export function ImportExportPage() {
 
       for (const issue of issues) {
         const row = headers.map((h) => {
-          const val = h === 'description' ? extractPlainText(issue.description) : issue[h];
+          const val = h === 'description' ? extractPlainText(issue.description) : issue[h as keyof Issue];
           if (val === null || val === undefined) return '';
-          if (Array.isArray(val)) return `"${val.join(';')}"`;
-          const str = String(val).replace(/"/g, '""');
+          const raw = Array.isArray(val) ? val.join(';') : String(val);
+          const safe = /^\s*[=+@-]/.test(raw) ? `'${raw}` : raw;
+          const str = safe.replace(/"/g, '""');
           return str.includes(',') || str.includes('"') || str.includes('\n') ? `"${str}"` : str;
         });
         csvRows.push(row.join(','));

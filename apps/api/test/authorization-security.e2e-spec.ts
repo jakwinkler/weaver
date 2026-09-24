@@ -34,7 +34,7 @@ describe('Administrative authorization security (e2e)', () => {
       imports: [AppModule],
     }).compile();
 
-    app = moduleFixture.createNestApplication();
+    app = moduleFixture.createNestApplication({ rawBody: true });
     app.setGlobalPrefix('api/v1');
     await app.init();
 
@@ -419,17 +419,94 @@ describe('Administrative authorization security (e2e)', () => {
     expect(bitbucketMigration.table_name).toBe(`${tenantSchema}.bitbucket_links`);
     await request(app.getHttpServer())
       .post(
-        `/api/v1/plugin-routes/@weaver~plugin-bitbucket/webhook/${tenantId}/${bitbucketSecret}`,
+        `/api/v1/plugin-routes/@weaver~plugin-bitbucket/webhook/${tenantId}`,
       )
       .set('x-event-key', 'repo:push')
+      .set('x-hub-signature', 'sha256=' + createHmac('sha256', bitbucketSecret).update(JSON.stringify({ push: { changes: [] } })).digest('hex'))
       .send({ push: { changes: [] } })
       .expect(200);
     await request(app.getHttpServer())
       .post(
-        `/api/v1/plugin-routes/@weaver~plugin-bitbucket/webhook/${tenantId}/wrong-token`,
+        `/api/v1/plugin-routes/@weaver~plugin-bitbucket/webhook/${tenantId}`,
       )
       .set('x-event-key', 'repo:push')
       .send({ push: { changes: [] } })
       .expect(401);
   });
+  it('binds attachment deletion to its issue and shares only the active avatar', async () => {
+    const attachment = await authenticated(ownerToken).post(`/api/v1/issues/${primaryIssueKey}/attachments`)
+      .attach('file', Buffer.from('retained'), { filename: 'retained.txt' }).expect(201);
+    await request(app.getHttpServer()).delete(`/api/v1/issues/${secondaryIssueKey}/attachments/${attachment.body.id}`)
+      .set('Authorization', `Bearer ${ownerToken}`).expect(404);
+    await authenticated(ownerToken).get(`/api/v1/attachments/${attachment.body.id}/download`).expect(200);
+    await request(app.getHttpServer()).delete(`/api/v1/issues/${primaryIssueKey}/attachments/${attachment.body.id}`)
+      .set('Authorization', `Bearer ${ownerToken}`).expect(204);
+
+    const avatar = await authenticated(ownerToken).post('/api/v1/users/me/avatar')
+      .attach('file', Buffer.from('89504e470d0a1a0a00000000', 'hex'), { filename: 'avatar.png', contentType: 'image/png' }).expect(201);
+    await authenticated(viewerToken).get(`/api/v1${avatar.body.avatarUrl}`).expect(200);
+    await authenticated(ownerToken).post('/api/v1/users/me/avatar')
+      .attach('file', Buffer.from('<svg/>'), { filename: 'avatar.svg', contentType: 'image/svg+xml' }).expect(400);
+  });
+
+  it('masks saved credentials in reads and updates without overwriting the secret', async () => {
+    const secret = 'review-synthetic-secret';
+    const update = await authenticated(ownerToken).patch('/api/v1/plugins/settings')
+      .send({ pluginId: '@weaver/plugin-github', settings: { webhookSecret: secret } }).expect(200);
+    expect(JSON.stringify(update.body)).not.toContain(secret);
+    const settings = await authenticated(ownerToken).get('/api/v1/plugins/settings?pluginId=@weaver/plugin-github').expect(200);
+    expect(settings.body.webhookSecret).toBe('********');
+    await authenticated(ownerToken).patch('/api/v1/plugins/settings')
+      .send({ pluginId: '@weaver/plugin-github', settings: { webhookSecret: settings.body.webhookSecret } }).expect(200);
+    const [plugin] = await dataSource.query('SELECT settings FROM public.installed_plugins WHERE tenant_id = $1 AND plugin_id = $2', [tenantId, '@weaver/plugin-github']);
+    expect(plugin.settings.webhookSecret).toBe(secret);
+  });
+
+  it('enforces private-project visibility in relations, reports, checklist and time capabilities', async () => {
+    const project = await authenticated(ownerToken).post('/api/v1/projects').send({ key: 'OPEN', name: 'Visible project' }).expect(201);
+    const [viewer] = await dataSource.query('SELECT id FROM public.users WHERE email = $1', [viewerEmail]);
+    await authenticated(ownerToken).post('/api/v1/projects/OPEN/members').send({ userId: viewer.id, role: 'member' }).expect(201);
+    const issue = await authenticated(ownerToken).post('/api/v1/projects/OPEN/issues').send({ summary: 'Visible issue' }).expect(201);
+    await dataSource.query(`UPDATE "${tenantSchema}".roles SET permissions = permissions || $1::jsonb WHERE name = 'viewer'`, [JSON.stringify({
+      'relations.view': true, 'relations.manage': true, 'time-reports.view': true, 'checklist.view': true,
+    })]);
+    for (const id of ['relations', 'time-reports', 'checklist', 'automatic-time']) {
+      await authenticated(ownerToken).post('/api/v1/plugins/install').send({ pluginId: `@weaver/plugin-${id}` }).expect(201);
+    }
+    await authenticated(ownerToken).post('/api/v1/plugins/enable').send({ pluginId: '@weaver/plugin-automatic-time' }).expect(201);
+    const root = `/api/v1/plugin-routes/@weaver~plugin-relations/issues/${issue.body.key}/relations`;
+    await authenticated(viewerToken).post(root).send({ targetIssueKey: primaryIssueKey, linkType: 'blocks' }).expect(403);
+    const link = await authenticated(ownerToken).post(root).send({ targetIssueKey: primaryIssueKey, linkType: 'blocks' }).expect(201);
+    const listed = await authenticated(viewerToken).get(root).expect(200);
+    expect(listed.body).toEqual([]);
+    const searched = await authenticated(viewerToken).get(`${root}/search?q=authorization`).expect(200);
+    expect(searched.body).toEqual([]);
+    await request(app.getHttpServer()).delete(`${root}/${link.body.id}`).set('Authorization', `Bearer ${viewerToken}`).expect(403);
+    const report = await authenticated(viewerToken).get('/api/v1/plugin-routes/@weaver~plugin-time-reports/report').expect(200);
+    expect(report.body.rows).toEqual([]);
+    const checklist = await authenticated(viewerToken).get('/api/v1/plugin-routes/@weaver~plugin-checklist/checklists').expect(200);
+    expect(checklist.body).toEqual([]);
+    const { tenantStorage } = await import('../src/core/tenant');
+    const { PluginContextFactory } = await import('../src/plugins/plugin-context.factory');
+    await tenantStorage.run({ tenantId, schemaName: tenantSchema }, async () => {
+      const context = await app.get(PluginContextFactory).create('@weaver/plugin-automatic-time', {}, { id: viewer.id, email: viewerEmail, displayName: 'Viewer' });
+      await expect(context.api.timeEntries.createBatch({ entries: [{ issueKey: primaryIssueKey, minutes: 10, sourceReference: 'forbidden-private' }] })).rejects.toThrow('Project membership');
+    });
+    expect(project.body.id).toBeDefined();
+  });
+
+  it('installs the repository migration and binds deletions to the project', async () => {
+    await authenticated(ownerToken).post('/api/v1/plugins/install').send({ pluginId: '@weaver/plugin-repository' }).expect(201);
+    const base = '/api/v1/plugin-routes/@weaver~plugin-repository/projects/OPEN/repositories';
+    const created = await authenticated(ownerToken).post(base).send({ name: 'Review repo', url: 'https://github.com/example/review' }).expect(201);
+    const other = await authenticated(ownerToken).post('/api/v1/projects').send({ key: 'OTHER', name: 'Other project' }).expect(201);
+    expect(other.body.id).toBeDefined();
+    await request(app.getHttpServer()).delete(`/api/v1/plugin-routes/@weaver~plugin-repository/projects/OTHER/repositories/${created.body.id}`).set('Authorization', `Bearer ${ownerToken}`).expect(204);
+    const remaining = await authenticated(ownerToken).get(base).expect(200);
+    expect(remaining.body.map((item: { id: string }) => item.id)).toContain(created.body.id);
+    await authenticated(ownerToken).post(base).send({ name: 'Unsafe', url: 'javascript:alert(1)' }).expect(400);
+    await request(app.getHttpServer()).delete(`${base}/${created.body.id}`).set('Authorization', `Bearer ${ownerToken}`).expect(204);
+    expect((await authenticated(ownerToken).get(base).expect(200)).body).toEqual([]);
+  });
+
 });

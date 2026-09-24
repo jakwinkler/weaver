@@ -57,9 +57,11 @@ services:
     environment:
       <<: [*database-environment, *redis-environment]
       NODE_ENV: production
+      IMPORT_CREDENTIAL_KEY: ${IMPORT_CREDENTIAL_KEY:-}
       TZ: UTC
       API_PORT: 3000
       API_PREFIX: api/v1
+      TRUST_PROXY: ${TRUST_PROXY:-uniquelocal}
       CORS_ORIGINS: ${WEAVER_PUBLIC_URL:?WEAVER_PUBLIC_URL is required}
       WEB_URL: ${WEAVER_PUBLIC_URL:?WEAVER_PUBLIC_URL is required}
       WEB_APP_URL: ${WEAVER_PUBLIC_URL:?WEAVER_PUBLIC_URL is required}
@@ -68,10 +70,9 @@ services:
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
       GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      ALLOW_TENANT_SCHEMA_BOOTSTRAP: ${ALLOW_TENANT_SCHEMA_BOOTSTRAP:-false}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?JWT_REFRESH_SECRET is required}
-      JWT_EXPIRES_IN: 15m
-      REFRESH_TOKEN_EXPIRES_IN: 7d
       WEAVER_TRUSTED_PLUGINS: ${WEAVER_TRUSTED_PLUGINS:-}
       STORAGE_LOCAL_PATH: /tmp/weaver-uploads
     volumes:
@@ -98,7 +99,11 @@ services:
     environment:
       <<: [*database-environment, *redis-environment]
       NODE_ENV: production
+      IMPORT_CREDENTIAL_KEY: ${IMPORT_CREDENTIAL_KEY:-}
       TZ: UTC
+      STORAGE_LOCAL_PATH: /tmp/weaver-uploads
+    volumes:
+      - uploads:/tmp/weaver-uploads
     depends_on:
       postgres:
         condition: service_healthy

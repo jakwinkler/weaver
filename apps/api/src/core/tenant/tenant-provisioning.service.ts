@@ -1,4 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { assertTenantSchemaName } from '@weaver/server-common';
+import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { runAutomaticTimeCoreMigration } from '@weaver/db';
 import { TenantConnectionProvider, TENANT_ENTITIES } from './tenant-connection.provider';
@@ -15,10 +16,14 @@ export class TenantProvisioningService {
   ) {}
 
   async provisionSchema(schemaName: string): Promise<void> {
+    assertTenantSchemaName(schemaName);
+    if (this.config.get('NODE_ENV') === 'production' && this.config.get('ALLOW_TENANT_SCHEMA_BOOTSTRAP') !== 'true') {
+      throw new ServiceUnavailableException('New tenant registration requires operator-enabled schema bootstrap');
+    }
     this.logger.log(`Provisioning schema: ${schemaName}`);
 
     // Create the schema
-    await this.dataSource.query(`CREATE SCHEMA IF NOT EXISTS "${schemaName}"`);
+    await this.dataSource.query(`CREATE SCHEMA "${schemaName}"`);
 
     // Create tenant tables using synchronize on a temporary connection
     const tempDs = new DataSource({
@@ -34,9 +39,12 @@ export class TenantProvisioningService {
       logging: false,
     });
 
-    await tempDs.initialize();
-    await runAutomaticTimeCoreMigration(tempDs, schemaName);
-    await tempDs.destroy();
+    try {
+      await tempDs.initialize();
+      await runAutomaticTimeCoreMigration(tempDs, schemaName);
+    } finally {
+      if (tempDs.isInitialized) await tempDs.destroy();
+    }
 
     // Create GIN index for custom fields
     await this.dataSource.query(

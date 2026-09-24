@@ -3,7 +3,8 @@ import helmet from 'helmet';
 
 export function configureHttpSecurity(app: INestApplication): void {
   const express = app.getHttpAdapter().getInstance();
-  express.set('trust proxy', 1);
+  const trustedProxies = process.env.TRUST_PROXY?.trim();
+  express.set('trust proxy', trustedProxies ? trustedProxies.split(',').map((value) => value.trim()) : false);
 
   app.use(
     helmet({

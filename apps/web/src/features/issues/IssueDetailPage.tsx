@@ -1,3 +1,4 @@
+import { PercentDoneField } from '@/components/PercentDoneField';
 import { useState, useEffect, useCallback, type FormEvent } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
@@ -650,17 +651,8 @@ export function IssueDetailPage() {
                 <div>
                   <dt className="text-xs text-muted-foreground">% Done</dt>
                   <dd className="mt-0.5 flex items-center gap-2">
-                    <input
-                      type="range"
-                      min="0"
-                      max="100"
-                      step="5"
-                      value={issue.percentDone ?? 0}
-                      onChange={(e) => updateIssue.mutate({ percentDone: Number(e.target.value) })}
-                      disabled={!canUpdate}
-                      className="h-2 w-24 cursor-pointer accent-primary disabled:opacity-50 disabled:cursor-not-allowed"
-                    />
-                    <span className="text-sm text-foreground">{issue.percentDone ?? 0}%</span>
+                    <PercentDoneField value={issue.percentDone ?? 0} disabled={!canUpdate || updateIssue.isPending}
+                      onCommit={(percentDone) => updateIssue.mutateAsync({ percentDone })} />
                   </dd>
                 </div>
                 <div>

@@ -1,3 +1,4 @@
+import { fetchWithSafeRedirects, readLimitedResponseBuffer, readLimitedResponseText } from '@weaver/server-common';
 import type {
   JiraAttachment,
   JiraBoard,
@@ -24,7 +25,7 @@ interface Page<T> {
 }
 
 export class JiraClient {
-  constructor(private readonly fetchImpl: FetchLike = fetch) {}
+  constructor(private readonly fetchImpl: FetchLike = (url, init) => fetchWithSafeRedirects(String(url), init)) {}
 
   async testConnection(config: JiraConnectionConfig): Promise<void> {
     await this.request(config, `/rest/api/${this.apiVersion(config)}/myself`);
@@ -165,12 +166,12 @@ export class JiraClient {
     }
     const response = await this.fetchWithTimeout(target, {
       headers: this.headers(config, false),
-      redirect: 'follow',
+      redirect: 'manual',
     });
     if (!response.ok) {
       throw new Error(`Jira attachment download failed (${response.status})`);
     }
-    return Buffer.from(await response.arrayBuffer());
+    return readLimitedResponseBuffer(response, 25 * 1024 * 1024);
   }
 
   buildProjectJql(projectKeys?: string[]): string {
@@ -208,22 +209,14 @@ export class JiraClient {
       headers: { ...this.headers(config), ...(init.headers ?? {}) },
     });
     if (!response.ok) {
-      const detail = (await response.text()).slice(0, 500).replace(/\s+/g, ' ');
-      throw new Error(
-        `Jira request failed (${response.status} ${response.statusText})${detail ? `: ${detail}` : ''}`,
-      );
+      await response.body?.cancel();
+      throw new Error(`Jira request failed (${response.status})`);
     }
-    return response.json() as Promise<T>;
+    return JSON.parse(await readLimitedResponseText(response, 10 * 1024 * 1024)) as T;
   }
 
   private async fetchWithTimeout(url: URL, init: RequestInit): Promise<Response> {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30_000);
-    try {
-      return await this.fetchImpl(url, { ...init, signal: controller.signal });
-    } finally {
-      clearTimeout(timeout);
-    }
+    return this.fetchImpl(url, { ...init, signal: AbortSignal.timeout(30_000) });
   }
 
   private headers(config: JiraConnectionConfig, json = true): Record<string, string> {

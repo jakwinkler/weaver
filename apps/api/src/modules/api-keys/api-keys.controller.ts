@@ -1,3 +1,4 @@
+import { Audit } from '../audit';
 import {
   Body,
   Controller,
@@ -21,6 +22,7 @@ export class ApiKeysController {
   constructor(private readonly apiKeysService: ApiKeysService) {}
 
   @Post()
+  @Audit({ action: 'api_key.created', resource: 'api_key' })
   async create(
     @CurrentUser() user: RequestUser,
     @Body(new ZodValidationPipe(createApiKeySchema)) dto: CreateApiKeyDto,
@@ -34,6 +36,7 @@ export class ApiKeysController {
   }
 
   @Delete(':id')
+  @Audit({ action: 'api_key.deleted', resource: 'api_key' })
   @HttpCode(HttpStatus.NO_CONTENT)
   async delete(
     @CurrentUser() user: RequestUser,

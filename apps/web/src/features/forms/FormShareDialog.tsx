@@ -36,6 +36,10 @@ async function copyText(value: string): Promise<void> {
   if (!copied) throw new Error('Clipboard copy was rejected');
 }
 
+function escapeAttribute(value: string): string {
+  return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 export function FormShareDialog({ form, open, onOpenChange }: FormShareDialogProps) {
   const [copied, setCopied] = useState<'url' | 'embed' | null>(null);
   const [copyError, setCopyError] = useState<'url' | 'embed' | null>(null);
@@ -45,7 +49,7 @@ export function FormShareDialog({ form, open, onOpenChange }: FormShareDialogPro
     return `${window.location.origin}/public/${form.tenantSlug}/forms/${form.slug}`;
   }, [form]);
   const embedCode = publicUrl
-    ? `<iframe src="${publicUrl}" title="${form?.name || 'Weaver form'}" width="100%" height="720" style="border:0"></iframe>`
+    ? `<iframe src="${escapeAttribute(publicUrl)}" title="${escapeAttribute(form?.name || 'Weaver form')}" width="100%" height="720" style="border:0"></iframe>`
     : '';
 
   useEffect(() => {

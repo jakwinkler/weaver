@@ -4,7 +4,7 @@ metadata:
   name: web
   namespace: weaver
 spec:
-  replicas: 2
+  replicas: null
   template:
     spec:
       containers:

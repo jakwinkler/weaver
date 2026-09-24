@@ -832,7 +832,7 @@ export class IssuesService {
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(IssueEntity);
 
-    const ids = dto.issues.map((i) => i.id);
+    const ids = [...new Set(dto.issues.map((i) => i.id))];
     const issues = await repo.find({
       where: { id: In(ids) },
       relations: ['project'],

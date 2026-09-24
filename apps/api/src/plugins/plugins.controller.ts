@@ -1,3 +1,4 @@
+import { redactSettingsSecrets } from '../core/security/settings-secrets';
 import {
   Controller,
   Get,
@@ -84,7 +85,7 @@ export class PluginsController {
   @UseGuards(PermissionGuard)
   @RequirePermission('admin', 'manage_plugins')
   async install(@Body('pluginId') pluginId: string) {
-    return this.registry.install(pluginId);
+    return redactSettingsSecrets(await this.registry.install(pluginId));
   }
 
   @Post('uninstall')
@@ -121,7 +122,7 @@ export class PluginsController {
   @UseGuards(PermissionGuard)
   @RequirePermission('admin', 'manage_plugins')
   async enable(@Body('pluginId') pluginId: string) {
-    return this.registry.enable(pluginId);
+    return redactSettingsSecrets(await this.registry.enable(pluginId));
   }
 
   @Post('disable')
@@ -134,7 +135,7 @@ export class PluginsController {
   @UseGuards(PermissionGuard)
   @RequirePermission('admin', 'manage_plugins')
   async disable(@Body('pluginId') pluginId: string) {
-    return this.registry.disable(pluginId);
+    return redactSettingsSecrets(await this.registry.disable(pluginId));
   }
 
   @Post('upgrade')
@@ -147,7 +148,7 @@ export class PluginsController {
     resourceId: ({ request }) => request.body.pluginId,
   })
   async upgrade(@Body('pluginId') pluginId: string) {
-    return this.registry.upgrade(pluginId);
+    return redactSettingsSecrets(await this.registry.upgrade(pluginId));
   }
 
   @Patch('settings')
@@ -163,13 +164,13 @@ export class PluginsController {
     @Body('pluginId') pluginId: string,
     @Body('settings') settings: Record<string, unknown>,
   ) {
-    return this.registry.updateSettings(pluginId, settings);
+    return redactSettingsSecrets(await this.registry.updateSettings(pluginId, settings));
   }
 
   @Get('settings')
   @UseGuards(PermissionGuard)
   @RequirePermission('admin', 'manage_plugins')
   async getSettings(@Query('pluginId') pluginId: string) {
-    return this.registry.getSettings(pluginId);
+    return redactSettingsSecrets(await this.registry.getSettings(pluginId));
   }
 }

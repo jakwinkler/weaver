@@ -1,8 +1,10 @@
 import {
   Injectable,
+  ForbiddenException,
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
+import type { RequestUser } from '../../core/auth';
 import { RoleEntity } from '@weaver/db';
 import { TenantConnectionProvider } from '../../core/tenant';
 
@@ -32,7 +34,8 @@ export class RolesService {
   async create(dto: {
     name: string;
     permissions: Record<string, unknown>;
-  }): Promise<RoleEntity> {
+  }, actor: RequestUser): Promise<RoleEntity> {
+    await this.assertDelegatedChange(actor, dto);
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(RoleEntity);
 
@@ -48,8 +51,10 @@ export class RolesService {
   async update(
     id: string,
     dto: Partial<{ name: string; permissions: Record<string, unknown> }>,
+    actor: RequestUser,
   ): Promise<RoleEntity> {
     const role = await this.findById(id);
+    await this.assertDelegatedChange(actor, dto, role);
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(RoleEntity);
 
@@ -61,8 +66,9 @@ export class RolesService {
     return repo.save(role);
   }
 
-  async delete(id: string): Promise<void> {
+  async delete(id: string, actor: RequestUser): Promise<void> {
     const role = await this.findById(id);
+    await this.assertDelegatedChange(actor, {}, role);
 
     if (role.isSystem) {
       throw new BadRequestException('Cannot delete a system role');
@@ -71,6 +77,24 @@ export class RolesService {
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(RoleEntity);
     await repo.remove(role);
+  }
+
+  private async assertDelegatedChange(
+    actor: RequestUser,
+    dto: Partial<{ name: string; permissions: Record<string, unknown> }>,
+    target?: RoleEntity,
+  ): Promise<void> {
+    if (actor.role === 'owner' || actor.role === 'admin') return;
+    if (target?.isSystem || target?.name === actor.role || (dto.name && ['owner', 'admin', 'member', 'viewer'].includes(dto.name))) {
+      throw new ForbiddenException('Only administrators can change system roles or their own role');
+    }
+    const em = await this.tenantConnections.getEntityManager();
+    const ownRole = await em.getRepository(RoleEntity).findOneBy({ name: actor.role });
+    for (const [permission, granted] of Object.entries(dto.permissions ?? {})) {
+      if (granted === true && (permission === '*' || permission.startsWith('admin.') || ownRole?.permissions[permission] !== true)) {
+        throw new ForbiddenException('Cannot grant permissions outside your delegated authority');
+      }
+    }
   }
 
   async seedDefaults(): Promise<void> {

@@ -13,6 +13,7 @@ import {
   SprintEntity,
 } from '@weaver/db';
 import type { RequestUser } from '../auth';
+import { requireTenantContext } from './tenant.context';
 import { In } from 'typeorm';
 import { TenantConnectionProvider } from './tenant-connection.provider';
 
@@ -156,6 +157,13 @@ export class ProjectAccessService {
       return;
     }
     if (attachment.uploaderId !== user.userId) {
+      if (mode === 'read') {
+        const avatars = await em.query(
+          'SELECT 1 FROM public.users u JOIN public.tenant_memberships m ON m.user_id = u.id WHERE u.id = $1 AND u.avatar_url = $2 AND m.tenant_id = $3',
+          [attachment.uploaderId, `/attachments/${attachment.id}/download`, requireTenantContext().tenantId],
+        );
+        if (avatars.length) return;
+      }
       throw new ForbiddenException('Only the uploader can access an unlinked attachment');
     }
   }

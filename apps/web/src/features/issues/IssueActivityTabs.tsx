@@ -205,6 +205,8 @@ function AttachmentsTab({ issueKey }: { issueKey: string }) {
 
       {uploadAttachment.isPending && <p className="mb-4 text-sm text-indigo-600">Uploading...</p>}
 
+      {uploadAttachment.isError && <p role="alert" className="mb-4 text-sm text-destructive">Upload failed. Check the file size and try again.</p>}
+
       {/* Attachments list */}
       {(!attachments || attachments.length === 0) && (
         <p className="py-4 text-center text-sm text-gray-400">No attachments yet.</p>

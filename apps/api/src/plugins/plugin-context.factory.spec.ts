@@ -32,10 +32,13 @@ describe('PluginContextFactory core capability enforcement', () => {
     getPluginLockState: jest.fn(),
   };
 
+  const projectAccess = { assertIssueKey: jest.fn(), accessibleProjectIds: jest.fn().mockResolvedValue([]) };
   let factory: PluginContextFactory;
 
   beforeEach(() => {
     jest.clearAllMocks();
+    entityManager.query.mockResolvedValue([{ role: 'member' }]);
+    projectAccess.assertIssueKey.mockResolvedValue(undefined);
     tenantConnections.getEntityManager.mockResolvedValue(entityManager);
     installedPlugins.findOne.mockResolvedValue({ enabled: true });
     loader.getManifest.mockReturnValue({
@@ -48,6 +51,7 @@ describe('PluginContextFactory core capability enforcement', () => {
       loader as any,
       installedPlugins as any,
       timeTracking as any,
+      projectAccess as any,
     );
   });
 
@@ -86,6 +90,14 @@ describe('PluginContextFactory core capability enforcement', () => {
       'summary" = NULL WHERE true; --': 'injected',
     }))).rejects.toThrow('Unsupported issue update field');
     expect(entityManager.query).not.toHaveBeenCalled();
+  });
+
+  it('denies time creation on an inaccessible issue before calling the writer', async () => {
+    projectAccess.assertIssueKey.mockRejectedValue(new ForbiddenException('Project membership is required'));
+    await expect(withContext((context) => context.api.timeEntries.createBatch({
+      entries: [{ issueKey: 'PRIVATE-1', sourceReference: 'draft-1', minutes: 10 }],
+    }))).rejects.toThrow('Project membership');
+    expect(timeTracking.createBatch).not.toHaveBeenCalled();
   });
 
   it('forwards atomic plugin batch deletion through the declared capability', async () => {

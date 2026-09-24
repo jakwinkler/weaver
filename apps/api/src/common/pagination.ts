@@ -19,14 +19,14 @@ export function parsePagination(query: Record<string, any>): PaginationParams {
 export async function paginate<T extends ObjectLiteral>(
   qb: SelectQueryBuilder<T>,
   params: PaginationParams,
-  allowedSortFields: string[] = [],
+  allowedSortFields: string[],
 ): Promise<PaginatedResponse<T>> {
   // Apply sorting
   if (params.sort) {
     const desc = params.sort.startsWith('-');
     const field = desc ? params.sort.slice(1) : params.sort;
 
-    if (allowedSortFields.length > 0 && !allowedSortFields.includes(field)) {
+    if (!allowedSortFields.includes(field)) {
       throw new BadRequestException(`Invalid sort field: ${field}`);
     }
 

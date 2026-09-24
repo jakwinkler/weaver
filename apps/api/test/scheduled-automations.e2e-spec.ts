@@ -32,7 +32,7 @@ describe('Scheduled automations (e2e)', () => {
     dataSource = app.get(DataSource);
     connections = app.get(TenantConnectionProvider);
     schedulerQueue = new Queue(process.env.SCHEDULED_AUTOMATIONS_QUEUE_NAME, {
-      connection: { host: 'localhost', port: 6380 },
+      connection: { host: process.env.REDIS_HOST ?? 'localhost', port: Number(process.env.REDIS_PORT ?? 6380) },
     });
 
     const owner = await request(app.getHttpServer())

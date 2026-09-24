@@ -27,7 +27,7 @@ export const registerSchema = z.object({
   orgSlug: z
     .string()
     .min(2)
-    .max(63)
+    .max(56)
     .regex(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/),
 });
 export type RegisterDto = z.infer<typeof registerSchema>;
@@ -54,7 +54,7 @@ export const createOAuthOrganizationSchema = z.object({
   orgSlug: z
     .string()
     .min(2)
-    .max(63)
+    .max(56)
     .regex(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/),
 });
 export type CreateOAuthOrganizationDto = z.infer<typeof createOAuthOrganizationSchema>;
@@ -76,7 +76,7 @@ export type CreateApiKeyDto = z.infer<typeof createApiKeySchema>;
 
 export const updateUserSchema = z.object({
   displayName: z.string().min(1).max(255).optional(),
-  avatarUrl: z.string().min(1).optional(),
+  avatarUrl: z.string().min(1).max(255).refine((value) => /^\/(?!\/)[^\\]*$/.test(value) || /^https?:\/\//i.test(value), 'Use a relative path or HTTP(S) URL').optional(),
 });
 export type UpdateUserDto = z.infer<typeof updateUserSchema>;
 
@@ -458,11 +458,16 @@ export type UpdateBoardDto = z.infer<typeof updateBoardSchema>;
 
 // ── Sprint Schema ──
 
+export const dateOnlySchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => {
+  const date = new Date(`${value}T00:00:00Z`);
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}, 'Invalid calendar date');
+
 export const createSprintSchema = z.object({
   name: z.string().min(1).max(255),
   goal: z.string().max(1000).optional(),
-  startDate: z.coerce.date().optional(),
-  endDate: z.coerce.date().optional(),
+  startDate: dateOnlySchema.transform((value) => new Date(`${value}T00:00:00Z`)).optional(),
+  endDate: dateOnlySchema.transform((value) => new Date(`${value}T00:00:00Z`)).optional(),
   capacity: z.number().int().min(0).max(10000).nullable().optional(),
 });
 export type CreateSprintDto = z.infer<typeof createSprintSchema>;
@@ -486,7 +491,7 @@ export type UpdateWebhookDto = z.infer<typeof updateWebhookSchema>;
 // ── Time Entry Schema ──
 
 export const createTimeEntrySchema = z.object({
-  minutes: z.number().int().min(1),
+  minutes: z.number().int().min(1).max(1440),
   description: z.string().max(500).optional(),
   loggedAt: z.coerce.date().optional(),
   source: z.enum(['manual', 'timer']).optional(),

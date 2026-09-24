@@ -30,7 +30,9 @@ ingress:
   tls: true
 
 postgresql:
-  enabled: true
+  enabled: false
+  external:
+    host: ""
   auth:
     database: weaver
     username: weaver
@@ -40,7 +42,13 @@ postgresql:
       size: 10Gi
 
 redis:
-  enabled: true
+  enabled: false
+  external:
+    host: ""
+  password: ""
+
+storage:
+  existingClaim: "" # A ReadWriteMany PVC shared by API and worker
 
 autoscaling:
   enabled: false
@@ -49,6 +57,8 @@ autoscaling:
   targetCPUUtilization: 70
 
 env:
+  IMPORT_CREDENTIAL_KEY: ""
+  ALLOW_TENANT_SCHEMA_BOOTSTRAP: "false"
   JWT_SECRET: ""
   JWT_REFRESH_SECRET: ""
   WEAVER_TRUSTED_PLUGINS: ""

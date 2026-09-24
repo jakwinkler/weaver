@@ -1,3 +1,4 @@
+import { preserveSettingsSecrets } from '../core/security/settings-secrets';
 import {
   BadRequestException,
   ConflictException,
@@ -55,7 +56,13 @@ export class PluginRegistryService implements OnApplicationBootstrap {
 
     for (const installed of installedPlugins) {
       const manifest = this.loader.getManifest(installed.pluginId);
-      if (!manifest || this.compareVersions(manifest.version, installed.version) <= 0) continue;
+      if (!manifest) continue;
+      try {
+        if (this.compareVersions(manifest.version, installed.version) <= 0) continue;
+      } catch (error) {
+        this.recordUpgrade(installed.pluginId, installed.version, manifest.version, false, this.getErrorMessage(error));
+        continue;
+      }
       const fromVersion = installed.version;
 
       if (!installed.tenant?.schemaName) {
@@ -226,6 +233,7 @@ export class PluginRegistryService implements OnApplicationBootstrap {
       });
     }
 
+    settings = preserveSettingsSecrets(settings, plugin.settings);
     const schema = this.loader.getManifest(pluginId)?.settings?.schema;
     if (schema) {
       const candidate = this.mergeSettingsWithDefaults(pluginId, {
@@ -527,6 +535,7 @@ export class PluginRegistryService implements OnApplicationBootstrap {
       timestamp: new Date().toISOString(),
     };
     this.upgradeLog.push(entry);
+    if (this.upgradeLog.length > 100) this.upgradeLog.splice(0, this.upgradeLog.length - 100);
     const message = `Plugin upgrade ${success ? 'succeeded' : 'failed'}: ${JSON.stringify(entry)}`;
     if (success) this.logger.log(message);
     else this.logger.error(message);

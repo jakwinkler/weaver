@@ -36,6 +36,7 @@ export async function listRelations(
   const issue = await getIssueByKey(context, issueKey);
   if (!issue) return { status: 404, body: { message: 'Issue not found' } };
 
+  const projectIds = await context.api.projects.accessibleIds();
   const rows = await context.db.query(
     `SELECT
        il.id,
@@ -62,9 +63,10 @@ export async function listRelations(
      JOIN projects tp ON tp.id = ti.project_id
      LEFT JOIN workflow_statuses ts ON ts.id = ti.status_id
      LEFT JOIN workflow_statuses ss ON ss.id = si.status_id
-     WHERE il.source_issue_id = $1 OR il.target_issue_id = $1
+     WHERE (il.source_issue_id = $1 OR il.target_issue_id = $1)
+       AND ($2::uuid[] IS NULL OR (si.project_id = ANY($2::uuid[]) AND ti.project_id = ANY($2::uuid[])))
      ORDER BY il.created_at DESC`,
-    [issue.id],
+    [issue.id, projectIds],
   );
 
   const relations = (rows as any[]).map((row) => {
@@ -108,6 +110,7 @@ export async function createRelation(
   const sourceIssue = await getIssueByKey(context, issueKey);
   if (!sourceIssue) return { status: 404, body: { message: `Source issue not found: ${issueKey}` } };
 
+  await context.api.issues.assertAccess(targetIssueKey, 'write');
   const targetIssue = await getIssueByKey(context, targetIssueKey);
   if (!targetIssue) return { status: 404, body: { message: `Target issue not found: ${targetIssueKey}` } };
 
@@ -189,6 +192,7 @@ export async function deleteRelation(
   const relatedKey = isSource ? link.targetKey : link.sourceKey;
   const label = isSource ? labels.source : labels.target;
 
+  await context.api.issues.assertAccess(relatedKey, 'write');
   await context.db.query('DELETE FROM issue_links WHERE id = $1', [linkId]);
 
   await context.events.emit('relation.removed', {
@@ -227,6 +231,7 @@ export async function searchIssues(
   const issue = await getIssueByKey(context, issueKey);
   if (!issue) return { status: 404, body: { message: 'Issue not found' } };
 
+  const projectIds = await context.api.projects.accessibleIds();
   const rows = await context.db.query(
     `SELECT i.key, i.summary, p.key AS "projectKey",
             ws.name AS "statusName", ws.category AS "statusCategory"
@@ -235,9 +240,10 @@ export async function searchIssues(
      LEFT JOIN workflow_statuses ws ON ws.id = i.status_id
      WHERE i.id != $1
        AND (i.key ILIKE $2 OR i.summary ILIKE $2)
+       AND ($3::uuid[] IS NULL OR i.project_id = ANY($3::uuid[]))
      ORDER BY i.key ASC
      LIMIT 20`,
-    [issue.id, `%${q}%`],
+    [issue.id, `%${q}%`, projectIds],
   );
 
   return { status: 200, body: rows };

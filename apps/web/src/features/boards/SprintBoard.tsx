@@ -1,3 +1,4 @@
+import { parseDateOnly } from '@/lib/date-only';
 import { useState, type FormEvent } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
@@ -61,7 +62,7 @@ function SprintStatusBadge({ status }: { status: SprintStatus }) {
 
 function formatDate(date: Date | string | undefined): string {
   if (!date) return '--';
-  return new Date(date).toLocaleDateString();
+  return parseDateOnly(date).toLocaleDateString();
 }
 
 function SprintActions({ sprint }: { sprint: Sprint }) {
@@ -122,8 +123,8 @@ function CreateSprintForm({ projectId, onCreated }: { projectId: string; onCreat
     await createSprint.mutateAsync({
       name,
       goal: goal || undefined,
-      startDate: startDate ? new Date(startDate) : undefined,
-      endDate: endDate ? new Date(endDate) : undefined,
+      startDate: startDate || undefined,
+      endDate: endDate || undefined,
       capacity: capacity ? Number(capacity) : undefined,
     });
     setName('');
@@ -260,8 +261,8 @@ function PlanningIssueCard({
 function SprintProgress({ sprint }: { sprint: Sprint }) {
   if (!sprint.startDate || !sprint.endDate || sprint.status !== 'active') return null;
 
-  const start = new Date(sprint.startDate).getTime();
-  const end = new Date(sprint.endDate).getTime();
+  const start = parseDateOnly(sprint.startDate).getTime();
+  const end = parseDateOnly(sprint.endDate).getTime();
   const duration = end - start;
   const progress =
     duration > 0 ? Math.min(100, Math.max(0, ((Date.now() - start) / duration) * 100)) : 100;
@@ -381,7 +382,7 @@ export function SprintBoard() {
   } = useSprints(project?.id || '');
   const { data: issuesData, isLoading: issuesLoading } = useProjectIssues({
     projectKey: projectKey!,
-    perPage: 200,
+    all: true,
     sort: 'sortOrder',
   });
   const updateIssue = useUpdateIssueDynamic();
@@ -430,8 +431,8 @@ export function SprintBoard() {
     const statusDifference = (order[a.status] ?? 1) - (order[b.status] ?? 1);
     if (statusDifference !== 0) return statusDifference;
     return (
-      new Date(a.startDate ?? a.createdAt).getTime() -
-      new Date(b.startDate ?? b.createdAt).getTime()
+      parseDateOnly(a.startDate ?? a.createdAt).getTime() -
+      parseDateOnly(b.startDate ?? b.createdAt).getTime()
     );
   });
   const completedSprintIds = new Set(

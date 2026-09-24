@@ -1,3 +1,5 @@
+import { assertTenantSchemaName } from '@weaver/server-common';
+import { TenantService } from '../../core/tenant/tenant.service';
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AutomationRuleEntity, IssueEntity, ProjectEntity } from '@weaver/db';
@@ -60,6 +62,7 @@ export class AutomationEngineService implements OnModuleInit, OnModuleDestroy {
     private readonly actionExecutor: AutomationActionExecutorService,
     private readonly conditionRegistry: ConditionEvaluatorRegistry,
     private readonly postFunctionRegistry: PostFunctionRegistry,
+    private readonly tenantService: TenantService,
   ) {}
 
   onModuleInit(): void {
@@ -131,6 +134,9 @@ export class AutomationEngineService implements OnModuleInit, OnModuleDestroy {
 
   private async runJob(job: Job<AutomationJobData>): Promise<void> {
     const data = job.data;
+    assertTenantSchemaName(data.schemaName);
+    const tenant = await this.tenantService.findById(data.tenantId);
+    if (!tenant || tenant.schemaName !== data.schemaName) throw new Error('Tenant does not match job schema');
     await tenantStorage.run({ tenantId: data.tenantId, schemaName: data.schemaName }, () =>
       data.kind === 'schedule' ? this.evaluateScheduledRule(data) : this.evaluateEvent(data),
     );
@@ -248,7 +254,11 @@ export class AutomationEngineService implements OnModuleInit, OnModuleDestroy {
         .andWhere(`issue.${column} ${operator} :${parameter}`, { [parameter]: value });
     });
 
-    return query.orderBy('issue.key', 'ASC').getMany();
+    const issues = await query.orderBy('issue.key', 'ASC').take(101).getMany();
+    if (issues.length > 100) {
+      throw new Error('Scheduled automation matches more than 100 issues; narrow the rule before retrying');
+    }
+    return issues;
   }
 
   private async findMatchingRules(

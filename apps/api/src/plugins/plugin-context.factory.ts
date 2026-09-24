@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import type { PluginContext, PluginCoreCapability, PluginIssueCandidate, PluginIssueCandidateFilters, RequestOptions } from '@weaver/sdk';
 import { InstalledPluginEntity } from '@weaver/db';
 import type { EntityManager, Repository } from 'typeorm';
-import { TenantConnectionProvider, requireTenantContext } from '../core/tenant';
+import { ProjectAccessService, TenantConnectionProvider, requireTenantContext } from '../core/tenant';
 import { EventDispatcherService } from '../modules/events';
 import { TimeTrackingService } from '../modules/time-tracking/time-tracking.service';
 import { PluginLoaderService } from './plugin-loader.service';
@@ -20,6 +20,7 @@ export class PluginContextFactory {
     @InjectRepository(InstalledPluginEntity)
     private readonly installedPlugins: Repository<InstalledPluginEntity>,
     private readonly timeTracking: TimeTrackingService,
+    private readonly projectAccess: ProjectAccessService,
   ) {}
 
   async create(
@@ -42,6 +43,19 @@ export class PluginContextFactory {
       }
       return this.tenantConnections.runInTenantTransaction(fn);
     };
+
+    const actor = async () => {
+      const userId = this.requireUserId(pluginId, user);
+      const rows = await runInSchema((manager) => manager.query(
+        'SELECT role FROM public.tenant_memberships WHERE tenant_id = $1 AND user_id = $2',
+        [tenant.tenantId, userId],
+      ));
+      if (!rows[0]) throw new ForbiddenException('Tenant membership is required');
+      return { userId, tenantId: tenant.tenantId, email: user!.email, role: rows[0].role };
+    };
+    const assertIssueAccess = async (key: string, mode: 'read' | 'write') =>
+      this.projectAccess.assertIssueKey(key, await actor(), mode);
+    const accessibleIds = async () => this.projectAccess.accessibleProjectIds(await actor());
 
     return {
       db: {
@@ -73,6 +87,7 @@ export class PluginContextFactory {
       settings,
       api: {
         issues: {
+          assertAccess: assertIssueAccess,
           get: async (key: string) =>
             runInSchema((manager) =>
               manager.query(`SELECT * FROM issues WHERE key = $1`, [key]),
@@ -80,7 +95,7 @@ export class PluginContextFactory {
           findCandidates: async (filters: PluginIssueCandidateFilters = {}) => {
             await this.assertCapability(pluginId, 'issue-candidates', options?.capabilityState);
             const userId = this.requireUserId(pluginId, user);
-            return this.findIssueCandidates(runInSchema, userId, filters);
+            return this.findIssueCandidates(runInSchema, userId, filters, await accessibleIds());
           },
           update: async (key: string, data: Record<string, unknown>) => {
             const fields = Object.entries(data);
@@ -131,6 +146,7 @@ export class PluginContextFactory {
           },
         },
         projects: {
+          accessibleIds,
           get: async (key: string) =>
             runInSchema((manager) =>
               manager.query(`SELECT * FROM projects WHERE key = $1`, [key]),
@@ -223,6 +239,9 @@ export class PluginContextFactory {
           createBatch: async (request) => {
             await this.assertCapability(pluginId, 'time-entries', options?.capabilityState);
             const userId = this.requireUserId(pluginId, user);
+            for (const key of new Set(request.entries.map((entry) => entry.issueKey))) {
+              await assertIssueAccess(key, 'write');
+            }
             return this.timeTracking.createBatch(pluginId, request, userId);
           },
           update: async (id, changes) => {
@@ -315,9 +334,14 @@ export class PluginContextFactory {
     runInSchema: <T>(fn: (manager: EntityManager) => Promise<T>) => Promise<T>,
     userId: string,
     filters: PluginIssueCandidateFilters,
+    projectIds: string[] | null,
   ): Promise<PluginIssueCandidate[]> {
     const parameters: unknown[] = [userId];
     const clauses = ['status.is_terminal = false'];
+    if (projectIds !== null) {
+      parameters.push(projectIds);
+      clauses.push(`issue.project_id = ANY($${parameters.length}::uuid[])`);
+    }
     if (filters.includeUnassigned) {
       clauses.push('(issue.assignee_id = $1 OR issue.assignee_id IS NULL)');
     } else {

@@ -1,11 +1,12 @@
-FROM node:20-alpine AS base
-RUN corepack enable && corepack prepare pnpm@9 --activate
+FROM node:22-alpine AS base
+RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
 WORKDIR /app
 
 # Install dependencies
 FROM base AS deps
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY packages/config/package.json ./packages/config/
+COPY packages/server-common/package.json ./packages/server-common/
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/db/package.json ./packages/db/
 COPY packages/jira-import/package.json ./packages/jira-import/
@@ -15,7 +16,8 @@ RUN pnpm install --frozen-lockfile
 # Build
 FROM deps AS build
 COPY . .
-RUN pnpm --filter @weaver/shared build && \
+RUN pnpm --filter @weaver/server-common build && \
+    pnpm --filter @weaver/shared build && \
     pnpm --filter @weaver/db build && \
     pnpm --filter @weaver/jira-import build && \
     pnpm --filter @weaver/worker build
@@ -23,7 +25,9 @@ RUN pnpm --filter @weaver/shared build && \
 # Production
 FROM base AS production
 ENV NODE_ENV=production
+RUN mkdir -p /tmp/weaver-uploads && chown node:node /tmp/weaver-uploads
 COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/packages/server-common ./packages/server-common
 COPY --from=build /app/packages/shared/node_modules ./packages/shared/node_modules
 COPY --from=build /app/packages/shared/dist ./packages/shared/dist
 COPY --from=build /app/packages/shared/package.json ./packages/shared/

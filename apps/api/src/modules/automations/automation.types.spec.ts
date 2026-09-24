@@ -1,6 +1,14 @@
 import { createAutomationRuleSchema, updateAutomationRuleSchema } from './automation.types';
 
 describe('automation schemas', () => {
+  it('rejects adversarial cron inputs within a bounded execution time', () => {
+    const started = performance.now();
+    for (const cron of ['*'.repeat(256), '*/0 * * * *', '0-999999999 * * * *', '999999999 * * * *', '0 0 32 13 8']) {
+      expect(createAutomationRuleSchema.safeParse({ name: 'Probe', trigger: { type: 'schedule', cron }, actions: [{ type: 'add_label', label: 'probe' }] }).success).toBe(false);
+    }
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+
   it('accepts event and schedule trigger variants', () => {
     const eventRule = createAutomationRuleSchema.parse({
       name: 'Event rule',

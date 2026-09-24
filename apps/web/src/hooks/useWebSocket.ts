@@ -68,7 +68,7 @@ export function useWebSocket() {
     }
 
     // Derive WebSocket URL from API base URL (socket.io handles ws:// upgrade)
-    const wsUrl = API_BASE_URL.replace('/api/v1', '');
+    const wsUrl = new URL(API_BASE_URL, window.location.origin).origin;
 
     const socket = io(`${wsUrl}/ws`, {
       withCredentials: true,

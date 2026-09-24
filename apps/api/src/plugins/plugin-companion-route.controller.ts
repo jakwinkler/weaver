@@ -87,7 +87,7 @@ export class PluginCompanionRouteController {
         headers: req.headers as Record<string, string>,
         auth: { type: 'pairing' },
       };
-      let context = await this.contextFactory.create(parsed.pluginId, installed.settings);
+      let context = await this.contextFactory.create(parsed.pluginId, this.registry.mergeSettingsWithDefaults(parsed.pluginId, installed.settings));
 
       if (matchedRoute.auth === 'device') {
         const authenticatorName = manifest.companion?.authenticator;
@@ -130,7 +130,7 @@ export class PluginCompanionRouteController {
           deviceId: principal.deviceId,
           scopes: principal.scopes,
         };
-        context = await this.contextFactory.create(parsed.pluginId, installed.settings, {
+        context = await this.contextFactory.create(parsed.pluginId, this.registry.mergeSettingsWithDefaults(parsed.pluginId, installed.settings), {
           id: principal.userId,
           email: '',
           displayName: '',

@@ -41,4 +41,10 @@ describe('RateLimitingGuard availability behavior', () => {
     await expect(guard.canActivate(contextFor('/api/v1/health'))).resolves.toBe(true);
     expect(evalCommand).not.toHaveBeenCalled();
   });
+
+  it.each(['/api/v1/auth/login', '/api/v1/public/acme/forms/support'])('fails closed for %s during a Redis outage', async (path) => {
+    const guard = createGuard();
+    (guard as any).redis = { status: 'end' };
+    await expect(guard.canActivate(contextFor(path))).rejects.toMatchObject({ status: 503 });
+  });
 });

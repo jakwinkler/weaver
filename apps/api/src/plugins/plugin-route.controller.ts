@@ -87,6 +87,10 @@ export class PluginRouteController {
         return res.status(HttpStatus.SERVICE_UNAVAILABLE).json({ message: 'Plugin is disabled' });
       }
 
+      const authenticatedUser = (req as Request & { user?: RequestUser }).user;
+      if ((!match.route.public || match.route.requiredPermissions?.length) && !authenticatedUser?.role) {
+        return res.status(HttpStatus.UNAUTHORIZED).json({ message: 'Authentication required' });
+      }
       const permissionFailure = await this.checkPermissions(req, match.route);
       if (permissionFailure) {
         return res.status(HttpStatus.FORBIDDEN).json(permissionFailure);
@@ -148,7 +152,9 @@ export class PluginRouteController {
           res.setHeader(key, value);
         }
       }
-      return res.status(result.status).json(result.body);
+      return typeof result.body === 'string'
+        ? res.status(result.status).send(result.body)
+        : res.status(result.status).json(result.body);
     } catch (error: any) {
       this.logger.error(`Plugin route error: ${error.message}`, error.stack);
       if (error.status) {
@@ -165,7 +171,8 @@ export class PluginRouteController {
     if (!route.requiredPermissions?.length) return undefined;
 
     const reqUser = (req as Request & { user?: Record<string, string> }).user;
-    if (reqUser?.role === 'owner') return undefined;
+    if (!reqUser?.role) return { message: 'Authentication required', missing: route.requiredPermissions };
+    if (reqUser.role === 'owner') return undefined;
 
     const em = await this.tenantConnections.getEntityManager();
     const role = await em.getRepository(RoleEntity).findOne({

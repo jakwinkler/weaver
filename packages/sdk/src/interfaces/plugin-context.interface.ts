@@ -47,12 +47,15 @@ export interface PluginEventEmitter {
 
 export interface PluginCoreApi {
   issues: {
+    assertAccess(key: string, mode: 'read' | 'write'): Promise<void>;
     get(key: string): Promise<unknown>;
     findCandidates(filters?: PluginIssueCandidateFilters): Promise<PluginIssueCandidate[]>;
     update(key: string, data: Record<string, unknown>): Promise<unknown>;
     addComment(key: string, body: string): Promise<unknown>;
   };
   projects: {
+    /** null means a tenant administrator; [] means no visible projects. */
+    accessibleIds(): Promise<string[] | null>;
     get(key: string): Promise<unknown>;
     list(): Promise<unknown[]>;
   };

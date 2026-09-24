@@ -2,12 +2,14 @@ import { NestFactory } from '@nestjs/core';
 import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 import { getAllowedCorsOrigins, validateCorsOrigin } from './core/security/cors.config';
+import { assertProductionDataCredentials } from '@weaver/server-common';
 import { validateSecurityConfiguration } from './core/security/runtime-config';
 import { configureHttpSecurity } from './core/security/http-security';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { rawBody: true });
   validateSecurityConfiguration();
+  assertProductionDataCredentials();
+  const app = await NestFactory.create(AppModule, { rawBody: true });
   configureHttpSecurity(app);
 
   const port = process.env.API_PORT || 3000;

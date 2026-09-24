@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import { JwtAuthGuard, CurrentUser, RequestUser } from '../../core/auth';
 import { MailService } from '../mail';
+import { parsePagination } from '../../common';
 import { NotificationsService } from './notifications.service';
 
 @Controller('notifications')
@@ -26,10 +27,11 @@ export class NotificationsController {
     @Query('page') page?: string,
     @Query('perPage') perPage?: string,
   ) {
+    const params = parsePagination({ page, perPage: perPage ?? '20' });
     return this.notificationsService.findForUser(
       user.userId,
-      page ? parseInt(page, 10) : 1,
-      perPage ? parseInt(perPage, 10) : 20,
+      params.page,
+      params.perPage,
     );
   }
 

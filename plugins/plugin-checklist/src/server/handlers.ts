@@ -23,16 +23,18 @@ async function syncDoneRatio(context: PluginContext, issueId: string, issueKey: 
 }
 
 export async function listAllItems(req: PluginRequest, context: PluginContext): Promise<PluginResponse> {
-  const limit = Math.min(parseInt(req.query.limit || '50', 10), 200);
-  const offset = parseInt(req.query.offset || '0', 10);
+  const limit = Math.max(1, Math.min(parseInt(req.query.limit || '50', 10) || 50, 200));
+  const offset = Math.max(0, parseInt(req.query.offset || '0', 10) || 0);
+  const projectIds = await context.api.projects.accessibleIds();
 
   const rows = await context.db.query(
-    `SELECT ci.*, i.key AS issue_key, i.title AS issue_title
+    `SELECT ci.*, i.key AS issue_key, i.summary AS issue_title
      FROM checklist_items ci
      JOIN issues i ON i.id = ci.issue_id
+     WHERE ($3::uuid[] IS NULL OR i.project_id = ANY($3::uuid[]))
      ORDER BY ci.updated_at DESC
      LIMIT $1 OFFSET $2`,
-    [limit, offset],
+    [limit, offset, projectIds],
   );
 
   return { status: 200, body: rows };

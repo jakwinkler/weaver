@@ -20,6 +20,13 @@ spec:
       containers:
         - name: redis
           image: redis:7-alpine
+          command: ["sh", "-c", 'exec redis-server --requirepass "$REDISCLI_AUTH"']
+          env:
+            - name: REDISCLI_AUTH
+              valueFrom:
+                secretKeyRef:
+                  name: weaver-secrets
+                  key: REDIS_PASSWORD
           imagePullPolicy: IfNotPresent
           ports:
             - name: tcp-redis

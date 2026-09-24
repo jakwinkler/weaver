@@ -19,7 +19,8 @@
     "@weaver/jira-import": "workspace:*",
     "@weaver/shared": "workspace:*",
     "@weaver/db": "workspace:*",
-    "nodemailer": "^9.1.1"
+    "nodemailer": "^9.1.1",
+    "@weaver/server-common": "workspace:*"
   },
   "devDependencies": {
     "@weaver/config": "workspace:*",

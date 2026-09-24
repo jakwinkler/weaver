@@ -1,14 +1,15 @@
 import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Job, Queue } from 'bullmq';
-import type { JiraImportJobData } from '@weaver/shared';
+import { sealImportJob } from '@weaver/server-common';
+import type { JiraImportJobData, SealedJiraImportJobData } from '@weaver/shared';
 
 @Injectable()
 export class ImportQueueService implements OnModuleDestroy {
-  private readonly queue: Queue<JiraImportJobData>;
+  private readonly queue: Queue<SealedJiraImportJobData>;
 
-  constructor(config: ConfigService) {
-    this.queue = new Queue<JiraImportJobData>('jira-import', {
+  constructor(private readonly config: ConfigService) {
+    this.queue = new Queue<SealedJiraImportJobData>('jira-import', {
       connection: {
         host: config.get('REDIS_HOST', 'localhost'),
         port: config.get<number>('REDIS_PORT', 6380),
@@ -22,8 +23,9 @@ export class ImportQueueService implements OnModuleDestroy {
     });
   }
 
-  async enqueue(data: JiraImportJobData): Promise<Job<JiraImportJobData>> {
-    return this.queue.add('jira-import', data, { jobId: data.importJobId });
+  async enqueue(data: JiraImportJobData): Promise<Job<SealedJiraImportJobData>> {
+    const payload = sealImportJob(data, `${data.tenantId}:${data.importJobId}`, this.config.get<string>('IMPORT_CREDENTIAL_KEY'));
+    return this.queue.add('jira-import', { version: 1, tenantId: data.tenantId, importJobId: data.importJobId, payload }, { jobId: data.importJobId });
   }
 
   async cancel(importJobId: string): Promise<void> {

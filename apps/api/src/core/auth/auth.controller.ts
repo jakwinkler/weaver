@@ -1,3 +1,4 @@
+import { apiPath } from '../security/api-prefix';
 import {
   Controller,
   Post,
@@ -97,7 +98,7 @@ export class AuthController {
   async logout(@Req() req: Request, @Res() res: Response) {
     await this.authService.revokeRefreshToken(extractRefreshToken(req));
     res.clearCookie('weaver_token', cookieOptions('/', 0));
-    res.clearCookie('weaver_refresh', cookieOptions('/api/v1/auth', 0));
+    res.clearCookie('weaver_refresh', cookieOptions(apiPath('auth'), 0));
     return res.status(HttpStatus.NO_CONTENT).send();
   }
 
@@ -120,7 +121,7 @@ export class AuthController {
     res.cookie(
       'weaver_refresh',
       refreshToken,
-      cookieOptions('/api/v1/auth', REFRESH_COOKIE_MAX_AGE_MS),
+      cookieOptions(apiPath('auth'), REFRESH_COOKIE_MAX_AGE_MS),
     );
   }
 

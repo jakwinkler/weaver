@@ -1,4 +1,5 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
+import { In } from 'typeorm';
 import { IssueEntity, WorkflowStatusEntity } from '@weaver/db';
 import { PaginatedResponse } from '@weaver/shared';
 import { TenantConnectionProvider } from '../../core/tenant';
@@ -80,6 +81,7 @@ export class SearchService {
     const conditions: WqlToken[] = [];
     const connectors: ('AND' | 'OR')[] = [];
 
+    if (wql.length > 10000) throw new BadRequestException('WQL query cannot exceed 10000 characters');
     const trimmed = wql.trim();
     if (!trimmed) {
       return { conditions, connectors };
@@ -136,6 +138,8 @@ export class SearchService {
       parts.push(current.trim());
     }
 
+    if (parts.length > 50) throw new BadRequestException('WQL query cannot exceed 50 conditions');
+
     // Parse each condition
     for (const part of parts) {
       const token = this.parseCondition(part);
@@ -175,9 +179,15 @@ export class SearchService {
     const parameters: Record<string, unknown> = {};
     let paramIndex = 0;
 
+    const statusNames = [...new Set(parsed.conditions.filter((condition) => condition.field === 'status').map((condition) => condition.value))];
+    const statuses: WorkflowStatusEntity[] = statusNames.length
+      ? await em.getRepository(WorkflowStatusEntity).find({ where: { name: In(statusNames) }, order: { id: 'ASC' } })
+      : [];
+    const statusIds = new Map<string, string>();
+    for (const status of statuses) if (!statusIds.has(status.name)) statusIds.set(status.name, status.id);
     for (const condition of parsed.conditions) {
       const paramName = `p${paramIndex++}`;
-      const clause = await this.buildCondition(condition, paramName, parameters, em);
+      const clause = await this.buildCondition(condition, paramName, parameters, statusIds);
       clauses.push(clause);
     }
 
@@ -195,20 +205,18 @@ export class SearchService {
     token: WqlToken,
     paramName: string,
     parameters: Record<string, unknown>,
-    em: any,
+    statusIds: Map<string, string>,
   ): Promise<string> {
     const { field, operator, value } = token;
 
     switch (field) {
       case 'status': {
         // Lookup status ID by name
-        const status = await em
-          .getRepository(WorkflowStatusEntity)
-          .findOneBy({ name: value });
+        const status = statusIds.get(value);
         if (!status) {
           throw new BadRequestException(`Unknown status "${value}"`);
         }
-        parameters[paramName] = status.id;
+        parameters[paramName] = status;
         return `issue.status_id ${this.mapOperator(operator)} :${paramName}`;
       }
 

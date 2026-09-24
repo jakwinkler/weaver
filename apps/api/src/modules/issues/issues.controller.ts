@@ -1,3 +1,5 @@
+import { Audit } from '../audit';
+import { z } from 'zod';
 import {
   Controller,
   Get,
@@ -106,6 +108,7 @@ export class IssuesController {
   }
 
   @Delete('issues/bulk')
+  @Audit({ action: 'issue.bulk_deleted', resource: 'issue' })
   @RequirePermission('issues', 'delete')
   @RequireProjectAccess('issue-ids', 'write')
   async bulkDelete(
@@ -156,13 +159,14 @@ export class IssuesController {
   @RequireProjectAccess('issue-key', 'write')
   async transition(
     @Param('issueKey') issueKey: string,
-    @Body() body: { transitionId: string },
+    @Body(new ZodValidationPipe(z.object({ transitionId: z.string().uuid() }).strict())) body: { transitionId: string },
     @CurrentUser() user: RequestUser,
   ) {
     return this.issuesService.transition(issueKey, body.transitionId, user.userId);
   }
 
   @Delete('issues/:issueKey')
+  @Audit({ action: 'issue.deleted', resource: 'issue', resourceId: ({ request }) => String(request.params.issueKey) })
   @RequirePermission('issues', 'delete')
   @RequireProjectAccess('issue-key', 'write')
   @HttpCode(HttpStatus.NO_CONTENT)

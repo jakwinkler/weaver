@@ -1,3 +1,4 @@
+import { assertProductionDataCredentials } from '@weaver/server-common';
 import { Queue, Worker } from 'bullmq';
 import { config } from './config';
 import { processEvent } from './processors/events.processor';
@@ -8,6 +9,8 @@ import {
 } from './processors/notifications.processor';
 import { createScheduledAutomationProcessor } from './processors/automation.processor';
 import { processImport } from './processors/import.processor';
+
+assertProductionDataCredentials();
 
 const connection = {
   host: config.redis.host,

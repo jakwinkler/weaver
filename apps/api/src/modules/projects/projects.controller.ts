@@ -11,6 +11,7 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
+import { z } from 'zod';
 import { createProjectSchema, updateProjectSchema } from '@weaver/shared';
 import {
   JwtAuthGuard,
@@ -26,6 +27,9 @@ import { ProjectIssueTypesService } from './project-issue-types.service';
 import { ProjectPluginsService } from './project-plugins.service';
 import { Audit } from '../audit';
 import { ProjectAccessGuard, RequireProjectAccess } from '../../core/tenant';
+
+const memberRoleSchema = z.enum(['lead', 'member', 'viewer']);
+const pluginIdSchema = z.object({ pluginId: z.string().min(1).max(255).regex(/^(@[a-z0-9-]+\/)?[a-z0-9-]+$/) }).strict();
 
 @Controller('projects')
 @UseGuards(JwtAuthGuard, PermissionGuard, ProjectAccessGuard)
@@ -103,7 +107,7 @@ export class ProjectsController {
   @RequireProjectAccess('project-key', 'write')
   async addMember(
     @Param('key') key: string,
-    @Body() dto: { userId: string; role?: string },
+    @Body(new ZodValidationPipe(z.object({ userId: z.string().uuid(), role: memberRoleSchema.optional() }).strict())) dto: { userId: string; role?: string },
   ) {
     const project = await this.projectsService.findByKey(key);
     return this.projectMembersService.add(project.id, dto.userId, dto.role);
@@ -121,7 +125,7 @@ export class ProjectsController {
   async updateMemberRole(
     @Param('key') key: string,
     @Param('userId') userId: string,
-    @Body() dto: { role: string },
+    @Body(new ZodValidationPipe(z.object({ role: memberRoleSchema }).strict())) dto: { role: string },
   ) {
     const project = await this.projectsService.findByKey(key);
     return this.projectMembersService.updateRole(project.id, userId, dto.role);
@@ -166,7 +170,7 @@ export class ProjectsController {
   @RequireProjectAccess('project-key', 'write')
   async setIssueTypes(
     @Param('key') key: string,
-    @Body() dto: { issueTypeIds: string[] },
+    @Body(new ZodValidationPipe(z.object({ issueTypeIds: z.array(z.string().uuid()).max(100) }).strict())) dto: { issueTypeIds: string[] },
   ) {
     const project = await this.projectsService.findByKey(key);
     return this.projectIssueTypesService.setForProject(
@@ -195,7 +199,7 @@ export class ProjectsController {
   @RequireProjectAccess('project-key', 'write')
   async enablePlugin(
     @Param('key') key: string,
-    @Body() dto: { pluginId: string },
+    @Body(new ZodValidationPipe(pluginIdSchema)) dto: { pluginId: string },
   ) {
     const project = await this.projectsService.findByKey(key);
     return this.projectPluginsService.enable(project.id, dto.pluginId);
@@ -212,7 +216,7 @@ export class ProjectsController {
   @HttpCode(HttpStatus.NO_CONTENT)
   async disablePlugin(
     @Param('key') key: string,
-    @Body() dto: { pluginId: string },
+    @Body(new ZodValidationPipe(pluginIdSchema)) dto: { pluginId: string },
   ) {
     const project = await this.projectsService.findByKey(key);
     await this.projectPluginsService.disable(project.id, dto.pluginId);

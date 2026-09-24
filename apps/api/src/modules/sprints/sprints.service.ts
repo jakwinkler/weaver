@@ -53,6 +53,7 @@ export class SprintsService {
       capacity: dto.capacity ?? null,
     });
 
+    if (sprint.startDate && sprint.endDate) this.getDateRange(sprint.startDate, sprint.endDate);
     return repo.save(sprint);
   }
 
@@ -123,6 +124,7 @@ export class SprintsService {
     const repo = em.getRepository(SprintEntity);
 
     Object.assign(sprint, dto);
+    if (sprint.startDate && sprint.endDate) this.getDateRange(sprint.startDate, sprint.endDate);
     return repo.save(sprint);
   }
 
@@ -170,6 +172,7 @@ export class SprintsService {
         capturedAt: new Date().toISOString(),
         issues: issues.map((issue) => ({ issueId: issue.id, storyPoints: issue.storyPoints ?? 0, statusId: issue.statusId })),
       };
+      if (sprint.startDate && sprint.endDate) this.getDateRange(sprint.startDate, sprint.endDate);
       return repo.save(sprint);
     });
     await this.eventDispatcher.emit('sprint.started', { sprintId: saved.id, projectId: saved.projectId });
@@ -203,6 +206,7 @@ export class SprintsService {
       if (!sprint.endDate) {
         sprint.endDate = new Date().toISOString().split('T')[0];
       }
+      if (sprint.startDate && sprint.endDate) this.getDateRange(sprint.startDate, sprint.endDate);
       return repo.save(sprint);
     });
     await this.eventDispatcher.emit('sprint.completed', { sprintId: saved.id, projectId: saved.projectId });
@@ -499,6 +503,14 @@ export class SprintsService {
   private getDateRange(startDate: string, endDate: string): string[] {
     const start = this.startOfDay(startDate);
     const end = this.startOfDay(endDate);
+    if (![startDate, endDate].every((value) => /^\d{4}-\d{2}-\d{2}$/.test(value)) ||
+        !Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) ||
+        start.toISOString().slice(0, 10) !== startDate || end.toISOString().slice(0, 10) !== endDate) {
+      throw new BadRequestException('Sprint dates must be valid calendar dates');
+    }
+    if ((end.getTime() - start.getTime()) / 86400000 > 366) {
+      throw new BadRequestException('Sprint duration cannot exceed 366 days');
+    }
     if (end < start) {
       throw new BadRequestException('Sprint end date cannot be before its start date');
     }

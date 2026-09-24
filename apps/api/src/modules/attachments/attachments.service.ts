@@ -92,8 +92,12 @@ export class AttachmentsService {
     }
   }
 
-  async delete(id: string): Promise<void> {
+  async delete(id: string, issueKey: string): Promise<void> {
+    const issueId = await this.resolveIssueId(issueKey);
     const attachment = await this.findById(id);
+    if (attachment.issueId !== issueId) {
+      throw new NotFoundException('Attachment not found on this issue');
+    }
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(AttachmentEntity);
 

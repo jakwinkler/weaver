@@ -30,19 +30,12 @@ export class WorkflowsService {
   ) {}
 
   async create(dto: CreateWorkflowDto): Promise<WorkflowEntity> {
-    const em = await this.tenantConnections.getEntityManager();
-    const repo = em.getRepository(WorkflowEntity);
-
-    if (dto.isDefault) {
-      await repo
-        .createQueryBuilder()
-        .update(WorkflowEntity)
-        .set({ isDefault: false })
-        .execute();
-    }
-
-    const workflow = repo.create(dto);
-    return repo.save(workflow);
+    return this.tenantConnections.runInTenantTransaction(async (manager) => {
+      await manager.query('SELECT pg_advisory_xact_lock(hashtext(current_schema() || $1))', [':default-workflow']);
+      const repo = manager.getRepository(WorkflowEntity);
+      if (dto.isDefault) await repo.createQueryBuilder().update(WorkflowEntity).set({ isDefault: false }).execute();
+      return repo.save(repo.create(dto));
+    });
   }
 
   async findAll(): Promise<WorkflowEntity[]> {
@@ -65,20 +58,15 @@ export class WorkflowsService {
   }
 
   async update(id: string, dto: Partial<CreateWorkflowDto>): Promise<WorkflowEntity> {
-    const workflow = await this.findById(id);
-    const em = await this.tenantConnections.getEntityManager();
-    const repo = em.getRepository(WorkflowEntity);
-
-    if (dto.isDefault) {
-      await repo
-        .createQueryBuilder()
-        .update(WorkflowEntity)
-        .set({ isDefault: false })
-        .execute();
-    }
-
-    Object.assign(workflow, dto);
-    return repo.save(workflow);
+    return this.tenantConnections.runInTenantTransaction(async (manager) => {
+      await manager.query('SELECT pg_advisory_xact_lock(hashtext(current_schema() || $1))', [':default-workflow']);
+      const repo = manager.getRepository(WorkflowEntity);
+      const workflow = await repo.findOneBy({ id });
+      if (!workflow) throw new NotFoundException(`Workflow "${id}" not found`);
+      if (dto.isDefault) await repo.createQueryBuilder().update(WorkflowEntity).set({ isDefault: false }).execute();
+      Object.assign(workflow, dto);
+      return repo.save(workflow);
+    });
   }
 
   async delete(id: string): Promise<void> {

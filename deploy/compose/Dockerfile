@@ -1,4 +1,4 @@
-FROM node:20-alpine AS build
+FROM node:22-alpine AS build
 
 RUN apk add --no-cache g++ make python3 \
     && corepack enable \
@@ -12,7 +12,7 @@ ENV VITE_API_URL=${VITE_API_URL}
 RUN pnpm build
 RUN node deploy/compose/verify-plugin-runtime.cjs
 
-FROM node:20-alpine AS api
+FROM node:22-alpine AS api
 
 RUN corepack enable \
     && corepack prepare pnpm@9.15.4 --activate
@@ -29,8 +29,9 @@ EXPOSE 3000
 USER node
 CMD ["./node_modules/.bin/tsx", "dist/main.js"]
 
-FROM node:20-alpine AS worker
+FROM node:22-alpine AS worker
 
+RUN mkdir -p /tmp/weaver-uploads && chown node:node /tmp/weaver-uploads
 WORKDIR /app
 COPY --from=build /app/node_modules /app/node_modules
 COPY --from=build /app/apps/worker /app/apps/worker
@@ -41,7 +42,8 @@ CMD ["node", "apps/worker/dist/main.js"]
 
 FROM nginxinc/nginx-unprivileged:alpine AS web
 
-COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
+ENV WEAVER_API_UPSTREAM=api:3000
+COPY docker/nginx.conf /etc/nginx/templates/default.conf.template
 COPY --from=build /app/apps/web/dist /usr/share/nginx/html
 
 EXPOSE 8080

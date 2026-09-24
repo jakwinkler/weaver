@@ -1,3 +1,4 @@
+import { parseDateOnly, formatDateOnly } from '@/lib/date-only';
 import { Link } from 'react-router-dom';
 import { useAuthStore } from '@/stores';
 import { useDashboard } from '@/api';
@@ -200,7 +201,7 @@ export function DashboardPage() {
                 {myIssues.map((issue) => {
                   const prio = priorityConfig[issue.priority] ?? priorityConfig.medium;
                   const isOverdue =
-                    issue.dueDate && new Date(issue.dueDate) < new Date();
+                    issue.dueDate && issue.dueDate < formatDateOnly(new Date());
                   return (
                     <Link
                       key={issue.key}
@@ -234,7 +235,7 @@ export function DashboardPage() {
                               : 'text-muted-foreground',
                           )}
                         >
-                          {new Date(issue.dueDate).toLocaleDateString()}
+                          {parseDateOnly(issue.dueDate).toLocaleDateString()}
                         </span>
                       )}
                     </Link>

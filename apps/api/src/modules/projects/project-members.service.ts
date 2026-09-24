@@ -1,10 +1,11 @@
 import {
   Injectable,
+  BadRequestException,
   NotFoundException,
   ConflictException,
 } from '@nestjs/common';
 import { ProjectMemberEntity } from '@weaver/db';
-import { TenantConnectionProvider } from '../../core/tenant';
+import { TenantConnectionProvider, requireTenantContext } from '../../core/tenant';
 
 @Injectable()
 export class ProjectMembersService {
@@ -27,6 +28,9 @@ export class ProjectMembersService {
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(ProjectMemberEntity);
 
+    if (role && !['lead', 'member', 'viewer'].includes(role)) throw new BadRequestException('Invalid project role');
+    const memberships = await em.query('SELECT 1 FROM public.tenant_memberships WHERE tenant_id = $1 AND user_id = $2', [requireTenantContext().tenantId, userId]);
+    if (!memberships.length) throw new BadRequestException('User must be a member of this tenant');
     const existing = await repo.findOneBy({ projectId, userId });
     if (existing) {
       throw new ConflictException('User is already a project member');

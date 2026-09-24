@@ -1,0 +1,21 @@
+{
+  "name": "@weaver/server-common",
+  "version": "0.0.1",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test test/*.test.cjs"
+  },
+  "dependencies": {
+    "undici": "7.29.0",
+    "@aws-sdk/client-s3": "^3.1125.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "@weaver/config": "workspace:*",
+    "typescript": "^5.7.2"
+  }
+}

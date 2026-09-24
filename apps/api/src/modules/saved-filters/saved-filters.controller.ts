@@ -17,7 +17,7 @@ import { SavedFiltersService } from './saved-filters.service';
 
 const createSavedFilterSchema = z.object({
   name: z.string().min(1).max(255),
-  query: z.string().min(1),
+  query: z.string().min(1).max(10000),
   isShared: z.boolean().default(false),
 });
 

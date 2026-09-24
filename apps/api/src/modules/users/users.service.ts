@@ -74,6 +74,14 @@ export class UsersService {
     userId: string,
     file: Express.Multer.File,
   ): Promise<Omit<UserEntity, 'passwordHash'>> {
+    const bytes = file.buffer;
+    const png = bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+    const jpeg = bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+    const gif = /^GIF8[79]a$/.test(bytes.subarray(0, 6).toString('ascii'));
+    const webp = bytes.subarray(0, 4).toString('ascii') === 'RIFF' && bytes.subarray(8, 12).toString('ascii') === 'WEBP';
+    if (bytes.length > 5 * 1024 * 1024 || ![png, jpeg, gif, webp].some(Boolean)) {
+      throw new BadRequestException('Avatar must be a PNG, JPEG, GIF or WebP image up to 5 MB');
+    }
     const attachment = await this.attachmentsService.upload(file, userId);
     return this.update(userId, {
       avatarUrl: `/attachments/${attachment.id}/download`,

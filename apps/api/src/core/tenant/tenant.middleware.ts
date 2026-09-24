@@ -1,3 +1,4 @@
+import { apiPath } from '../security/api-prefix';
 import {
   Injectable,
   NestMiddleware,
@@ -43,8 +44,7 @@ export class TenantMiddleware implements NestMiddleware {
     // Skip only core auth and public endpoints, never similarly named plugin paths.
     const requestPath = req.originalUrl.split('?')[0];
     if (
-      /^\/api\/v1\/auth(?:\/|$)/.test(requestPath) ||
-      /^\/api\/v1\/public(?:\/|$)/.test(requestPath)
+      ['auth', 'public'].some((route) => requestPath === apiPath(route) || requestPath.startsWith(`${apiPath(route)}/`))
     ) {
       next();
       return;
