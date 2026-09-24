@@ -29,6 +29,9 @@ spec:
         - name: web
           image: "{{ .Values.image.web.repository }}:{{ .Values.image.web.tag }}"
           imagePullPolicy: {{ .Values.image.web.pullPolicy }}
+          env:
+            - name: WEAVER_API_UPSTREAM
+              value: {{ printf "%s-api:%v" (include "weaver.fullname" .) .Values.service.api.port | quote }}
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:

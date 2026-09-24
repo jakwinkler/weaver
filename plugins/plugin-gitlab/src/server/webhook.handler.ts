@@ -1,5 +1,6 @@
+import { validScmWebhook } from '@weaver/sdk';
 import type { PluginRequest, PluginResponse, PluginContext } from '@weaver/sdk';
-import { timingSafeEqual } from 'crypto';
+import { createHash, timingSafeEqual } from 'crypto';
 
 function verifyToken(provided: string, expected: string): boolean {
   if (provided.length !== expected.length) {
@@ -12,7 +13,10 @@ function verifyToken(provided: string, expected: string): boolean {
   }
 }
 
-export async function handleGitLabWebhook(req: PluginRequest, context: PluginContext): Promise<PluginResponse> {
+export async function handleGitLabWebhook(
+  req: PluginRequest,
+  context: PluginContext,
+): Promise<PluginResponse> {
   const token = req.headers['x-gitlab-token'];
   const event = req.headers['x-gitlab-event'];
   const secret = context.settings.webhookSecret as string;
@@ -25,19 +29,32 @@ export async function handleGitLabWebhook(req: PluginRequest, context: PluginCon
     return { status: 401, body: { message: 'Invalid token' } };
   }
 
-  const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body as Record<string, any>;
-
-  switch (event) {
-    case 'Push Hook':
-      await handlePush(body, context);
-      break;
-    case 'Merge Request Hook':
-      await handleMergeRequest(body, context);
-      break;
-    default:
-      context.logger.info(`Unhandled GitLab event: ${event}`);
+  const authenticatedPayload =
+    req.rawBody ?? (typeof req.body === 'string' ? req.body : JSON.stringify(req.body));
+  let body: unknown;
+  try {
+    body = JSON.parse(authenticatedPayload);
+  } catch {
+    return { status: 400, body: { message: 'Invalid webhook JSON' } };
   }
-
+  if (!event || !validScmWebhook('gitlab', event, body)) {
+    return { status: 400, body: { message: 'Invalid webhook payload' } };
+  }
+  const supportedEvents = ['Push Hook', 'Merge Request Hook'];
+  if (!supportedEvents.includes(event)) return { status: 200, body: { message: 'Ignored event' } };
+  const digest = createHash('sha256').update(authenticatedPayload).digest('hex');
+  await context.webhooks.processOnce(digest, async () => {
+    switch (event) {
+      case 'Push Hook':
+        await handlePush(body, context);
+        break;
+      case 'Merge Request Hook':
+        await handleMergeRequest(body, context);
+        break;
+      default:
+        context.logger.info(`Unhandled GitLab event: ${event}`);
+    }
+  });
   return { status: 200, body: { message: 'OK' } };
 }
 
@@ -53,11 +70,18 @@ async function handlePush(payload: Record<string, any>, context: PluginContext) 
           `INSERT INTO gitlab_links (issue_key, link_type, url, title, author, created_at)
            VALUES ($1, $2, $3, $4, $5, NOW())
            ON CONFLICT (issue_key, url) DO NOTHING`,
-          [issueKey, 'commit', commit.url, message.split('\n')[0].substring(0, 255), commit.author?.name || 'Unknown'],
+          [
+            issueKey,
+            'commit',
+            commit.url,
+            message.split('\n')[0].substring(0, 255),
+            commit.author?.name || 'Unknown',
+          ],
         );
         context.logger.info(`Linked GitLab commit to ${issueKey}`);
       } catch (err) {
         context.logger.error(`Failed to link GitLab commit to ${issueKey}: ${err}`);
+        throw err;
       }
     }
   }
@@ -98,6 +122,7 @@ async function handleMergeRequest(payload: Record<string, any>, context: PluginC
       );
     } catch (err) {
       context.logger.error(`Failed to link GitLab MR to ${issueKey}: ${err}`);
+      throw err;
     }
   }
 
@@ -118,7 +143,10 @@ async function handleMergeRequest(payload: Record<string, any>, context: PluginC
   }
 }
 
-export async function getGitLabLinks(req: PluginRequest, context: PluginContext): Promise<PluginResponse> {
+export async function getGitLabLinks(
+  req: PluginRequest,
+  context: PluginContext,
+): Promise<PluginResponse> {
   const issueKey = req.params.issueKey;
   if (!issueKey) {
     return { status: 400, body: { message: 'issueKey is required' } };

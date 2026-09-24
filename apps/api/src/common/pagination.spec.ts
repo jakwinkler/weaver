@@ -11,7 +11,7 @@ describe('paginate', () => {
       getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
     };
 
-    await paginate(qb as never, { page: 1, perPage: 20 });
+    await paginate(qb as never, { page: 1, perPage: 20 }, []);
 
     expect(qb.addOrderBy).toHaveBeenCalledWith('issue.id', 'ASC');
     expect(qb.orderBy).not.toHaveBeenCalled();

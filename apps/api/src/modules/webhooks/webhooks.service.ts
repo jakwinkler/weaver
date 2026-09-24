@@ -1,5 +1,5 @@
-import { Injectable, NotFoundException, Logger } from '@nestjs/common';
-import { WebhookEntity } from '@weaver/db';
+import { BadRequestException, Injectable, NotFoundException, Logger } from '@nestjs/common';
+import { ProjectEntity, WebhookEntity } from '@weaver/db';
 import { getTenantContext, TenantConnectionProvider } from '../../core/tenant';
 import * as crypto from 'crypto';
 import type { CreateWebhookDto, UpdateWebhookDto } from '@weaver/shared';
@@ -53,6 +53,9 @@ export class WebhooksService {
   async create(dto: CreateWebhookDto): Promise<WebhookEntity> {
     await assertSafeOutboundUrl(dto.url);
     const em = await this.tenantConnections.getEntityManager();
+    if (dto.projectId && !await em.getRepository(ProjectEntity).findOneBy({ id: dto.projectId })) {
+      throw new BadRequestException('Webhook project does not exist');
+    }
     const repo = em.getRepository(WebhookEntity);
 
     const webhook = repo.create({

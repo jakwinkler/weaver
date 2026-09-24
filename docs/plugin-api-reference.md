@@ -269,7 +269,7 @@ tenant: {
 }
 ```
 
-Database access is already tenant-scoped. The tenant fields are useful for logging, external correlation, and tenant-aware URLs.
+Database queries default to the current tenant search path. Plugins are trusted server code with a shared database principal, not a security sandbox; fully qualified SQL can access other schemas. Use `context.api.projects.accessibleIds()` and `context.api.issues.assertAccess(key, mode)` to enforce the current user’s project permissions. The tenant fields are useful for logging, external correlation, and tenant-aware URLs.
 
 ### `context.user`
 

@@ -12,7 +12,7 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { z } from 'zod';
-import { createSprintSchema } from '@weaver/shared';
+import { createSprintSchema, dateOnlySchema } from '@weaver/shared';
 import {
   CurrentUser,
   JwtAuthGuard,
@@ -27,12 +27,12 @@ import { ProjectAccessGuard, RequireProjectAccess } from '../../core/tenant';
 const updateSprintSchema = z.object({
   name: z.string().min(1).max(255).optional(),
   goal: z.string().max(1000).nullable().optional(),
-  startDate: z.string().optional(),
-  endDate: z.string().optional(),
+  startDate: dateOnlySchema.nullable().optional(),
+  endDate: dateOnlySchema.nullable().optional(),
 });
 
 const addIssuesSchema = z.object({
-  issueIds: z.array(z.string().uuid()).min(1),
+  issueIds: z.array(z.string().uuid()).min(1).max(100),
 });
 
 @Controller('sprints')

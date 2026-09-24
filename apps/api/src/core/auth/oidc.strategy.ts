@@ -83,7 +83,7 @@ export class OidcStrategy {
     });
     const claims = tokens.claims();
     const email = typeof claims?.email === 'string' ? claims.email : undefined;
-    if (!email || claims?.email_verified === false) {
+    if (!email || claims?.email_verified !== true) {
       throw new UnauthorizedException('OIDC did not return a verified email address');
     }
     const displayName = typeof claims?.name === 'string' ? claims.name : email;

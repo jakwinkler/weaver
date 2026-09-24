@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { promises as fs } from 'fs';
+import { createStorageFromEnvironment } from '@weaver/server-common';
 import path from 'path';
 import type { EntityManager, Repository } from 'typeorm';
 import {
@@ -30,7 +30,6 @@ import type {
   JiraSprint,
 } from './types';
 
-const UPLOAD_DIR = process.env.UPLOAD_DIR || '/tmp/weaver-uploads';
 const MAX_RECORDED_ERRORS = 500;
 
 export interface KeySelection {
@@ -555,7 +554,7 @@ export class ImportOrchestrator {
       }
     }
 
-    await fs.mkdir(UPLOAD_DIR, { recursive: true });
+    const storage = createStorageFromEnvironment();
     const attachmentRepo = this.manager.getRepository(AttachmentEntity);
     for (const attachment of attachments) {
       await this.checkCancelled();
@@ -566,8 +565,8 @@ export class ImportOrchestrator {
         }
         const buffer = await this.client.downloadAttachment(this.data.config, attachment);
         const safeFilename = path.basename(attachment.filename).slice(0, 255) || 'attachment';
-        const storageKey = `${randomUUID()}-${safeFilename}`;
-        await fs.writeFile(path.join(UPLOAD_DIR, storageKey), buffer);
+        const storageKey = randomUUID();
+        await storage.put(storageKey, buffer);
         const entity = await attachmentRepo.save(
           attachmentRepo.create({
             issueId,
@@ -613,8 +612,8 @@ export class ImportOrchestrator {
   private async findUserId(email: string | null): Promise<string | null> {
     if (!email) return null;
     const result = await this.manager.query(
-      'SELECT id FROM public.users WHERE LOWER(email) = LOWER($1) LIMIT 1',
-      [email],
+      'SELECT u.id FROM public.users u JOIN public.tenant_memberships m ON m.user_id = u.id WHERE LOWER(u.email) = LOWER($1) AND m.tenant_id = $2 LIMIT 1',
+      [email, this.data.tenantId],
     );
     return result[0]?.id ?? null;
   }

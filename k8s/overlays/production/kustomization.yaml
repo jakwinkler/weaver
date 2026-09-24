@@ -21,11 +21,12 @@ configMapGenerator:
       - DATABASE_USER=weaver
       - REDIS_HOST=weaver-redis.example.com
       - REDIS_PORT=6379
+      - TRUST_PROXY=uniquelocal
       - NODE_ENV=production
       - STORAGE_LOCAL_PATH=/tmp/weaver-uploads
       - WEAVER_TRUSTED_PLUGINS=
 # Provision the weaver-secrets Secret out of band before applying this overlay.
-# It must contain DATABASE_PASSWORD plus distinct, strong JWT_SECRET and
+# It must contain DATABASE_PASSWORD, REDIS_PASSWORD plus distinct, strong JWT_SECRET and
 # JWT_REFRESH_SECRET values.
 generatorOptions:
   disableNameSuffixHash: true

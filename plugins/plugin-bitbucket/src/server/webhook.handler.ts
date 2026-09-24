@@ -1,5 +1,6 @@
+import { validScmWebhook } from '@weaver/sdk';
 import type { PluginRequest, PluginResponse, PluginContext } from '@weaver/sdk';
-import { timingSafeEqual } from 'crypto';
+import { createHash, createHmac, timingSafeEqual } from 'crypto';
 
 function verifyToken(provided: string, expected: string): boolean {
   const providedBuffer = Buffer.from(provided);
@@ -10,36 +11,58 @@ function verifyToken(provided: string, expected: string): boolean {
   );
 }
 
-export async function handleBitbucketWebhook(req: PluginRequest, context: PluginContext): Promise<PluginResponse> {
-  const token = req.params.token;
+export async function handleBitbucketWebhook(
+  req: PluginRequest,
+  context: PluginContext,
+): Promise<PluginResponse> {
+  const signature = req.headers['x-hub-signature'];
   const event = req.headers['x-event-key'];
   const secret = context.settings.webhookSecret as string;
 
-  if (!token || !secret) {
-    return { status: 401, body: { message: 'Missing webhook token' } };
+  if (!signature || !secret || req.rawBody === undefined) {
+    return { status: 401, body: { message: 'Missing webhook signature or raw body' } };
   }
 
-  if (!verifyToken(token, secret)) {
-    return { status: 401, body: { message: 'Invalid webhook token' } };
+  const expected = 'sha256=' + createHmac('sha256', secret).update(req.rawBody).digest('hex');
+  if (!verifyToken(signature, expected)) {
+    return { status: 401, body: { message: 'Invalid webhook signature' } };
   }
 
-  const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body as Record<string, any>;
-
-  switch (event) {
-    case 'repo:push':
-      await handlePush(body, context);
-      break;
-    case 'pullrequest:created':
-    case 'pullrequest:updated':
-      await handlePullRequest(body, event, context);
-      break;
-    case 'pullrequest:fulfilled':
-      await handlePullRequestMerged(body, context);
-      break;
-    default:
-      context.logger.info(`Unhandled Bitbucket event: ${event}`);
+  const authenticatedPayload =
+    req.rawBody ?? (typeof req.body === 'string' ? req.body : JSON.stringify(req.body));
+  let body: unknown;
+  try {
+    body = JSON.parse(authenticatedPayload);
+  } catch {
+    return { status: 400, body: { message: 'Invalid webhook JSON' } };
   }
-
+  if (!event || !validScmWebhook('bitbucket', event, body)) {
+    return { status: 400, body: { message: 'Invalid webhook payload' } };
+  }
+  const supportedEvents = [
+    'repo:push',
+    'pullrequest:created',
+    'pullrequest:updated',
+    'pullrequest:fulfilled',
+  ];
+  if (!supportedEvents.includes(event)) return { status: 200, body: { message: 'Ignored event' } };
+  const digest = createHash('sha256').update(authenticatedPayload).digest('hex');
+  await context.webhooks.processOnce(digest, async () => {
+    switch (event) {
+      case 'repo:push':
+        await handlePush(body, context);
+        break;
+      case 'pullrequest:created':
+      case 'pullrequest:updated':
+        await handlePullRequest(body, event, context);
+        break;
+      case 'pullrequest:fulfilled':
+        await handlePullRequestMerged(body, context);
+        break;
+      default:
+        context.logger.info(`Unhandled Bitbucket event: ${event}`);
+    }
+  });
   return { status: 200, body: { message: 'OK' } };
 }
 
@@ -71,6 +94,7 @@ async function handlePush(payload: Record<string, any>, context: PluginContext) 
           context.logger.info(`Linked Bitbucket commit to ${issueKey}`);
         } catch (err) {
           context.logger.error(`Failed to link Bitbucket commit to ${issueKey}: ${err}`);
+          throw err;
         }
       }
     }
@@ -82,7 +106,11 @@ async function handlePush(payload: Record<string, any>, context: PluginContext) 
   });
 }
 
-async function handlePullRequest(payload: Record<string, any>, event: string, context: PluginContext) {
+async function handlePullRequest(
+  payload: Record<string, any>,
+  event: string,
+  context: PluginContext,
+) {
   const pr = payload.pullrequest;
   if (!pr) return;
 
@@ -110,6 +138,7 @@ async function handlePullRequest(payload: Record<string, any>, event: string, co
       );
     } catch (err) {
       context.logger.error(`Failed to link Bitbucket PR to ${issueKey}: ${err}`);
+      throw err;
     }
   }
 
@@ -149,6 +178,7 @@ async function handlePullRequestMerged(payload: Record<string, any>, context: Pl
       );
     } catch (err) {
       context.logger.error(`Failed to link merged Bitbucket PR to ${issueKey}: ${err}`);
+      throw err;
     }
   }
 
@@ -160,7 +190,10 @@ async function handlePullRequestMerged(payload: Record<string, any>, context: Pl
   });
 }
 
-export async function getBitbucketLinks(req: PluginRequest, context: PluginContext): Promise<PluginResponse> {
+export async function getBitbucketLinks(
+  req: PluginRequest,
+  context: PluginContext,
+): Promise<PluginResponse> {
   const issueKey = req.params.issueKey;
   if (!issueKey) {
     return { status: 400, body: { message: 'issueKey is required' } };

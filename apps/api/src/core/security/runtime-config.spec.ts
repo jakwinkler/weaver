@@ -1,19 +1,23 @@
 import { validateSecurityConfiguration } from './runtime-config';
 
 describe('runtime security configuration', () => {
-  it.each([
-    undefined,
-    'CHANGE_ME_IN_PRODUCTION',
-    'change-me-in-production',
-    'too-short',
-  ])('rejects unsafe production JWT secret %p', (jwtSecret) => {
-    expect(() =>
-      validateSecurityConfiguration({
-        NODE_ENV: 'production',
-        JWT_SECRET: jwtSecret,
-      }),
-    ).toThrow('JWT_SECRET');
-  });
+  it.each([undefined, '', 'prod', 'staging', 'Production'])(
+    'rejects unsupported environment %p',
+    (NODE_ENV) => {
+      expect(() => validateSecurityConfiguration({ NODE_ENV })).toThrow('NODE_ENV');
+    },
+  );
+  it.each([undefined, 'CHANGE_ME_IN_PRODUCTION', 'change-me-in-production', 'too-short'])(
+    'rejects unsafe production JWT secret %p',
+    (jwtSecret) => {
+      expect(() =>
+        validateSecurityConfiguration({
+          NODE_ENV: 'production',
+          JWT_SECRET: jwtSecret,
+        }),
+      ).toThrow('JWT_SECRET');
+    },
+  );
 
   it('rejects a missing production refresh-token secret', () => {
     expect(() =>

@@ -46,7 +46,7 @@ export class AttachmentsController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @RequirePermission('issues', 'update')
   @RequireProjectAccess('issue-key', 'write')
-  async delete(@Param('id') id: string) {
-    await this.attachmentsService.delete(id);
+  async delete(@Param('id') id: string, @Param('issueKey') issueKey: string) {
+    await this.attachmentsService.delete(id, issueKey);
   }
 }

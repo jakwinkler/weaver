@@ -64,3 +64,11 @@ export interface JiraImportJobData {
   config: JiraConnectionConfig;
   projectKeys?: string[];
 }
+
+/** Only ciphertext, IDs and format version are persisted to the queue. */
+export interface SealedJiraImportJobData {
+  version: 1;
+  tenantId: string;
+  importJobId: string;
+  payload: string;
+}

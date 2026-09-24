@@ -5,12 +5,14 @@ metadata:
   labels:
     {{- include "weaver.labels" . | nindent 4 }}
 data:
+  ALLOW_TENANT_SCHEMA_BOOTSTRAP: {{ .Values.env.ALLOW_TENANT_SCHEMA_BOOTSTRAP | quote }}
   DATABASE_HOST: {{ include "weaver.postgresql.host" . | quote }}
   DATABASE_PORT: "5432"
   DATABASE_NAME: {{ .Values.postgresql.auth.database | quote }}
   DATABASE_USER: {{ .Values.postgresql.auth.username | quote }}
   REDIS_HOST: {{ include "weaver.redis.host" . | quote }}
   REDIS_PORT: "6379"
+  TRUST_PROXY: "uniquelocal"
   NODE_ENV: {{ .Values.env.NODE_ENV | quote }}
   API_PUBLIC_URL: {{ .Values.env.API_PUBLIC_URL | quote }}
   WEB_URL: {{ .Values.env.WEB_URL | quote }}

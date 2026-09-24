@@ -375,7 +375,8 @@ export class AuditService implements OnModuleInit, OnModuleDestroy {
   }
 
   private csvCell(value: unknown): string {
-    const text = String(value ?? '');
+    const raw = String(value ?? '');
+    const text = /^\s*[=+@-]/.test(raw) ? `'${raw}` : raw;
     return `"${text.replace(/"/g, '""')}"`;
   }
 

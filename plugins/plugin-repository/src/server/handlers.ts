@@ -1,9 +1,10 @@
-import type { PluginContext } from '@weaver/sdk';
+import type { PluginContext, PluginRequest } from '@weaver/sdk';
 
 export async function listRepositories(
+  req: PluginRequest,
   context: PluginContext,
-  params: { projectKey: string },
 ) {
+  const params = req.params;
   const project = await context.api.projects.get(params.projectKey);
   if (!project) return { status: 404, body: { message: 'Project not found' } };
 
@@ -16,10 +17,23 @@ export async function listRepositories(
 }
 
 export async function addRepository(
+  req: PluginRequest,
   context: PluginContext,
-  params: { projectKey: string },
-  body: { name: string; url: string; provider?: string; defaultBranch?: string },
 ) {
+  const params = req.params;
+  const body = req.body as { name?: unknown; url?: unknown; provider?: unknown; defaultBranch?: unknown } | undefined;
+  if (!body || typeof body.name !== 'string' || !body.name.trim() || body.name.length > 255 || typeof body.url !== 'string' || body.url.length > 2048) {
+    return { status: 400, body: { message: 'A name and HTTP(S) repository URL are required' } };
+  }
+  try {
+    const url = new URL(body.url);
+    if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password) throw new Error();
+  } catch { return { status: 400, body: { message: 'Invalid repository URL' } }; }
+  if ((body.provider !== undefined && !['github', 'gitlab', 'bitbucket'].includes(String(body.provider))) ||
+      (body.defaultBranch !== undefined && (typeof body.defaultBranch !== 'string' || body.defaultBranch.length > 255))) {
+    return { status: 400, body: { message: 'Invalid provider or branch' } };
+  }
+
   const project = await context.api.projects.get(params.projectKey);
   if (!project) return { status: 404, body: { message: 'Project not found' } };
 
@@ -40,21 +54,25 @@ export async function addRepository(
 }
 
 export async function removeRepository(
+  req: PluginRequest,
   context: PluginContext,
-  params: { projectKey: string; repoId: string },
 ) {
+  const params = req.params;
+  const project = await context.api.projects.get(params.projectKey);
+  if (!project) return { status: 404, body: { message: 'Project not found' } };
   await context.db.query(
-    'DELETE FROM repository_links WHERE id = $1',
-    [params.repoId],
+    'DELETE FROM repository_links WHERE id = $1 AND project_id = $2',
+    [params.repoId, (project as { id: string }).id],
   );
 
   return { status: 204, body: null };
 }
 
 export async function listIssueLinks(
+  req: PluginRequest,
   context: PluginContext,
-  params: { issueKey: string },
 ) {
+  const params = req.params;
   const issue = await context.api.issues.get(params.issueKey);
   if (!issue) return { status: 404, body: { message: 'Issue not found' } };
 

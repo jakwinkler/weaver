@@ -13,6 +13,7 @@ import {
 import { z } from 'zod';
 import {
   JwtAuthGuard,
+  CurrentUser, RequestUser, AdminGuard,
   PermissionGuard,
   RequirePermission,
 } from '../../core/auth';
@@ -57,8 +58,9 @@ export class RolesController {
   async create(
     @Body(new ZodValidationPipe(createRoleSchema))
     dto: { name: string; permissions: Record<string, boolean> },
+    @CurrentUser() user: RequestUser,
   ) {
-    return this.rolesService.create(dto);
+    return this.rolesService.create(dto, user);
   }
 
   @Patch(':id')
@@ -68,19 +70,21 @@ export class RolesController {
     @Param('id') id: string,
     @Body(new ZodValidationPipe(createRoleSchema.partial()))
     dto: Partial<{ name: string; permissions: Record<string, boolean> }>,
+    @CurrentUser() user: RequestUser,
   ) {
-    return this.rolesService.update(id, dto);
+    return this.rolesService.update(id, dto, user);
   }
 
   @Delete(':id')
   @RequirePermission('admin', 'manage_roles')
   @Audit({ action: 'role.deleted', resource: 'role', captureBefore: true })
   @HttpCode(HttpStatus.NO_CONTENT)
-  async delete(@Param('id') id: string) {
-    await this.rolesService.delete(id);
+  async delete(@Param('id') id: string, @CurrentUser() user: RequestUser) {
+    await this.rolesService.delete(id, user);
   }
 
   @Post('seed')
+  @UseGuards(AdminGuard)
   @RequirePermission('admin', 'manage_roles')
   @Audit({
     action: 'role.defaults_seeded',

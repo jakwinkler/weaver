@@ -15,8 +15,7 @@ configMapGenerator:
       - DATABASE_USER=weaver
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - JWT_SECRET=dev-secret-change-me
-      - JWT_REFRESH_SECRET=dev-refresh-secret-change-me
+      - TRUST_PROXY=uniquelocal
       - NODE_ENV=development
       - STORAGE_LOCAL_PATH=/tmp/weaver-uploads
       - WEAVER_TRUSTED_PLUGINS=
@@ -24,5 +23,8 @@ secretGenerator:
   - name: weaver-secrets
     literals:
       - DATABASE_PASSWORD=weaver_dev
+      - REDIS_PASSWORD=local-development-only
+      - JWT_SECRET=dev-secret-change-me
+      - JWT_REFRESH_SECRET=dev-refresh-secret-change-me
 generatorOptions:
   disableNameSuffixHash: true

@@ -1,3 +1,4 @@
+import { runReviewReliabilityMigration } from '@weaver/db';
 import { Injectable } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
@@ -61,6 +62,7 @@ export class TenantConnectionProvider {
     try {
       await ds.initialize();
       await runAutomaticTimeCoreMigration(ds, schemaName);
+      await runReviewReliabilityMigration(ds, schemaName);
       this.connections.set(schemaName, ds);
       return ds;
     } catch (error) {

@@ -71,4 +71,5 @@ spec:
               cpu: "500m"
       volumes:
         - name: uploads
-          emptyDir: {}
+          persistentVolumeClaim:
+            claimName: {{ required "storage.existingClaim must name a shared RWX PVC" .Values.storage.existingClaim | quote }}

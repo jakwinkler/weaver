@@ -46,7 +46,8 @@ describe('Runtime rate limiting (e2e)', () => {
       .expect(429);
 
     expect(limited.body.message).toBe('Rate limit exceeded');
-    expect(limited.body.retryAfter).toBe(60);
+    expect(limited.body.retryAfter).toBeGreaterThan(0);
+    expect(limited.body.retryAfter).toBeLessThanOrEqual(60);
   });
 
   it('shares rate-limit counters across API instances', async () => {

@@ -1,5 +1,6 @@
 import {
   Injectable,
+  BadRequestException,
   NotFoundException,
   ConflictException,
 } from '@nestjs/common';
@@ -79,6 +80,8 @@ export class TeamsService {
     const em = await this.tenantConnections.getEntityManager();
     const s = this.schema();
 
+    const memberships = await em.query('SELECT 1 FROM public.tenant_memberships WHERE tenant_id = $1 AND user_id = $2', [requireTenantContext().tenantId, userId]);
+    if (!memberships.length) throw new BadRequestException('User must be a member of this tenant');
     try {
       const rows = await em.query(
         `INSERT INTO "${s}"."team_members" (team_id, user_id) VALUES ($1, $2) RETURNING team_id, user_id, joined_at`,

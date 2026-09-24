@@ -1,3 +1,4 @@
+import { Audit } from '../audit';
 import { Body, Controller, Get, HttpCode, Param, Post, UseGuards } from '@nestjs/common';
 import { AdminGuard, CurrentUser, JwtAuthGuard, RequestUser } from '../../core/auth';
 import { ZodValidationPipe } from '../../common';
@@ -23,6 +24,7 @@ export class ImportController {
   }
 
   @Post('jira/start')
+  @Audit({ action: 'import.started', resource: 'import' })
   start(
     @Body(new ZodValidationPipe(startJiraImportSchema)) dto: StartJiraImportDto,
     @CurrentUser() user: RequestUser,
@@ -36,6 +38,7 @@ export class ImportController {
   }
 
   @Post('jira/cancel/:id')
+  @Audit({ action: 'import.cancelled', resource: 'import' })
   @HttpCode(200)
   cancel(@Param('id') id: string) {
     return this.imports.cancel(id);

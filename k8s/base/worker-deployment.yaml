@@ -36,6 +36,9 @@ spec:
                 name: weaver-config
             - secretRef:
                 name: weaver-secrets
+          volumeMounts:
+            - name: uploads
+              mountPath: /tmp/weaver-uploads
           resources:
             requests:
               memory: "128Mi"
@@ -43,3 +46,7 @@ spec:
             limits:
               memory: "256Mi"
               cpu: "200m"
+      volumes:
+        - name: uploads
+          persistentVolumeClaim:
+            claimName: weaver-uploads

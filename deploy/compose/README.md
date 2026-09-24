@@ -8,6 +8,8 @@ The API uses `NODE_ENV=production`. Production authentication checks apply and
 TypeORM schema synchronization is disabled. This is a deployment building block;
 database preparation, TLS, backups, and release acceptance remain operator work.
 
+See the [September 23 security rollout notes](../../docs/security/review-2026-09-23-rollout.md) for the import key, production registration gate, shared storage, and webhook migration.
+
 ## Configure an installation
 
 Copy `.env.example` from this directory to a protected file outside the checkout

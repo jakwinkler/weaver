@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { richTextDocumentSchema } from './rich-text';
+export * from './rich-text';
 import {
   ISSUE_PRIORITIES,
   TENANT_PLANS,
@@ -27,7 +29,7 @@ export const registerSchema = z.object({
   orgSlug: z
     .string()
     .min(2)
-    .max(63)
+    .max(56)
     .regex(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/),
 });
 export type RegisterDto = z.infer<typeof registerSchema>;
@@ -54,7 +56,7 @@ export const createOAuthOrganizationSchema = z.object({
   orgSlug: z
     .string()
     .min(2)
-    .max(63)
+    .max(56)
     .regex(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/),
 });
 export type CreateOAuthOrganizationDto = z.infer<typeof createOAuthOrganizationSchema>;
@@ -76,7 +78,7 @@ export type CreateApiKeyDto = z.infer<typeof createApiKeySchema>;
 
 export const updateUserSchema = z.object({
   displayName: z.string().min(1).max(255).optional(),
-  avatarUrl: z.string().min(1).optional(),
+  avatarUrl: z.string().min(1).max(255).refine((value) => /^\/(?!\/)[^\\]*$/.test(value) || /^https?:\/\//i.test(value), 'Use a relative path or HTTP(S) URL').optional(),
 });
 export type UpdateUserDto = z.infer<typeof updateUserSchema>;
 
@@ -111,7 +113,7 @@ const emptyRichTextDocument = { type: 'doc', content: [] };
 
 export const createPageSchema = z.object({
   title: z.string().trim().min(1).max(255),
-  body: z.record(z.unknown()).default(emptyRichTextDocument),
+  body: richTextDocumentSchema.default(emptyRichTextDocument),
   parentId: z.string().uuid().nullable().optional(),
   sortOrder: z.number().int().optional(),
 });
@@ -120,7 +122,7 @@ export type CreatePageDto = z.infer<typeof createPageSchema>;
 export const updatePageSchema = z
   .object({
     title: z.string().trim().min(1).max(255).optional(),
-    body: z.record(z.unknown()).optional(),
+    body: richTextDocumentSchema.optional(),
     parentId: z.string().uuid().nullable().optional(),
     sortOrder: z.number().int().optional(),
   })
@@ -290,7 +292,7 @@ export type RecurrenceRule = z.infer<typeof recurrenceRuleSchema>;
 
 export const createIssueSchema = z.object({
   summary: z.string().min(1).max(500),
-  description: z.record(z.unknown()).optional(),
+  description: richTextDocumentSchema.optional(),
   priority: z.enum(ISSUE_PRIORITIES).default('medium'),
   issueTypeId: z.string().uuid().optional(),
   assigneeId: z.string().uuid().optional(),
@@ -308,7 +310,7 @@ export type CreateIssueDto = z.infer<typeof createIssueSchema>;
 
 export const updateIssueSchema = z.object({
   summary: z.string().min(1).max(500).optional(),
-  description: z.record(z.unknown()).nullable().optional(),
+  description: richTextDocumentSchema.nullable().optional(),
   priority: z.enum(ISSUE_PRIORITIES).optional(),
   statusId: z.string().uuid().optional(),
   sprintId: z.string().uuid().nullable().optional(),
@@ -428,7 +430,7 @@ export type CreateWorkflowTransitionDto = z.infer<typeof createWorkflowTransitio
 // ── Comment Schema ──
 
 export const createCommentSchema = z.object({
-  body: z.record(z.unknown()),
+  body: richTextDocumentSchema,
 });
 export type CreateCommentDto = z.infer<typeof createCommentSchema>;
 
@@ -458,11 +460,16 @@ export type UpdateBoardDto = z.infer<typeof updateBoardSchema>;
 
 // ── Sprint Schema ──
 
+export const dateOnlySchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => {
+  const date = new Date(`${value}T00:00:00Z`);
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}, 'Invalid calendar date');
+
 export const createSprintSchema = z.object({
   name: z.string().min(1).max(255),
   goal: z.string().max(1000).optional(),
-  startDate: z.coerce.date().optional(),
-  endDate: z.coerce.date().optional(),
+  startDate: dateOnlySchema.transform((value) => new Date(`${value}T00:00:00Z`)).optional(),
+  endDate: dateOnlySchema.transform((value) => new Date(`${value}T00:00:00Z`)).optional(),
   capacity: z.number().int().min(0).max(10000).nullable().optional(),
 });
 export type CreateSprintDto = z.infer<typeof createSprintSchema>;
@@ -486,7 +493,7 @@ export type UpdateWebhookDto = z.infer<typeof updateWebhookSchema>;
 // ── Time Entry Schema ──
 
 export const createTimeEntrySchema = z.object({
-  minutes: z.number().int().min(1),
+  minutes: z.number().int().min(1).max(1440),
   description: z.string().max(500).optional(),
   loggedAt: z.coerce.date().optional(),
   source: z.enum(['manual', 'timer']).optional(),

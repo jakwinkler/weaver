@@ -87,7 +87,7 @@ export function ScmLinksPanel({ issueKey }: ScmLinksPanelProps) {
             </span>
             <div className="min-w-0 flex-1">
               <a
-                href={link.url}
+                href={safeScmUrl(link.url)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="block truncate text-sm font-medium text-indigo-600 hover:text-indigo-800"
@@ -109,4 +109,11 @@ export function ScmLinksPanel({ issueKey }: ScmLinksPanelProps) {
       </div>
     </div>
   );
+}
+
+export function safeScmUrl(value: string): string | undefined {
+  try {
+    const url = new URL(value);
+    return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password ? url.href : undefined;
+  } catch { return undefined; }
 }

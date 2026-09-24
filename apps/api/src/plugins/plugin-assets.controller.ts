@@ -18,9 +18,13 @@ export class PluginAssetsController {
       const devServer = this.loader.getPluginDevServerUrl(pluginId);
       if (devServer) {
         const assetPath = decodedPath!.slice(pluginId.length + 1);
+        const destination = new URL(assetPath, `${devServer}/`);
+        if (destination.origin !== new URL(devServer).origin || /[\\]/.test(assetPath)) {
+          return res.status(HttpStatus.BAD_REQUEST).json({ message: 'Invalid plugin asset path' });
+        }
         return res.redirect(
           HttpStatus.TEMPORARY_REDIRECT,
-          new URL(assetPath, `${devServer}/`).toString(),
+          destination.toString(),
         );
       }
     }

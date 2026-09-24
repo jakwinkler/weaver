@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { AttachmentEntity, IssueEntity } from '@weaver/db';
+import { AttachmentCleanupEntity, AttachmentEntity, IssueEntity } from '@weaver/db';
 import { TenantConnectionProvider } from '../../core/tenant';
 import { randomUUID } from 'crypto';
 import { StorageService } from '../../core/storage';
@@ -29,10 +29,7 @@ export class AttachmentsService {
     return this.save(file, uploaderId, issueId);
   }
 
-  async upload(
-    file: Express.Multer.File,
-    uploaderId: string,
-  ): Promise<AttachmentEntity> {
+  async upload(file: Express.Multer.File, uploaderId: string): Promise<AttachmentEntity> {
     return this.save(file, uploaderId, null);
   }
 
@@ -92,12 +89,17 @@ export class AttachmentsService {
     }
   }
 
-  async delete(id: string): Promise<void> {
-    const attachment = await this.findById(id);
-    const em = await this.tenantConnections.getEntityManager();
-    const repo = em.getRepository(AttachmentEntity);
-
-    await this.storage.delete(attachment.storageKey);
-    await repo.remove(attachment);
+  async delete(id: string, issueKey: string): Promise<void> {
+    await this.tenantConnections.runInTenantTransaction(async (manager) => {
+      const issueId = await this.resolveIssueId(issueKey);
+      const attachment = await this.findById(id);
+      if (attachment.issueId !== issueId)
+        throw new NotFoundException('Attachment not found on this issue');
+      await manager.getRepository(AttachmentCleanupEntity).insert({
+        storageKey: attachment.storageKey,
+        attachmentId: attachment.id,
+      });
+      await manager.getRepository(AttachmentEntity).remove(attachment);
+    });
   }
 }

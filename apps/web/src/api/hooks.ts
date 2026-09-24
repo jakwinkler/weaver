@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { fetchAllPages } from './pagination';
 import { apiClient } from './client';
 import type {
   User,
@@ -108,6 +109,7 @@ export function useUpdateProject() {
 // ── Issues ──
 
 interface UseProjectIssuesParams {
+  all?: boolean;
   projectKey: string;
   page?: number;
   perPage?: number;
@@ -122,14 +124,15 @@ interface UseProjectIssuesParams {
 }
 
 export function useProjectIssues(params: UseProjectIssuesParams) {
-  const { projectKey, page = 1, perPage = 50, sort, ...filters } = params;
+  const { projectKey, page = 1, perPage = 50, sort, all = false, ...filters } = params;
   // Strip undefined values from filters
   const activeFilters = Object.fromEntries(
     Object.entries(filters).filter(([, v]) => v !== undefined),
   );
   return useQuery({
-    queryKey: ['issues', projectKey, { page, perPage, sort, ...activeFilters }],
-    queryFn: async () => {
+    queryKey: ['issues', projectKey, { page, perPage, sort, all, ...activeFilters }],
+    queryFn: async ({ signal }) => {
+      if (all) return fetchAllPages<Issue>(`/projects/${projectKey}/issues`, { sort, ...activeFilters }, signal);
       const res = await apiClient.get<PaginatedResponse<Issue>>(`/projects/${projectKey}/issues`, {
         params: { page, perPage, ...(sort ? { sort } : {}), ...activeFilters },
       });

@@ -14,6 +14,18 @@ const cloudConfig: JiraConnectionConfig = {
 };
 
 describe('JiraClient', () => {
+  it('blocks private destinations through its default transport', async () => {
+    await expect(new JiraClient().testConnection({ ...serverConfig, baseUrl: 'http://127.0.0.1:6379' })).rejects.toThrow('private or reserved');
+  });
+  it('does not reflect remote error response bodies', async () => {
+    const client = new JiraClient(jest.fn().mockResolvedValue(new Response('private upstream secret', { status: 403 })));
+    await expect(client.testConnection(serverConfig)).rejects.toThrow(/^Jira request failed \(403\)$/);
+  });
+  it('bounds JSON response size even without a Content-Length header', async () => {
+    const client = new JiraClient(jest.fn().mockResolvedValue(new Response('x'.repeat(10 * 1024 * 1024 + 1))));
+    await expect(client.testConnection(serverConfig)).rejects.toThrow('size limit');
+  });
+
   it('preserves a Jira Server context path and uses the selected project allowlist', async () => {
     const fetchMock = jest.fn(async (_input: string | URL | Request, _init?: RequestInit) =>
       jsonResponse({ issues: [], total: 0 }),

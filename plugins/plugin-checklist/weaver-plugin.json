@@ -78,6 +78,5 @@
     { "method": "PATCH", "path": "/issues/:issueKey/checklist/:itemId", "handler": "updateItem", "requiredPermissions": ["checklist.edit"] },
     { "method": "DELETE", "path": "/issues/:issueKey/checklist/:itemId", "handler": "deleteItem", "requiredPermissions": ["checklist.remove"] },
     { "method": "PUT", "path": "/issues/:issueKey/checklist/reorder", "handler": "reorderItems", "requiredPermissions": ["checklist.edit"] }
-  ],
-  "migrations": ["migrations/001_create_checklist_items.sql"]
+  ]
 }

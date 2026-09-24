@@ -1,3 +1,4 @@
+import { preserveSettingsSecrets } from '../security/settings-secrets';
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository } from 'typeorm';
@@ -69,6 +70,7 @@ export class TenantService {
   async updateSettings(tenantId: string, partial: Partial<TenantSettings>): Promise<TenantSettings> {
     const tenant = await this.tenantRepo.findOneByOrFail({ id: tenantId });
     const current = this.mergeSettings(tenant.settings as Partial<TenantSettings>);
+    partial = preserveSettingsSecrets(partial, current);
     const merged = this.mergeSettings({
       ...current,
       ...partial,

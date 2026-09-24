@@ -55,6 +55,7 @@ type SanitizedUser = Omit<UserEntity, 'passwordHash'>;
 
 @Injectable()
 export class AuthService {
+  private readonly dummyPasswordHash = bcrypt.hash('invalid-login-placeholder', BCRYPT_ROUNDS);
   constructor(
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
@@ -156,7 +157,7 @@ export class AuthService {
         });
 
     if (!membership) {
-      throw new UnauthorizedException('User has no tenant membership');
+      throw new UnauthorizedException('Invalid credentials');
     }
 
     const payload = {
@@ -385,21 +386,17 @@ export class AuthService {
     const user = await this.userRepo.findOneBy({ id: userId });
     const membership = await this.membershipRepo.findOneBy({ userId, tenantId });
     if (!user || !membership) {
-      throw new UnauthorizedException('User has no tenant membership');
+      throw new UnauthorizedException('Invalid credentials');
     }
     return this.issueSession(user, membership);
   }
 
   async validateUser(email: string, password: string): Promise<UserEntity> {
     const user = await this.findUserByEmail(email);
-    if (!user || !user.passwordHash) {
-      throw new UnauthorizedException('Invalid credentials');
-    }
-
-    const isMatch = await bcrypt.compare(password, user.passwordHash);
-    if (!isMatch) {
-      throw new UnauthorizedException('Invalid credentials');
-    }
+    // Use the same work factor for nonexistent and passwordless accounts.
+    const hash = user?.passwordHash || await this.dummyPasswordHash;
+    const isMatch = await bcrypt.compare(password, hash);
+    if (!user?.passwordHash || !isMatch) throw new UnauthorizedException('Invalid credentials');
 
     return user;
   }
@@ -411,7 +408,7 @@ export class AuthService {
     }
     const membership = await this.membershipRepo.findOneBy({ userId, tenantId });
     if (!membership) {
-      throw new UnauthorizedException('User has no tenant membership');
+      throw new UnauthorizedException('Invalid credentials');
     }
 
     return { ...this.sanitizeUser(user), role: membership.role };

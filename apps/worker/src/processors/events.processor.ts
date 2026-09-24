@@ -8,7 +8,7 @@ export interface EventJobData {
 }
 
 export async function processEvent(job: Job<EventJobData>): Promise<void> {
-  const { eventType, tenantId, payload } = job.data;
-  console.log(`[events] Processing ${eventType} for tenant ${tenantId}`, payload);
+  const { eventType, tenantId } = job.data;
+  console.log(`[events] Processing ${eventType} for tenant ${tenantId}`);
   // Future: dispatch to plugin handlers, activity log, etc.
 }

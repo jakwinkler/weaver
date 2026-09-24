@@ -69,4 +69,5 @@ spec:
               cpu: "500m"
       volumes:
         - name: uploads
-          emptyDir: {}
+          persistentVolumeClaim:
+            claimName: weaver-uploads

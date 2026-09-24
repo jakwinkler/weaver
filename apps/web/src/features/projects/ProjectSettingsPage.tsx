@@ -205,6 +205,7 @@ function GeneralTab({ projectKey }: { projectKey: string }) {
   const { data: users } = useUsers();
   const updateProject = useUpdateProject();
   const uploadAttachment = useGenericUploadAttachment();
+  const [uploadError, setUploadError] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [name, setName] = useState('');
@@ -232,8 +233,11 @@ function GeneralTab({ projectKey }: { projectKey: string }) {
   const handleIconUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    setUploadError(false);
+    try {
     const result = await uploadAttachment.mutateAsync(file);
     await updateProject.mutateAsync({ key: projectKey, iconAttachmentId: result.id });
+    } catch { setUploadError(true); }
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -295,6 +299,7 @@ function GeneralTab({ projectKey }: { projectKey: string }) {
                   <Upload className="h-3.5 w-3.5" />
                   {uploadAttachment.isPending ? 'Uploading...' : 'Change Icon'}
                 </Button>
+                  {uploadError && <p role="alert" className="text-sm text-destructive">Icon upload failed. Check the file size and try again.</p>}
                 {project.iconAttachmentId && (
                   <Button
                     type="button"

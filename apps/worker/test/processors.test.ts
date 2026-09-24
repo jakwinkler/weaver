@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { createHmac } from 'node:crypto';
 import { processEvent, type EventJobData } from '../src/processors/events.processor';
 import { processWebhookWithDependencies, type WebhookJobData } from '../src/processors/webhooks.processor';
 import { createNotificationProcessor, processNotification, TenantEmailRateLimiter, type NotificationJobData } from '../src/processors/notifications.processor';
@@ -53,13 +54,13 @@ describe('Worker Processors', () => {
         fetcher,
         now: () => 1_800_000_000_000,
       })).resolves.toBeUndefined();
-      expect(fetcher).toHaveBeenCalledWith(
-        expect.any(URL),
-        expect.objectContaining({
-          headers: expect.objectContaining({
-            'X-Webhook-Timestamp': '1800000000',
-          }),
-        }),
+      expect(fetcher).toHaveBeenCalledOnce();
+      const [url, init] = fetcher.mock.calls[0];
+      expect(String(url)).toBe(webhook.url);
+      const headers = new Headers(init.headers);
+      expect(headers.get('X-Webhook-Timestamp')).toBe('1800000000');
+      expect(headers.get('X-Webhook-Signature')).toBe(
+        createHmac('sha256', webhook.secret).update(`1800000000.${init.body}`).digest('hex'),
       );
       expect(dataSource.destroy).toHaveBeenCalled();
     });

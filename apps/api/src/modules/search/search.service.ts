@@ -1,6 +1,8 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
+import { In } from 'typeorm';
 import { IssueEntity, WorkflowStatusEntity } from '@weaver/db';
-import { PaginatedResponse } from '@weaver/shared';
+import { dateOnlySchema, ISSUE_PRIORITIES, PaginatedResponse } from '@weaver/shared';
+import { z } from 'zod';
 import { TenantConnectionProvider } from '../../core/tenant';
 import { ProjectAccessService } from '../../core/tenant';
 import type { RequestUser } from '../../core/auth';
@@ -23,12 +25,15 @@ export class SearchService {
     private readonly projectAccess: ProjectAccessService,
   ) {}
 
-  async search(query: {
-    query: string;
-    page?: number;
-    perPage?: number;
-    sort?: string;
-  }, user: RequestUser): Promise<PaginatedResponse<IssueEntity>> {
+  async search(
+    query: {
+      query: string;
+      page?: number;
+      perPage?: number;
+      sort?: string;
+    },
+    user: RequestUser,
+  ): Promise<PaginatedResponse<IssueEntity>> {
     const page = query.page ?? 1;
     const perPage = query.perPage ?? 50;
     const em = await this.tenantConnections.getEntityManager();
@@ -36,9 +41,7 @@ export class SearchService {
     const parsed = this.parseWql(query.query);
     const { whereClause, parameters } = await this.buildWhereClause(parsed, em);
 
-    const qb = em
-      .getRepository(IssueEntity)
-      .createQueryBuilder('issue');
+    const qb = em.getRepository(IssueEntity).createQueryBuilder('issue');
 
     if (whereClause) {
       qb.where(`(${whereClause})`, parameters);
@@ -80,6 +83,8 @@ export class SearchService {
     const conditions: WqlToken[] = [];
     const connectors: ('AND' | 'OR')[] = [];
 
+    if (wql.length > 10000)
+      throw new BadRequestException('WQL query cannot exceed 10000 characters');
     const trimmed = wql.trim();
     if (!trimmed) {
       return { conditions, connectors };
@@ -136,6 +141,8 @@ export class SearchService {
       parts.push(current.trim());
     }
 
+    if (parts.length > 50) throw new BadRequestException('WQL query cannot exceed 50 conditions');
+
     // Parse each condition
     for (const part of parts) {
       const token = this.parseCondition(part);
@@ -175,9 +182,24 @@ export class SearchService {
     const parameters: Record<string, unknown> = {};
     let paramIndex = 0;
 
+    const statusNames = [
+      ...new Set(
+        parsed.conditions
+          .filter((condition) => condition.field === 'status')
+          .map((condition) => condition.value),
+      ),
+    ];
+    const statuses: WorkflowStatusEntity[] = statusNames.length
+      ? await em
+          .getRepository(WorkflowStatusEntity)
+          .find({ where: { name: In(statusNames) }, order: { id: 'ASC' } })
+      : [];
+    const statusIds = new Map<string, string>();
+    for (const status of statuses)
+      if (!statusIds.has(status.name)) statusIds.set(status.name, status.id);
     for (const condition of parsed.conditions) {
       const paramName = `p${paramIndex++}`;
-      const clause = await this.buildCondition(condition, paramName, parameters, em);
+      const clause = await this.buildCondition(condition, paramName, parameters, statusIds);
       clauses.push(clause);
     }
 
@@ -195,20 +217,42 @@ export class SearchService {
     token: WqlToken,
     paramName: string,
     parameters: Record<string, unknown>,
-    em: any,
+    statusIds: Map<string, string>,
   ): Promise<string> {
     const { field, operator, value } = token;
+    const idFields = ['assignee', 'reporter', 'project'];
+    const equalityFields = [...idFields, 'status', 'priority', 'label'];
+    if (
+      (equalityFields.includes(field) && !['=', '!='].includes(operator)) ||
+      (['created', 'updated'].includes(field) && operator === '~')
+    ) {
+      throw new BadRequestException(`Unsupported operator for ${field}`);
+    }
+    if (idFields.includes(field) && !z.string().uuid().safeParse(value).success) {
+      throw new BadRequestException(`${field} must be a UUID`);
+    }
+    if (
+      ['created', 'updated'].includes(field) &&
+      !dateOnlySchema.safeParse(value).success &&
+      !(
+        z.string().datetime({ offset: true }).safeParse(value).success &&
+        dateOnlySchema.safeParse(value.slice(0, 10)).success
+      )
+    ) {
+      throw new BadRequestException(`${field} must be a valid ISO date or timestamp`);
+    }
+    if (field === 'priority' && !(ISSUE_PRIORITIES as readonly string[]).includes(value)) {
+      throw new BadRequestException('Invalid priority');
+    }
 
     switch (field) {
       case 'status': {
         // Lookup status ID by name
-        const status = await em
-          .getRepository(WorkflowStatusEntity)
-          .findOneBy({ name: value });
+        const status = statusIds.get(value);
         if (!status) {
           throw new BadRequestException(`Unknown status "${value}"`);
         }
-        parameters[paramName] = status.id;
+        parameters[paramName] = status;
         return `issue.status_id ${this.mapOperator(operator)} :${paramName}`;
       }
 
@@ -229,7 +273,9 @@ export class SearchService {
 
       case 'label': {
         parameters[paramName] = value;
-        return `:${paramName} = ANY(issue.labels)`;
+        return operator === '!='
+          ? `NOT (:${paramName} = ANY(issue.labels))`
+          : `:${paramName} = ANY(issue.labels)`;
       }
 
       case 'summary': {
@@ -268,13 +314,20 @@ export class SearchService {
 
   private mapOperator(op: string): string {
     switch (op) {
-      case '=': return '=';
-      case '!=': return '!=';
-      case '>': return '>';
-      case '<': return '<';
-      case '>=': return '>=';
-      case '<=': return '<=';
-      case '~': return 'ILIKE';
+      case '=':
+        return '=';
+      case '!=':
+        return '!=';
+      case '>':
+        return '>';
+      case '<':
+        return '<';
+      case '>=':
+        return '>=';
+      case '<=':
+        return '<=';
+      case '~':
+        return 'ILIKE';
       default:
         throw new BadRequestException(`Unknown operator "${op}"`);
     }

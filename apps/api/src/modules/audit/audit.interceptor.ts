@@ -55,7 +55,9 @@ export class AuditInterceptor implements NestInterceptor {
             const after = this.buildAfterState(request, response, captured);
             const metadata: Record<string, unknown> = {};
             if (captured) metadata.before = captured;
+            if (after && operation.resource === 'api_key') delete after.key;
             if (after) metadata.after = after;
+            if (request.method === 'DELETE' && request.body) metadata.request = this.auditService.sanitize(request.body);
             if (Object.keys(request.params ?? {}).length > 0) {
               metadata.context = request.params;
             }

@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
-import { Settings, Mail, ShieldCheck, X } from 'lucide-react';
+import { Settings, Mail, ShieldCheck } from 'lucide-react';
 import type { TenantSettings } from '@weaver/shared';
 
 const COMMON_TIMEZONES = [
@@ -81,41 +81,19 @@ function GeneralTab() {
   const setTheme = useThemeStore((s) => s.setTheme);
 
   const [timezone, setTimezone] = useState('UTC');
-  const [domainInput, setDomainInput] = useState('');
-  const [domains, setDomains] = useState<string[]>([]);
   const [initialized, setInitialized] = useState(false);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     if (settings && !initialized) {
       setTimezone(settings.timezone);
-      setDomains(settings.allowedDomains || []);
       setInitialized(true);
     }
   }, [settings, initialized]);
 
-  const handleAddDomain = () => {
-    const trimmed = domainInput.trim().toLowerCase();
-    if (trimmed && !domains.includes(trimmed)) {
-      setDomains([...domains, trimmed]);
-    }
-    setDomainInput('');
-  };
-
-  const handleRemoveDomain = (d: string) => {
-    setDomains(domains.filter((x) => x !== d));
-  };
-
-  const handleDomainKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' || e.key === ',') {
-      e.preventDefault();
-      handleAddDomain();
-    }
-  };
-
   const handleSave = async () => {
     setSaved(false);
-    await updateSettings.mutateAsync({ timezone, theme, allowedDomains: domains });
+    await updateSettings.mutateAsync({ timezone, theme });
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -162,45 +140,7 @@ function GeneralTab() {
           </div>
         </div>
 
-        <div>
-          <Label className="mb-1 block">Allowed Registration Domains</Label>
-          <p className="mb-2 text-xs text-muted-foreground">
-            If set, only users with email addresses from these domains can register. Leave empty to
-            allow all.
-          </p>
-          <div className="flex gap-2">
-            <Input
-              value={domainInput}
-              onChange={(e) => setDomainInput(e.target.value)}
-              onKeyDown={handleDomainKeyDown}
-              onBlur={handleAddDomain}
-              placeholder="e.g. company.com"
-              className="max-w-sm"
-            />
-            <Button type="button" variant="outline" onClick={handleAddDomain}>
-              Add
-            </Button>
-          </div>
-          {domains.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-2">
-              {domains.map((d) => (
-                <span
-                  key={d}
-                  className="inline-flex items-center gap-1 border border-border bg-muted px-2 py-1 text-xs text-foreground"
-                >
-                  {d}
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveDomain(d)}
-                    className="text-muted-foreground hover:text-foreground"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
+
 
         <div className="flex items-center gap-3 pt-2">
           <Button onClick={handleSave} disabled={updateSettings.isPending}>

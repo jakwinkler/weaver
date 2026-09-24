@@ -1,7 +1,7 @@
 import { DataSource, EntityManager } from 'typeorm';
 import { TenantConnectionProvider } from './tenant-connection.provider';
 import { tenantStorage } from './tenant.context';
-jest.mock('@weaver/db', () => ({ ...jest.requireActual('@weaver/db'), runAutomaticTimeCoreMigration: jest.fn().mockResolvedValue(undefined) }));
+jest.mock('@weaver/db', () => ({ ...jest.requireActual('@weaver/db'), runAutomaticTimeCoreMigration: jest.fn().mockResolvedValue(undefined), runReviewReliabilityMigration: jest.fn().mockResolvedValue(undefined) }));
 
 describe('TenantConnectionProvider raw query isolation', () => {
   it.each([false, true])('shares nested transactions and dispatches only after commit (rollback=%s)', async (rollback) => {

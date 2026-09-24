@@ -55,7 +55,7 @@ export class RateLimitingGuard implements CanActivate, OnModuleInit, OnModuleDes
     this.keyPrefix = config.get<string>('RATE_LIMIT_PREFIX', 'weaver:rate-limit');
     this.redis = new Redis({
       host: config.get<string>('REDIS_HOST', 'localhost'),
-      port: config.get<number>('REDIS_PORT', 6379),
+      port: config.get<number>('REDIS_PORT', 6380),
       password: config.get<string>('REDIS_PASSWORD') || undefined,
       lazyConnect: true,
       enableOfflineQueue: false,
@@ -116,10 +116,10 @@ export class RateLimitingGuard implements CanActivate, OnModuleInit, OnModuleDes
 
     if (this.redis.status !== 'ready') {
       this.warnStoreUnavailable('Redis is not ready');
-      return true;
+      return this.handleUnavailable(request);
     }
 
-    this.touchedKeys.add(key);
+    if (this.config.get<string>('RATE_LIMIT_RESET_ON_SHUTDOWN') === 'true') this.touchedKeys.add(key);
     let count: number;
     let ttl: number;
     try {
@@ -130,11 +130,19 @@ export class RateLimitingGuard implements CanActivate, OnModuleInit, OnModuleDes
         String(windowMs),
       ) as [number, number];
       [count, ttl] = result.map(Number) as [number, number];
+      if (this.isAuthenticationEndpoint(request) && typeof request.body?.email === 'string') {
+        const account = createHash('sha256').update(request.body.email.trim().toLowerCase()).digest('hex');
+        const accountKey = `${this.keyPrefix}:auth-account:${account}`;
+        if (this.config.get<string>('RATE_LIMIT_RESET_ON_SHUTDOWN') === 'true') this.touchedKeys.add(accountKey);
+        const [accountCount, accountTtl] = await this.redis.eval(INCREMENT_WINDOW, 1, accountKey, String(windowMs)) as [number, number];
+        count = Math.max(count, Number(accountCount));
+        ttl = Math.max(ttl, Number(accountTtl));
+      }
     } catch (error) {
       this.warnStoreUnavailable(
         error instanceof Error ? error.message : 'Redis command failed',
       );
-      return true;
+      return this.handleUnavailable(request);
     }
 
     if (count > limit) {
@@ -148,6 +156,14 @@ export class RateLimitingGuard implements CanActivate, OnModuleInit, OnModuleDes
       );
     }
 
+    return true;
+  }
+
+  private handleUnavailable(request: any): boolean {
+    const path = String(request.originalUrl || request.url || '').split('?')[0];
+    if (this.isAuthenticationEndpoint(request) || path.includes('/public/')) {
+      throw new HttpException('Rate limiting unavailable; retry shortly', HttpStatus.SERVICE_UNAVAILABLE);
+    }
     return true;
   }
 
@@ -214,6 +230,6 @@ export class RateLimitingGuard implements CanActivate, OnModuleInit, OnModuleDes
       return;
     }
     this.lastStoreWarningAt = now;
-    this.logger.warn(`Rate limiting temporarily bypassed: ${reason}`);
+    this.logger.warn(`Rate-limit store unavailable: ${reason}`);
   }
 }

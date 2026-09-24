@@ -28,3 +28,5 @@ export { PageEntity } from './page.entity';
 export { PageVersionEntity } from './page-version.entity';
 export { FormEntity } from './form.entity';
 export { FormSubmissionEntity } from './form-submission.entity';
+export { AttachmentCleanupEntity } from './attachment-cleanup.entity';
+export { InboundWebhookReceiptEntity } from './inbound-webhook-receipt.entity';

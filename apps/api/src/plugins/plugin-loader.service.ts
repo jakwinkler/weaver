@@ -1,3 +1,4 @@
+import { assertContainedPluginPath } from './plugin-path';
 import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import type { PluginManifest, RouteHandler } from '@weaver/sdk';
 import * as fs from 'fs';
@@ -204,7 +205,7 @@ export class PluginLoaderService implements OnModuleInit, OnModuleDestroy {
 
     try {
       const entrypoint = path.join(pluginDir, manifest.entrypoints.server);
-      const loaded = this.requirePlugin(entrypoint);
+      const loaded = this.requirePlugin(entrypoint, pluginDir);
       const mod = loaded.plugin ?? loaded;
       this.modules.set(pluginId, mod);
       return mod;
@@ -221,12 +222,13 @@ export class PluginLoaderService implements OnModuleInit, OnModuleDestroy {
       return undefined;
     }
 
-    const sourceServerDir = path.dirname(
-      path.join(pluginDir, manifest.entrypoints.server),
-    );
+    const entrypoint = path.resolve(pluginDir, manifest.entrypoints.server);
+    assertContainedPluginPath(pluginDir, entrypoint, false);
+    const sourceServerDir = path.dirname(entrypoint);
     const runtimeServerDir = this.toRuntimeServerPath(sourceServerDir);
     const candidates = [path.join(sourceServerDir, 'handlers')];
     if (fs.existsSync(runtimeServerDir)) {
+      assertContainedPluginPath(pluginDir, runtimeServerDir);
       for (const filename of fs.readdirSync(runtimeServerDir)) {
         if (/\.handler\.(?:js|ts)$/.test(filename)) {
           candidates.push(path.join(sourceServerDir, filename.replace(/\.(?:js|ts)$/, '')));
@@ -236,7 +238,7 @@ export class PluginLoaderService implements OnModuleInit, OnModuleDestroy {
 
     for (const candidate of candidates) {
       try {
-        const handlers = this.requirePlugin(candidate);
+        const handlers = this.requirePlugin(candidate, pluginDir);
         if (typeof handlers[handlerName] === 'function') {
           return handlers[handlerName];
         }
@@ -252,8 +254,10 @@ export class PluginLoaderService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** Resolve and load a plugin module, trying .ts then .js extensions */
-  private requirePlugin(modulePath: string): any {
+  private requirePlugin(modulePath: string, pluginDir: string): any {
+    assertContainedPluginPath(pluginDir, modulePath, false);
     const resolved = this.resolvePluginPath(modulePath);
+    assertContainedPluginPath(pluginDir, resolved);
     // Clear require cache in dev mode so plugin code changes are picked up
     if (process.env.NODE_ENV !== 'production') {
       delete require.cache[resolved];

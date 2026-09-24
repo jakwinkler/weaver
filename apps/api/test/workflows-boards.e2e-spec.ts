@@ -553,4 +553,21 @@ describe('Workflows, Boards, Sprints, Comments, Activity (e2e)', () => {
       if (boardId) await authedRequest().delete(`/api/v1/boards/${boardId}`).expect(204);
     });
   });
+  it('preserves the existing default if saving a replacement fails', async () => {
+    const { tenantStorage } = await import('../src/core/tenant');
+    const { WorkflowsService } = await import('../src/modules/workflows/workflows.service');
+    const before = (await authedRequest().get('/api/v1/workflows').expect(200)).body.filter((workflow: { isDefault: boolean }) => workflow.isDefault);
+    await expect(tenantStorage.run({ tenantId, schemaName: 'tenant_wf_test_org' }, () =>
+      app.get(WorkflowsService).create({ name: 'x'.repeat(256), isDefault: true }),
+    )).rejects.toThrow();
+    const after = (await authedRequest().get('/api/v1/workflows').expect(200)).body.filter((workflow: { isDefault: boolean }) => workflow.isDefault);
+    expect(after.map((workflow: { id: string }) => workflow.id)).toEqual(before.map((workflow: { id: string }) => workflow.id));
+  });
+
+  it('serializes concurrent default workflow creation', async () => {
+    await Promise.all(Array.from({ length: 4 }, (_, index) => authedRequest().post('/api/v1/workflows').send({ name: `Concurrent ${index}`, isDefault: true }).expect(201)));
+    const all = (await authedRequest().get('/api/v1/workflows').expect(200)).body;
+    expect(all.filter((workflow: { isDefault: boolean }) => workflow.isDefault)).toHaveLength(1);
+  });
+
 });

@@ -6,7 +6,7 @@ import Link from '@tiptap/extension-link';
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
 import { common, createLowlight } from 'lowlight';
 import tippy, { type Instance as TippyInstance } from 'tippy.js';
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useUploadAttachment, useGenericUploadAttachment, getAttachmentUrl } from '@/api';
 import {
   extractPlainText,
@@ -50,6 +50,7 @@ export function RichTextEditor({
   editable = true,
   editorClassName,
 }: RichTextEditorProps) {
+  const [uploadError, setUploadError] = useState(false);
   const issueUpload = useUploadAttachment(issueKey || '__noop__');
   const genericUpload = useGenericUploadAttachment();
   const onChangeRef = useRef(onChange);
@@ -57,6 +58,7 @@ export function RichTextEditor({
 
   const handleImageUpload = useCallback(
     async (file: File) => {
+      setUploadError(false);
       const result = issueKey
         ? await issueUpload.mutateAsync(file)
         : await genericUpload.mutateAsync(file);
@@ -73,7 +75,7 @@ export function RichTextEditor({
       }),
       Image.configure({ inline: false }),
       Placeholder.configure({ placeholder }),
-      Link.configure({ openOnClick: !editable }),
+      Link.configure({ openOnClick: !editable, protocols: ['http', 'https', 'mailto', 'tel'] }),
       CodeBlockLowlight.configure({ lowlight }),
       MentionWithAvatar.configure({
         HTMLAttributes: {
@@ -151,7 +153,7 @@ export function RichTextEditor({
             if (file) {
               handleImageUpload(file).then((url) => {
                 if (url) editor?.chain().focus().setImage({ src: url }).run();
-              });
+              }).catch(() => setUploadError(true));
             }
             return true;
           }
@@ -167,7 +169,7 @@ export function RichTextEditor({
           if (file.type.startsWith('image/')) {
             handleImageUpload(file).then((url) => {
               if (url) editor?.chain().focus().setImage({ src: url }).run();
-            });
+            }).catch(() => setUploadError(true));
           } else if (issueKey) {
             issueUpload.mutate(file);
           } else {
@@ -201,6 +203,7 @@ export function RichTextEditor({
 
   return (
     <div className="rounded-md border border-border focus-within:border-ring focus-within:ring-1 focus-within:ring-ring">
+      {(uploadError || issueUpload.isError || genericUpload.isError) && <p role="alert" className="px-3 py-2 text-sm text-destructive">Upload failed. Check the file size and try again.</p>}
       <Toolbar editor={editor} />
       <EditorContent editor={editor} />
     </div>

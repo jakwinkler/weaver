@@ -1,3 +1,4 @@
+import { parseDateOnly } from '@/lib/date-only';
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
@@ -52,8 +53,8 @@ function compareSprints(left: Sprint, right: Sprint): number {
   const statusDifference = (statusOrder[left.status] ?? 2) - (statusOrder[right.status] ?? 2);
   if (statusDifference !== 0) return statusDifference;
 
-  const leftDate = left.startDate ? new Date(left.startDate).getTime() : Number.MAX_SAFE_INTEGER;
-  const rightDate = right.startDate ? new Date(right.startDate).getTime() : Number.MAX_SAFE_INTEGER;
+  const leftDate = left.startDate ? parseDateOnly(left.startDate).getTime() : Number.MAX_SAFE_INTEGER;
+  const rightDate = right.startDate ? parseDateOnly(right.startDate).getTime() : Number.MAX_SAFE_INTEGER;
   return (
     leftDate - rightDate || left.createdAt.toString().localeCompare(right.createdAt.toString())
   );
@@ -127,7 +128,7 @@ export function BacklogView() {
   const { data: sprints, isLoading: sprintsLoading } = useSprints(project?.id ?? '');
   const { data: allIssues, isLoading: issuesLoading } = useProjectIssues({
     projectKey,
-    perPage: 200,
+    all: true,
     sort: 'sortOrder',
   });
   const { data: issueTypes } = useIssueTypes();
@@ -135,7 +136,7 @@ export function BacklogView() {
   const [filters, setFilters] = useState<BacklogFilters>({});
   const { data: backlog, isLoading: backlogLoading } = useBacklog({
     projectKey,
-    perPage: 200,
+    all: true,
     ...filters,
   });
   const createIssue = useCreateIssue(projectKey);

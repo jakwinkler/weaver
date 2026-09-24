@@ -1,3 +1,4 @@
+import { InboundWebhookService } from './inbound-webhook.service';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { InstalledPluginEntity } from '@weaver/db';
@@ -28,6 +29,7 @@ import { PluginRouteAuthGuard } from './plugin-route-auth.guard';
     PluginCompanionRouteController,
   ],
   providers: [
+    InboundWebhookService,
     PluginLoaderService,
     PluginRegistryService,
     PluginContextFactory,

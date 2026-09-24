@@ -161,7 +161,7 @@ export function useSprints(projectId: string) {
 export function useCreateSprint(projectId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (data: CreateSprintDto) => {
+    mutationFn: async (data: Omit<CreateSprintDto, 'startDate' | 'endDate'> & { startDate?: string; endDate?: string }) => {
       const res = await apiClient.post<Sprint>('/sprints', data, {
         params: { projectId },
       });

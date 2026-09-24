@@ -2,7 +2,7 @@ import type { PluginRequest, PluginResponse, PluginContext } from '@weaver/sdk';
 
 const VALID_GROUP_BY = ['project', 'user', 'issue'] as const;
 
-function buildReportQuery(query: Record<string, string>): {
+function buildReportQuery(query: Record<string, string>, projectIds: string[] | null): {
   sql: string;
   params: unknown[];
   groupBy: string;
@@ -31,6 +31,10 @@ function buildReportQuery(query: Record<string, string>): {
     params.push(userId);
   }
 
+  if (projectIds !== null) {
+    conditions.push(`p.id = ANY($${paramIdx++}::uuid[])`);
+    params.push(projectIds);
+  }
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
   let selectFields: string;
@@ -77,7 +81,7 @@ export async function getReport(
   req: PluginRequest,
   context: PluginContext,
 ): Promise<PluginResponse> {
-  const { sql, params, groupBy } = buildReportQuery(req.query);
+  const { sql, params, groupBy } = buildReportQuery(req.query, await context.api.projects.accessibleIds());
   const rows = (await context.db.query(sql, params)) as any[];
 
   const totalMinutes = rows.reduce((sum, r) => sum + r.total_minutes, 0);
@@ -97,7 +101,7 @@ export async function exportCsv(
   req: PluginRequest,
   context: PluginContext,
 ): Promise<PluginResponse> {
-  const { sql, params, groupBy } = buildReportQuery(req.query);
+  const { sql, params, groupBy } = buildReportQuery(req.query, await context.api.projects.accessibleIds());
   const rows = (await context.db.query(sql, params)) as any[];
 
   const totalMinutes = rows.reduce((sum: number, r: any) => sum + r.total_minutes, 0);
@@ -213,5 +217,6 @@ export async function deleteSavedReport(
 
 function csvEscape(value: string): string {
   if (!value) return '';
-  return value.replace(/"/g, '""');
+  const safe = /^[\s]*[=+@-]/.test(value) ? `'${value}` : value;
+  return safe.replace(/"/g, '""');
 }

@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { InstalledPluginEntity } from '@weaver/db';
 import { EventDispatcherService } from '../modules/events';
+import { PluginRegistryService } from './plugin-registry.service';
 import { PluginLoaderService } from './plugin-loader.service';
 import { PluginContextFactory } from './plugin-context.factory';
 import { requireTenantContext } from '../core/tenant';
@@ -17,6 +18,7 @@ export class PluginEventBridgeService implements OnModuleInit {
     private readonly eventDispatcher: EventDispatcherService,
     private readonly loader: PluginLoaderService,
     private readonly contextFactory: PluginContextFactory,
+    private readonly registry: PluginRegistryService,
   ) {}
 
   onModuleInit(): void {
@@ -57,7 +59,7 @@ export class PluginEventBridgeService implements OnModuleInit {
 
         const context = await this.contextFactory.create(
           plugin.pluginId,
-          plugin.settings,
+          this.registry.mergeSettingsWithDefaults(plugin.pluginId, plugin.settings),
         );
         await mod.onEvent(event, payload, context);
       } catch (err) {

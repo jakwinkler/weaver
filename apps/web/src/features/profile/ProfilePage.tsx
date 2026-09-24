@@ -60,6 +60,7 @@ export function ProfilePage() {
 
   const [displayName, setDisplayName] = useState('');
   const [dirty, setDirty] = useState(false);
+  const [uploadError, setUploadError] = useState(false);
   const [notificationPreferences, setNotificationPreferences] =
     useState<NotificationPreferences>(DEFAULT_EMAIL_PREFERENCES);
 
@@ -83,8 +84,12 @@ export function ProfilePage() {
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const updated = await uploadAvatar.mutateAsync(file);
-    updateUser({ displayName: updated.displayName, avatarUrl: updated.avatarUrl });
+    setUploadError(false);
+    try {
+      const updated = await uploadAvatar.mutateAsync(file);
+      updateUser({ displayName: updated.displayName, avatarUrl: updated.avatarUrl });
+    } catch { setUploadError(true); }
+    e.target.value = '';
   };
 
   const handlePreferenceChange = async (key: NotificationPreferenceKey, checked: boolean) => {
@@ -113,6 +118,7 @@ export function ProfilePage() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-8 py-8">
+      {uploadError && <p role="alert" className="text-sm text-destructive">Avatar upload failed. Choose a PNG, JPEG, GIF or WebP image under 5 MB and try again.</p>}
       <h1 className="text-2xl font-bold">Profile</h1>
 
       <Tabs defaultValue="account" className="space-y-6">

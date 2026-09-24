@@ -182,7 +182,7 @@ export function UserAvatar({ user, size = 'md', className }: UserAvatarProps) {
   }, [user?.avatarUrl]);
 
   const gravatarSrc = useMemo(() => {
-    if (user?.email) {
+    if (import.meta.env.VITE_GRAVATAR_ENABLED === 'true' && user?.email) {
       return getGravatarUrl(user.email);
     }
     return null;

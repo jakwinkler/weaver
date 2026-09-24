@@ -295,7 +295,7 @@ Declare settings as a schema:
 }
 ```
 
-Read current tenant values from `context.settings`. Do not put secrets in the manifest or source. Use the platform's supported secret storage when a plugin needs credentials.
+Read current tenant values from `context.settings`. Do not put secrets in the manifest or source. Tenant and plugin settings are masked in API responses but stored as plaintext JSONB. There is no encrypted settings vault. Use a separate secret manager for high-value credentials; do not assume masking provides encryption at rest.
 
 ## Declare permissions
 

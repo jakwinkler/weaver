@@ -26,52 +26,56 @@ export class ProjectsService {
   ) {}
 
   async create(dto: CreateProjectDto, userId: string): Promise<ProjectEntity> {
-    const em = await this.tenantConnections.getEntityManager();
-    const repo = em.getRepository(ProjectEntity);
+    return this.tenantConnections.runInTenantTransaction(async (em) => {
+      await em.query('SELECT pg_advisory_xact_lock(hashtext(current_schema() || $1))', [
+        `:project-key:${dto.key}`,
+      ]);
+      const repo = em.getRepository(ProjectEntity);
 
-    const existing = await repo.findOneBy({ key: dto.key });
-    if (existing) {
-      throw new ConflictException(`Project key "${dto.key}" already exists`);
-    }
+      const existing = await repo.findOneBy({ key: dto.key });
+      if (existing) {
+        throw new ConflictException(`Project key "${dto.key}" already exists`);
+      }
 
-    const project = repo.create({
-      key: dto.key,
-      name: dto.name,
-      description: dto.description,
-      leadUserId: userId,
-      issueCounter: 0,
+      const project = repo.create({
+        key: dto.key,
+        name: dto.name,
+        description: dto.description,
+        leadUserId: userId,
+        issueCounter: 0,
+      });
+
+      // Auto-assign default workflow if one exists
+      try {
+        const defaultWorkflow = await this.workflowsService.getDefaultWorkflow();
+        project.workflowId = defaultWorkflow.id;
+      } catch {
+        // No default workflow yet. Leave workflowId null.
+      }
+
+      const saved = await repo.save(project);
+
+      // Auto-add creator as project lead member
+      const memberRepo = em.getRepository(ProjectMemberEntity);
+      const member = memberRepo.create({
+        projectId: saved.id,
+        userId,
+        role: 'lead',
+      });
+      await memberRepo.save(member);
+
+      // Seed default project plugins
+      await this.projectPluginsService.seedDefaults(saved.id);
+
+      await this.eventDispatcher.emit('project.created', {
+        projectKey: saved.key,
+        name: saved.name,
+        leadUserId: userId,
+        userId,
+      });
+
+      return saved;
     });
-
-    // Auto-assign default workflow if one exists
-    try {
-      const defaultWorkflow = await this.workflowsService.getDefaultWorkflow();
-      project.workflowId = defaultWorkflow.id;
-    } catch {
-      // No default workflow yet — leave workflowId null
-    }
-
-    const saved = await repo.save(project);
-
-    // Auto-add creator as project lead member
-    const memberRepo = em.getRepository(ProjectMemberEntity);
-    const member = memberRepo.create({
-      projectId: saved.id,
-      userId,
-      role: 'lead',
-    });
-    await memberRepo.save(member);
-
-    // Seed default project plugins
-    await this.projectPluginsService.seedDefaults(saved.id);
-
-    this.eventDispatcher.emit('project.created', {
-      projectKey: saved.key,
-      name: saved.name,
-      leadUserId: userId,
-      userId,
-    });
-
-    return saved;
   }
 
   async findAll(

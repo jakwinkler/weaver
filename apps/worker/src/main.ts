@@ -1,3 +1,5 @@
+import { attachWorkerLogging } from './worker-logging';
+import { assertProductionDataCredentials } from '@weaver/server-common';
 import { Queue, Worker } from 'bullmq';
 import { config } from './config';
 import { processEvent } from './processors/events.processor';
@@ -8,6 +10,8 @@ import {
 } from './processors/notifications.processor';
 import { createScheduledAutomationProcessor } from './processors/automation.processor';
 import { processImport } from './processors/import.processor';
+
+assertProductionDataCredentials();
 
 const connection = {
   host: config.redis.host,
@@ -55,13 +59,10 @@ function createWorkers(): void {
   });
   workers.push(importsWorker);
 
-  for (const worker of workers) {
-    worker.on('completed', (job) => {
-      console.log(`[${worker.name}] Job ${job.id} completed`);
-    });
-
-    worker.on('failed', (job, err) => {
-      console.error(`[${worker.name}] Job ${job?.id} failed:`, err.message);
+  for (const worker of workers) attachWorkerLogging(worker);
+  for (const queue of queues) {
+    queue.on('error', (error: Error & { code?: string }) => {
+      console.error('Worker queue connection error', { queue: queue.name, name: error.name, code: error.code });
     });
   }
 
