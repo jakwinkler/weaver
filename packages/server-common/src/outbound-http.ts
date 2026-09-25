@@ -131,7 +131,7 @@ export function pinnedLookup(addresses: ResolvedAddress[]): LookupFunction {
 export async function fetchWithSafeRedirects(
   rawUrl: string,
   init: RequestInit = {},
-  options: { fetcher?: typeof fetch; lookup?: AddressLookup; maxRedirects?: number } = {},
+  options: { fetcher?: typeof fetch; lookup?: AddressLookup; maxRedirects?: number; requireHttps?: boolean } = {},
 ): Promise<Response> {
   const fetcher = options.fetcher || fetch;
   const lookup = options.lookup || defaultLookup;
@@ -139,6 +139,9 @@ export async function fetchWithSafeRedirects(
   let currentUrl = rawUrl;
   let currentInit = { ...init, headers: new Headers(init.headers) };
   for (let count = 0; count <= maxRedirects; count += 1) {
+    if (options.requireHttps && new URL(currentUrl).protocol !== 'https:') {
+      throw new OutboundRequestError('Outbound URL must use HTTPS');
+    }
     // Retain exactly the addresses checked by assertSafeOutboundUrl.
     let addresses: ResolvedAddress[] = [];
     const url = await assertSafeOutboundUrl(currentUrl, async (hostname) => {
@@ -164,17 +167,19 @@ export async function fetchWithSafeRedirects(
       // Graceful close waits for the response stream to finish or be cancelled.
       void dispatcher.close().catch(() => undefined);
     }
-    if (!REDIRECT_STATUSES.has(response.status)) return response;
+    if (!REDIRECT_STATUSES.has(response.status) || init.redirect === 'manual') return response;
+    if (init.redirect === 'error') {
+      await response.body?.cancel();
+      throw new OutboundRequestError('Outbound redirects are not permitted');
+    }
     const location = response.headers.get('location');
     if (!location) return response;
     await response.body?.cancel();
     if (count === maxRedirects)
       throw new OutboundRequestError('Outbound request exceeded redirect limit');
     const next = new URL(location, url);
-    if (next.origin !== url.origin) {
-      currentInit.headers.delete('authorization');
-      currentInit.headers.delete('cookie');
-      currentInit.headers.delete('proxy-authorization');
+    if (url.protocol === 'https:' && next.protocol !== 'https:') {
+      throw new OutboundRequestError('Outbound redirect must preserve HTTPS');
     }
     if (
       response.status === 303 ||
@@ -183,6 +188,18 @@ export async function fetchWithSafeRedirects(
       currentInit = { ...currentInit, method: 'GET', body: undefined };
       currentInit.headers.delete('content-type');
       currentInit.headers.delete('content-length');
+    }
+    if (next.origin !== url.origin) {
+      if (currentInit.body != null) {
+        throw new OutboundRequestError('Cannot redirect a request body to another origin');
+      }
+      // Credentials can use arbitrary header names. Preserve only representation negotiation.
+      const headers = new Headers();
+      for (const name of ['accept', 'accept-language']) {
+        const value = currentInit.headers.get(name);
+        if (value !== null) headers.set(name, value);
+      }
+      currentInit = { ...currentInit, headers };
     }
     currentUrl = next.toString();
   }

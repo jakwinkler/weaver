@@ -134,7 +134,7 @@ describe('Audit Log (e2e)', () => {
       action: 'project.created',
       resource: 'project',
       resourceId: project.body.id,
-      ipAddress: '203.0.113.9',
+      ipAddress: expect.stringMatching(/^(::ffff:)?127\.0\.0\.1$|^::1$/),
       userAgent: 'Weaver Audit Test',
     });
     expect(result.body.data[0].user).toMatchObject({

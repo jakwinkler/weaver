@@ -7,6 +7,7 @@ interface AuthState {
   tenantId: string | null;
   role: string | null;
   login: (token: string, user: User, tenantId: string) => void;
+  restoreSession: (user: User & { role: string }, tenantId: string) => void;
   logout: () => void;
   setUser: (user: User & { role?: string }) => void;
   updateUser: (partial: Partial<User>) => void;
@@ -42,6 +43,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     browserStorage?.setItem('tenantId', tenantId);
     const role = decodeJwtRole(token);
     set({ accessToken: token, user, tenantId, role });
+  },
+
+  restoreSession: (user, tenantId) => {
+    browserStorage?.setItem('tenantId', tenantId);
+    set({ accessToken: null, user, tenantId, role: user.role });
   },
 
   logout: () => {

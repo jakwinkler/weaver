@@ -118,7 +118,7 @@ The route is available beneath the plugin route prefix. A slash in a scoped ID i
 GET /plugin-routes/@weaver~plugin-release-notes/issues/WEB-42/summary
 ```
 
-Plugin routes require the same bearer authentication as the Weaver API. `requiredPermissions` is enforced before the handler runs.
+Protected plugin routes require the same authentication as the Weaver API. Routes declared `public: true` must authenticate their provider request before accessing protected data or performing writes; a tenant UUID is only a locator. Plugins are trusted in-process code, not isolated extensions. `requiredPermissions` is enforced before the handler runs.
 
 Run `pnpm validate` after changing routes. Validation reports routes that reference missing handler exports and handler exports that no route references.
 

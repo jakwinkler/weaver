@@ -225,9 +225,8 @@ export class AuthController {
   @Get('session')
   @UseGuards(JwtOnlyAuthGuard)
   async session(@CurrentUser() user: RequestUser, @Res() res: Response) {
-    const session = await this.authService.createSessionForUser(user.userId, user.tenantId);
-    this.setSessionCookies(res, session.accessToken, session.refreshToken);
-    return res.json(session);
+    const profile = await this.authService.getProfile(user.userId, user.tenantId);
+    return res.json({ user: profile, tenantId: user.tenantId });
   }
 
   private async completeExternalLogin(identity: OAuthIdentity, res: Response) {

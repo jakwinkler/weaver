@@ -16,6 +16,8 @@ import { Repository } from 'typeorm';
 import { validateCorsOrigin } from '../security/cors.config';
 import type { RequestUser } from '../auth';
 import { ProjectAccessService } from '../tenant/project-access.service';
+import { RateLimitingGuard } from '../rate-limiting/rate-limiting.guard';
+import { PROJECT_KEY_REGEX } from '@weaver/shared';
 import { tenantStorage } from '../tenant/tenant.context';
 
 function readCookie(cookieHeader: string | undefined, name: string): string | undefined {
@@ -36,6 +38,7 @@ export class WeaverGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server!: Server;
 
+  private readonly joinWindows = new WeakMap<Socket, { count: number; until: number }>();
   private readonly logger = new Logger(WeaverGateway.name);
 
   constructor(
@@ -45,6 +48,7 @@ export class WeaverGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @InjectRepository(TenantMembershipEntity)
     private readonly membershipRepo: Repository<TenantMembershipEntity>,
     private readonly projectAccess: ProjectAccessService,
+    private readonly rateLimiting: RateLimitingGuard,
   ) {}
 
   async handleConnection(client: Socket) {
@@ -104,9 +108,17 @@ export class WeaverGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const schemaName = (client as any).tenantSchemaName as string | undefined;
     const userId = (client as any).userId as string | undefined;
     const role = (client as any).role as string | undefined;
-    if (!tenantId || !schemaName || !userId || !role || !data?.projectKey) {
+    if (!tenantId || !schemaName || !userId || !role || typeof data?.projectKey !== 'string' || !PROJECT_KEY_REGEX.test(data.projectKey)) {
       return { joined: false };
     }
+
+    const now = Date.now();
+    let window = this.joinWindows.get(client);
+    if (!window || window.until <= now) {
+      window = { count: 0, until: now + 10_000 };
+      this.joinWindows.set(client, window);
+    }
+    if (++window.count > 20 || !await this.rateLimiting.allowProjectJoin(tenantId, userId)) return { joined: false };
 
     const user: RequestUser = {
       userId,

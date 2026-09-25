@@ -30,7 +30,7 @@ describe('outbound HTTP security', () => {
     const fetcher = jest.fn().mockResolvedValue(
       new Response(null, {
         status: 302,
-        headers: { location: 'http://169.254.169.254/latest/meta-data' },
+        headers: { location: 'https://169.254.169.254/latest/meta-data' },
       }),
     );
     const lookup = async () => [{ address: '93.184.216.34', family: 4 as const }];
@@ -64,5 +64,31 @@ describe('outbound HTTP security', () => {
     const headers = new Headers(fetcher.mock.calls[1][1].headers);
     expect(headers.has('authorization')).toBe(false);
     expect(headers.has('cookie')).toBe(false);
+  });
+});
+
+describe('redirect confidentiality', () => {
+  const lookup = async () => [{ address: '93.184.216.34', family: 4 }];
+  it('forwards only safe headers across origins, preserving same-origin credentials', async () => {
+    const seen: Headers[] = [];
+    const fetcher = jest.fn(async (_url, init) => {
+      seen.push(new Headers(init.headers));
+      return seen.length < 3
+        ? new Response(null, { status: 302, headers: { location: seen.length === 1 ? '/next' : 'https://cdn.example/file' } })
+        : new Response('ok');
+    });
+    await fetchWithSafeRedirects('https://provider.example/file', { headers: { 'PRIVATE-TOKEN': 'synthetic', 'X-Api-Key': 'synthetic', Accept: 'application/json' } }, { fetcher, lookup });
+    expect(seen[1].get('private-token')).toBe('synthetic');
+    expect([...seen[2].keys()]).toEqual(['accept']);
+  });
+  it.each([307, 308])('refuses to forward a body to another origin after %i', async status => {
+    const fetcher = jest.fn().mockResolvedValueOnce(new Response(null, { status, headers: { location: 'https://other.example/' } })).mockResolvedValueOnce(new Response('ok'));
+    await expect(fetchWithSafeRedirects('https://provider.example/', { method: 'POST', body: 'client_secret=synthetic' }, { fetcher, lookup })).rejects.toThrow('body');
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+  it('rejects HTTPS downgrades before the second request', async () => {
+    const fetcher = jest.fn().mockResolvedValueOnce(new Response(null, { status: 302, headers: { location: 'http://provider.example/' } })).mockResolvedValueOnce(new Response('ok'));
+    await expect(fetchWithSafeRedirects('https://provider.example/', {}, { fetcher, lookup })).rejects.toThrow('HTTPS');
+    expect(fetcher).toHaveBeenCalledTimes(1);
   });
 });

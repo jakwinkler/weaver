@@ -535,7 +535,8 @@ export const ssoSettingsSchema = z.object({
 export const updateTenantSettingsSchema = z.object({
   timezone: z.string().min(1).max(100).optional(),
   theme: z.enum(['light', 'dark', 'system']).optional(),
-  allowedDomains: z.array(z.string().min(1).max(255)).optional(),
+  // Explicitly reject this retired, unenforced policy instead of silently accepting it.
+  allowedDomains: z.never().optional(),
   smtp: smtpSettingsSchema.nullable().optional(),
   sso: ssoSettingsSchema.optional(),
 });
