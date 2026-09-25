@@ -1,15 +1,13 @@
-import {
-  BadRequestException,
-  ForbiddenException,
-  Injectable,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { TenantService } from '../tenant';
 import { OAuthIdentity } from './auth.service';
 
-type OpenIdClientModule = typeof import('openid-client');
+import { loadOpenIdClient } from './oidc-client';
+import { fetchOidc } from '../security/oidc-http';
+import { createHash } from 'crypto';
+import type { TenantSettings } from '@weaver/shared';
 
 interface OidcState {
   purpose: 'oidc-state';
@@ -19,12 +17,16 @@ interface OidcState {
   codeVerifier: string;
 }
 
-const loadOpenIdClient = new Function(
-  'return import("openid-client")',
-) as () => Promise<OpenIdClientModule>;
-
 @Injectable()
 export class OidcStrategy {
+  private readonly configurations = new Map<
+    string,
+    {
+      fingerprint: string;
+      expires: number;
+      pending: Promise<import('openid-client').Configuration>;
+    }
+  >();
   constructor(
     private readonly tenantService: TenantService,
     private readonly config: ConfigService,
@@ -32,13 +34,9 @@ export class OidcStrategy {
   ) {}
 
   async begin(tenantSlug: string) {
-    const { oidc } = await this.getConfiguration(tenantSlug);
+    const { tenant, oidc } = await this.getConfiguration(tenantSlug);
     const client = await loadOpenIdClient();
-    const configuration = await client.discovery(
-      this.discoveryUrl(oidc.discoveryUrl),
-      oidc.clientId,
-      oidc.clientSecret,
-    );
+    const configuration = await this.discover(client, tenant.id, oidc);
     const codeVerifier = client.randomPKCECodeVerifier();
     const state = client.randomState();
     const nonce = client.randomNonce();
@@ -68,13 +66,9 @@ export class OidcStrategy {
       throw new UnauthorizedException('Invalid OIDC state');
     }
 
-    const { oidc } = await this.getConfiguration(tenantSlug);
+    const { tenant, oidc } = await this.getConfiguration(tenantSlug);
     const client = await loadOpenIdClient();
-    const configuration = await client.discovery(
-      this.discoveryUrl(oidc.discoveryUrl),
-      oidc.clientId,
-      oidc.clientSecret,
-    );
+    const configuration = await this.discover(client, tenant.id, oidc);
     const tokens = await client.authorizationCodeGrant(configuration, currentUrl, {
       expectedState: state.state,
       expectedNonce: state.nonce,
@@ -116,16 +110,33 @@ export class OidcStrategy {
     return { tenant, oidc };
   }
 
-  private discoveryUrl(value: string) {
-    let url: URL;
-    try {
-      url = new URL(value);
-    } catch {
-      throw new BadRequestException('OIDC discovery URL is invalid');
-    }
-    if (url.protocol !== 'https:' && this.config.get<string>('NODE_ENV') === 'production') {
-      throw new BadRequestException('OIDC discovery URL must use HTTPS');
-    }
-    return url;
+  private discover(
+    client: typeof import('openid-client'),
+    tenantId: string,
+    oidc: TenantSettings['sso']['oidc'],
+  ) {
+    const fingerprint = createHash('sha256').update(JSON.stringify(oidc)).digest('hex');
+    const existing = this.configurations.get(tenantId);
+    if (existing && existing.fingerprint === fingerprint && existing.expires > Date.now())
+      return existing.pending;
+    // Bound cached tenants and coalesce concurrent discovery without logging credentials.
+    this.configurations.delete(tenantId);
+    if (this.configurations.size >= 64)
+      this.configurations.delete(this.configurations.keys().next().value!);
+    const pending = client.discovery(
+      new URL(oidc.discoveryUrl),
+      oidc.clientId,
+      oidc.clientSecret,
+      undefined,
+      {
+        [client.customFetch]: fetchOidc,
+      },
+    );
+    const entry = { fingerprint, expires: Date.now() + 5 * 60_000, pending };
+    this.configurations.set(tenantId, entry);
+    void pending.catch(() => {
+      if (this.configurations.get(tenantId) === entry) this.configurations.delete(tenantId);
+    });
+    return pending;
   }
 }

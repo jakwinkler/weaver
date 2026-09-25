@@ -312,6 +312,9 @@ importers:
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
+      xml-crypto:
+        specifier: 6.1.2
+        version: 6.1.2
 
   apps/web:
     dependencies:

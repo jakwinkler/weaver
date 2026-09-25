@@ -312,7 +312,9 @@ await context.events.emit('my_plugin.action_completed', { issueKey, result });
 
 ### Database
 
-Plugins run SQL against the tenant's schema:
+Plugin queries default to the current tenant's schema through the connection search path. This is name resolution, not an isolation boundary. Server plugins are fully trusted in-process Node code with the application's shared database principal and process access. Fully qualified SQL can access other tenants and public tables. Treat a plugin SQL injection or server-code compromise as a platform-wide incident. Only install reviewed, operator-allowlisted server plugins; parameterize queries and enforce the current user's project access.
+
+Example queries:
 
 ```typescript
 // Query
@@ -500,7 +502,9 @@ In your manifest, declare both the permission keys and their human-readable desc
 
 ### Enforcing
 
-- **Server-side**: Plugin routes are authenticated (JWT guard). For fine-grained checks, inspect the user's role permissions in your handler logic.
+- **Server-side**: Protected plugin routes require authentication and declared permissions. A route with `public: true` bypasses session authentication. Its tenant UUID selects configuration; it is not a secret or proof of authority. Public handlers must verify their provider signature or token before reading protected data or applying writes. The shipped SCM webhooks do this themselves. Companion pairing initiation is public by design, while exchange and approval must verify their respective credentials.
+- **Resource access**: Use the SDK access helpers for any referenced issues/projects, including references in bodies and query parameters.
+- **Client plugins**: Federated bundles execute in the application's origin with the viewing user's ambient session authority. Installation means trusting that code with the account. Same-origin URL checks do not sandbox it or provide independent bundle integrity.
 - **Client-side**: Use `requiredPermissions` in slot/navigation/page registries. The framework automatically hides UI elements the user can't access.
 
 ### How it works

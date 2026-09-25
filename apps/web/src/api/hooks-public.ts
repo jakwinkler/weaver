@@ -2,12 +2,12 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import { API_BASE_URL } from './client';
 import type {
-  Project,
-  Issue,
+  PublicProject,
+  PublicIssue,
+  PublicBoardData,
   PaginatedResponse,
   PublicForm,
   PublicFormSubmissionDto,
-  WorkflowStatus,
 } from '@weaver/shared';
 
 const publicClient = axios.create({
@@ -19,7 +19,7 @@ export function usePublicProjects(tenantSlug: string) {
   return useQuery({
     queryKey: ['public-projects', tenantSlug],
     queryFn: async () => {
-      const res = await publicClient.get<PaginatedResponse<Project>>(
+      const res = await publicClient.get<PaginatedResponse<PublicProject>>(
         `/public/${tenantSlug}/projects`,
       );
       return res.data;
@@ -32,20 +32,20 @@ export function usePublicProject(tenantSlug: string, projectKey: string) {
   return useQuery({
     queryKey: ['public-project', tenantSlug, projectKey],
     queryFn: async () => {
-      const res = await publicClient.get<Project>(`/public/${tenantSlug}/projects/${projectKey}`);
+      const res = await publicClient.get<PublicProject>(`/public/${tenantSlug}/projects/${projectKey}`);
       return res.data;
     },
     enabled: !!tenantSlug && !!projectKey,
   });
 }
 
-export function usePublicProjectIssues(tenantSlug: string, projectKey: string) {
+export function usePublicProjectIssues(tenantSlug: string, projectKey: string, page = 1, perPage = 25) {
   return useQuery({
-    queryKey: ['public-issues', tenantSlug, projectKey],
+    queryKey: ['public-issues', tenantSlug, projectKey, page, perPage],
     queryFn: async () => {
-      const res = await publicClient.get<PaginatedResponse<Issue>>(
+      const res = await publicClient.get<PaginatedResponse<PublicIssue>>(
         `/public/${tenantSlug}/projects/${projectKey}/issues`,
-        { params: { perPage: 100 } },
+        { params: { page, perPage } },
       );
       return res.data;
     },
@@ -53,17 +53,15 @@ export function usePublicProjectIssues(tenantSlug: string, projectKey: string) {
   });
 }
 
-export interface PublicBoardData {
-  issues: Issue[];
-  statuses: WorkflowStatus[];
-}
+export type { PublicBoardData } from '@weaver/shared';
 
-export function usePublicProjectBoard(tenantSlug: string, projectKey: string) {
+export function usePublicProjectBoard(tenantSlug: string, projectKey: string, page = 1, perPage = 25) {
   return useQuery({
-    queryKey: ['public-board', tenantSlug, projectKey],
+    queryKey: ['public-board', tenantSlug, projectKey, page, perPage],
     queryFn: async () => {
       const res = await publicClient.get<PublicBoardData>(
         `/public/${tenantSlug}/projects/${projectKey}/board`,
+        { params: { page, perPage } },
       );
       return res.data;
     },

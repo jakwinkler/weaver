@@ -21,7 +21,8 @@ describe('EmailUnsubscribePage', () => {
     );
 
     await waitFor(() => {
-      expect(post).toHaveBeenCalledWith('/notifications/unsubscribe?token=signed-token', {
+      expect(post).toHaveBeenCalledWith('/notifications/unsubscribe', {
+        token: 'signed-token',
         'List-Unsubscribe': 'One-Click',
       });
     });

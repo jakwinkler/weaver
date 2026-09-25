@@ -93,6 +93,7 @@ export function Pagination({
               variant="outline"
               size="icon"
               className="h-8 w-8"
+              aria-label="Previous page"
               disabled={page <= 1}
               onClick={() => onPageChange(page - 1)}
             >
@@ -124,6 +125,7 @@ export function Pagination({
               variant="outline"
               size="icon"
               className="h-8 w-8"
+              aria-label="Next page"
               disabled={page >= totalPages}
               onClick={() => onPageChange(page + 1)}
             >

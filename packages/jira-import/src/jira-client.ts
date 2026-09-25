@@ -238,8 +238,8 @@ export class JiraClient {
 
   private normalizedBaseUrl(value: string): string {
     const url = new URL(value);
-    if (url.protocol !== 'https:' && url.protocol !== 'http:') {
-      throw new Error('Jira URL must use HTTP or HTTPS');
+    if (url.protocol !== 'https:') {
+      throw new Error('Jira URL must use HTTPS');
     }
     url.pathname = url.pathname.replace(/\/$/, '');
     url.search = '';

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { apiClient } from '@/api';
 import { Button } from '@/components/ui/button';
@@ -6,23 +6,33 @@ import { Button } from '@/components/ui/button';
 type UnsubscribeState = 'loading' | 'success' | 'error';
 
 export function EmailUnsubscribePage() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tokenRef = useRef(searchParams.get('token'));
+  const started = useRef(false);
   const [state, setState] = useState<UnsubscribeState>('loading');
 
   useEffect(() => {
-    const token = searchParams.get('token');
+    if (started.current) return;
+    started.current = true;
+    const token = tokenRef.current;
     if (!token) {
       setState('error');
       return;
     }
 
+    if (searchParams.has('token')) {
+      const cleaned = new URLSearchParams(searchParams);
+      cleaned.delete('token');
+      setSearchParams(cleaned, { replace: true });
+    }
     apiClient
-      .post(`/notifications/unsubscribe?token=${encodeURIComponent(token)}`, {
+      .post('/notifications/unsubscribe', {
+        token,
         'List-Unsubscribe': 'One-Click',
       })
       .then(() => setState('success'))
       .catch(() => setState('error'));
-  }, [searchParams]);
+  }, [searchParams, setSearchParams]);
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-muted p-6">
