@@ -57,9 +57,9 @@ anonymousTest('email letter case does not lock out a registered owner', async ({
   await expect(page).toHaveURL(/\/projects$/);
 });
 
-test('sign out clears the session and blocks protected pages', async ({ page, owner }) => {
+test('sign out clears the session and blocks protected pages', async ({ page }) => {
   await openProjects(page);
-  await page.getByRole('button', { name: new RegExp(owner.displayName) }).click();
+  await page.getByRole('button', { name: 'Account menu' }).click();
   await page.getByRole('menuitem', { name: /logout|sign out|log out/i }).click();
   await expect(page).toHaveURL(/\/login$/);
   await page.goto('/projects');

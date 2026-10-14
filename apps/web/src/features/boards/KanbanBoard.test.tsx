@@ -65,8 +65,10 @@ vi.mock('@/api', () => ({
     },
   }),
   useProjectPlugins: () => ({
-    data: [{ pluginId: '@weaver/plugin-board' }],
+    data: [{ pluginId: '@weaver/plugin-board', enabled: true }],
+    isLoading: false,
   }),
+  useInstalledPlugins: () => ({ data: [{ pluginId: '@weaver/plugin-board', enabled: true }], isLoading: false }),
   useUpdateIssueDynamic: () => ({ mutateAsync: vi.fn() }),
   useReorderIssues: () => ({ mutateAsync: vi.fn() }),
   useHasPermission: () => true,

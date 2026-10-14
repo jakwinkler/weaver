@@ -12,6 +12,12 @@ This pass used disposable local Postgres and Redis containers with synthetic `ex
 - API and web typechecks and production builds passed. The SQL migration executed and re-executed successfully in a separate disposable database. `git diff --check` passed.
 - The web build warned that its main JavaScript chunk is 2.17 MB before compression, 568 KB gzip. No loading-time measurement was made, so this is a performance follow-up rather than a confirmed usability failure.
 
+## Main-based release verification
+
+The deployable release branch starts from `f620ad6`, which contains the security and reliability changes already ahead of the original test branch. After integrating the pilot changes, the release branch passed 32/32 Playwright scenarios on a fresh disposable stack, 355/355 API end-to-end tests, 240/240 API unit tests, 150/150 web unit tests, API and web typechecks, and all 20 workspace build tasks. The browser tests were adjusted to use the current account menu name, board drag handle, and sprint page labels. The board drag test confirms status persistence after reload.
+
+The deployment schema planner now includes the new invitation entity. Its read-only diff against the synchronized disposable public schema contained zero statements. The production schema must still be inspected and backed up before applying any plan.
+
 ## Functional coverage
 
 | Area | Browser evidence | API or unit evidence |
@@ -38,6 +44,7 @@ This pass used disposable local Postgres and Redis containers with synthetic `ex
 | F09 | Two delete icons had weak idle contrast. | Design hook flagged gray text with a red hover background. | Icons now use a consistent red foreground; no ignore was added. |
 | F10 | An existing account could accept an invitation to a second organization but a later sign-in returned to its first organization with no way to select the invited one. | Browser regression timed out waiting for an organization switch option after a successful sign-in. | Added a membership-checked organization list and switch endpoint and an account-menu switcher. Switching refreshes cookies, clears client data, and reloads the app. The browser test verifies both directions, project visibility, and changed permissions. |
 | F11 | The browser did not refresh an expired access cookie for protected `/auth` operations, including organization switching. | A browser regression cleared only the access cookie while retaining a valid refresh cookie; switching stayed in the first organization. | The API client now retries protected auth operations after refreshing the session. Public login, registration, invitation, refresh, and logout actions retain their existing behavior. |
+| F12 | The read-only deployment schema planner omitted the new invitation entity. | Its public entity list did not include `OrganizationInvitationEntity`. | Added the entity and confirmed an empty diff after schema creation in a disposable database. |
 
 ## Remaining pilot gates and limits
 
@@ -45,5 +52,6 @@ This pass used disposable local Postgres and Redis containers with synthetic `ex
 2. **Live acceptance:** Local code and tests do not establish that the current live instance contains these fixes. The live instance was not modified or acceptance-tested with accounts.
 3. **Invitation delivery:** Administrators copy a private invitation link from Users and share it themselves. Automated invitation email delivery is not implemented.
 4. **Coverage limits:** Browser tests do not yet exercise file uploads with the deployed object store, outbound email, third-party plugin integrations, import/export with representative files, or cross-browser rendering. The existing API suite covers related server paths with its local configuration.
+5. **Repeated test runs:** Reusing one disposable database across several full browser runs accumulated 92 test organizations; PostgreSQL then hit its 100-client cap and six registration attempts returned 500. The database log confirmed `too many clients already`. A full run on fresh disposable services passed 32/32. The runbook now requires a fresh stack for each full run. Connection pool behavior under many organizations remains a scale follow-up; the one-organization pilot did not reproduce this failure.
 
 The local pilot path is: create the organization, create the project, create and privately share a member invitation, have the member accept it, then add that member to the private project in Project Settings. Public projects remain accessible to all organization members according to existing access rules.

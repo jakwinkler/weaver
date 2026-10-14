@@ -114,14 +114,14 @@ test('an existing account needs its password and can switch between organization
   await existingPage.getByLabel('Password').fill(existing.password);
   await existingPage.getByRole('button', { name: 'Sign in' }).click();
   await expect(existingPage).toHaveURL(/\/projects$/);
-  await existingPage.getByRole('button', { name: new RegExp(existing.displayName) }).click();
+  await existingPage.getByRole('button', { name: 'Account menu' }).click();
   await expect(existingPage.getByRole('menuitem', { name: `Switch to ${organizationName}` })).toBeVisible();
   await existingContext.clearCookies({ name: 'weaver_token' });
   await existingPage.getByRole('menuitem', { name: `Switch to ${organizationName}` }).click();
   await expect.poll(() => existingPage.evaluate(() => localStorage.getItem('tenantId'))).toBe(owner.tenantId);
   await expect(existingPage.getByRole('link', { name: /Invited organization project/ }).last()).toBeVisible();
   await expect(existingPage.getByRole('button', { name: 'Create Project' })).toHaveCount(0);
-  await existingPage.getByRole('button', { name: new RegExp(existing.displayName) }).click();
+  await existingPage.getByRole('button', { name: 'Account menu' }).click();
   await existingPage.getByRole('menuitem', { name: `Switch to ${originalOrganizationName}` }).click();
   await expect.poll(() => existingPage.evaluate(() => localStorage.getItem('tenantId'))).toBe(existing.tenantId);
   await expect(existingPage.getByRole('link', { name: /Invited organization project/ })).toHaveCount(0);

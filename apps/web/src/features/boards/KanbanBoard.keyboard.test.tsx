@@ -54,7 +54,8 @@ const board = {
 
 vi.mock('@/api', () => ({
   useProject: () => ({ data: { id: 'project-1', workflowId: 'workflow-1' }, isLoading: false }),
-  useProjectPlugins: () => ({ data: [{ pluginId: '@weaver/plugin-board' }] }),
+  useProjectPlugins: () => ({ data: [{ pluginId: '@weaver/plugin-board', enabled: true }], isLoading: false }),
+  useInstalledPlugins: () => ({ data: [{ pluginId: '@weaver/plugin-board', enabled: true }], isLoading: false }),
   useReorderIssues: () => ({ mutateAsync: vi.fn() }),
   useUpdateIssueDynamic: () => ({ mutateAsync: vi.fn() }),
   useHasPermission: () => true,

@@ -35,7 +35,7 @@ test('dragging an issue to another column persists its status', async ({ page, c
   const statusSaved = page.waitForResponse((response) =>
     response.url().endsWith('/issues/TEST-1') && response.request().method() === 'PATCH',
   );
-  await source.dragTo(target, { steps: 12 });
+  await source.getByRole('button', { name: 'Drag TEST-1' }).dragTo(target, { steps: 12 });
   await expect(target.getByText('Drag issue')).toBeVisible();
   expect((await statusSaved).status()).toBe(200);
   await page.reload();
