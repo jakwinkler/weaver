@@ -7,6 +7,7 @@ import { AdminRoute } from '@/components/AdminRoute';
 import { AppLayout } from '@/layouts/AppLayout';
 import { LoginPage } from '@/features/auth/LoginPage';
 import { RegisterPage } from '@/features/auth/RegisterPage';
+import { InvitationPage } from '@/features/auth/InvitationPage';
 import { ProjectsPage } from '@/features/projects/ProjectsPage';
 import { ProjectDetailPage } from '@/features/projects/ProjectDetailPage';
 import { ProjectSettingsPage } from '@/features/projects/ProjectSettingsPage';
@@ -43,6 +44,7 @@ export function App() {
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
+            <Route path="/invite/:token" element={<InvitationPage />} />
             <Route path="/public/:tenantSlug/projects/:projectKey" element={<PublicProjectPage />} />
 
             <Route element={<ProtectedRoute />}>

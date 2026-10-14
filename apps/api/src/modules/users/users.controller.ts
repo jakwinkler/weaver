@@ -12,15 +12,26 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { updateUserSchema } from '@weaver/shared';
+import { updateUserSchema, createInvitationSchema } from '@weaver/shared';
 import { JwtAuthGuard, AdminGuard, CurrentUser, RequestUser } from '../../core/auth';
+import { AuthService } from '../../core/auth/auth.service';
 import { ZodValidationPipe } from '../../common';
 import { UsersService } from './users.service';
 
 @Controller('users')
 @UseGuards(JwtAuthGuard)
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(private readonly usersService: UsersService, private readonly authService: AuthService) {}
+
+  @Post('invitations')
+  @UseGuards(AdminGuard)
+  async createInvitation(@CurrentUser() user: RequestUser, @Body() body: unknown) {
+    const result = createInvitationSchema.safeParse(body);
+    if (!result.success) {
+      throw new BadRequestException(result.error.flatten());
+    }
+    return this.authService.createInvitation(user.tenantId, result.data);
+  }
 
   @Get('me')
   async getProfile(@CurrentUser() user: RequestUser) {

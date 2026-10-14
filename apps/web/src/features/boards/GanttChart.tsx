@@ -1,7 +1,8 @@
 import { useMemo, useRef } from 'react';
 import { useParams } from 'react-router-dom';
-import { useProjectIssues, useProjectPlugins } from '@/api';
+import { useProjectIssues } from '@/api';
 import { FeatureNotEnabled } from './FeatureNotEnabled';
+import { useProjectFeatureEnabled } from '@/features/projects/useProjectFeatureEnabled';
 import { cn } from '@/lib/utils';
 
 interface GanttIssue {
@@ -52,9 +53,10 @@ function formatWeek(date: Date): string {
 
 export function GanttChart() {
   const { projectKey = '' } = useParams<{ projectKey: string }>();
-  const { data: projectPlugins } = useProjectPlugins(projectKey);
+  const feature = useProjectFeatureEnabled(projectKey, '@weaver/plugin-gantt');
 
-  if (projectPlugins && !projectPlugins.some((p) => p.pluginId === '@weaver/plugin-gantt')) {
+  if (feature.isLoading) return <p>Loading gantt chart...</p>;
+  if (!feature.enabled) {
     return <FeatureNotEnabled featureName="Gantt Chart" projectKey={projectKey} />;
   }
 

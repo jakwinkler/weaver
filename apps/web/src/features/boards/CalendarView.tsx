@@ -1,7 +1,8 @@
 import { useState, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { useProjectIssues, useProjectPlugins } from '@/api';
+import { useProjectIssues } from '@/api';
 import { FeatureNotEnabled } from './FeatureNotEnabled';
+import { useProjectFeatureEnabled } from '@/features/projects/useProjectFeatureEnabled';
 import type { Issue } from '@weaver/shared';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -38,9 +39,10 @@ function formatMonth(date: Date): string {
 
 export function CalendarView() {
   const { projectKey = '' } = useParams<{ projectKey: string }>();
-  const { data: projectPlugins } = useProjectPlugins(projectKey);
+  const feature = useProjectFeatureEnabled(projectKey, '@weaver/plugin-calendar');
 
-  if (projectPlugins && !projectPlugins.some((p) => p.pluginId === '@weaver/plugin-calendar')) {
+  if (feature.isLoading) return <p>Loading calendar...</p>;
+  if (!feature.enabled) {
     return <FeatureNotEnabled featureName="Calendar" projectKey={projectKey} />;
   }
 

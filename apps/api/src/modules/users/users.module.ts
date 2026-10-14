@@ -5,12 +5,14 @@ import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
 import { AttachmentsModule } from '../attachments/attachments.module';
 import { WebSocketModule } from '../../core/websocket';
+import { AuthModule } from '../../core/auth/auth.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([UserEntity, TenantMembershipEntity]),
     AttachmentsModule,
     WebSocketModule,
+    AuthModule,
   ],
   controllers: [UsersController],
   providers: [UsersService],

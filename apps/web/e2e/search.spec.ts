@@ -1,28 +1,43 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, createIssue, createProject } from './fixtures';
 
-test.describe('WQL Search', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto('/login');
-    await page.fill('[name="email"]', 'e2e-test@example.com');
-    await page.fill('[name="password"]', 'password123');
-    await page.click('button[type="submit"]');
-    await expect(page).toHaveURL(/\/projects/);
-  });
+const queryField = 'e.g. priority = "high" AND label = "bug"';
 
-  test('should open search dialog', async ({ page }) => {
-    await page.click('[data-testid="search-trigger"]');
-    await expect(page.locator('[data-testid="search-dialog"]')).toBeVisible();
-  });
+test('WQL search returns only issues matching the selected priority', async ({ page, context, owner }) => {
+  await createProject(context, owner);
+  await createIssue(context, owner, 'TEST', { summary: 'Urgent search result', priority: 'high' });
+  await createIssue(context, owner, 'TEST', { summary: 'Low search result', priority: 'low' });
+  await page.goto('/search');
+  await page.getByPlaceholder(queryField).fill('priority = "high"');
+  await page.getByRole('button', { name: 'Search', exact: true }).click();
 
-  test('should search for issues by text', async ({ page }) => {
-    await page.click('[data-testid="search-trigger"]');
-    await page.fill('[data-testid="search-input"]', 'E2E Test Issue');
-    await expect(page.locator('[data-testid="search-results"]')).toBeVisible();
-  });
+  await expect(page.getByText('1 result found')).toBeVisible();
+  await expect(page.getByRole('row', { name: /Urgent search result/ })).toBeVisible();
+  await expect(page.getByRole('row', { name: /Low search result/ })).toHaveCount(0);
+});
 
-  test('should support WQL syntax', async ({ page }) => {
-    await page.click('[data-testid="search-trigger"]');
-    await page.fill('[data-testid="search-input"]', 'status:open project:E2E');
-    await expect(page.locator('[data-testid="search-results"]')).toBeVisible();
-  });
+test('saved WQL filters load and search after a reload', async ({ page, context, owner }) => {
+  await createProject(context, owner);
+  await createIssue(context, owner, 'TEST', { summary: 'Saved search issue', priority: 'high' });
+  await page.goto('/search');
+  await page.getByPlaceholder(queryField).fill('priority = "high"');
+  await page.getByRole('button', { name: 'Save Filter' }).click();
+  await page.getByLabel('Filter Name').fill('High priority work');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'High priority work' })).toBeVisible();
+
+  await page.reload();
+  await page.getByRole('button', { name: 'High priority work' }).click();
+  await expect(page.getByRole('row', { name: /Saved search issue/ })).toBeVisible();
+});
+
+test('invalid WQL reports an error and permits a valid retry', async ({ page, context, owner }) => {
+  await createProject(context, owner);
+  await createIssue(context, owner, 'TEST', { summary: 'Recovery issue', priority: 'high' });
+  await page.goto('/search');
+  await page.getByPlaceholder(queryField).fill('priority ???');
+  await page.getByRole('button', { name: 'Search', exact: true }).click();
+  await expect(page.getByText('Search failed. Please check your query syntax and try again.')).toBeVisible();
+  await page.getByPlaceholder(queryField).fill('priority = "high"');
+  await page.getByRole('button', { name: 'Search', exact: true }).click();
+  await expect(page.getByRole('row', { name: /Recovery issue/ })).toBeVisible();
 });

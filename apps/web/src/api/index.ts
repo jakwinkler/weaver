@@ -2,7 +2,11 @@ export { apiClient, API_BASE_URL } from './client';
 export {
   useLogin,
   useRegister,
+  useInvitation,
+  useAcceptInvitation,
   useCurrentUser,
+  useOrganizations,
+  useSwitchOrganization,
   useProjects,
   useProject,
   useCreateProject,
@@ -83,6 +87,7 @@ export {
 } from './hooks-phase6';
 export {
   useUsers,
+  useCreateInvitation,
   useUpdateUserRole,
   useCreateIssueType,
   useUpdateIssueType,

@@ -19,6 +19,8 @@ const currentUser = {
 
 vi.mock('@/api', () => ({
   useCurrentUser: () => ({ data: currentUser }),
+  useOrganizations: () => ({ data: [] }),
+  useSwitchOrganization: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useProjects: () => ({ data: { data: [] } }),
   useUnreadCount: () => ({ data: 0 }),
   useInstalledPlugins: () => ({ data: [] }),

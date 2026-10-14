@@ -28,6 +28,15 @@ export function useUsers() {
   });
 }
 
+export function useCreateInvitation() {
+  return useMutation({
+    mutationFn: async (data: { email: string; role: 'member' | 'viewer' }) => {
+      const res = await apiClient.post<{ token: string; email: string; expiresAt: string }>('/users/invitations', data);
+      return res.data;
+    },
+  });
+}
+
 export function useUpdateUserRole() {
   const queryClient = useQueryClient();
   return useMutation({

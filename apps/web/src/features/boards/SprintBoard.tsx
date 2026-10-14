@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { useProject, useProjectPlugins, useHasPermission } from '@/api';
+import { useProject, useHasPermission } from '@/api';
 import { FeatureNotEnabled } from './FeatureNotEnabled';
+import { useProjectFeatureEnabled } from '@/features/projects/useProjectFeatureEnabled';
 import {
   useSprints,
   useCreateSprint,
@@ -161,7 +162,7 @@ function CreateSprintForm({
 
 export function SprintBoard() {
   const { projectKey } = useParams<{ projectKey: string }>();
-  const { data: projectPlugins } = useProjectPlugins(projectKey!);
+  const sprintFeature = useProjectFeatureEnabled(projectKey!, '@weaver/plugin-sprints');
   const { data: project, isLoading: projectLoading } = useProject(projectKey!);
   const {
     data: sprints,
@@ -172,11 +173,11 @@ export function SprintBoard() {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const canCreateSprint = useHasPermission('sprints.create');
 
-  if (projectPlugins && !projectPlugins.some((p) => p.pluginId === '@weaver/plugin-sprints')) {
+  if (!sprintFeature.isLoading && !sprintFeature.enabled) {
     return <FeatureNotEnabled featureName="Sprints" projectKey={projectKey!} />;
   }
 
-  const isLoading = projectLoading || sprintsLoading;
+  const isLoading = projectLoading || sprintsLoading || sprintFeature.isLoading;
 
   if (isLoading) {
     return (

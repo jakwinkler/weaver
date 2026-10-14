@@ -4,6 +4,7 @@ import {
   DndContext,
   DragOverlay,
   closestCorners,
+  pointerWithin,
   KeyboardSensor,
   PointerSensor,
   useSensor,
@@ -12,6 +13,7 @@ import {
   type DragStartEvent,
   type DragEndEvent,
   type DragOverEvent,
+  type CollisionDetection,
 } from '@dnd-kit/core';
 import {
   SortableContext,
@@ -24,11 +26,11 @@ import {
   useProject,
   useProjectIssues,
   useWorkflow,
-  useProjectPlugins,
   useUpdateIssueDynamic,
   useReorderIssues,
 } from '@/api';
 import { FeatureNotEnabled } from './FeatureNotEnabled';
+import { useProjectFeatureEnabled } from '@/features/projects/useProjectFeatureEnabled';
 import { useBoards, useCreateBoard } from '@/api/hooks-phase2';
 import type { Issue } from '@weaver/shared';
 import { Button } from '@/components/ui/button';
@@ -46,6 +48,13 @@ interface StatusColumn {
   issues: Issue[];
   position: number;
 }
+
+const boardCollisionDetection: CollisionDetection = (args) => {
+  const pointerHits = pointerWithin(args).filter((hit) => hit.id !== args.active.id);
+  return pointerHits.length > 0
+    ? pointerHits
+    : closestCorners(args).filter((hit) => hit.id !== args.active.id);
+};
 
 function PriorityBadge({ priority }: { priority: string }) {
   const variants: Record<string, string> = {
@@ -106,6 +115,7 @@ function SortableIssueCard({ issue }: { issue: Issue }) {
   return (
     <div
       ref={setNodeRef}
+      data-testid="kanban-card"
       style={style}
       {...attributes}
       {...listeners}
@@ -138,6 +148,7 @@ function DroppableColumn({
   return (
     <div
       ref={setNodeRef}
+      data-testid="kanban-column"
       className={cn(
         'flex w-72 flex-shrink-0 flex-col rounded-lg p-3 transition-colors',
         isOver ? 'bg-primary/10 ring-2 ring-primary/30' : 'bg-muted/50',
@@ -225,7 +236,7 @@ function CreateBoardForm({
 
 export function KanbanBoard() {
   const { projectKey } = useParams<{ projectKey: string }>();
-  const { data: projectPlugins } = useProjectPlugins(projectKey!);
+  const boardFeature = useProjectFeatureEnabled(projectKey!, '@weaver/plugin-board');
   const { data: project, isLoading: projectLoading } = useProject(projectKey!);
   const { data: issuesData, isLoading: issuesLoading } = useProjectIssues({
     projectKey: projectKey!,
@@ -248,11 +259,11 @@ export function KanbanBoard() {
     useSensor(KeyboardSensor),
   );
 
-  if (projectPlugins && !projectPlugins.some((p) => p.pluginId === '@weaver/plugin-board')) {
+  if (!boardFeature.isLoading && !boardFeature.enabled) {
     return <FeatureNotEnabled featureName="Kanban Board" projectKey={projectKey!} />;
   }
 
-  const isLoading = projectLoading || issuesLoading || boardsLoading;
+  const isLoading = projectLoading || issuesLoading || boardsLoading || boardFeature.isLoading;
 
   if (isLoading) {
     return (
@@ -287,7 +298,8 @@ export function KanbanBoard() {
     );
   }
 
-  const issues = localIssues ?? issuesData?.data ?? [];
+  const persistedIssues = issuesData?.data ?? [];
+  const issues = localIssues ?? persistedIssues;
   const statuses = workflow?.statuses || [];
 
   // Group issues by statusId
@@ -377,19 +389,22 @@ export function KanbanBoard() {
     setActiveIssue(null);
     setOverColumnId(null);
 
-    if (!over || !localIssues) {
+    if ((!over && !overColumnId) || !localIssues) {
       setLocalIssues(null);
       return;
     }
 
     const activeId = active.id as string;
-    const draggedIssue = issues.find((i) => i.id === activeId); // use original, not localIssues
+    const draggedIssue = persistedIssues.find((i) => i.id === activeId);
     if (!draggedIssue) {
       setLocalIssues(null);
       return;
     }
 
-    const targetStatusId = resolveStatusId(over.id as string) ?? draggedIssue.statusId;
+    const targetStatusId = localIssues.find((issue) => issue.id === activeId)?.statusId
+      ?? overColumnId
+      ?? (over ? resolveStatusId(over.id as string) : undefined)
+      ?? draggedIssue.statusId;
 
     // Get issues in target column from localIssues (already moved optimistically)
     const columnIssues = localIssues.filter(
@@ -476,7 +491,7 @@ export function KanbanBoard() {
 
       <DndContext
         sensors={sensors}
-        collisionDetection={closestCorners}
+        collisionDetection={boardCollisionDetection}
         onDragStart={handleDragStart}
         onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}

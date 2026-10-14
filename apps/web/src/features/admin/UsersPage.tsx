@@ -1,5 +1,9 @@
-import { useUsers, useUpdateUserRole } from '@/api';
+import { useState, type FormEvent } from 'react';
+import { useUsers, useUpdateUserRole, useCreateInvitation } from '@/api';
 import { useAuthStore } from '@/stores';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
@@ -12,6 +16,20 @@ export function UsersPage() {
   const { data: users, isLoading } = useUsers();
   const updateRole = useUpdateUserRole();
   const currentUserId = useAuthStore((s) => s.user?.id);
+  const createInvitation = useCreateInvitation();
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteRole, setInviteRole] = useState<'member' | 'viewer'>('member');
+  const [invitationLink, setInvitationLink] = useState('');
+
+  const invite = async (event: FormEvent) => {
+    event.preventDefault();
+    try {
+      const invitation = await createInvitation.mutateAsync({ email: inviteEmail, role: inviteRole });
+      setInvitationLink(`${window.location.origin}/invite/${invitation.token}`);
+    } catch {
+      setInvitationLink('');
+    }
+  };
 
   const handleRoleChange = async (userId: string, role: string) => {
     await updateRole.mutateAsync({ userId, role });
@@ -29,6 +47,33 @@ export function UsersPage() {
           Manage team members and their roles.
         </p>
       </div>
+
+      <form onSubmit={invite} className="mb-6 space-y-3 rounded-lg border border-border bg-card p-4">
+        <h2 className="text-lg font-semibold text-foreground">Invite a teammate</h2>
+        <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-end">
+          <div className="space-y-2">
+            <Label htmlFor="inviteEmail">Email address</Label>
+            <Input id="inviteEmail" type="email" required value={inviteEmail} onChange={(event) => { setInviteEmail(event.target.value); setInvitationLink(''); }} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="inviteRole">Role</Label>
+            <select id="inviteRole" value={inviteRole} onChange={(event) => { setInviteRole(event.target.value as 'member' | 'viewer'); setInvitationLink(''); }}
+              className="flex h-10 rounded-md border border-input bg-background px-3 text-sm">
+              <option value="member">Member</option>
+              <option value="viewer">Viewer</option>
+            </select>
+          </div>
+          <Button type="submit" disabled={createInvitation.isPending}>Create invitation</Button>
+        </div>
+        {createInvitation.isError && <p role="alert" className="text-sm text-destructive">Could not create invitation.</p>}
+        {invitationLink && (
+          <div className="space-y-2">
+            <Label htmlFor="invitationLink">Invitation link</Label>
+            <Input id="invitationLink" readOnly value={invitationLink} onFocus={(event) => event.target.select()} />
+            <p className="text-xs text-muted-foreground">Share this link privately with {inviteEmail}. It expires in seven days and can be used once.</p>
+          </div>
+        )}
+      </form>
 
       {!users || users.length === 0 ? (
         <div className="rounded-lg border border-border bg-card py-12 text-center">

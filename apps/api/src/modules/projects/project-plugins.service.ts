@@ -19,15 +19,7 @@ export class ProjectPluginsService {
   async findByProject(projectId: string): Promise<ProjectPluginEntity[]> {
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(ProjectPluginEntity);
-    const rows = await repo.find({ where: { projectId } });
-
-    // Auto-backfill: if no rows exist for this project, seed defaults
-    if (rows.length === 0) {
-      await this.seedDefaults(projectId);
-      return repo.find({ where: { projectId } });
-    }
-
-    return rows;
+    return repo.find({ where: { projectId } });
   }
 
   async enable(projectId: string, pluginId: string): Promise<ProjectPluginEntity> {

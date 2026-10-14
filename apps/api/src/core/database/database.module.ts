@@ -8,6 +8,7 @@ import {
   ApiKeyEntity,
   InstalledPluginEntity,
   RefreshSessionEntity,
+  OrganizationInvitationEntity,
 } from '@weaver/db';
 
 const publicEntities = [
@@ -17,6 +18,7 @@ const publicEntities = [
   ApiKeyEntity,
   InstalledPluginEntity,
   RefreshSessionEntity,
+  OrganizationInvitationEntity,
 ];
 
 @Global()
