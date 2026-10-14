@@ -59,7 +59,7 @@ vi.mock('@/api', () => ({
   useReorderIssues: () => ({ mutateAsync: vi.fn() }),
   useUpdateIssueDynamic: () => ({ mutateAsync: vi.fn() }),
   useHasPermission: () => true,
-  useWorkflow: () => ({
+  useProjectWorkflow: () => ({
     data: {
       statuses: [
         { id: 'todo', name: 'To Do', color: '#6b7280', category: 'to_do' },

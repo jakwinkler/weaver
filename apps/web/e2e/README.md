@@ -22,6 +22,8 @@ Start the API in one terminal with local-only test secrets:
 NODE_ENV=development DATABASE_HOST=127.0.0.1 DATABASE_PORT=15432 REDIS_HOST=127.0.0.1 REDIS_PORT=16380 CORS_ORIGINS=http://127.0.0.1:5173 JWT_SECRET=weaver-local-browser-secret-1234567890 JWT_REFRESH_SECRET=weaver-local-refresh-secret-1234567890 pnpm --filter @weaver/api dev
 ```
 
+Complete builds and source edits before starting the browser run, since the API watcher restarts on either change. Run the API integration and browser suites separately, or give each its own Postgres and Redis services; queue workers share Redis job names even when their databases differ.
+
 The Playwright config starts Vite when needed. In another terminal:
 
 ```sh
@@ -31,7 +33,7 @@ pnpm --filter @weaver/web test:e2e
 For API integration tests against the same disposable services:
 
 ```sh
-WEAVER_E2E_DATABASE_PORT=15432 WEAVER_E2E_REDIS_PORT=16380 pnpm --filter @weaver/api test:e2e --runInBand --forceExit
+TZ=UTC WEAVER_E2E_DATABASE_PORT=15432 WEAVER_E2E_REDIS_PORT=16380 pnpm --filter @weaver/api test:e2e --runInBand --forceExit
 ```
 
 The browser fixture honors the API's `429` retry interval during account setup. A full run can pause briefly when the local unauthenticated rate limit is reached. Set `PLAYWRIGHT_BASE_URL` and `PLAYWRIGHT_API_URL` only when your local ports differ; the fixture still requires a loopback hostname. The test report and traces live in ignored `apps/web/test-results/`.

@@ -86,6 +86,13 @@ export class ProjectsController {
     await this.projectsService.delete(key);
   }
 
+  @Get(':key/workflow')
+  @RequirePermission('projects', 'read')
+  @RequireProjectAccess('project-key')
+  async workflow(@Param('key') key: string) {
+    return this.projectsService.workflow(key);
+  }
+
   // ── Project Members ──
 
   @Get(':key/members')

@@ -59,7 +59,7 @@ vi.mock('react-router-dom', () => ({
 vi.mock('@/api', () => ({
   useProject: () => ({ data: { id: 'project-1', key: 'WEB', workflowId: 'workflow-1' } }),
   useProjectIssues: () => ({ data: { data: boardIssues.issues }, isLoading: false }),
-  useWorkflow: () => ({
+  useProjectWorkflow: () => ({
     data: {
       statuses: [{ id: statusId, name: 'To Do', color: '#6b7280', category: 'todo', position: 0 }],
     },

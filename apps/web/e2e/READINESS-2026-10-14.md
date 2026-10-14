@@ -2,7 +2,7 @@
 
 ## Scope and boundary
 
-This pass used disposable local Postgres and Redis containers with synthetic `example.invalid` accounts. It did not write to `weaver.usercore.com`, deploy, or apply a production database migration. The browser checks use Chromium at desktop size plus one phone-sized core journey. API integration tests use the same isolated local services.
+The initial pass used disposable local Postgres and Redis containers with synthetic `example.invalid` accounts. Later deployment and live acceptance were separately authorized; those results are recorded below. The browser checks use Chromium at desktop size plus one phone-sized core journey. API integration tests use the same isolated local services.
 
 ## Verification results
 
@@ -16,7 +16,7 @@ This pass used disposable local Postgres and Redis containers with synthetic `ex
 
 The deployable release branch starts from `f620ad6`, which contains the security and reliability changes already ahead of the original test branch. After integrating the pilot changes, the release branch passed 32/32 Playwright scenarios on a fresh disposable stack, 355/355 API end-to-end tests, 240/240 API unit tests, 150/150 web unit tests, API and web typechecks, and all 20 workspace build tasks. The browser tests were adjusted to use the current account menu name, board drag handle, and sprint page labels. The board drag test confirms status persistence after reload.
 
-The deployment schema planner now includes the new invitation entity. Its read-only diff against the synchronized disposable public schema contained zero statements. The production schema must still be inspected and backed up before applying any plan.
+The deployment schema planner now includes the new invitation entity. Its read-only diff against the synchronized disposable public schema contained zero statements. The production schema was subsequently inspected and backed up, and the reviewed additive migration was applied with the authorized deployment at `a20ba16`.
 
 ## Functional coverage
 
@@ -47,12 +47,44 @@ The deployment schema planner now includes the new invitation entity. Its read-o
 | F12 | The read-only deployment schema planner omitted the new invitation entity. | Its public entity list did not include `OrganizationInvitationEntity`. | Added the entity and confirmed an empty diff after schema creation in a disposable database. |
 | F13 | The production Docker build stopped at plugin verification. | Plain Node could not load the SDK's TypeScript source import under the image runtime, although the workspace build passed. | Run the verifier with the API's existing `tsx` runtime. It passed for all 15 plugin bundles, and the API, worker, and web images then built successfully. |
 
+## Live client acceptance follow-up
+
+The authorized live acceptance on `a20ba16` passed 27 checks with four synthetic
+accounts and three private projects: an organization owner, an agency
+administrator, a collaborating client and a read-only client. It exercised
+browser invitation acceptance, project/resource isolation, search/dashboard
+filtering, CRUD/comments, attachment upload/download, membership revocation,
+login/logout, and blocked privilege changes. The disposable organization,
+accounts, sessions and four uploads were removed afterward. Existing user
+activity was preserved.
+
+Screenshot review found an additional defect that the first live assertions
+missed: clients saw status IDs and could not discover status changes. The issue,
+list and board views fetched administrator-only workflow endpoints. The fix adds
+a project-scoped workflow summary with status labels and transition targets,
+without rule configuration. The same project access guard protects it; global
+workflow administration remains restricted. API regressions were observed
+failing with 404 before the fix and when the route was temporarily reverted.
+The browser invitation regression failed waiting for the status label before
+the fix, then passed after it. The reusable live suite now checks readable
+statuses, a client status change and its persistence after reload.
+
+The live organization directory still exposes other members' names and email
+addresses to clients. This is tracked as **LCA-01**, an open privacy limitation.
+Private project content isolation passed; strict client identity isolation is
+not established. The workflow defect is **LCA-02**. The final local browser run passed 32/32 scenarios on fresh services, including the client status regression and a portable invitation-link assertion. Its API run passed 357/357 tests across 42 suites, and the API unit run passed 240/240 across 49 suites. The web unit run passed 150/150 across 54 suites; API/web typechecks, live-suite typechecking and all 20 workspace builds passed.
+
+The guarded live suite and backup/cleanup procedure are documented in
+[the live acceptance runbook](../acceptance/README.md). Private run manifests,
+screenshots, backups and exact deployment acceptance records are retained by
+the operator rather than committed.
+
 ## Remaining pilot gates and limits
 
-1. **Deployment gate:** The new public `organization_invitations` table requires [the SQL migration](../../../packages/db/migrations/20261014_organization_invitations.sql) before deploying the invitation endpoints where schema synchronization is disabled. It has not been applied outside the disposable local database.
-2. **Live acceptance:** Local code and tests do not establish that the current live instance contains these fixes. The live instance was not modified or acceptance-tested with accounts.
+1. **Migration requirement for other deployments:** The new public `organization_invitations` table requires [the SQL migration](../../../packages/db/migrations/20261014_organization_invitations.sql) where schema synchronization is disabled. The authorized live deployment applied its reviewed additive schema plan.
+2. **Client privacy:** Organization membership currently permits directory access to other members' names and email addresses (LCA-01). Keep client projects private and evaluate this limitation before onboarding unrelated clients.
 3. **Invitation delivery:** Administrators copy a private invitation link from Users and share it themselves. Automated invitation email delivery is not implemented.
-4. **Coverage limits:** Browser tests do not yet exercise file uploads with the deployed object store, outbound email, third-party plugin integrations, import/export with representative files, or cross-browser rendering. The existing API suite covers related server paths with its local configuration.
+4. **Coverage limits:** Live attachment upload/download passed using the deployed local storage volume. Outbound email, third-party plugin integrations, import/export with representative files, external object storage and cross-browser rendering remain unverified. The existing API suite covers related server paths with its local configuration.
 5. **Repeated test runs:** Reusing one disposable database across several full browser runs accumulated 92 test organizations; PostgreSQL then hit its 100-client cap and six registration attempts returned 500. The database log confirmed `too many clients already`. A full run on fresh disposable services passed 32/32. The runbook now requires a fresh stack for each full run. Connection pool behavior under many organizations remains a scale follow-up; the one-organization pilot did not reproduce this failure.
 
 The local pilot path is: create the organization, create the project, create and privately share a member invitation, have the member accept it, then add that member to the private project in Project Settings. Public projects remain accessible to all organization members according to existing access rules.

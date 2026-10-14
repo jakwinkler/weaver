@@ -26,7 +26,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, ChevronRight, GripVertical, Repeat2 } from 'lucide-react';
 import {
   useProject,
-  useWorkflow,
+  useProjectWorkflow,
   useUpdateIssueDynamic,
   useReorderIssues,
   useHasPermission,
@@ -379,7 +379,7 @@ export function KanbanBoard() {
   } = useBoards(project?.id || '');
   const activeBoardId = boards?.[0]?.id ?? '';
   const { data: boardData, isLoading: boardIssuesLoading } = useBoardIssues(activeBoardId);
-  const { data: workflow } = useWorkflow(project?.workflowId || '');
+  const { data: workflow } = useProjectWorkflow(projectKey!, project?.workflowId || '');
   const queryClient = useQueryClient();
   const updateIssue = useUpdateIssueDynamic();
   const reorderIssues = useReorderIssues();

@@ -28,6 +28,13 @@ test('invited member joins the same organization and sees shared work', async ({
   await page.getByRole('button', { name: 'Add', exact: true }).click();
   await memberPage.goto('/projects/TEST/issues');
   await expect(memberPage.getByText('Shared pilot issue')).toBeVisible();
+  await memberPage.getByRole('link', { name: 'TEST-1', exact: true }).click();
+  await expect(memberPage.getByRole('button', { name: 'To Do', exact: true })).toBeVisible();
+  await memberPage.getByRole('button', { name: 'To Do', exact: true }).click();
+  await memberPage.getByRole('menuitem', { name: 'In Progress', exact: true }).click();
+  await expect(memberPage.getByRole('button', { name: 'In Progress', exact: true })).toBeVisible();
+  await memberPage.reload();
+  await expect(memberPage.getByRole('button', { name: 'In Progress', exact: true })).toBeVisible();
   await memberContext.close();
 });
 

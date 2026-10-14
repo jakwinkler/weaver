@@ -25,6 +25,7 @@ export {
 export {
   useWorkflows,
   useWorkflow,
+  useProjectWorkflow,
   useCreateWorkflow,
   useWorkflowTransitions,
   useBoards,

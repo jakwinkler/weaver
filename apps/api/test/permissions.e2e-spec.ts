@@ -256,6 +256,30 @@ describe('Permissions (e2e)', () => {
   });
 
   describe('Private project membership', () => {
+    it('lets project members and viewers read workflow labels without administrative rule configuration', async () => {
+      for (const token of [memberToken, viewerToken]) {
+        const response = await request(app.getHttpServer())
+          .get('/api/v1/projects/PERM/workflow')
+          .set('Authorization', `Bearer ${token}`)
+          .expect(200);
+        expect(response.body.statuses.map((status: { name: string }) => status.name))
+          .toEqual(expect.arrayContaining(['To Do', 'In Progress', 'Done']));
+        expect(response.body.transitions.length).toBeGreaterThan(0);
+        for (const transition of response.body.transitions) {
+          expect(transition.toStatus.name).toBeTruthy();
+          expect(transition).not.toHaveProperty('conditions');
+          expect(transition).not.toHaveProperty('validators');
+          expect(transition).not.toHaveProperty('postFunctions');
+        }
+        await request(app.getHttpServer()).get(`/api/v1/workflows/${response.body.id}`)
+          .set('Authorization', `Bearer ${token}`).expect(403);
+      }
+    });
+
+    it('does not expose the workflow of an inaccessible private project', async () => {
+      await asViewer().get('/api/v1/projects/SECRET/workflow').expect(403);
+    });
+
     it('filters private projects from non-members', async () => {
       const response = await asViewer().get('/api/v1/projects').expect(200);
       expect(response.body.data.map((project: { key: string }) => project.key)).toContain('PERM');

@@ -88,7 +88,7 @@ vi.mock('@/api', async () => {
         },
       ],
     }),
-    useWorkflow: () => ({
+    useProjectWorkflow: () => ({
       data: {
         statuses: [
           { id: 'status-open', name: 'Open', color: '#2563eb' },

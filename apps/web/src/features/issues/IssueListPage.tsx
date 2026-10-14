@@ -25,7 +25,7 @@ import {
   useCreateIssue,
   useProject,
   useIssueTypes,
-  useWorkflow,
+  useProjectWorkflow,
   useSprints,
   useHasPermission,
   useUpdateIssueDynamic,
@@ -341,7 +341,7 @@ export function IssueListPage() {
   const reorderIssues = useReorderIssues();
   const transitionIssue = useTransitionIssueDynamic();
   const { data: issueTypes } = useIssueTypes();
-  const { data: workflow } = useWorkflow(project?.workflowId || '');
+  const { data: workflow } = useProjectWorkflow(projectKey!, project?.workflowId || '');
   const { data: sprints } = useSprints(project?.id || '');
   const { data: users } = useUsers();
   const canCreate = useHasPermission('issues.create');

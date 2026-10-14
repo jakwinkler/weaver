@@ -28,6 +28,8 @@ test('owner creates a private shareable invitation link from Users', async ({ pa
   await page.getByLabel('Email address').fill('new-pilot@example.invalid');
   await page.getByLabel('Role').selectOption('viewer');
   await page.getByRole('button', { name: 'Create invitation' }).click();
-  await expect(page.getByLabel('Invitation link')).toHaveValue(/^http:\/\/127\.0\.0\.1:5173\/invite\/[a-f0-9]{64}$/);
+  const invitationLink = page.getByLabel('Invitation link');
+  await expect(invitationLink).toHaveValue(/\/invite\/[a-f0-9]{64}$/);
+  expect(new URL(await invitationLink.inputValue()).origin).toBe(new URL(page.url()).origin);
   await expect(page.getByText('It expires in seven days and can be used once.', { exact: false })).toBeVisible();
 });

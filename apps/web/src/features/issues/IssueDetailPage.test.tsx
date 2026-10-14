@@ -46,11 +46,11 @@ vi.mock('@/api', () => ({
   useUsers: () => ({
     data: [{ id: 'user-1', displayName: 'Matt', email: 'matt@example.com' }],
   }),
-  useWorkflow: () => ({
-    data: { statuses: [{ id: 'todo', name: 'To Do', color: '#6b7280' }] },
-  }),
-  useWorkflowTransitions: () => ({
-    data: [{ id: 'done', name: 'Done', toStatus: { name: 'Done', color: '#16a34a' } }],
+  useProjectWorkflow: () => ({
+    data: {
+      statuses: [{ id: 'todo', name: 'To Do', color: '#6b7280' }],
+      transitions: [{ id: 'done', fromStatusId: 'todo', name: 'Done', toStatus: { name: 'Done', color: '#16a34a' } }],
+    },
   }),
 }));
 

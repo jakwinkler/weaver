@@ -6,8 +6,7 @@ import {
   useIssueRecurrence,
   useUpdateIssue,
   useProject,
-  useWorkflow,
-  useWorkflowTransitions,
+  useProjectWorkflow,
   useTransitionIssue,
   useUsers,
   useHasPermission,
@@ -48,8 +47,8 @@ export function IssueDetailPage() {
   const projectKey = issueKey?.split('-')[0] || '';
   const { data: project } = useProject(projectKey);
   const workflowId = project?.workflowId || '';
-  const { data: workflow } = useWorkflow(workflowId);
-  const { data: availableTransitions } = useWorkflowTransitions(workflowId, issue?.statusId || '');
+  const { data: workflow } = useProjectWorkflow(projectKey, workflowId);
+  const availableTransitions = workflow?.transitions.filter((transition) => transition.fromStatusId === issue?.statusId);
   const { data: users } = useUsers();
   const canUpdate = useHasPermission('issues.update');
   const canTransition = useHasPermission('issues.transition');
@@ -380,7 +379,7 @@ export function IssueDetailPage() {
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start">
                     {availableTransitions.map((t) => {
-                      const targetStatus = (t as any).toStatus;
+                      const targetStatus = t.toStatus;
                       const targetColor = targetStatus?.color || '#6b7280';
                       const targetName = targetStatus?.name || t.name || 'Transition';
                       return (

@@ -6,7 +6,7 @@ import {
   ProjectMemberEntity,
   SprintEntity,
 } from '@weaver/db';
-import { CreateProjectDto, UpdateProjectDto, PaginatedResponse } from '@weaver/shared';
+import { CreateProjectDto, UpdateProjectDto, PaginatedResponse, ProjectWorkflowDetail, StatusCategory } from '@weaver/shared';
 import { TenantConnectionProvider } from '../../core/tenant';
 import { WorkflowsService } from '../workflows';
 import { EventDispatcherService } from '../events';
@@ -130,6 +130,26 @@ export class ProjectsService {
     });
 
     return saved;
+  }
+
+  async workflow(key: string): Promise<ProjectWorkflowDetail> {
+    const project = await this.findByKey(key);
+    if (!project.workflowId) throw new NotFoundException('Project has no assigned workflow');
+    const workflow = await this.workflowsService.findById(project.workflowId);
+    const statuses = workflow.statuses.map(({ id, workflowId, name, category, color, isInitial, isTerminal, position }) =>
+      ({ id, workflowId, name, category: category as StatusCategory, color, isInitial, isTerminal, position }));
+    return {
+      id: workflow.id,
+      name: workflow.name,
+      isDefault: workflow.isDefault,
+      createdAt: workflow.createdAt,
+      updatedAt: workflow.updatedAt,
+      statuses,
+      transitions: workflow.transitions.map(({ id, workflowId, fromStatusId, toStatusId, name }) => ({
+        id, workflowId, fromStatusId, toStatusId, name,
+        toStatus: statuses.find((status) => status.id === toStatusId)!,
+      })),
+    };
   }
 
   async delete(key: string): Promise<void> {
