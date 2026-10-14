@@ -70,9 +70,8 @@ the fix, then passed after it. The reusable live suite now checks readable
 statuses, a client status change and its persistence after reload.
 
 The live organization directory still exposes other members' names and email
-addresses to clients. This is tracked as **LCA-01**, an open privacy limitation.
-Private project content isolation passed; strict client identity isolation is
-not established. The workflow defect is **LCA-02**. The final local browser run passed 32/32 scenarios on fresh services, including the client status regression and a portable invitation-link assertion. Its API run passed 357/357 tests across 42 suites, and the API unit run passed 240/240 across 49 suites. The web unit run passed 152/152 across 55 suites; API/web typechecks, live-suite typechecking and all 20 workspace builds passed.
+addresses to clients. This was tracked as **LCA-01** in the initial acceptance; the privacy follow-up below addresses it.
+Private project content isolation passed in that run. The workflow defect is **LCA-02**. The final local browser run passed 32/32 scenarios on fresh services, including the client status regression and a portable invitation-link assertion. Its API run passed 357/357 tests across 42 suites, and the API unit run passed 240/240 across 49 suites. The web unit run passed 152/152 across 55 suites; API/web typechecks, live-suite typechecking and all 20 workspace builds passed.
 
 A second screenshot finding, **LCA-03**, showed posted comment text restored
 into the draft editor after reload. An outstanding autosave timer could write
@@ -90,10 +89,24 @@ The guarded live suite and backup/cleanup procedure are documented in
 screenshots, backups and exact deployment acceptance records are retained by
 the operator rather than committed.
 
+## Client directory privacy follow-up
+
+LCA-01 is addressed on the server for directory listing/search, project member
+rosters, avatar downloads, and assignee selections. Organization team rosters
+require an agency owner/admin. Forced comment mentions cannot notify clients
+outside a private project. Client role and membership changes apply to existing
+sessions on their next request. The change uses existing roles and memberships
+and requires no migration. The focused API regressions failed on the original
+behavior and when the policy was temporarily reverted; the policy service has
+100% statement/function execution coverage in the focused run. The full API
+acceptance suite passed 370/370 across 43 suites, API units passed 240/240, and
+the full browser suite passed 33/33 on fresh services. API typechecking, browser
+spec typechecking and all 20 workspace builds passed.
+
 ## Remaining pilot gates and limits
 
 1. **Migration requirement for other deployments:** The new public `organization_invitations` table requires [the SQL migration](../../../packages/db/migrations/20261014_organization_invitations.sql) where schema synchronization is disabled. The authorized live deployment applied its reviewed additive schema plan.
-2. **Client privacy:** Organization membership currently permits directory access to other members' names and email addresses (LCA-01). Keep client projects private and evaluate this limitation before onboarding unrelated clients.
+2. **Client privacy:** LCA-01 is addressed by the [project directory privacy policy](../../../docs/security/project-directory-privacy.md). Agency owner/admin roles retain the full organization directory; clients see only themselves and explicit project colleagues. Verify the deployed revision with the guarded live suite.
 3. **Invitation delivery:** Administrators copy a private invitation link from Users and share it themselves. Automated invitation email delivery is not implemented.
 4. **Coverage limits:** Live attachment upload/download passed using the deployed local storage volume. Outbound email, third-party plugin integrations, import/export with representative files, external object storage and cross-browser rendering remain unverified. The existing API suite covers related server paths with its local configuration.
 5. **Repeated test runs:** Reusing one disposable database across several full browser runs accumulated 92 test organizations; PostgreSQL then hit its 100-client cap and six registration attempts returned 500. The database log confirmed `too many clients already`. A full run on fresh disposable services passed 32/32. The runbook now requires a fresh stack for each full run. Connection pool behavior under many organizations remains a scale follow-up; the one-organization pilot did not reproduce this failure.

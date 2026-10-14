@@ -33,6 +33,8 @@ test('live agency and client account acceptance in one disposable organization',
   writeFileSync(started, new Date().toISOString(), { flag: 'wx', mode: 0o600 });
   const checks: { name: string; passed: boolean; detail?: string }[] = [];
   const observations: { id: string; detail: string }[] = [];
+  let teamId = '';
+  let viewerAvatarId = '';
   const contexts: BrowserContext[] = [];
   const secrets: string[] = [];
   const pageErrors: string[] = [];
@@ -141,6 +143,14 @@ test('live agency and client account acceptance in one disposable organization',
     await expect(staffPage.getByRole('heading', { name: 'Projects', level: 1 })).toBeVisible();
     status(await call(owner, 'post', '/projects/CLA/members', { userId: client.id, role: 'member' }), 201);
     status(await call(owner, 'post', '/projects/CLB/members', { userId: viewer.id, role: 'viewer' }), 201);
+    const team = await call(owner, 'post', '/teams', { name: 'Acceptance organization team' });
+    status(team, 201); teamId = (await team.json()).id;
+    status(await call(owner, 'post', `/teams/${teamId}/members`, { userId: viewer.id }), 201);
+    const avatar = await viewer.ctx.request.post('/api/v1/users/me/avatar', {
+      headers: { 'x-tenant-id': tenantId },
+      multipart: { file: { name: 'acceptance-avatar.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNwzHz4HwAFBQKLjf7hrwAAAABJRU5ErkJggg==', 'base64') } },
+    });
+    status(avatar, 201); viewerAvatarId = (await avatar.json()).avatarUrl.split('/')[2];
     checks.push({ name: 'Member and viewer accept live invitations in the browser and join the same organization', passed: true });
 
     await check('Invitations are single use', async () => {
@@ -286,12 +296,68 @@ test('live agency and client account acceptance in one disposable organization',
       status(await call(anon, 'get', '/projects/CLA'), 401);
     });
 
-    await check('Record the organization directory exposure without changing any permissions', async () => {
-      const response = await call(client.ctx, 'get', '/users'); status(response, 200);
-      const users = await response.json();
-      if (users.some((user: { email: string }) => user.email === manifest.accounts.viewer)) {
-        observations.push({ id: 'LCA-01', detail: 'A client can read the names and email addresses of other organization members through /users. Project content remains isolated, but strict client identity isolation is incomplete.' });
+    await check('Client directories and exact-email search show only self and project colleagues', async () => {
+      const ownerId = (await (await call(owner, 'get', '/auth/session')).json()).user.id;
+      for (const actor of [client, viewer]) {
+        const expected = [ownerId, actor.id].sort();
+        const directory = await call(actor.ctx, 'get', '/users'); status(directory, 200);
+        expect((await directory.json()).map((u: { id: string }) => u.id).sort()).toEqual(expected);
+        const search = await call(actor.ctx, 'get', '/users/search?q='); status(search, 200);
+        expect((await search.json()).map((u: { id: string }) => u.id).sort()).toEqual(expected);
+        const otherEmail = actor === client ? manifest.accounts.viewer : manifest.accounts.client;
+        const hidden = await call(actor.ctx, 'get', `/users/search?q=${encodeURIComponent(otherEmail)}`); status(hidden, 200);
+        expect(await hidden.json()).toEqual([]);
+        for (const path of ['/teams', `/teams/${teamId}`, `/teams/${teamId}/members`]) status(await call(actor.ctx, 'get', path), 403);
       }
+    });
+
+    await check('Hidden profile avatars remain inaccessible by a known attachment ID', async () => {
+      status(await call(client.ctx, 'get', `/attachments/${viewerAvatarId}/download`), 403);
+      status(await call(staff.ctx, 'get', `/attachments/${viewerAvatarId}/download`), 200);
+      status(await call(viewer.ctx, 'get', `/attachments/${viewerAvatarId}/download`), 200);
+    });
+
+    await check('Agency staff retain every organization member in directory, search, and teams', async () => {
+      for (const actor of [owner, staff.ctx]) {
+        const listed = await call(actor, 'get', '/users'); status(listed, 200);
+        expect((await listed.json()).map((u: { email: string }) => u.email).sort()).toEqual(Object.values(manifest.accounts).sort());
+        const search = await call(actor, 'get', '/users/search?q='); status(search, 200); expect(await search.json()).toHaveLength(4);
+        status(await call(actor, 'get', `/teams/${teamId}/members`), 200);
+      }
+    });
+
+    await check('Client assignee and mention pickers contain colleagues and exclude unrelated clients and staff', async () => {
+      const page = await client.ctx.newPage(); await page.goto('/issues/CLA-1');
+      await page.getByRole('button', { name: 'Unassigned', exact: true }).click();
+      await expect(page.getByRole('menuitem', { name: /Acceptance Agency Owner/ })).toBeVisible();
+      await expect(page.getByRole('menuitem', { name: /Acceptance viewer|Acceptance staff/ })).toHaveCount(0);
+      await page.screenshot({ path: join(output, 'client-assignee-privacy.png'), fullPage: true });
+      await page.keyboard.press('Escape');
+      await page.getByLabel('Add a comment...', { exact: true }).pressSequentially('@Acceptance');
+      const suggestions = page.getByRole('listbox', { name: 'Mention a person' });
+      await expect(suggestions.getByRole('option', { name: 'Acceptance Agency Owner', exact: true })).toBeVisible();
+      await expect(suggestions.getByRole('option', { name: /Acceptance viewer|Acceptance staff/ })).toHaveCount(0);
+      await page.screenshot({ path: join(output, 'client-mention-privacy.png'), fullPage: true });
+      await page.close();
+    });
+
+    await check('Client directory adds and removes colleagues when a shared project changes', async () => {
+      status(await call(owner, 'post', '/projects/CLB/members', { userId: client.id, role: 'viewer' }), 201);
+      try {
+        const response = await call(client.ctx, 'get', '/users'); status(response, 200);
+        expect((await response.json()).some((u: { id: string }) => u.id === viewer.id)).toBe(true);
+      } finally { status(await call(owner, 'delete', `/projects/CLB/members/${client.id}`), 204); }
+      const response = await call(client.ctx, 'get', '/users'); status(response, 200);
+      expect((await response.json()).some((u: { id: string }) => u.id === viewer.id)).toBe(false);
+    });
+
+    await check('Forged hidden assignees and mentions cannot expose another client', async () => {
+      status(await call(client.ctx, 'post', '/projects/CLA/issues', { summary: 'Forbidden identity lookup', assigneeId: viewer.id }), 403);
+      status(await call(client.ctx, 'patch', '/issues/CLA-1', { assigneeId: viewer.id }), 403);
+      const mentioned = await call(client.ctx, 'post', '/issues/CLA-1/comments', { body: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'mention', attrs: { id: viewer.id, label: 'Hidden client' } }] }] } });
+      status(mentioned, 201);
+      const notifications = await call(viewer.ctx, 'get', '/notifications'); status(notifications, 200);
+      expect((await notifications.json()).data.some((n: { type: string }) => n.type === 'mention')).toBe(false);
     });
 
     await check('Removing a project membership immediately revokes existing client access', async () => {
@@ -299,6 +365,8 @@ test('live agency and client account acceptance in one disposable organization',
       status(await call(client.ctx, 'get', '/issues/CLA-1'), 403);
       const list = await call(client.ctx, 'get', '/projects'); status(list, 200);
       expect((await list.json()).data).toEqual([]);
+      const people = await call(client.ctx, 'get', '/users'); status(people, 200);
+      expect((await people.json()).map((u: { id: string }) => u.id)).toEqual([client.id]);
       status(await call(owner, 'post', '/projects/CLA/members', { userId: client.id, role: 'member' }), 201);
       status(await call(client.ctx, 'get', '/issues/CLA-1'), 200);
     });

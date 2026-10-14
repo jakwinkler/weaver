@@ -30,12 +30,12 @@ import {
 } from '../../core/auth';
 import { ZodValidationPipe, parsePagination } from '../../common';
 import { IssuesService } from './issues.service';
-import { ProjectAccessGuard, RequireProjectAccess } from '../../core/tenant';
+import { MemberVisibilityService, ProjectAccessGuard, RequireProjectAccess } from '../../core/tenant';
 
 @Controller()
 @UseGuards(JwtAuthGuard, PermissionGuard, ProjectAccessGuard)
 export class IssuesController {
-  constructor(private readonly issuesService: IssuesService) {}
+  constructor(private readonly issuesService: IssuesService, private readonly memberVisibility: MemberVisibilityService) {}
 
   @Post('projects/:projectKey/issues')
   @RequirePermission('issues', 'create')
@@ -45,6 +45,7 @@ export class IssuesController {
     @Body(new ZodValidationPipe(createIssueSchema)) dto: any,
     @CurrentUser() user: RequestUser,
   ) {
+    await this.memberVisibility.assertVisibleMember(user, dto.assigneeId);
     return this.issuesService.create(projectKey, dto, user.userId);
   }
 
@@ -104,6 +105,7 @@ export class IssuesController {
     @Body(new ZodValidationPipe(bulkUpdateIssuesSchema)) dto: any,
     @CurrentUser() user: RequestUser,
   ) {
+    await this.memberVisibility.assertVisibleMember(user, dto.updates.assigneeId);
     return this.issuesService.bulkUpdate(dto.issueIds, dto.updates, user.userId);
   }
 
@@ -140,6 +142,7 @@ export class IssuesController {
     @Body(new ZodValidationPipe(updateIssueSchema)) dto: any,
     @CurrentUser() user: RequestUser,
   ) {
+    await this.memberVisibility.assertVisibleMember(user, dto.assigneeId);
     return this.issuesService.update(issueKey, dto, user.userId);
   }
 

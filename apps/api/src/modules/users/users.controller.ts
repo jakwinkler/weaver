@@ -66,12 +66,12 @@ export class UsersController {
 
   @Get('search')
   async searchUsers(@Query('q') query: string, @CurrentUser() user: RequestUser) {
-    return this.usersService.searchTenantMembers(user.tenantId, query || '');
+    return this.usersService.searchTenantMembers(user, query || '');
   }
 
   @Get()
   async listMembers(@CurrentUser() user: RequestUser) {
-    return this.usersService.findTenantMembers(user.tenantId);
+    return this.usersService.findTenantMembers(user);
   }
 
   @Patch(':userId/role')

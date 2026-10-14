@@ -5,7 +5,7 @@ new, disposable organization. It covers agency administrator access, two
 clients assigned to different private projects, browser invitation acceptance,
 issue creation/editing/comments, attachment storage, search/dashboard filtering,
 direct resource access, read-only permissions, membership revocation and login.
-It also records organization-wide directory visibility as a known limitation.
+It verifies project-scoped client directories and people pickers while preserving agency owner/admin access to everyone.
 
 Live writes require explicit authorization. The normal `e2e` suite remains
 local-only and never loads this suite. This suite requires the exact hostname,
@@ -82,5 +82,4 @@ Keep the report and screenshots after deleting account credentials/state.
 
 The suite proves the tested configuration on the recorded release. It does
 not establish the existing customer organizations' configuration, OAuth or
-outbound email delivery, every installed plugin, or full client identity
-isolation. New projects are required to remain private.
+outbound email delivery, every installed plugin, or every identity surface in third-party plugins. New projects are required to remain private.

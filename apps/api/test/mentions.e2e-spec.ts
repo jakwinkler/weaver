@@ -114,6 +114,9 @@ describe('Mentions (e2e)', () => {
       .set('X-Tenant-ID', tenantId)
       .send({ name: 'Mention Project', key: 'MNT' })
       .expect(201);
+    await request(app.getHttpServer()).post('/api/v1/projects/MNT/members')
+      .set('Authorization', `Bearer ${tokenA}`).set('X-Tenant-ID', tenantId)
+      .send({ userId: userBId, role: 'member' }).expect(201);
   });
 
   afterAll(async () => {
