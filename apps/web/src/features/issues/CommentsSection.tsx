@@ -49,6 +49,10 @@ export function CommentsSection({ issueKey }: CommentsSectionProps) {
     e.preventDefault();
     if (!editorContent) return;
     await createComment.mutateAsync({ body: editorContent });
+    if (draftTimerRef.current) {
+      clearTimeout(draftTimerRef.current);
+      draftTimerRef.current = undefined;
+    }
     setEditorContent(null);
     clearDraft(issueKey);
   };

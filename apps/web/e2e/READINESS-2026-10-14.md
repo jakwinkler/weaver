@@ -72,7 +72,18 @@ statuses, a client status change and its persistence after reload.
 The live organization directory still exposes other members' names and email
 addresses to clients. This is tracked as **LCA-01**, an open privacy limitation.
 Private project content isolation passed; strict client identity isolation is
-not established. The workflow defect is **LCA-02**. The final local browser run passed 32/32 scenarios on fresh services, including the client status regression and a portable invitation-link assertion. Its API run passed 357/357 tests across 42 suites, and the API unit run passed 240/240 across 49 suites. The web unit run passed 150/150 across 54 suites; API/web typechecks, live-suite typechecking and all 20 workspace builds passed.
+not established. The workflow defect is **LCA-02**. The final local browser run passed 32/32 scenarios on fresh services, including the client status regression and a portable invitation-link assertion. Its API run passed 357/357 tests across 42 suites, and the API unit run passed 240/240 across 49 suites. The web unit run passed 152/152 across 55 suites; API/web typechecks, live-suite typechecking and all 20 workspace builds passed.
+
+A second screenshot finding, **LCA-03**, showed posted comment text restored
+into the draft editor after reload. An outstanding autosave timer could write
+the old content after a successful post cleared draft storage. The fix cancels
+that timer after server confirmation. Regression tests verify that submitted
+drafts stay cleared and pending submissions retain their draft. The failure
+was observed before the fix and with the fix reverted; V8 coverage confirms the
+real component submit handler executed. The final local browser run passed
+32/32, including saved-comment content and an empty draft after the autosave
+deadline and reload. Live workflow acceptance on `a85aa26` passed 27/27; the
+reusable live test now also checks cleared drafts.
 
 The guarded live suite and backup/cleanup procedure are documented in
 [the live acceptance runbook](../acceptance/README.md). Private run manifests,

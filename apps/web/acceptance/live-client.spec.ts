@@ -225,14 +225,17 @@ test('live agency and client account acceptance in one disposable organization',
       await page.getByRole('button', { name: 'Save changes' }).click();
       await page.locator('[contenteditable="true"]').last().fill('Live client acceptance comment');
       await page.getByRole('button', { name: 'Comment', exact: true }).click();
-      await expect(page.getByText('Live client acceptance comment', { exact: true })).toBeVisible();
+      await expect(page.locator('[contenteditable="false"]').getByText('Live client acceptance comment', { exact: true })).toBeVisible();
+      // Cross the autosave deadline so reload cannot hide a delayed stale draft.
+      await page.waitForTimeout(750);
       await expect(page.getByRole('button', { name: 'To Do', exact: true })).toBeVisible();
       await page.getByRole('button', { name: 'To Do', exact: true }).click();
       await page.getByRole('menuitem', { name: 'In Progress', exact: true }).click();
       await expect(page.getByRole('button', { name: 'In Progress', exact: true })).toBeVisible();
       await page.reload();
+      await expect(page.locator('[contenteditable="true"]').last()).toBeEmpty();
       await expect(page.getByRole('heading', { name: new RegExp(`Client edited work ${manifest.runId}`) })).toBeVisible();
-      await expect(page.getByText('Live client acceptance comment', { exact: true })).toBeVisible();
+      await expect(page.locator('[contenteditable="false"]').getByText('Live client acceptance comment', { exact: true })).toBeVisible();
       await expect(page.getByRole('button', { name: 'In Progress', exact: true })).toBeVisible();
       await page.screenshot({ path: join(output, 'client-collaboration.png'), fullPage: true });
     });

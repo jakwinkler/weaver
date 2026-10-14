@@ -61,9 +61,12 @@ test('issue comments appear after posting and reload', async ({ page, context, o
   const editor = page.locator('[contenteditable="true"]').last();
   await editor.fill('Pilot comment from browser');
   await page.getByRole('button', { name: 'Comment', exact: true }).click();
-  await expect(page.getByText('Pilot comment from browser')).toBeVisible();
+  await expect(page.locator('[contenteditable="false"]').getByText('Pilot comment from browser')).toBeVisible();
+  // Cross the draft autosave deadline before remounting the editor.
+  await page.waitForTimeout(750);
   await page.reload();
-  await expect(page.getByText('Pilot comment from browser')).toBeVisible();
+  await expect(editor).toBeEmpty();
+  await expect(page.locator('[contenteditable="false"]').getByText('Pilot comment from browser')).toBeVisible();
   const response = await apiCall(context, owner, 'get', '/issues/TEST-1/comments');
   expect(response.status()).toBe(200);
   expect(JSON.stringify(await response.json())).toContain('Pilot comment from browser');
