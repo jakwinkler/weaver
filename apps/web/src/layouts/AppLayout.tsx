@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore, useThemeStore } from '@/stores';
-import { useProjects, useInstalledPlugins, useAvailablePlugins, useMyPermissions, useCurrentUser } from '@/api';
+import { useProjects, useInstalledPlugins, useAvailablePlugins, useMyPermissions, useCurrentUser, useOrganizations, useSwitchOrganization } from '@/api';
 import { ProjectIcon } from '@/features/projects/ProjectSettingsPage';
 import { NotificationPanel } from '@/features/notifications/NotificationPanel';
 import { UserAvatar } from '@/components/UserAvatar';
@@ -39,6 +39,7 @@ import {
   Bot,
   Menu,
   FileClock,
+  Building2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getNavigationEntries } from '@/plugins/plugin-slot-registry';
@@ -70,7 +71,12 @@ export function AppLayout() {
   const user = useAuthStore((s) => s.user);
   const isAdmin = useAuthStore((s) => s.isAdmin());
   const setUser = useAuthStore((s) => s.setUser);
+  const login = useAuthStore((s) => s.login);
+  const tenantId = useAuthStore((s) => s.tenantId);
   const { data: currentUser } = useCurrentUser();
+  const { data: organizations } = useOrganizations();
+  const switchOrganization = useSwitchOrganization();
+  const [switchError, setSwitchError] = useState(false);
   const { data: projectsData } = useProjects();
   const { data: installedPlugins } = useInstalledPlugins();
   const { data: availablePlugins } = useAvailablePlugins();
@@ -149,6 +155,18 @@ export function AppLayout() {
   const handleLogout = async () => {
     await endSession(queryClient);
     navigate('/login');
+  };
+
+  const handleSwitchOrganization = async (targetTenantId: string) => {
+    setSwitchError(false);
+    try {
+      const result = await switchOrganization.mutateAsync(targetTenantId);
+      queryClient.clear();
+      login(result.accessToken, result.user, result.tenantId);
+      window.location.assign('/projects');
+    } catch {
+      setSwitchError(true);
+    }
   };
 
   return (
@@ -370,6 +388,32 @@ export function AppLayout() {
               <DropdownMenuContent align="end">
                 <DropdownMenuLabel>My Account</DropdownMenuLabel>
                 <DropdownMenuSeparator />
+                {organizations && organizations.length > 0 && (
+                  <>
+                    <DropdownMenuLabel>Organizations</DropdownMenuLabel>
+                    {organizations.map((organization) => (
+                      <DropdownMenuItem
+                        key={organization.tenantId}
+                        disabled={organization.tenantId === tenantId || switchOrganization.isPending}
+                        onSelect={(event) => {
+                          event.preventDefault();
+                          void handleSwitchOrganization(organization.tenantId);
+                        }}
+                      >
+                        <Building2 className="h-4 w-4" />
+                        {organization.tenantId === tenantId
+                          ? `Current organization: ${organization.name}`
+                          : `Switch to ${organization.name}`}
+                      </DropdownMenuItem>
+                    ))}
+                    {switchError && (
+                      <p role="alert" className="px-2 py-1 text-sm text-destructive">
+                        Could not switch organizations. Please try again.
+                      </p>
+                    )}
+                    <DropdownMenuSeparator />
+                  </>
+                )}
                 <DropdownMenuItem onClick={() => navigate('/profile')}>
                   <User className="h-4 w-4" />
                   Profile

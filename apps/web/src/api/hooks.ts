@@ -7,6 +7,7 @@ import type {
   Issue,
   LoginDto,
   RegisterDto,
+  AcceptInvitationDto,
   CreateProjectDto,
   CreateIssueDto,
   UpdateIssueDto,
@@ -36,6 +37,34 @@ export function useRegister() {
   });
 }
 
+export interface InvitationDetails {
+  email: string;
+  role: string;
+  organizationName: string;
+  expiresAt: string;
+}
+
+export function useInvitation(token: string) {
+  return useQuery({
+    queryKey: ['invitation', token],
+    queryFn: async () => {
+      const res = await apiClient.get<InvitationDetails>(`/auth/invitations/${token}`);
+      return res.data;
+    },
+    enabled: !!token,
+    retry: false,
+  });
+}
+
+export function useAcceptInvitation(token: string) {
+  return useMutation({
+    mutationFn: async (data: AcceptInvitationDto) => {
+      const res = await apiClient.post<AuthResponse>(`/auth/invitations/${token}/accept`, data);
+      return res.data;
+    },
+  });
+}
+
 export function useCurrentUser() {
   return useQuery({
     queryKey: ['currentUser'],
@@ -44,6 +73,32 @@ export function useCurrentUser() {
       return res.data;
     },
     retry: false,
+  });
+}
+
+export interface OrganizationMembership {
+  tenantId: string;
+  name: string;
+  slug: string;
+  role: string;
+}
+
+export function useOrganizations() {
+  return useQuery({
+    queryKey: ['organizations'],
+    queryFn: async () => {
+      const res = await apiClient.get<OrganizationMembership[]>('/auth/organizations');
+      return res.data;
+    },
+  });
+}
+
+export function useSwitchOrganization() {
+  return useMutation({
+    mutationFn: async (tenantId: string) => {
+      const res = await apiClient.post<AuthResponse>('/auth/switch-organization', { tenantId });
+      return res.data;
+    },
   });
 }
 

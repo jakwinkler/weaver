@@ -19,6 +19,8 @@ vi.mock('@/api', () => ({
   useAvailablePlugins: () => ({ data: [] }),
   useInstalledPlugins: () => ({ data: [] }),
   useMyPermissions: () => ['*'],
+  useOrganizations: () => ({ data: [] }),
+  useSwitchOrganization: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useProjects: () => ({ data: { data: [] } }),
   useUnreadCount: () => ({ data: 0 }),
 }));

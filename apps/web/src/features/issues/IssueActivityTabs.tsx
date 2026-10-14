@@ -8,7 +8,8 @@ import {
   useUploadAttachment,
   getAttachmentUrl,
 } from '@/api/hooks-phase3';
-import { useProjectPlugins, useHasPermission } from '@/api';
+import { useHasPermission } from '@/api';
+import { useProjectFeatureEnabled } from '@/features/projects/useProjectFeatureEnabled';
 import { CommentsSection } from './CommentsSection';
 import { ActivityLog, ActivityEntryRow, ActionIcon } from './ActivityLog';
 import { TimeTrackingSection, TimeEntryIcon, formatTime } from './TimeTrackingSection';
@@ -42,9 +43,7 @@ export function IssueActivityTabs({ issueKey }: IssueActivityTabsProps) {
   const { data: attachments } = useAttachments(issueKey);
 
   const projectKey = issueKey.split('-')[0];
-  const { data: projectPlugins } = useProjectPlugins(projectKey);
-  const timeTrackingEnabled =
-    !projectPlugins || projectPlugins.some((p) => p.pluginId === '@weaver/plugin-time-tracking');
+  const timeTrackingEnabled = useProjectFeatureEnabled(projectKey, '@weaver/plugin-time-tracking').enabled;
 
   const allTabs: {
     key: Tab;
@@ -252,7 +251,7 @@ function AttachmentsTab({ issueKey }: { issueKey: string }) {
               {canUpdate && (
                 <button
                   onClick={() => deleteAttachment.mutate(att.id)}
-                  className="rounded p-1.5 text-gray-400 hover:bg-red-100 hover:text-red-600"
+                  className="rounded p-1.5 text-red-600 hover:bg-red-100"
                   title="Delete"
                 >
                   <Trash2 className="h-4 w-4" />
@@ -339,7 +338,7 @@ function AllTab({
                       {canDeleteComment && (
                         <button
                           onClick={() => handleDeleteComment(item.data.id)}
-                          className="rounded p-1 text-gray-400 hover:bg-red-100 hover:text-red-600"
+                          className="rounded p-1 text-red-600 hover:bg-red-100"
                           title="Delete comment"
                         >
                           <Trash2 className="h-3 w-3" />

@@ -22,7 +22,7 @@ import {
 // ── Auth Schemas ──
 
 export const registerSchema = z.object({
-  email: z.string().email(),
+  email: z.string().trim().toLowerCase().email(),
   password: z.string().min(8).max(128),
   displayName: z.string().min(1).max(255),
   orgName: z.string().min(1).max(255),
@@ -34,8 +34,21 @@ export const registerSchema = z.object({
 });
 export type RegisterDto = z.infer<typeof registerSchema>;
 
+export const createInvitationSchema = z.object({
+  email: z.string().trim().toLowerCase().email(),
+  role: z.enum(['member', 'viewer']),
+});
+export type CreateInvitationDto = z.infer<typeof createInvitationSchema>;
+
+export const acceptInvitationSchema = z.object({
+  email: z.string().trim().toLowerCase().email(),
+  displayName: z.string().trim().min(1).max(255),
+  password: z.string().min(8).max(128),
+});
+export type AcceptInvitationDto = z.infer<typeof acceptInvitationSchema>;
+
 export const loginSchema = z.object({
-  email: z.string().email(),
+  email: z.string().trim().toLowerCase().email(),
   password: z.string().min(1),
   tenantId: z.string().uuid().optional(),
 });

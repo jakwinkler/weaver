@@ -324,8 +324,13 @@ function GeneralTab({ projectKey }: { projectKey: string }) {
           </div>
 
           <div>
-            <Label className="mb-1 block">Project Name</Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} required />
+            <Label htmlFor="projectName" className="mb-1 block">Project Name</Label>
+            <Input
+              id="projectName"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+            />
           </div>
 
           <div>
@@ -497,8 +502,9 @@ function MembersTab({ projectKey }: { projectKey: string }) {
             <form onSubmit={handleAdd}>
               <div className="flex items-end gap-3">
                 <div className="flex-1">
-                  <Label className="mb-1 block">User</Label>
+                  <Label htmlFor="projectMemberUser" className="mb-1 block">User</Label>
                   <select
+                    id="projectMemberUser"
                     value={selectedUserId}
                     onChange={(e) => setSelectedUserId(e.target.value)}
                     required
@@ -513,8 +519,9 @@ function MembersTab({ projectKey }: { projectKey: string }) {
                   </select>
                 </div>
                 <div>
-                  <Label className="mb-1 block">Role</Label>
+                  <Label htmlFor="projectMemberRole" className="mb-1 block">Role</Label>
                   <select
+                    id="projectMemberRole"
                     value={selectedRole}
                     onChange={(e) => setSelectedRole(e.target.value)}
                     className="block rounded-md border border-input bg-background px-3 py-2 text-sm"
