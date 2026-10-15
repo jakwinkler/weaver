@@ -14,7 +14,9 @@ An unfinished comment is kept in this browser for that issue. After a comment is
 
 ## Follow live changes
 
-While signed in, Weaver receives updates through a live connection and refreshes relevant lists, boards, comments, and activity. Updates from other people can show a small toast. Your own changes do not need a second notification toast.
+While a project or one of its issues is open, Weaver keeps a live connection to that project. When someone else creates, edits, moves, or deletes an issue, or comments on one, the issue list, board, backlog, sprint board, roadmap, and open issue refresh on their own. Updates from other people can show a small toast. Your own changes do not need a second notification toast.
+
+The dashboard and search results do not refresh on their own. New, started, and completed sprints and time that other people log also need a reload.
 
 This is live refresh of saved records, not simultaneous character-by-character editing. Coordinate before two people rewrite the same description. If an update appears stale, check the connection and refresh before making a conflicting edit.
 
@@ -41,6 +43,8 @@ Mentions are TipTap nodes with `type: "mention"` and an `attrs.id` user UUID. Us
 The pilot release filters member search before the ten-person result limit and checks mention recipients against current project access. Comment submission cancels the pending local draft save after the server confirms the post.
 
 The WebSocket namespace is `/ws`. Events include `event`, `data`, and `timestamp`, with actor IDs where available. Rooms are derived from authenticated tenant context; project rooms are tenant-scoped. Client query invalidation maps events to the relevant caches. Do not trust a caller-supplied tenant ID as authorization.
+
+The web client sends `join:project` with `{ projectKey }` for the project in the current route (`/projects/:projectKey/...`, or the project part of `/issues/:issueKey`) once navigation settles, sends `leave:project` when the route moves to another project or out of projects, and joins again after each reconnect. The gateway allows 20 joins per connection every 10 seconds, 60 per user and 600 per tenant each minute, and answers `{ joined: false }` when it refuses one. It also refuses a join that arrives before it finishes authenticating a new connection, so the client waits briefly after connecting and retries refused joins with backoff. The client does not yet map `sprint.*`, `time.*`, or `issue.sprint_changed` events.
 
 Notification preferences use `PATCH /users/me/notification-preferences` with `emailOnAssign`, `emailOnMention`, `emailOnComment`, and `emailOnStatusChange`. The email worker reads the notifications queue. SMTP configuration and templates live separately from the in-app notification service. Protect the unsubscribe signing secret and never publish raw tokens.
 

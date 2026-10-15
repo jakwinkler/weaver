@@ -85,7 +85,6 @@ If you normally sign in with Google or GitHub and have no Weaver password, ask y
 
 - **Someone has to run it.** Weaver needs a server or cloud account with Docker, PostgreSQL, and Redis, and a person comfortable maintaining them. There is no hosted version to sign up for.
 - **It is young.** Its packages are still at version 0.0.x, and its first release was readied for a client pilot in October 2026. Read the [current limits](#current-limits) before you move a team over.
-- **Pages don't update live yet.** When a teammate changes something, reload to see it.
 - **There is no "forgot password" email yet.**
 - **It is built for desktop browsers.** Joining, creating an issue, and replying are tested on a phone-sized screen; other screens are less polished there.
 - **It is in English only.**
@@ -301,7 +300,7 @@ These are known gaps in this release:
 
 - No password reset or email verification.
 - The sign-in page shows only Google and GitHub buttons. SAML and OIDC sign-in start from `/api/v1/auth/saml/<organization-slug>` and `/api/v1/auth/oidc/<organization-slug>`.
-- The API publishes live issue and comment events, but the web app never joins a project room, so browsers don't receive them yet.
+- Live updates reach project pages and issue pages, but not the dashboard or search. New, started, and completed sprints and time that other people log still need a reload.
 - Administrators can define custom fields, and forms or the API can fill them, but the issue page doesn't show or edit their values.
 - Board cards and the backlog's assignee filter show a short user ID instead of a name.
 - The workflow editor saves its diagram layout in each administrator's browser, not on the server.

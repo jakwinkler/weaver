@@ -5,6 +5,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { MemoryRouter, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { useWebSocket } from '@/hooks/useWebSocket';
 import { adminNavItems, AppLayout } from './AppLayout';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -96,6 +97,7 @@ function renderLayout(initialEntry = '/projects/TEST/board') {
               <Route path="board" element={<div>Board fixture</div>} />
               <Route path="issues" element={<div>Issues fixture</div>} />
             </Route>
+            <Route path="/issues/:issueKey" element={<div>Issue fixture</div>} />
             <Route path="/search" element={<SearchFixture />} />
           </Route>
         </Routes>
@@ -164,6 +166,20 @@ describe('AppLayout responsive shell', () => {
       'md:hidden',
     );
     expect(screen.getByRole('main')).toHaveClass('px-3', 'sm:px-6');
+  });
+});
+
+describe('AppLayout realtime updates', () => {
+  it.each([
+    ['/projects/TEST/board', 'TEST'],
+    ['/projects/TEST', 'TEST'],
+    ['/issues/TEST-7', 'TEST'],
+    ['/search', null],
+    ['/', null],
+  ])('subscribes %s to the %s project room', (path, projectKey) => {
+    renderLayout(path);
+
+    expect(vi.mocked(useWebSocket)).toHaveBeenLastCalledWith(projectKey);
   });
 });
 

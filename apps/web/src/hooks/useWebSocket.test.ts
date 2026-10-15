@@ -14,8 +14,33 @@ describe('getInvalidationKeys', () => {
       ['issues'],
       ['issues', 'WS'],
       ['boards'],
+      ['boardIssues'],
+      ['backlog'],
+      ['sprintStats'],
       ['dashboard'],
     ]);
+  });
+
+  it.each([
+    'issue.created',
+    'issue.updated',
+    'issue.bulk_updated',
+    'issue.assigned',
+    'issue.moved',
+    'issue.reordered',
+    'issue.status_changed',
+    'issue.deleted',
+    'issue.bulk_deleted',
+  ])('refreshes board cards, the backlog, and sprint totals after %s', (event) => {
+    expect(getInvalidationKeys(event, { issueKey: 'WS-1', projectKey: 'WS' })).toEqual(
+      expect.arrayContaining([['issues'], ['boardIssues'], ['backlog'], ['sprintStats']]),
+    );
+  });
+
+  it('refreshes the open issue and its activity after another session edits it', () => {
+    expect(getInvalidationKeys('issue.updated', { issueKey: 'WS-1' })).toEqual(
+      expect.arrayContaining([['issue', 'WS-1'], ['activity', 'WS-1']]),
+    );
   });
 });
 

@@ -26,6 +26,9 @@ export const DOMAIN_EVENTS = [
   'relation.removed',
 ] as const;
 
+/** Board cards, the backlog, and sprint totals cache issues under keys of their own. */
+const ISSUE_PLANNING_KEYS = [['boardIssues'], ['backlog'], ['sprintStats']];
+
 /** Map domain events to React Query keys that should be invalidated. */
 export function getInvalidationKeys(event: string, data: Record<string, unknown>): string[][] {
   const issueKey = typeof data.issueKey === 'string' ? data.issueKey : undefined;
@@ -33,24 +36,36 @@ export function getInvalidationKeys(event: string, data: Record<string, unknown>
 
   switch (event) {
     case 'issue.created':
-      return [['issues'], ...(projectKey ? [['issues', projectKey]] : []), ['dashboard']];
+      return [
+        ['issues'],
+        ...(projectKey ? [['issues', projectKey]] : []),
+        ...ISSUE_PLANNING_KEYS,
+        ['dashboard'],
+      ];
     case 'issue.updated':
     case 'issue.assigned':
     case 'issue.moved':
     case 'issue.status_changed':
-      return [...(issueKey ? [['issue', issueKey]] : []), ['issues'], ['boards'], ['dashboard']];
+      return [
+        ...(issueKey ? [['issue', issueKey], ['activity', issueKey]] : []),
+        ['issues'],
+        ['boards'],
+        ...ISSUE_PLANNING_KEYS,
+        ['dashboard'],
+      ];
     case 'issue.bulk_updated':
-      return [['issues'], ['boards'], ['dashboard']];
+      return [['issues'], ['boards'], ...ISSUE_PLANNING_KEYS, ['dashboard']];
     case 'issue.reordered':
       return [
         ['issues'],
         ...(projectKey ? [['issues', projectKey]] : []),
         ['boards'],
+        ...ISSUE_PLANNING_KEYS,
         ['dashboard'],
       ];
     case 'issue.deleted':
     case 'issue.bulk_deleted':
-      return [['issues'], ['boards'], ['dashboard']];
+      return [['issues'], ['boards'], ...ISSUE_PLANNING_KEYS, ['dashboard']];
     case 'comment.created':
     case 'comment.updated':
     case 'comment.deleted':
