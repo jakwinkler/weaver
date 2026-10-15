@@ -185,6 +185,7 @@ Describes a native app that talks to the plugin. `authenticator` names a handler
 - Paths are relative to the plugin root and must not leave it.
 - A plugin may provide only one entrypoint.
 - Routes require a server entrypoint. Handlers are exported from a `handlers.ts` file next to it, or from `*.handler.ts` files in the same directory.
+- With `NODE_ENV=production`, the API loads the compiled JavaScript instead: `src/server/index.ts` becomes `dist/server/index.js`. `weaver build` writes it.
 - UI components require a client entrypoint.
 
 ## Permissions

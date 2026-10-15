@@ -37,6 +37,7 @@ describe('create-plugin', () => {
       'README.md',
       'package.json',
       'tsconfig.json',
+      'tsconfig.server.json',
       'vite.config.ts',
       'weaver-plugin.json',
       'src/server/index.ts',
@@ -99,12 +100,38 @@ describe('create-plugin', () => {
     });
 
     expect(existsSync(join(pluginRoot, 'src/server/index.ts'))).toBe(true);
+    expect(existsSync(join(pluginRoot, 'tsconfig.server.json'))).toBe(true);
     expect(existsSync(join(pluginRoot, 'src/client/index.ts'))).toBe(false);
     expect(existsSync(join(pluginRoot, 'vite.config.ts'))).toBe(false);
 
     const manifest = JSON.parse(readFileSync(join(pluginRoot, 'weaver-plugin.json'), 'utf8'));
     expect(manifest.entrypoints).toEqual({ server: 'src/server/index.ts' });
     expect(manifest.ui).toBeUndefined();
+  });
+
+  it('omits the server build configuration from client-only plugins', async () => {
+    const destinationRoot = mkdtempSync(join(testOutputRoot, 'generated-'));
+    temporaryDirectories.push(destinationRoot);
+
+    const pluginRoot = await createPlugin({
+      name: 'client-panel',
+      displayName: 'Client Panel',
+      author: 'Test Author',
+      type: 'widget',
+      scope: 'tenant',
+      includeServer: false,
+      includeClient: true,
+      destinationRoot,
+    });
+
+    expect(existsSync(join(pluginRoot, 'src/client/index.ts'))).toBe(true);
+    expect(existsSync(join(pluginRoot, 'src/server'))).toBe(false);
+    expect(existsSync(join(pluginRoot, 'tsconfig.server.json'))).toBe(false);
+
+    const manifest = JSON.parse(readFileSync(join(pluginRoot, 'weaver-plugin.json'), 'utf8'));
+    expect(manifest.entrypoints).toEqual({ client: 'src/client/index.ts' });
+    expect(manifest.routes).toBeUndefined();
+    expect(validatePlugin(pluginRoot)).toEqual({ errors: [], warnings: [] });
   });
 
   it('warns when a plugin is created outside the Weaver plugins directory', () => {

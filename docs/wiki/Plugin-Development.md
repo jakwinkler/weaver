@@ -1,6 +1,6 @@
 # Build a Weaver plugin
 
-Use the repository's plugin CLI to create a starting package, validate its manifest, and build its client bundle. Begin with one small feature and test it in a disposable organization before installing it in a shared environment.
+Use the repository's plugin CLI to create a starting package, validate its manifest, and build its client bundle and server code. Begin with one small feature and test it in a disposable organization before installing it in a shared environment.
 
 `@weaver/cli` and `@weaver/sdk` are not published to npm, and nothing from this repository is published under the `@weaver` npm scope. Run the CLI from a Weaver checkout and create plugins in its `plugins/` directory, where pnpm links both packages from the workspace.
 
@@ -27,9 +27,9 @@ Install workspace dependencies after adding the package. Inspect the generated R
 | `create-plugin` | Generate the starting files |
 | `validate` | Check manifest shape, references, and exports |
 | `dev` | Run the client Vite server with HMR and an API proxy |
-| `build` | Validate and build the federated client bundle |
+| `build` | Validate, build the federated client bundle, and compile server code |
 
-`dev` and `build` require a client/Vite configuration. A server-only plugin still needs validation and its server packaging path; it cannot use a client-bundle build as evidence of server readiness.
+`dev` requires a client/Vite configuration. `build` builds what the manifest's entrypoints declare: the client bundle for `entrypoints.client`, and JavaScript in `dist/server` for `entrypoints.server`, which is what the API loads when `NODE_ENV` is `production`. A server-only plugin skips the client step.
 
 Build the client before testing the normal asset-serving path. The expected output is `dist/client/remoteEntry.js`. During client development, point the host at the plugin dev server using the supported development mapping, then verify the host actually requests that URL.
 
