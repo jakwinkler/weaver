@@ -1,55 +1,46 @@
 # Backlog & Sprint Planning
 
-> A dedicated backlog view showing all unassigned-to-sprint issues, with drag-to-sprint planning and sprint scope management.
+**Status: Implemented with gaps.** Backlog planning, capacity display, filtering, quick creation, and sprint movement are present.
 
-## Why
+Reconciled September 23, 2026 against main [`27b14d7`](https://github.com/jakwinkler/weaver/commit/27b14d72ab8d201c4bf4fcbffd00830091dd21ce). This is the source baseline, which can differ from the checked-out application branch. Checked implementation items below mean the code exists; they do not certify a release or a fresh test pass.
 
-Sprint planning is a core Scrum ceremony. Jira's backlog view is where teams prioritize and scope sprints. Without it, sprint management is just a list -- not a planning tool. The backlog view turns sprint planning from a manual process into an interactive drag-and-drop experience.
+User guide: [Sprints and Reports](https://github.com/jakwinkler/weaver/wiki/Sprints-and-Reports).
 
-## Current State
+## Implemented
 
-- SprintBoard component shows sprints with their issues
-- Issues have `sprintId` (nullable foreign key to SprintEntity)
-- `POST /sprints/:id/issues` adds issues to sprint
-- Sprints have name, startDate, endDate, status (planned/active/completed)
-- No backlog view exists (issues with sprintId=null are invisible in sprint context)
-- No way to drag issues into sprints from backlog
-- No sprint capacity tracking
+- [x] Backlog query/filter API, sprint assignment endpoint, capacity field, and sprint statistics.
+- [x] Backlog route with active/planned containers, collapsible sections, points/capacity display, and over-capacity feedback.
+- [x] Sortable movement among containers, optimistic recovery, filters, quick creation, and project navigation.
+- [x] One active sprint per project; completion returns non-terminal issues to backlog.
 
-## Tasks
+## Differences from the original plan
 
-### Backend
-- [ ] **Add GET /projects/:key/backlog endpoint** — Return issues where `sprintId IS NULL` for the project. Support pagination and filtering (priority, assignee, issue type). Sort by sortOrder. Include total count for backlog size indicator. _Files: `apps/api/src/modules/issues/issues.controller.ts`, `apps/api/src/modules/issues/issues.service.ts`_
-- [ ] **Add PATCH /issues/:key/sprint endpoint** — Move issue to sprint (or null for backlog). Update sortOrder within target container. Emit `issue.sprint_changed` event for webhooks and activity log. _Files: `apps/api/src/modules/issues/issues.controller.ts`, `apps/api/src/modules/issues/issues.service.ts`_
-- [ ] **Sprint capacity** — Add optional `capacity` (story points) column to SprintEntity. Add `GET /sprints/:id/stats` returning total committed points, issue count, completed count, completed points. _Files: `packages/db/src/entities/tenant/sprint.entity.ts`, `apps/api/src/modules/sprints/sprints.service.ts`, `apps/api/src/modules/sprints/sprints.controller.ts`_
+- The backlog and capacity UI exist; the previous missing-feature claims were stale.
+- Capacity is accepted on create, but the PATCH controller schema omits it even though the service type supports it.
+- Backlog planning fetches a bounded first set, not every issue in a large project.
+- SprintBoard headers show committed/capacity points; completed-point reporting is available through statistics/reports.
 
-### Frontend
-- [ ] **Create BacklogView page** — Two-panel layout: top = sprint containers (active + planned sprints, ordered by startDate), bottom = backlog (unassigned issues). Route: `/projects/:projectKey/backlog`. _Files: `apps/web/src/features/boards/BacklogView.tsx`_
-- [ ] **Sprint container component** — Collapsible panel showing sprint name, date range, capacity bar (X/Y points), issue count, and sortable issue list within the sprint. _Files: `apps/web/src/features/boards/SprintContainer.tsx`_
-- [ ] **Backlog container** — Shows all unassigned issues with sortable list. Filter bar (priority, assignee, type). Shows total issue count. _Files: `apps/web/src/features/boards/BacklogView.tsx`_
-- [ ] **Drag between containers** — Drag issue from backlog to sprint container (sets sprintId). Drag from sprint to backlog (sets sprintId=null). Drag between sprints. Uses @dnd-kit/core and @dnd-kit/sortable. Optimistic update with rollback on error. _Files: `apps/web/src/features/boards/BacklogView.tsx`_
-- [ ] **Sprint scope bar** — Shows capacity vs committed points as a horizontal progress bar inside each sprint container. Turns red when committed points exceed capacity. Shows "X / Y pts" label. _Files: `apps/web/src/features/boards/SprintContainer.tsx`_
-- [ ] **Quick create in backlog** — Inline "Create issue" row at bottom of backlog. Type title and press Enter to create issue and append to backlog list. _Files: `apps/web/src/features/boards/BacklogView.tsx`_
-- [ ] **Add navigation** — Add "Backlog" tab to project detail page alongside Board, Sprints, List, etc. Only visible when `@weaver/plugin-sprints` is enabled for the project. _Files: `apps/web/src/features/projects/ProjectDetailPage.tsx`_
+## Remaining work and verification
 
-### Tests
-- [ ] **E2E: backlog endpoint** — Create 3 issues (1 in sprint, 2 not). GET backlog returns only the 2 unassigned issues. _File: `apps/api/test/backlog.e2e-spec.ts`_
-- [ ] **E2E: move to sprint** — PATCH issue sprint to a sprint ID, verify issue appears in sprint's issue list and not in backlog. _File: `apps/api/test/backlog.e2e-spec.ts`_
-- [ ] **E2E: move to backlog** — PATCH issue sprint=null, verify issue returns in backlog endpoint. _File: `apps/api/test/backlog.e2e-spec.ts`_
-- [ ] **E2E: sprint stats** — Add issues with story points to sprint, verify stats endpoint returns correct total points, issue count, and completed counts. _File: `apps/api/test/backlog.e2e-spec.ts`_
+- [ ] Expose and verify capacity editing in the controller/UI if intended for planned sprints.
+- [ ] Fix the observed previous-day date labels west of UTC and assignee ID fallbacks.
+- [ ] Handle more than 200 backlog/project issues and repeat complete sprint lifecycle/drag acceptance.
 
-## Acceptance Criteria
+## Evidence
 
-- Backlog shows all issues not assigned to any sprint
-- Sprint containers show their assigned issues with capacity bar
-- Drag issues between backlog and sprints with visual feedback
-- Drag issues between different sprints
-- Sprint capacity bar shows committed vs available points
-- Over-capacity highlighted in red
-- Quick create in backlog works (Enter to submit)
-- Backlog tab visible in project navigation when sprints plugin enabled
-- Collapsing/expanding sprint containers persists during session
-- Filters in backlog apply correctly (priority, assignee, type)
+Local active/planned sprints, estimates, assignments, statistics, and backlog rendering were checked. Date-label and assignee fallback problems were observed; capacity PATCH omission was source-confirmed.
+
+### Implementation
+
+- [apps/api/src/modules/sprints/sprints.controller.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/api/src/modules/sprints/sprints.controller.ts)
+- [apps/api/src/modules/sprints/sprints.service.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/api/src/modules/sprints/sprints.service.ts)
+- [apps/web/src/features/boards/BacklogView.tsx](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/web/src/features/boards/BacklogView.tsx)
+- [apps/web/src/features/boards/SprintContainer.tsx](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/web/src/features/boards/SprintContainer.tsx)
+
+### Existing automated coverage, not rerun for this documentation edit
+
+- [apps/api/test/backlog.e2e-spec.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/api/test/backlog.e2e-spec.ts)
+- [apps/web/src/features/boards/backlogPlanning.test.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/web/src/features/boards/backlogPlanning.test.ts)
 
 ## Dependencies
 

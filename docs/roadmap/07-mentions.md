@@ -1,53 +1,42 @@
 # @Mentions
 
-> Type @ in comments to mention users. Mentioned users get notified.
+**Status: Implemented.** Comments support tenant-scoped mention suggestions and notifications for newly mentioned users.
 
-## Why
+Reconciled September 23, 2026 against main [`27b14d7`](https://github.com/jakwinkler/weaver/commit/27b14d72ab8d201c4bf4fcbffd00830091dd21ce). This is the source baseline, which can differ from the checked-out application branch. Checked implementation items below mean the code exists; they do not certify a release or a fresh test pass.
 
-@mentions are the primary way teams direct attention in PM tools. Without them, people have to manually assign or notify collaborators out-of-band. Mentions create a natural, inline workflow for pulling people into conversations on specific issues.
+User guide: [Collaboration and Notifications](https://github.com/jakwinkler/weaver/wiki/Collaboration-and-Notifications).
 
-## Current State
+## Implemented
 
-- Comments use TipTap (rich text JSON stored as JSONB)
-- Comment creation and updates extract nested mentions and notify newly mentioned tenant members
-- `GET /users/search` provides a tenant-scoped, prefix-searchable typeahead source
-- RichTextEditor opens an accessible, debounced user picker when `@` is typed
-- Read-only rich text renders avatar-aware mention chips
-- In-app notification payloads link mentions back to the issue; email delivery remains in 08-email-notifications
+- [x] Nested TipTap mention extraction, deduplication, and self-notification suppression.
+- [x] Tenant-scoped user prefix search and a debounced editor picker.
+- [x] Mention chips, issue links, and notification handling for create/edit differences.
 
-## Tasks
+## Differences from the original plan
 
-### Backend
+- Mention extraction, suggestions, and in-app notifications are implemented.
+- Email delivery is a separate configured worker path, covered by feature 08.
+- Plain text containing a name is not an actual mention node.
 
-- [x] **Mention extraction service** — Parse TipTap JSON for mention nodes (`{ type: 'mention', attrs: { id: userId } }`). Return list of mentioned userIds. Handle nested content (mentions inside paragraphs, lists, etc.). _Files: `apps/api/src/modules/comments/mention.service.ts`_
-- [x] **Create notifications on mention** — When a comment is created/updated, extract mentions, create notification for each mentioned user: `{ type: 'mention', title: '@You in PROJ-123', data: { issueKey, commentId } }`. Diff old vs new mentions on update to avoid duplicate notifications. _Files: `apps/api/src/modules/comments/comments.service.ts`_
-- [x] **Avoid self-mention notification** — Don't notify the comment author if they mention themselves. _Files: `apps/api/src/modules/comments/comments.service.ts`_
-- [x] **GET /users/search endpoint** — Search users by displayName prefix for typeahead. Return `[{ id, displayName, email, avatarUrl }]`. Limit to 10 results. Scoped to tenant. _Files: `apps/api/src/modules/users/users.controller.ts`, `apps/api/src/modules/users/users.service.ts`_
+## Remaining work and verification
 
-### Frontend
+- [ ] Verify receipt with separate users, edits that add/remove mentions, and restricted project access.
+- [ ] Verify email delivery independently when SMTP is enabled.
 
-- [x] **Add TipTap Mention extension** — Install `@tiptap/extension-mention`. Configure suggestion popup with user search. Wire into existing RichTextEditor component. _Files: `apps/web/src/components/RichTextEditor.tsx`_
-- [x] **Mention suggestion popup** — On typing `@`, show dropdown of users. Filter as user types. Click or Enter to insert mention. Show avatar + display name in dropdown. Position popup relative to cursor. _Files: `apps/web/src/components/MentionSuggestion.tsx`_
-- [x] **Render mentions** — In RichTextRenderer, style mention nodes as clickable chips with user avatar and name. Link to user profile if available. _Files: `apps/web/src/components/RichTextRenderer.tsx`_
-- [x] **User search hook** — `useSearchUsers(query)` hook that calls the search endpoint with debounce (300ms). Returns `{ data, isLoading }`. _Files: `apps/web/src/api/hooks.ts`_
+## Evidence
 
-Weaver does not yet have per-user profile routes, so rendered chips remain non-interactive instead of presenting a dead link target.
+Source and automated coverage were reviewed; multiple-user notification receipt was not exercised in the documentation walkthrough.
 
-### Tests
+### Implementation
 
-- [x] **E2E: mention creates notification** — POST comment with mention node, verify notification created for mentioned user. _File: `apps/api/test/mentions.e2e-spec.ts`_
-- [x] **E2E: self-mention skipped** — Author mentions self, no notification created. _File: `apps/api/test/mentions.e2e-spec.ts`_
-- [x] **E2E: user search** — `GET /users/search?q=ali` returns matching users, respects tenant scope. _File: `apps/api/test/mentions.e2e-spec.ts`_
+- [apps/api/src/modules/comments/mention.service.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/api/src/modules/comments/mention.service.ts)
+- [apps/api/src/modules/comments/comments.service.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/api/src/modules/comments/comments.service.ts)
+- [apps/web/src/components/RichTextEditor.tsx](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/web/src/components/RichTextEditor.tsx)
 
-## Acceptance Criteria
+### Existing automated coverage, not rerun for this documentation edit
 
-- [x] Typing `@` in comment editor shows user dropdown
-- [x] Selecting user inserts styled mention chip into the editor
-- [x] Mentioned users receive in-app notification with link to issue
-- [x] Mentions render as styled chips in read-only comment view
-- [x] Self-mentions don't create notifications
-- [x] Updating a comment doesn't re-notify already-mentioned users
-- [x] User search is scoped to the current tenant
+- [apps/api/test/mentions.e2e-spec.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/api/test/mentions.e2e-spec.ts)
+- [apps/api/src/modules/comments/mention.service.spec.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/api/src/modules/comments/mention.service.spec.ts)
 
 ## Dependencies
 

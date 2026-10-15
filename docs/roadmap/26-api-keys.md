@@ -1,47 +1,45 @@
 # API Key Management
 
-> Create and manage personal API keys for programmatic access. Support scoped permissions.
+**Status: Implemented; credential runtime check pending.** Personal API keys have creation/revocation, scopes, hashing, expiration, and UI management.
 
-## Why
-Automation, CI/CD, and scripting need API access without browser sessions. The entity already exists but has no endpoints or UI.
+Reconciled September 23, 2026 against main [`27b14d7`](https://github.com/jakwinkler/weaver/commit/27b14d72ab8d201c4bf4fcbffd00830091dd21ce). This is the source baseline, which can differ from the checked-out application branch. Checked implementation items below mean the code exists; they do not certify a release or a fresh test pass.
 
-## Current State
-- ApiKeyEntity exists in public schema (id, tenantId, userId, name, keyHash, scopes, expiresAt, lastUsedAt, createdAt)
-- No API key endpoints
-- No authentication via API key (only JWT)
-- No UI for key management
+User guide: [API Keys and Integrations](https://github.com/jakwinkler/weaver/wiki/API-Keys-and-Integrations).
 
-## Tasks
+## Implemented
 
-### Backend
-- [ ] **API key generation endpoint** — `POST /api-keys`. Generate random 40-char key, hash with SHA-256, store hash. Return plain key ONCE in response (never stored or returned again). _Files: `apps/api/src/modules/api-keys/api-keys.controller.ts`, `apps/api/src/modules/api-keys/api-keys.service.ts`, `apps/api/src/modules/api-keys/api-keys.module.ts`_
-- [ ] **API key list/delete endpoints** — `GET /api-keys` (list user's keys, mask key), `DELETE /api-keys/:id`. _Files: `apps/api/src/modules/api-keys/api-keys.controller.ts`_
-- [ ] **API key authentication guard** — Check `Authorization: Bearer wvr_xxxxx` header. If key starts with `wvr_`, look up by hash. Set request.user from associated user + membership. _Files: `apps/api/src/core/auth/api-key.guard.ts`_
-- [ ] **Scope enforcement** — API key scopes limit which endpoints can be called. Scopes: `read`, `write`, `admin`. Check scope against endpoint's required permission category. _Files: `apps/api/src/core/auth/api-key.guard.ts`_
-- [ ] **Rate limiting** — Per-key rate limit: 100 requests/minute. Track via Redis. _Files: `apps/api/src/core/auth/api-key-rate-limit.guard.ts`_
-- [ ] **Last used tracking** — Update `lastUsedAt` on each API key use (debounced to every 5 minutes). _Files: `apps/api/src/core/auth/api-key.guard.ts`_
-- [ ] **Expiration** — Reject expired keys with 401. Allow `expiresAt` to be set on creation (optional, nullable = never expires). _Files: `apps/api/src/core/auth/api-key.guard.ts`_
+- [x] Create/list/delete endpoints with one-time plaintext display and SHA-256 hash storage.
+- [x] Bearer wvr_ authentication, current membership resolution, read/write/admin scope checks, and role/project guards.
+- [x] Per-key Redis limit of 100 requests/minute, expiration, and last-use updates limited to once per five minutes.
+- [x] Profile API Keys tab, create dialog, optional expiry, copy-once display, and revoke confirmation.
 
-### Frontend
-- [ ] **API keys page** — Route: in Profile page, "API Keys" tab. List keys: name, scopes, created, last used, expires. "Create new key" button. Delete button with confirmation. _Files: `apps/web/src/features/profile/ApiKeysTab.tsx`_
-- [ ] **Create key dialog** — Form: name, scopes (checkboxes: read, write, admin), expiration (optional date or "never"). On create, show key in copyable field with warning "This will only be shown once." _Files: `apps/web/src/features/profile/CreateApiKeyDialog.tsx`_
+## Differences from the original plan
 
-### Tests
-- [ ] **E2E: create API key** — POST /api-keys, verify key returned. Use key to call GET /auth/me, verify 200. _File: `apps/api/test/api-keys.e2e-spec.ts`_
-- [ ] **E2E: scope enforcement** — Create read-only key, attempt POST /projects, expect 403. _File: `apps/api/test/api-keys.e2e-spec.ts`_
-- [ ] **E2E: expired key rejected** — Create key with past expiration, use it, expect 401. _File: `apps/api/test/api-keys.e2e-spec.ts`_
-- [ ] **E2E: delete key** — Delete key, use it, expect 401. _File: `apps/api/test/api-keys.e2e-spec.ts`_
-- [ ] **E2E: rate limiting** — Send 101 requests, expect 429 on 101st. _File: `apps/api/test/api-keys.e2e-spec.ts`_
+- The endpoints, authentication path, and UI are implemented.
+- Keys use a wvr_ prefix plus 40 base64url characters generated from 30 random bytes, not an unprefixed 40-character credential.
+- Write does not imply Read. Admin satisfies scope checks but does not grant the account an administrator role.
+- API keys cannot be exchanged through interactive session endpoints for an unrestricted JWT.
 
-## Acceptance Criteria
-- Users can create named API keys with scopes
-- Key shown once on creation (never again)
-- API key authenticates like JWT (same endpoints)
-- Scopes limit access (read/write/admin)
-- Expired keys rejected
-- Rate limited per key
-- Last used timestamp tracked
-- Keys can be deleted
+## Remaining work and verification
+
+- [ ] Run a disposable create/read/write/expire/revoke credential acceptance check and confirm no plaintext persists in logs or lists.
+- [ ] Verify Redis outage and proxy/IP behavior separately from the normal rate-limit threshold test.
+
+## Evidence
+
+Source and existing tests were inspected. No API key was minted or exercised in the documentation walkthrough.
+
+### Implementation
+
+- [apps/api/src/modules/api-keys/api-keys.service.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/api/src/modules/api-keys/api-keys.service.ts)
+- [apps/api/src/core/auth/api-key.guard.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/api/src/core/auth/api-key.guard.ts)
+- [apps/api/src/core/auth/api-key-rate-limit.guard.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/api/src/core/auth/api-key-rate-limit.guard.ts)
+- [apps/web/src/features/profile/ApiKeysTab.tsx](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/web/src/features/profile/ApiKeysTab.tsx)
+
+### Existing automated coverage, not rerun for this documentation edit
+
+- [apps/api/test/api-keys.e2e-spec.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/api/test/api-keys.e2e-spec.ts)
 
 ## Dependencies
+
 - None

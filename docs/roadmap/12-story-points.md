@@ -1,43 +1,44 @@
 # Story Points & Estimation
 
-> First-class story points field on issues, with total display in sprints and boards.
+**Status: Implemented.** Story points are native issue data with editing and planning/report totals.
 
-## Why
-Story points are the standard estimation unit in Scrum. While custom fields can technically store them, native support enables capacity planning, velocity charts, and sprint scope bars.
+Reconciled September 23, 2026 against main [`27b14d7`](https://github.com/jakwinkler/weaver/commit/27b14d72ab8d201c4bf4fcbffd00830091dd21ce). This is the source baseline, which can differ from the checked-out application branch. Checked implementation items below mean the code exists; they do not certify a release or a fresh test pass.
 
-## Current State
-- Custom fields support 'number' type (could be used for points)
-- No native storyPoints field on issues
-- No aggregation of points in sprints or boards
+User guide: [Working with Issues](https://github.com/jakwinkler/weaver/wiki/Working-with-Issues).
 
-## Tasks
+## Implemented
 
-### Backend
-- [ ] **Add storyPoints column to IssueEntity** — `storyPoints: number | null`, default null. Add to createIssueSchema and updateIssueSchema as optional field. _Files: `packages/db/src/entities/tenant/issue.entity.ts`, `packages/shared/src/schemas/index.ts`_
-- [ ] **Include storyPoints in issue responses** — Ensure GET /issues/:key and list endpoints return storyPoints. _Files: `apps/api/src/modules/issues/issues.service.ts`_
-- [ ] **Sprint points aggregation** — In sprint stats, sum storyPoints for total committed and total completed (based on terminal status). _Files: `apps/api/src/modules/sprints/sprints.service.ts`_
-- [ ] **Board column points** — In board issues response, include total points per status column. _Files: `apps/api/src/modules/boards/boards.service.ts`_
+- [x] Nullable integer storyPoints on issue create/update/read and list responses.
+- [x] Detail/create/list editing through StoryPointsField, including common-value choices and clear-to-null.
+- [x] Board card badges and column totals; committed/capacity totals in sprint containers.
+- [x] Committed/completed aggregation in sprint statistics and reports.
 
-### Frontend
-- [ ] **Story points in issue detail** — Add points field in sidebar (small number input, common values: 1, 2, 3, 5, 8, 13, 21). Show quick-select chips. _Files: `apps/web/src/features/issues/IssueDetailPage.tsx`_
-- [ ] **Story points in issue list** — New column showing points. Inline editable. _Files: `apps/web/src/features/issues/IssueListPage.tsx`_
-- [ ] **Story points on board cards** — Small badge showing points on each card. _Files: `apps/web/src/features/boards/KanbanBoard.tsx`_
-- [ ] **Column point totals** — Show total points in each column header: "To Do (21 pts)". _Files: `apps/web/src/features/boards/KanbanBoard.tsx`_
-- [ ] **Sprint points in sprint board** — Show committed/completed points in sprint header. _Files: `apps/web/src/features/boards/SprintBoard.tsx`_
-- [ ] **Story points in create issue form** — Optional field with Fibonacci chips (1, 2, 3, 5, 8, 13). _Files: `apps/web/src/features/issues/IssueListPage.tsx`_
+## Differences from the original plan
 
-### Tests
-- [ ] **E2E: create issue with story points** — POST with storyPoints=5, verify GET returns 5. _File: `apps/api/test/story-points.e2e-spec.ts`_
-- [ ] **E2E: update story points** — PATCH with storyPoints=8, verify. _File: `apps/api/test/story-points.e2e-spec.ts`_
-- [ ] **E2E: sprint stats include points** — Add pointed issues to sprint, verify stats. _File: `apps/api/test/story-points.e2e-spec.ts`_
+- Story points are not limited to custom fields. The native field accepts integers from 0 through 100 or null.
+- Zero is an estimate; null is unestimated. Totals treat missing estimates as zero.
+- SprintBoard's header does not itself show both committed and completed totals; use the statistics/report surface for completion.
 
-## Acceptance Criteria
-- Issues have an optional storyPoints field
-- Points visible on board cards and list rows
-- Column headers show total points
-- Sprint shows committed vs completed points
-- Fibonacci quick-select chips in issue forms
-- Points included in sprint statistics
+## Remaining work and verification
+
+- [ ] Verify list/create/detail edits and totals after scope, status, and estimate changes.
+- [ ] Add a completed-points header display only if the original SprintBoard-specific display requirement is still desired.
+
+## Evidence
+
+Local estimated issues persisted and appeared in board/backlog totals. The API suite covers creating, clearing, and aggregating points.
+
+### Implementation
+
+- [packages/db/src/entities/tenant/issue.entity.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/packages/db/src/entities/tenant/issue.entity.ts)
+- [packages/shared/src/schemas/index.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/packages/shared/src/schemas/index.ts)
+- [apps/web/src/components/StoryPointsField.tsx](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/web/src/components/StoryPointsField.tsx)
+- [apps/web/src/features/boards/SprintBoard.tsx](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/web/src/features/boards/SprintBoard.tsx)
+
+### Existing automated coverage, not rerun for this documentation edit
+
+- [apps/api/test/story-points.e2e-spec.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/api/test/story-points.e2e-spec.ts)
 
 ## Dependencies
+
 - None

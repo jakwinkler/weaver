@@ -1,46 +1,44 @@
 # Forms (External Intake)
 
-> Public forms that create issues without authentication — for bug reports, feature requests, and support tickets.
+**Status: Implemented.** Public intake forms can create issues using configured fields and defaults.
 
-## Why
-Teams need external intake: customers report bugs, users request features. Without forms, every issue must be manually entered. Jira, ClickUp, and Monday all have this.
+Reconciled September 23, 2026 against main [`27b14d7`](https://github.com/jakwinkler/weaver/commit/27b14d72ab8d201c4bf4fcbffd00830091dd21ce). This is the source baseline, which can differ from the checked-out application branch. Checked implementation items below mean the code exists; they do not certify a release or a fresh test pass.
 
-## Current State
-- Public project endpoints exist (unauthenticated)
-- Issue creation requires authentication
-- No form entity or builder
+User guide: [Intake Forms](https://github.com/jakwinkler/weaver/wiki/Intake-Forms).
 
-## Tasks
+## Implemented
 
-### Backend
-- [ ] **Create FormEntity** — Fields: id, projectId, name, slug (unique), description, fields (JSONB array of field definitions), issueDefaults (JSONB: default issueTypeId, priority, labels), active (boolean), createdBy, createdAt. _Files: `packages/db/src/entities/tenant/form.entity.ts`_
-- [ ] **Form CRUD endpoints** — `POST/GET/PATCH/DELETE /projects/:key/forms`. Requires `projects.update` permission. _Files: `apps/api/src/modules/forms/forms.controller.ts`, `apps/api/src/modules/forms/forms.service.ts`, `apps/api/src/modules/forms/forms.module.ts`_
-- [ ] **Public form submission endpoint** — `POST /public/:tenantSlug/forms/:formSlug/submit`. No auth required. Validates submission against form field definitions. Creates issue with submitted data + defaults. Rate limited (10/min per IP). _Files: `apps/api/src/modules/forms/public-form.controller.ts`_
-- [ ] **Public form data endpoint** — `GET /public/:tenantSlug/forms/:formSlug`. Returns form title, description, fields (for rendering). No auth required. _Files: `apps/api/src/modules/forms/public-form.controller.ts`_
-- [ ] **Spam protection** — Honeypot field + optional reCAPTCHA integration. _Files: `apps/api/src/modules/forms/public-form.controller.ts`_
-- [ ] **Submission notification** — Notify project lead when form submitted (in-app + email). _Files: `apps/api/src/modules/forms/forms.service.ts`_
+- [x] Form CRUD, field/default validation, authenticated management, and public data/submission endpoints.
+- [x] Field mapping, active-state checks, honeypot, per-IP limit, and optional reCAPTCHA.
+- [x] Lead notification paths, form builder, public rendering, success/error receipt, and submission list.
+- [x] Sharing UI for a URL, iframe embed code, and QR code.
 
-### Frontend
-- [ ] **Form builder page** — Route: `/projects/:projectKey/settings` forms tab. List existing forms. Builder: add/remove fields (text, textarea, select, email), set labels, required flag, map to issue fields. Set defaults (type, priority, labels). _Files: `apps/web/src/features/forms/FormBuilder.tsx`_
-- [ ] **Public form page** — Route: `/public/:tenantSlug/forms/:formSlug`. Renders form fields. Submit button. Success/error message. Weaver branding footer. _Files: `apps/web/src/features/forms/PublicForm.tsx`_
-- [ ] **Form share dialog** — Copy public URL. Embed code (iframe). QR code. _Files: `apps/web/src/features/forms/FormShareDialog.tsx`_
-- [ ] **Form submissions list** — In project settings, show recent submissions with link to created issue. _Files: `apps/web/src/features/forms/SubmissionsList.tsx`_
+## Differences from the original plan
 
-### Tests
-- [ ] **E2E: form CRUD** — Create form, verify GET returns it. Update, delete. _File: `apps/api/test/forms.e2e-spec.ts`_
-- [ ] **E2E: public submission** — Submit form data to public endpoint, verify issue created with correct fields. _File: `apps/api/test/forms.e2e-spec.ts`_
-- [ ] **E2E: rate limiting** — Submit 11 times rapidly, expect 429 on 11th. _File: `apps/api/test/forms.e2e-spec.ts`_
-- [ ] **E2E: inactive form** — Disable form, submit, expect 404 or 410. _File: `apps/api/test/forms.e2e-spec.ts`_
+- The form entity, builder, and public creation path are implemented.
+- Public submission does not give the submitter authenticated project access. The lead/form creator supplies the server-side reporter context.
+- CAPTCHA and email receipt need configured external services; source support is not delivery proof.
 
-## Acceptance Criteria
-- Admin can create forms with custom fields
-- Forms have shareable public URL
-- Public submission creates issue (no login required)
-- Rate limiting prevents abuse
-- Spam protection (honeypot)
-- Form can set issue defaults (type, priority, labels)
-- Submissions show in project settings
-- Inactive forms reject submissions
+## Remaining work and verification
+
+- [ ] Verify configured CAPTCHA, actual lead email delivery, and embedded form behavior under deployment headers.
+- [ ] Repeat management permissions, disabled forms, rate limiting, and submission mapping with representative fields.
+
+## Evidence
+
+A fictional public request was submitted in the browser; the success receipt and resulting WEB-13 issue were verified locally. External CAPTCHA/email were not exercised.
+
+### Implementation
+
+- [apps/api/src/modules/forms/forms.service.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/api/src/modules/forms/forms.service.ts)
+- [apps/api/src/modules/forms/public-form.controller.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/api/src/modules/forms/public-form.controller.ts)
+- [apps/web/src/features/forms/FormBuilder.tsx](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/web/src/features/forms/FormBuilder.tsx)
+- [apps/web/src/features/forms/FormShareDialog.tsx](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/web/src/features/forms/FormShareDialog.tsx)
+
+### Existing automated coverage, not rerun for this documentation edit
+
+- [apps/api/test/forms.e2e-spec.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/api/test/forms.e2e-spec.ts)
 
 ## Dependencies
+
 - None

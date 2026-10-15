@@ -1,43 +1,39 @@
 # Inline Editing
 
-> Click any cell in a list view to edit it in-place — summary, priority, assignee, status, dates.
+**Status: Implemented.** List cells and issue details provide permission-aware inline updates.
 
-## Why
+Reconciled September 23, 2026 against main [`27b14d7`](https://github.com/jakwinkler/weaver/commit/27b14d72ab8d201c4bf4fcbffd00830091dd21ce). This is the source baseline, which can differ from the checked-out application branch. Checked implementation items below mean the code exists; they do not certify a release or a fresh test pass.
 
-Currently, editing an issue requires navigating to the detail page. In Jira/ClickUp, you click a cell and edit right there. This dramatically speeds up triage and backlog grooming.
+User guide: [Working with Issues](https://github.com/jakwinkler/weaver/wiki/Working-with-Issues).
 
-## Current State
+## Implemented
 
-- IssueListPage supports inline summary, priority, workflow status, assignee, and due-date edits
-- Updates are optimistic, persist immediately, and roll back with an error toast on failure
-- Editable controls are keyboard accessible and respect issue update/transition permissions
+- [x] Inline summary, priority, status, assignee, due date, and story-point controls in issue lists.
+- [x] Detail controls for status, priority, estimate, assignee, and dates; explicit rich-text description editing.
+- [x] Optimistic save behavior, error recovery, Enter/Escape, and Tab navigation where supported.
 
-## Tasks
+## Differences from the original plan
 
-### Frontend
+- The implementation is already present. Controls follow update/transition permissions and workflow rules.
+- Text cells and rich-text descriptions have different save behavior; descriptions use explicit Save/Cancel.
 
-- [x] **Create EditableCell component** — Generic component: displays value, on click switches to input/select. On blur or Enter, calls onSave callback. On Escape, reverts. Shows loading spinner during save. _Files: `apps/web/src/components/EditableCell.tsx`_
-- [x] **Create InlineSelect component** — Dropdown select for status, priority, assignee. Opens on click, closes on select or blur. _Files: `apps/web/src/components/InlineSelect.tsx`_
-- [x] **Create InlineDatePicker component** — Date picker that opens on click for start/due dates. _Files: `apps/web/src/components/InlineDatePicker.tsx`_
-- [x] **Wire IssueListPage cells** — Replace static cells with EditableCell/InlineSelect for: summary (text input), priority (select), status (select with workflow transitions), assignee (user select), due date (date picker). _Files: `apps/web/src/features/issues/IssueListPage.tsx`_
-- [x] **Optimistic updates in list** — Use React Query `setQueryData` for instant feedback. Rollback on error with toast. _Files: `apps/web/src/features/issues/IssueListPage.tsx`_
-- [x] **Tab navigation** — Tab key moves to next editable cell in the row. Shift+Tab moves back. _Files: `apps/web/src/components/EditableCell.tsx`_
-- [x] **Permission checks** — Only show edit affordance if user has `issues.update` permission. Viewers see read-only cells. _Files: `apps/web/src/features/issues/IssueListPage.tsx`_
+## Remaining work and verification
 
-### Tests
+- [ ] Repeat the keyboard, failed-save, and read-only-role matrix across each editable field.
+- [ ] Correct date-only formatting where local timezone conversion shifts displayed dates; see feature 10.
 
-- [x] **E2E: PATCH updates persist** — Inline edit summary via API, verify GET returns new value. (Backend already tested, this confirms no regressions.) _File: existing e2e tests_
+## Evidence
 
-## Acceptance Criteria
+The controls and save paths were source-reviewed. This documentation work did not perform every inline-edit interaction.
 
-- [x] Click on summary text to edit inline (text input)
-- [x] Click on priority/status/assignee to get dropdown
-- [x] Click on date to get date picker
-- [x] Enter saves, Escape cancels
-- [x] Changes save immediately (optimistic)
-- [x] Error shows toast and reverts value
-- [x] Tab navigates between cells
-- [x] Viewers see no edit affordance
+### Implementation
+
+- [apps/web/src/features/issues/IssueListPage.tsx](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/web/src/features/issues/IssueListPage.tsx)
+- [apps/web/src/features/issues/IssueDetailPage.tsx](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/web/src/features/issues/IssueDetailPage.tsx)
+
+### Existing automated coverage, not rerun for this documentation edit
+
+- [apps/web/src/components/InlineEditingControls.test.tsx](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/web/src/components/InlineEditingControls.test.tsx)
 
 ## Dependencies
 

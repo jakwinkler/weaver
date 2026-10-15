@@ -1,43 +1,44 @@
 # Plugin Upgrade Hooks
 
-> Support plugin version upgrades with migration hooks: `onUpgrade(fromVersion, toVersion, context)`.
+**Status: Implemented.** Newer plugin versions run ordered migrations and an upgrade hook before the stored version advances.
 
-## Why
+Reconciled September 23, 2026 against main [`27b14d7`](https://github.com/jakwinkler/weaver/commit/27b14d72ab8d201c4bf4fcbffd00830091dd21ce). This is the source baseline, which can differ from the checked-out application branch. Checked implementation items below mean the code exists; they do not certify a release or a fresh test pass.
 
-Plugins evolve. When a plugin adds a new database column or changes its data format, it needs a migration path. Without upgrade hooks, plugin updates are destructive (uninstall + reinstall = data loss).
+User guide: [Plugin Development](https://github.com/jakwinkler/weaver/wiki/Plugin-Development).
 
-## Current State
+## Implemented
 
-- InstalledPluginEntity stores `version` field
-- No version comparison on load
-- No `onUpgrade` hook in WeaverPlugin interface
-- Migrations array in manifest exists but only runs on install
+- [x] SDK onUpgrade(fromVersion, toVersion, context), startup version detection, and explicit upgrade endpoint.
+- [x] Versioned migrations in version order, constrained migration file paths, and transaction-scoped lifecycle work.
+- [x] Stored version advancement after success; failure recording and continued processing of other plugins.
+- [x] Upgrade event records and logs.
 
-## Tasks
+## Differences from the original plan
 
-### Backend
+- The original missing-hook/version-comparison statements were obsolete.
+- Upgrade records include an in-memory log; do not treat it as an indefinite persisted audit history.
+- Migration fields `sql`/`path` identify SQL files in the current loader. They are not arbitrary inline SQL strings.
+- Database rollback cannot reverse arbitrary network side effects from a plugin hook; no general downgrade workflow is implemented.
 
-- [x] **Add onUpgrade hook to WeaverPlugin interface** — `onUpgrade?(fromVersion: string, toVersion: string, context: PluginContext): Promise<void>`. _Files: `packages/sdk/src/interfaces/index.ts`_
-- [x] **Version detection on app startup** — When loading installed plugins, compare InstalledPluginEntity.version with manifest.version. If manifest is newer, trigger upgrade. _Files: `apps/api/src/plugins/plugin-registry.service.ts`_
-- [x] **Run upgrade hook** — Call `onUpgrade(oldVersion, newVersion, context)`. If successful, update version in DB. If fails, log error but don't block app. _Files: `apps/api/src/plugins/plugin-registry.service.ts`_
-- [x] **Sequential migration support** — Support `migrations` array in manifest with version tags: `{ version: '1.1.0', sql: './migrations/002_add_column.sql' }`. Run only migrations newer than installed version. _Files: `apps/api/src/plugins/plugin-registry.service.ts`_
-- [x] **Upgrade log** — Record upgrade events: `{ pluginId, fromVersion, toVersion, success, error, timestamp }`. _Files: `apps/api/src/plugins/plugin-registry.service.ts`_
+## Remaining work and verification
 
-### Tests
+- [ ] Verify a representative prior-version upgrade, controlled failure, restart/retry, and restoration using actual plugin data.
+- [ ] Define durable upgrade-history retention and an operator downgrade/repair procedure if required.
 
-- [x] **E2E: upgrade triggers hook** — Install plugin v1.0.0, update manifest to v1.1.0, restart, verify onUpgrade called. _File: `apps/api/test/plugin-upgrades.e2e-spec.ts`_
-- [x] **E2E: version updated in DB** — After upgrade, verify InstalledPluginEntity.version matches new version. _File: `apps/api/test/plugin-upgrades.e2e-spec.ts`_
-- [x] **E2E: migration runs** — Plugin with versioned migration, upgrade, verify new table/column exists. _File: `apps/api/test/plugin-upgrades.e2e-spec.ts`_
-- [x] **E2E: failed upgrade handled** — onUpgrade throws, verify version NOT updated, error logged. _File: `apps/api/test/plugin-upgrades.e2e-spec.ts`_
+## Evidence
 
-## Acceptance Criteria
+Source and existing tests cover hooks, newer-only migration ordering, persisted versions, and failure behavior. No upgrade/rollback cycle was repeated for this documentation edit.
 
-- Plugins can define onUpgrade lifecycle hook
-- Version bump detected automatically on app startup
-- Versioned SQL migrations run in order
-- Successful upgrade updates stored version
-- Failed upgrade does not update version (retry on next restart)
-- Upgrade log records history
+### Implementation
+
+- [packages/sdk/src/interfaces/plugin.interface.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/packages/sdk/src/interfaces/plugin.interface.ts)
+- [apps/api/src/plugins/plugin-registry.service.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/api/src/plugins/plugin-registry.service.ts)
+- [apps/api/src/plugins/plugin-context.factory.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/api/src/plugins/plugin-context.factory.ts)
+
+### Existing automated coverage, not rerun for this documentation edit
+
+- [apps/api/test/plugin-upgrades.e2e-spec.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/api/test/plugin-upgrades.e2e-spec.ts)
+- [apps/api/src/plugins/plugin-registry.service.spec.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/api/src/plugins/plugin-registry.service.spec.ts)
 
 ## Dependencies
 
