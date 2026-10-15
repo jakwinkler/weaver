@@ -18,6 +18,10 @@ export const config = {
       name: process.env.NOTIFICATIONS_QUEUE_NAME || 'notifications',
       concurrency: 10,
     },
+    accountMail: {
+      name: process.env.ACCOUNT_MAIL_QUEUE_NAME || 'account-mail',
+      concurrency: 5,
+    },
     automations: {
       name: process.env.AUTOMATIONS_QUEUE_NAME || 'automations',
     },

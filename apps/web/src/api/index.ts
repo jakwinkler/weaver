@@ -2,6 +2,9 @@ export { apiClient, API_BASE_URL } from './client';
 export {
   useLogin,
   useRegister,
+  useSignInProviders,
+  useRequestPasswordReset,
+  useConfirmPasswordReset,
   useInvitation,
   useAcceptInvitation,
   useCurrentUser,

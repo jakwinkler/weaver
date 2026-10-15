@@ -10,6 +10,8 @@ import { RegisterPage } from '@/features/auth/RegisterPage';
 import { OAuthCallback } from '@/features/auth/OAuthCallback';
 import { OrgPicker } from '@/features/auth/OrgPicker';
 import { InvitationPage } from '@/features/auth/InvitationPage';
+import { ForgotPasswordPage } from '@/features/auth/ForgotPasswordPage';
+import { ResetPasswordPage } from '@/features/auth/ResetPasswordPage';
 import { ProjectsPage } from '@/features/projects/ProjectsPage';
 import { ProjectDetailPage } from '@/features/projects/ProjectDetailPage';
 import { ProjectSettingsPage } from '@/features/projects/ProjectSettingsPage';
@@ -56,6 +58,9 @@ export function App() {
             <Route path="/auth/callback" element={<OAuthCallback />} />
             <Route path="/auth/organizations" element={<OrgPicker />} />
             <Route path="/invite/:token" element={<InvitationPage />} />
+            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+            <Route path="/reset-password" element={<ResetPasswordPage />} />
+            <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
             <Route path="/unsubscribe" element={<EmailUnsubscribePage />} />
             <Route
               path="/public/:tenantSlug/projects/:projectKey"

@@ -72,7 +72,8 @@ Everything in Weaver starts with an issue: one piece of work, such as a task, a 
 - Organization roles (owner, admin, member, viewer, and custom roles you define) decide what people can do. Project roles (lead, member, viewer) decide what each person can do inside a project.
 - Administrators draw the workflow on a visual canvas: the statuses, and which moves between them are allowed.
 - An audit log records changes to projects, workflows, roles, plugins, settings, and more, with before and after values, filters, and CSV export.
-- Sign in with email and password, Google, or GitHub. An organization can also set up SAML or OIDC single sign-on.
+- Sign in with email and password, Google, or GitHub. The first time you continue with Google or GitHub, Weaver creates your account and asks you to name your organization. An organization can also set up SAML or OIDC single sign-on.
+- Forgot your password? The sign-in page emails a reset link that works once and expires after 30 minutes. Changing the password signs you out on every device within 15 minutes.
 - Press `?` to see keyboard shortcuts. Switch between light and dark themes from the header.
 
 ## If a team invited you
@@ -86,7 +87,6 @@ If you normally sign in with Google or GitHub and have no Weaver password, ask y
 - **Someone has to run it.** Weaver needs a server or cloud account with Docker, PostgreSQL, and Redis, and a person comfortable maintaining them. There is no hosted version to sign up for.
 - **It is young.** Its packages are still at version 0.0.x, and its first release was readied for a client pilot in October 2026. Read the [current limits](#current-limits) before you move a team over.
 - **Pages don't update live yet.** When a teammate changes something, reload to see it.
-- **There is no "forgot password" email yet.**
 - **It is built for desktop browsers.** Joining, creating an issue, and replying are tested on a phone-sized screen; other screens are less polished there.
 - **It is in English only.**
 - **Some integrations are partial.** The GitHub, GitLab, and Bitbucket plugins record which commits and pull requests mention an issue, but no screen shows those links yet. Jira import leaves out issue links, epic links, and worklogs.
@@ -199,7 +199,7 @@ The root [`.env.example`](.env.example) covers local development. Production sta
 | `JWT_SECRET`, `JWT_REFRESH_SECRET` | Session signing. Required; use two different random values. |
 | `API_PUBLIC_URL`, `API_PREFIX`, `WEB_URL`, `WEB_APP_URL`, `CORS_ORIGINS`, `TRUST_PROXY` | Public URLs and reverse-proxy behavior |
 | `STORAGE_DRIVER` (`local` or `s3`), `STORAGE_LOCAL_PATH`, `S3_*`, `ATTACHMENT_MAX_BYTES` | Attachment storage. The default size limit is 10 MiB. |
-| `SMTP_*` | Fallback mail server. Each organization can also set its own under System Settings. |
+| `SMTP_*` | The installation's mail server, read by the API and the worker. Password reset email uses only this server. Organization notifications use it when the organization hasn't set its own under System Settings. Set `SMTP_ALLOW_PRIVATE_HOST=true` only for a relay on a private network. |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | Google and GitHub sign-in |
 | `IMPORT_CREDENTIAL_KEY` | Encrypts Jira credentials inside import jobs: 32 random bytes, base64-encoded. The API and worker need the same value. |
 | `WEAVER_TRUSTED_PLUGINS` | Comma-separated plugin IDs, such as `@weaver/plugin-board`, allowed to load in production |
@@ -225,10 +225,10 @@ CI runs on every push and pull request to `main`: lint and typecheck, unit tests
 
 [`deploy/compose`](deploy/compose/README.md) is the maintained deployment template. It runs the API, worker, web server, PostgreSQL, and Redis, and publishes only the web server, on a loopback port behind your HTTPS reverse proxy. It is a building block, not a one-command installer. Before the first start:
 
-- **Plan the database.** Production turns off automatic schema changes. `schema-plan.cjs` writes a read-only plan for you to review, and `apply-schema-plan.cjs` applies only that reviewed plan. Installations without schema synchronization also need [`packages/db/migrations/20261014_organization_invitations.sql`](packages/db/migrations/20261014_organization_invitations.sql) before invitations work.
+- **Plan the database.** Production turns off automatic schema changes. `schema-plan.cjs` writes a read-only plan for you to review, and `apply-schema-plan.cjs` applies only that reviewed plan. Installations without schema synchronization also need [`packages/db/migrations/20261014_organization_invitations.sql`](packages/db/migrations/20261014_organization_invitations.sql) before invitations work, and [`packages/db/migrations/20261015_password_reset_tokens.sql`](packages/db/migrations/20261015_password_reset_tokens.sql) before password reset works.
 - **List the plugins you trust** in `WEAVER_TRUSTED_PLUGINS`. Production loads none by default, which also hides the board, backlog, sprint, Gantt, and calendar views.
 - **Decide how organizations get created.** Production refuses to create new organizations unless `ALLOW_TENANT_SCHEMA_BOOTSTRAP=true`. Read the [September rollout notes](docs/security/review-2026-09-23-rollout.md) before turning it on.
-- **Configure mail.** The template doesn't pass `SMTP_*` to the worker, so set the mail server for each organization under **System Settings → Email**.
+- **Configure mail.** Set the `SMTP_*` values in your env file; the template passes them to the API and the worker. Without them, "Forgot password?" sends nothing. Reset email never uses an organization's own server from **System Settings → Email**, because that organization's owner could read a member's reset link. If a proxy in front of Weaver logs request paths, keep `/reset-password/` out of its logs; the bundled nginx already does.
 - **Keep `IMPORT_CREDENTIAL_KEY` identical** for the API and worker if you use Jira import.
 - **Back up together:** PostgreSQL, the uploads volume, your protected env file, and the image references. Rehearse a restore.
 
@@ -299,8 +299,11 @@ spikes/                        Early feasibility experiments
 
 These are known gaps in this release:
 
-- No password reset or email verification.
-- The sign-in page shows only Google and GitHub buttons. SAML and OIDC sign-in start from `/api/v1/auth/saml/<organization-slug>` and `/api/v1/auth/oidc/<organization-slug>`.
+- No email verification, and registration says when an email address already has an account. Password reset doesn't reveal that.
+- No change-password screen for a signed-in user. Use "Forgot password?" on the sign-in page.
+- Changing a password ends every refresh session at once, but an access token already issued keeps working for up to 15 minutes.
+- Accounts that only use Google, GitHub, SAML, or OIDC can't set a Weaver password. A reset request emails them how to sign in instead.
+- The sign-in page shows Google and GitHub buttons only when the installation configured them. SAML and OIDC sign-in start from `/api/v1/auth/saml/<organization-slug>` and `/api/v1/auth/oidc/<organization-slug>`.
 - The API publishes live issue and comment events, but the web app never joins a project room, so browsers don't receive them yet.
 - Administrators can define custom fields, and forms or the API can fill them, but the issue page doesn't show or edit their values.
 - Board cards and the backlog's assignee filter show a short user ID instead of a name.

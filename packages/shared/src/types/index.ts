@@ -93,6 +93,26 @@ export interface InAppNotificationJobData {
 }
 
 export type NotificationJobData = EmailNotificationJobData | InAppNotificationJobData;
+
+/** Emails about the account itself. They belong to no organization. */
+export type AccountEmailTemplateName =
+  | 'password-reset'
+  | 'password-changed'
+  | 'password-reset-unavailable';
+
+/**
+ * Account emails use only the installation's SMTP_* server, never an organization's.
+ * The job can carry a single-use reset link, so it is deleted from Redis once processed.
+ */
+export interface AccountEmailJobData {
+  userId: string;
+  to: string;
+  template: AccountEmailTemplateName;
+  title: string;
+  body: string;
+  html: string;
+}
+
 export interface TenantMembership {
   tenantId: string;
   userId: string;

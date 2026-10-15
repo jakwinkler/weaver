@@ -1,11 +1,40 @@
-import { useState, type FormEvent } from 'react';
+import { useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { isAxiosError } from 'axios';
 import { useRegister } from '@/api';
 import { useAuthStore } from '@/stores';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { SocialSignInButtons } from './SocialSignInButtons';
+
+function registerErrorMessage(error: unknown): ReactNode {
+  const status = isAxiosError(error) ? error.response?.status : undefined;
+  const message = isAxiosError(error) ? error.response?.data?.message : undefined;
+  if (status === 409 && typeof message === 'string' && message.includes('email')) {
+    return (
+      <>
+        An account with this email already exists.{' '}
+        <Link to="/login" className="font-medium underline">
+          Sign in
+        </Link>{' '}
+        or{' '}
+        <Link to="/forgot-password" className="font-medium underline">
+          reset your password
+        </Link>
+        .
+      </>
+    );
+  }
+  if (status === 409) {
+    return 'That organization slug is taken. Choose another one.';
+  }
+  if (status === 429) {
+    return 'Too many attempts. Wait a minute and try again.';
+  }
+  return 'Registration failed. Please check your details and try again.';
+}
 
 export function RegisterPage() {
   const navigate = useNavigate();
@@ -20,19 +49,23 @@ export function RegisterPage() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    const result = await registerMutation.mutateAsync({
-      email,
-      password,
-      displayName,
-      orgName,
-      orgSlug,
-    });
-    login(result.accessToken, result.user, result.tenantId);
-    navigate('/projects');
+    try {
+      const result = await registerMutation.mutateAsync({
+        email,
+        password,
+        displayName,
+        orgName,
+        orgSlug,
+      });
+      login(result.accessToken, result.user, result.tenantId);
+      navigate('/projects');
+    } catch {
+      // The inline mutation error keeps the form available for another attempt.
+    }
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/50">
+    <div className="flex min-h-screen items-center justify-center bg-muted/50 p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <CardTitle className="text-2xl font-bold text-primary">Weaver</CardTitle>
@@ -40,6 +73,11 @@ export function RegisterPage() {
         </CardHeader>
 
         <CardContent>
+          <SocialSignInButtons
+            hint="Sign up with Google or GitHub, then name your organization."
+            divider="or sign up with email"
+          />
+
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="displayName">Display Name</Label>
@@ -70,8 +108,10 @@ export function RegisterPage() {
               <Input
                 id="password"
                 type="password"
+                autoComplete="new-password"
                 required
                 minLength={8}
+                maxLength={128}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Min. 8 characters"
@@ -103,8 +143,8 @@ export function RegisterPage() {
             </div>
 
             {registerMutation.isError && (
-              <p className="text-sm text-destructive">
-                Registration failed. Please check your details and try again.
+              <p role="alert" className="text-sm text-destructive">
+                {registerErrorMessage(registerMutation.error)}
               </p>
             )}
 

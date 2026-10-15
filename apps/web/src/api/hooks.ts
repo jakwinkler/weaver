@@ -37,6 +37,41 @@ export function useRegister() {
   });
 }
 
+export interface SignInProviders {
+  google: boolean;
+  github: boolean;
+}
+
+export function useSignInProviders() {
+  return useQuery({
+    queryKey: ['signInProviders'],
+    queryFn: async () => {
+      const res = await apiClient.get<SignInProviders>('/auth/providers');
+      return res.data;
+    },
+    staleTime: Infinity,
+    retry: false,
+  });
+}
+
+export function useRequestPasswordReset() {
+  return useMutation({
+    mutationFn: async (data: { email: string }) => {
+      const res = await apiClient.post<{ message: string }>('/auth/password-reset/request', data);
+      return res.data;
+    },
+  });
+}
+
+export function useConfirmPasswordReset() {
+  return useMutation({
+    mutationFn: async (data: { token: string; password: string }) => {
+      const res = await apiClient.post<{ message: string }>('/auth/password-reset/confirm', data);
+      return res.data;
+    },
+  });
+}
+
 export interface InvitationDetails {
   email: string;
   role: string;

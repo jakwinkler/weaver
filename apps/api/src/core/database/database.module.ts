@@ -9,6 +9,7 @@ import {
   InstalledPluginEntity,
   RefreshSessionEntity,
   OrganizationInvitationEntity,
+  PasswordResetTokenEntity,
 } from '@weaver/db';
 
 const publicEntities = [
@@ -19,6 +20,7 @@ const publicEntities = [
   InstalledPluginEntity,
   RefreshSessionEntity,
   OrganizationInvitationEntity,
+  PasswordResetTokenEntity,
 ];
 
 @Global()

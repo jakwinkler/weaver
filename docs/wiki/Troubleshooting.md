@@ -6,6 +6,12 @@ Start with the exact page, action, and error. Confirm the organization and proje
 | --- | --- |
 | An invitation link says it is invalid, expired, or already used | Ask the sender for a new private link; invitations expire after seven days and work once |
 | An existing external-sign-in account cannot accept an invitation | The current form requires a Weaver password; contact the team before trying another link |
+| You forgot your password | Choose **Forgot password?** on the sign-in page. The emailed link works once and expires after 30 minutes |
+| No reset email arrives | Check spam and the spelling of the address. Accounts that only use Google, GitHub, or SSO get an email about signing in instead. Operators: the API and worker both need `SMTP_HOST` and `SMTP_FROM`; organization mail settings are never used for resets |
+| A reset link says it is invalid, expired, or already used | Request a new link. Each link works once, expires after 30 minutes, and a newer request cancels it |
+| Sign-in or a reset request says to wait | Weaver limits repeated attempts from one address and for one account; wait the time shown |
+| **Continue with Google** asks you to create an organization | No Weaver account used that email, so Weaver created one. To join an existing team, use its invitation link instead |
+| **Continue with Google** says to sign in another way | Your organizations turned that provider off; use your password or the organization's SSO link |
 | A joined client cannot see the expected project | Check the selected organization and ask the team to add the client to that private project |
 | A client can read issues but cannot create or comment | Check both the organization role and project role; viewers cannot write |
 | A project or issue is missing | Correct organization, private-project membership, filters, and pagination |
@@ -49,6 +55,8 @@ If the problem only affects one role, say which role and whether the project is 
 The guidance above covers everyday use. The details below explain API contracts, implementation, and operational limits.
 
 Use API logs for rejected requests, browser console/network diagnostics for UI failures, and worker/queue diagnostics for background work. Record the exact application/plugin revision before changing anything.
+
+For a missing reset email, the API logs `Password reset completed for user <id>` after a reset and warns when `SMTP_HOST` or `SMTP_FROM` is missing. The worker logs `[account-mail] Sent <template> email to user <id>` from the `account-mail` queue, and refuses an SMTP host on a private or loopback address unless `SMTP_ALLOW_PRIVATE_HOST=true`. Neither process logs the link or the email address, and finished account-mail jobs are removed from Redis.
 
 The deployment health endpoint is `/api/v1/health`. It checks a narrow health surface, not every provider or feature. A complete recovery check must repeat the original failed action and verify its saved result.
 

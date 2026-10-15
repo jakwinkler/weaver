@@ -19,6 +19,7 @@ import { ApiKeyEntity } from '@weaver/db';
 import { Repository } from 'typeorm';
 import { API_KEY_PREFIX } from '@weaver/shared';
 import { createHash } from 'crypto';
+import { apiPath } from '../security/api-prefix';
 
 export const RATE_LIMIT_KEY = 'rateLimit';
 
@@ -132,7 +133,8 @@ export class RateLimitingGuard implements CanActivate, OnModuleInit, OnModuleDes
       [count, ttl] = result.map(Number) as [number, number];
       if (this.isAuthenticationEndpoint(request) && typeof request.body?.email === 'string') {
         const account = createHash('sha256').update(request.body.email.trim().toLowerCase()).digest('hex');
-        const accountKey = `${this.keyPrefix}:auth-account:${account}`;
+        // Scope by limit and window so routes with different budgets never share a counter.
+        const accountKey = `${this.keyPrefix}:auth-account:${limit}:${windowMs}:${account}`;
         if (this.config.get<string>('RATE_LIMIT_RESET_ON_SHUTDOWN') === 'true') this.touchedKeys.add(accountKey);
         const [accountCount, accountTtl] = await this.redis.eval(INCREMENT_WINDOW, 1, accountKey, String(windowMs)) as [number, number];
         count = Math.max(count, Number(accountCount));
@@ -172,6 +174,26 @@ export class RateLimitingGuard implements CanActivate, OnModuleInit, OnModuleDes
     } catch {
       this.warnStoreUnavailable('Socket join limiting unavailable');
       return false;
+    }
+  }
+
+  /**
+   * Counts one attempt against a named budget shared by every API instance.
+   * Fails closed: an unreachable store answers 503 rather than allowing the attempt.
+   */
+  async consume(scope: string, limit: number, windowMs: number): Promise<boolean> {
+    if (this.redis.status !== 'ready') {
+      this.warnStoreUnavailable('Redis is not ready');
+      throw new HttpException('Rate limiting unavailable; retry shortly', HttpStatus.SERVICE_UNAVAILABLE);
+    }
+    const key = `${this.keyPrefix}:${scope}`;
+    if (this.config.get<string>('RATE_LIMIT_RESET_ON_SHUTDOWN') === 'true') this.touchedKeys.add(key);
+    try {
+      const [count] = await this.redis.eval(INCREMENT_WINDOW, 1, key, String(windowMs)) as [number, number];
+      return Number(count) <= limit;
+    } catch (error) {
+      this.warnStoreUnavailable(error instanceof Error ? error.message : 'Redis command failed');
+      throw new HttpException('Rate limiting unavailable; retry shortly', HttpStatus.SERVICE_UNAVAILABLE);
     }
   }
 
@@ -228,16 +250,21 @@ export class RateLimitingGuard implements CanActivate, OnModuleInit, OnModuleDes
     const path = String(request.originalUrl || request.url || '')
       .split('?')[0]
       .replace(/\/+$/, '');
-    return ['/auth/login', '/auth/register', '/auth/refresh'].some((suffix) =>
-      path.endsWith(suffix),
-    );
+    return [
+      '/auth/login',
+      '/auth/register',
+      '/auth/refresh',
+      '/auth/password-reset/request',
+      '/auth/password-reset/confirm',
+    ].some((suffix) => path.endsWith(suffix));
   }
 
   private isHealthEndpoint(request: any): boolean {
     const path = String(request.originalUrl || request.url || '')
       .split('?')[0]
       .replace(/\/+$/, '');
-    return path.endsWith('/health') || path === 'health';
+    // Sign-in providers is static configuration that every sign-in page view reads.
+    return path.endsWith('/health') || path === 'health' || path === apiPath('auth/providers');
   }
 
   private warnStoreUnavailable(reason: string): void {

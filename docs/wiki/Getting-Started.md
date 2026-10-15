@@ -8,7 +8,15 @@ Use the address your administrator provides. To create a new organization, choos
 
 The name is what people read. The slug is a short identifier such as `northstar-studio`; use lowercase letters, numbers, and hyphens. Registration creates a new organization and makes you its owner. To join an existing organization, use a private invitation link from its administrator. Joining the organization and being added to a private project are separate steps.
 
-Google, GitHub, and organization SSO depend on your installation's configuration. See [OAuth Sign In](https://github.com/jakwinkler/weaver/wiki/OAuth-Sign-In) if one of those routes is unavailable.
+You can also start with **Continue with Google** or **Continue with GitHub**, on either the sign-in or the registration page. If no Weaver account uses that email yet, Weaver creates one and then asks you to name your organization, which makes you its owner. Don't do this to join a team that already uses Weaver; ask its owner for an invitation instead. The buttons appear only when your installation has set them up. See [OAuth Sign In](https://github.com/jakwinkler/weaver/wiki/OAuth-Sign-In) for Google, GitHub, and organization SSO.
+
+### Forgot your password
+
+Choose **Forgot password?** next to the password field on the sign-in page and enter your email address. Weaver shows the same message whether or not an account uses that address. If one does, you'll get an email with a link that works once and expires after 30 minutes. Asking again cancels the earlier link.
+
+Open the link, choose a new password of 8 to 128 characters, and sign in with it. Changing your password signs you out on every device within 15 minutes, and Weaver emails you to confirm the change. If you sign in only with Google, GitHub, or your organization's single sign-on, your account has no Weaver password; the email explains how to sign in instead.
+
+Weaver has no separate change-password screen yet, so use **Forgot password?** to change a password you still know too.
 
 ## 2. Create a project
 
@@ -50,7 +58,13 @@ Continue with [Projects and Access](https://github.com/jakwinkler/weaver/wiki/Pr
 
 The guidance above covers everyday use. The details below explain API contracts, implementation, and operational limits.
 
-Registration uses `POST /api/v1/auth/register` with `displayName`, `email`, `password`, `orgName`, and `orgSlug`. Passwords must have 8 to 128 characters. The response establishes the authenticated session and returns the tenant identifier.
+Registration uses `POST /api/v1/auth/register` with `displayName`, `email`, `password`, `orgName`, and `orgSlug`. Passwords must have 8 to 128 characters. The response establishes the authenticated session and returns the tenant identifier. Registration answers 409 when the email already has an account, so it reveals which addresses are registered.
+
+Password reset has two public routes. `POST /api/v1/auth/password-reset/request` takes `{ "email" }` and always answers 202 with the same message. It replies before looking the address up, so neither the answer nor its timing depends on whether the account exists. `POST /api/v1/auth/password-reset/confirm` takes `{ "token", "password" }`, applies the registration password rule, and answers 200 or a 400 that doesn't say why the link failed. It also clears the browser's session cookies.
+
+A reset link is `/reset-password/<token>`. The token has a 128-bit selector, which finds the row, and a 256-bit verifier. Only the verifier's SHA-256 hash is stored, in `public.password_reset_tokens`, and it is compared in constant time. A link expires after 30 minutes. A new request deletes the account's earlier links, and a successful reset deletes them all. The reset also deletes every refresh session for the account, writes a `user.password_reset` audit entry in each of the account's organizations, and queues a "password changed" email. Access tokens already issued stay valid until they expire, at most 15 minutes. Accounts with no password get an explanation email and no link; a reset never adds a password to them.
+
+Each email address and each client IP address can make 5 reset requests per 15 minutes. Confirm allows 10 attempts per client address and 5 per account in 15 minutes. Over the limit, both routes answer 429, and both answer 503 when Redis is unavailable. The reset page takes the token out of the address bar and history and sets `no-referrer`.
 
 Projects are created with `POST /api/v1/projects`. New projects use the default workflow and receive default project-feature records. Tenant plugin installation is a separate layer. See [Developer Reference](https://github.com/jakwinkler/weaver/wiki/Developer-Reference) for authentication, tenancy, and response conventions.
 

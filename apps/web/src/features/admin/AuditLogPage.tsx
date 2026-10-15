@@ -38,6 +38,7 @@ const ACTIONS = [
   'role.deleted',
   'role.defaults_seeded',
   'user.role_changed',
+  'user.password_reset',
   'plugin.installed',
   'plugin.uninstalled',
   'plugin.enabled',

@@ -1,12 +1,16 @@
 # Sign-in, OAuth, and organization SSO
 
-Use your organization's sign-in method: email/password, Google, GitHub, or configured organization SSO. A visible provider button does not prove that the operator has configured it. If you receive **OAuth is not configured**, contact the operator or use an available sign-in method.
+Use your organization's sign-in method: email/password, Google, GitHub, or configured organization SSO. The sign-in and registration pages show **Continue with Google** and **Continue with GitHub** only when the operator has set those providers up. An organization can still turn either one off under **System Settings → SSO**.
 
 ## Sign in as a user
 
 Start from Weaver's login page and choose the provider there. Complete the provider's consent/sign-in flow in the same browser. If your account belongs to more than one organization, use the account menu to switch organizations after sign-in.
 
-A new external identity may need to create an organization before it can enter a workspace. Creating an organization does not grant access to someone else's private organization. An invited client should use the [private invitation link](https://github.com/jakwinkler/weaver/wiki/For-Invited-Clients) and then be added to the intended private project.
+The same buttons sign in an existing account and create a new one. If no Weaver account uses the provider's email yet, Weaver creates the account and shows **Create your organization**, which makes you the owner of a new organization. Creating an organization does not grant access to someone else's private organization. To join a team that already uses Weaver, don't create one: use the [private invitation link](https://github.com/jakwinkler/weaver/wiki/For-Invited-Clients) and then ask to be added to the intended private project.
+
+If your account belongs only to organizations that turned the provider off, Weaver shows **Sign in another way** and points you back to the sign-in page. It still offers to create a new organization below that notice.
+
+An account that only uses Google, GitHub, SAML, or OIDC has no Weaver password. **Forgot password?** doesn't add one; its email explains how to sign in instead.
 
 Existing local and external identities are associated by verified email in the implemented flow. Check the selected provider account if you land in an unexpected organization or cannot find your work.
 
@@ -23,6 +27,9 @@ Keep a working administrator sign-in path while testing. Test a complete login, 
 | Symptom | Check |
 | --- | --- |
 | `OAuth is not configured` / 503 | Provider client ID and secret are present in the running API environment |
+| No Google or GitHub button | The running API has no client ID and secret for that provider; `GET /api/v1/auth/providers` shows what it sees |
+| **Create your organization** after a provider sign-in | No Weaver account used that email, so one was created. Use an invitation to join an existing team |
+| **Sign in another way** after a provider sign-in | Every organization on the account turned that provider off |
 | Provider rejects redirect URI | Registered callback exactly matches the generated/overridden callback |
 | Wrong provider app appears | The running API uses the intended client ID; start a fresh login attempt |
 | Invalid state | Begin again from Weaver in the same browser with cookies enabled |
@@ -51,6 +58,8 @@ The current `.env.example` has one origin-only `API_PUBLIC_URL` assignment. Do n
 | OIDC | `/api/v1/auth/oidc/:tenantSlug` | `/api/v1/auth/oidc/:tenantSlug/callback` |
 
 For an installation at `https://weaver.example.com`, the social callbacks are `https://weaver.example.com/api/v1/auth/google/callback` and `https://weaver.example.com/api/v1/auth/github/callback`.
+
+`GET /api/v1/auth/providers` answers `{ "google": boolean, "github": boolean }` from those variables, and the web app hides a button that is false. `GET /api/v1/auth/oauth-context` also returns `provider` and `blockedOrganizationCount`, the number of the account's organizations that turned the provider off.
 
 Social provider variables are `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GITHUB_CLIENT_ID`, and `GITHUB_CLIENT_SECRET`. Optional `GOOGLE_CALLBACK_URL` and `GITHUB_CALLBACK_URL` override callback construction. GitHub requests `user:email`; the strategy requires a verified email. OIDC discovery validates its URL and requires HTTPS.
 

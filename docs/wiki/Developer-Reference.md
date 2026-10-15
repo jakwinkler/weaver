@@ -32,7 +32,8 @@ Routes below are relative to `/api/v1`. This is an orientation map, not an exhau
 
 | Area | Main routes | Guide |
 | --- | --- | --- |
-| Identity | `/auth/register`, `/auth/login`, `/auth/me`, `/auth/refresh`, `/auth/logout`, `/auth/invitations/:token`, `/auth/organizations`, `/auth/switch-organization` | [Getting Started](https://github.com/jakwinkler/weaver/wiki/Getting-Started), [OAuth Sign In](https://github.com/jakwinkler/weaver/wiki/OAuth-Sign-In) |
+| Identity | `/auth/register`, `/auth/login`, `/auth/me`, `/auth/refresh`, `/auth/logout`, `/auth/invitations/:token`, `/auth/organizations`, `/auth/switch-organization`, `/auth/providers` | [Getting Started](https://github.com/jakwinkler/weaver/wiki/Getting-Started), [OAuth Sign In](https://github.com/jakwinkler/weaver/wiki/OAuth-Sign-In) |
+| Password reset | `/auth/password-reset/request` (always 202), `/auth/password-reset/confirm` | [Getting Started](https://github.com/jakwinkler/weaver/wiki/Getting-Started) |
 | Projects | `/projects`, `/projects/:key`, `/projects/:key/workflow`, member/type/plugin subroutes | [Projects and Access](https://github.com/jakwinkler/weaver/wiki/Projects-and-Access) |
 | Invitations | `/users/invitations` (administrator creation) | [Projects and Access](https://github.com/jakwinkler/weaver/wiki/Projects-and-Access) |
 | Issues | `/projects/:projectKey/issues`, `/issues/:issueKey`, `/issues/bulk`, `/issues/reorder` | [Working with Issues](https://github.com/jakwinkler/weaver/wiki/Working-with-Issues) |
@@ -73,7 +74,8 @@ Routes below are relative to `/api/v1`. This is an orientation map, not an exhau
 - `storyPoints: null` and `storyPoints: 0` have different meanings.
 - A date-only string parsed as a UTC timestamp and then formatted locally can shift the displayed day.
 - Do not assume an update field is supported because a service type accepts it; controller validation can strip it.
-- Worker environment must match the API's database, Redis, and queue configuration.
+- Worker environment must match the API's database, Redis, queue, and `SMTP_*` configuration.
+- Account email, such as a password reset link, must use only the installation's `SMTP_*` server and the `account-mail` queue, never an organization's mail server. Never log a reset token or put it in a URL the API receives.
 - A queue's accepted response does not establish completed work.
 - Roadmap proposed thresholds, npm examples, and deployment claims need verification at their actual runtime surface.
 

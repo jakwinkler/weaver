@@ -56,6 +56,15 @@ services:
       TRUST_PROXY: ${TRUST_PROXY:-uniquelocal}
       API_PUBLIC_URL: ${API_PUBLIC_URL:-http://localhost}
       WEB_URL: ${WEB_URL:-http://localhost}
+      WEB_APP_URL: ${WEB_APP_URL:-${WEB_URL:-http://localhost}}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-Weaver}
+      SMTP_ALLOW_PRIVATE_HOST: ${SMTP_ALLOW_PRIVATE_HOST:-false}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
@@ -101,6 +110,14 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-Weaver}
+      SMTP_ALLOW_PRIVATE_HOST: ${SMTP_ALLOW_PRIVATE_HOST:-false}
       STORAGE_DRIVER: ${STORAGE_DRIVER:-local}
       STORAGE_LOCAL_PATH: /tmp/weaver-uploads
       S3_BUCKET: ${S3_BUCKET:-}

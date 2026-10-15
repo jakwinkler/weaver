@@ -53,7 +53,7 @@ export interface OrganizationChoice {
   role: string;
 }
 
-const BCRYPT_ROUNDS = 10;
+export const BCRYPT_ROUNDS = 10;
 const ACCESS_TOKEN_EXPIRY = '15m';
 const REFRESH_TOKEN_EXPIRY = '7d';
 const REFRESH_TOKEN_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
@@ -469,14 +469,26 @@ export class AuthService {
     }
   }
 
+  /** Which instance-wide social sign-in buttons can work. Organizations may still turn them off. */
+  getSignInProviders(): { google: boolean; github: boolean } {
+    const configured = (key: 'GOOGLE' | 'GITHUB') =>
+      !!this.config.get<string>(`${key}_CLIENT_ID`) && !!this.config.get<string>(`${key}_CLIENT_SECRET`);
+    return { google: configured('GOOGLE'), github: configured('GITHUB') };
+  }
+
   async getOAuthContext(userId: string, provider: ExternalAuthProvider) {
     const user = await this.userRepo.findOneBy({ id: userId });
     if (!user) {
       throw new UnauthorizedException('User not found');
     }
     const memberships = await this.getEnabledMemberships(user.id, provider);
+    const allMemberships = await this.membershipRepo.countBy({ userId: user.id });
     return {
       user: this.sanitizeUser(user),
+      provider,
+      // Organizations the account belongs to that turned this provider off. The sign-up
+      // screen uses it to steer existing members back to sign-in, not into a new organization.
+      blockedOrganizationCount: allMemberships - memberships.length,
       organizations: memberships.map((membership) => ({
         id: membership.tenant.id,
         name: membership.tenant.name,
