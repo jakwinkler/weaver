@@ -34,7 +34,7 @@ export class OrganizationInvitationEntity {
   @Column({ name: 'accepted_at', type: 'timestamptz', nullable: true })
   acceptedAt!: Date | null;
 
-  @CreateDateColumn({ name: 'created_at' })
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 
   @ManyToOne(() => TenantEntity, { onDelete: 'CASCADE' })
