@@ -584,6 +584,9 @@ importers:
 
   packages/cli:
     dependencies:
+      '@weaver/shared':
+        specifier: workspace:*
+        version: link:../shared
       commander:
         specifier: ^11.1.0
         version: 11.1.0

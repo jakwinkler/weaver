@@ -156,7 +156,8 @@ Use the same key in `permissions`, route requirements, and UI requirements. Keep
 
 ```typescript
 interface PluginSettingDefinition {
-  type: 'string' | 'number' | 'boolean' | 'select';
+  type: 'string' | 'number' | 'boolean' | 'select' | 'textarea';
+  label?: string;
   required?: boolean;
   default?: unknown;
   description?: string;
@@ -193,7 +194,8 @@ Example:
 
 Rules:
 
-- A default must match the setting type.
+- A default must match the setting type. A `textarea` is a multi-line string.
+- `label` is the field title in the settings form. Without it, Weaver shows the setting key as words.
 - A `select` must have at least one option.
 - A `select` default must be one of its options.
 - Settings are available as `context.settings`.

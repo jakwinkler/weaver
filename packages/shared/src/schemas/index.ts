@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { richTextDocumentSchema } from './rich-text';
 export * from './rich-text';
+export * from './plugin-manifest';
 import {
   ISSUE_PRIORITIES,
   TENANT_PLANS,
