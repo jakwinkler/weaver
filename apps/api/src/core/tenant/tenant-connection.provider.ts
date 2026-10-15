@@ -1,4 +1,4 @@
-import { runReviewReliabilityMigration } from '@weaver/db';
+import { createPostgresDataSource, runReviewReliabilityMigration } from '@weaver/db';
 import { Injectable } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
@@ -46,7 +46,7 @@ export class TenantConnectionProvider {
   }
 
   private async initializeConnection(schemaName: string): Promise<DataSource> {
-    const ds = new DataSource({
+    const ds = createPostgresDataSource({
       type: 'postgres',
       host: this.config.get('DATABASE_HOST', 'localhost'),
       port: this.config.get<number>('DATABASE_PORT', 5432),

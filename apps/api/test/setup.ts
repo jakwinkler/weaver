@@ -1,7 +1,8 @@
 // Global test setup - set env vars before any module loads
-// jest-e2e.config.js sets TZ=UTC for the whole run; assigning it here would not reach Node.
-if (Intl.DateTimeFormat().resolvedOptions().timeZone !== 'UTC') {
-  throw new Error('API e2e tests must run in UTC; run them with test/jest-e2e.config.js');
+// jest-e2e.config.js sets TZ for the whole run; assigning it here would not reach Node.
+const e2eTimeZone = process.env.WEAVER_E2E_TZ || 'UTC';
+if (Intl.DateTimeFormat().resolvedOptions().timeZone !== e2eTimeZone) {
+  throw new Error(`API e2e tests must run in ${e2eTimeZone}; run them with test/jest-e2e.config.js`);
 }
 process.env.NODE_ENV = 'development';
 process.env.DATABASE_HOST = 'localhost';

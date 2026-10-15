@@ -1,5 +1,6 @@
 import {
   ApiKeyEntity,
+  createPostgresDataSource,
   InstalledPluginEntity,
   TenantEntity,
   TenantMembershipEntity,
@@ -90,7 +91,7 @@ class TenantSmtpSettingsProvider {
   private async connection(): Promise<DataSource> {
     if (this.dataSource?.isInitialized) return this.dataSource;
 
-    this.dataSource = new DataSource({
+    this.dataSource = createPostgresDataSource({
       type: 'postgres',
       host: process.env.DATABASE_HOST || 'localhost',
       port: Number.parseInt(process.env.DATABASE_PORT || '5432', 10),
