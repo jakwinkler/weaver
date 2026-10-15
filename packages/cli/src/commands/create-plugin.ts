@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { basename, dirname, join, relative, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 
 import type { Command } from 'commander';
@@ -158,6 +158,42 @@ function buildManifestExtensions(
     ];
   }
   return extensions;
+}
+
+function findWeaverRoot(start: string): string | undefined {
+  let current = resolve(start);
+  for (;;) {
+    const sdkManifest = join(current, 'packages/sdk/package.json');
+    if (existsSync(join(current, 'pnpm-workspace.yaml')) && existsSync(sdkManifest)) {
+      try {
+        if (JSON.parse(readFileSync(sdkManifest, 'utf8')).name === '@weaver/sdk') return current;
+      } catch {
+        // Keep walking up; this is not a Weaver checkout.
+      }
+    }
+    const parent = dirname(current);
+    if (parent === current) return undefined;
+    current = parent;
+  }
+}
+
+export function pluginLocationWarning(target: string): string | undefined {
+  const weaverRoot = findWeaverRoot(dirname(target));
+  if (!weaverRoot) {
+    return (
+      `${target} is not inside a Weaver checkout. @weaver/cli and @weaver/sdk are not published ` +
+      'to npm, so pnpm install only works for plugins in the plugins/ directory of a Weaver checkout.'
+    );
+  }
+  const pluginsDirectory = join(weaverRoot, 'plugins');
+  if (dirname(resolve(target)) !== pluginsDirectory) {
+    return (
+      `${target} is outside ${pluginsDirectory}. Weaver only discovers plugins there, and ` +
+      'pnpm only links the workspace:* dependencies of workspace packages. ' +
+      `Move it, or pass --directory ${pluginsDirectory}.`
+    );
+  }
+  return undefined;
 }
 
 export function validatePluginName(name: string): void {
@@ -349,8 +385,13 @@ export function registerCreatePluginCommand(program: Command): void {
       const options = await collectOptions(name, commandOptions);
       const target = await createPlugin(options);
       process.stdout.write(`Created ${options.displayName} in ${target}\n`);
+      const warning = pluginLocationWarning(target);
+      if (warning) process.stderr.write(`Warning: ${warning}\n`);
+      const steps = options.includeClient
+        ? 'pnpm install, pnpm validate, and pnpm build'
+        : 'pnpm install and pnpm validate';
       process.stdout.write(
-        `Next: cd ${basename(target)}, then run pnpm install and pnpm validate\n`,
+        `Next: cd ${relative(process.cwd(), target) || '.'}, then run ${steps}\n`,
       );
     });
 }

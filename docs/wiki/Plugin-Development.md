@@ -2,14 +2,14 @@
 
 Use the repository's plugin CLI to create a starting package, validate its manifest, and build its client bundle. Begin with one small feature and test it in a disposable organization before installing it in a shared environment.
 
-The public npm availability of `@weaver/cli` has not been verified here. The repository-local commands below avoid depending on an assumed registry release.
+`@weaver/cli` and `@weaver/sdk` are not published to npm, and nothing from this repository is published under the `@weaver` npm scope. Run the CLI from a Weaver checkout and create plugins in its `plugins/` directory, where pnpm links both packages from the workspace.
 
 ## Create a starting plugin
 
-From a current Weaver checkout with dependencies installed:
+From a current Weaver checkout with dependencies installed, build once so the CLI and the SDK helpers that generated plugins import exist in `dist/`:
 
 ```sh
-pnpm --filter @weaver/cli build
+pnpm build
 node packages/cli/bin/weaver.js create-plugin release-notes --yes --directory plugins
 node packages/cli/bin/weaver.js validate plugins/release-notes
 ```
@@ -77,7 +77,7 @@ The local CLI scaffold/validation check for this documentation does not constitu
 | `enabledByDefault` | Whether installation should activate the feature immediately |
 | `permissions`, `declaredPermissions` | Required and plugin-defined permissions with human-readable labels |
 | `requires` | Required core capabilities and plugins, optionally with minimum versions |
-| `settings.schema` | Named settings with type, label, description, default, required flag, and select options |
+| `settings.schema` | Named settings with type (`string`, `number`, `boolean`, or `select`), description, default, required flag, and select options. The API rejects other keys, including `label` |
 | `events` | Subscribed and emitted domain event names |
 | `ui` | Named slots, navigation items, pages, and project views with relevant permissions |
 | `routes` | HTTP method, path, named handler, authentication mode, and required permissions/scopes |

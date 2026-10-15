@@ -15,18 +15,20 @@ onInstall?(context: PluginContext): Promise<void>;
 onEnable?(context: PluginContext): Promise<void>;
 onDisable?(context: PluginContext): Promise<void>;
 onUninstall?(context: PluginContext): Promise<void>;
+onUpgrade?(fromVersion: string, toVersion: string, context: PluginContext): Promise<void>;
 onEvent?(event: string, data: unknown, context: PluginContext): Promise<void>;
 ```
 
 | Hook          | Invocation                | Expected responsibility                        |
 | ------------- | ------------------------- | ---------------------------------------------- |
 | `onInstall`   | First tenant installation | Create plugin-owned schema and initial data    |
-| `onEnable`    | Plugin activation         | Resume active behavior without recreating data |
+| `onEnable`    | `POST /plugins/enable`    | Resume active behavior without recreating data |
 | `onDisable`   | Plugin deactivation       | Stop active behavior and preserve data         |
 | `onUninstall` | Tenant removal            | Clean up documented plugin-owned resources     |
+| `onUpgrade`   | `POST /plugins/upgrade`   | Move data forward after versioned migrations   |
 | `onEvent`     | A subscribed tenant event | React to the event payload                     |
 
-Throwing rejects the lifecycle operation. Log useful context without including secrets.
+Install does not call `onEnable`, even when the plugin installs enabled. Throwing rejects the lifecycle operation. Log useful context without including secrets.
 
 ## `PluginContext`
 
@@ -268,6 +270,8 @@ tenant: {
   schemaName: string;
 }
 ```
+
+`slug` is currently always an empty string. Use `id` to identify the tenant.
 
 Database queries default to the current tenant search path. Plugins are trusted server code with a shared database principal, not a security sandbox; fully qualified SQL can access other schemas. Use `context.api.projects.accessibleIds()` and `context.api.issues.assertAccess(key, mode)` to enforce the current user’s project permissions. The tenant fields are useful for logging, external correlation, and tenant-aware URLs.
 
