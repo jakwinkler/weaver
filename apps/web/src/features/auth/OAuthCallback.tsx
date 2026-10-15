@@ -5,15 +5,13 @@ import { useAuthStore } from '@/stores';
 import type { User } from '@weaver/shared';
 
 interface AuthSession {
-  accessToken: string;
-  refreshToken: string;
-  user: User;
+  user: User & { role: string };
   tenantId: string;
 }
 
 export function OAuthCallback() {
   const navigate = useNavigate();
-  const login = useAuthStore((state) => state.login);
+  const restoreSession = useAuthStore((state) => state.restoreSession);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
@@ -22,7 +20,7 @@ export function OAuthCallback() {
       .get<AuthSession>('/auth/session')
       .then(({ data }) => {
         if (!active) return;
-        login(data.accessToken, data.user, data.tenantId);
+        restoreSession(data.user, data.tenantId);
         navigate('/projects', { replace: true });
       })
       .catch(() => {
@@ -31,7 +29,7 @@ export function OAuthCallback() {
     return () => {
       active = false;
     };
-  }, [login, navigate]);
+  }, [restoreSession, navigate]);
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-muted/50 px-4">
