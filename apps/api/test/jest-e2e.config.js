@@ -1,3 +1,8 @@
+// Match the UTC deployment runtime when reading legacy timestamp-without-zone columns. This has
+// to run here, before Jest starts: setupFiles only see a per-file copy of process.env, so a TZ
+// assigned there never reaches Node.
+process.env.TZ = 'UTC';
+
 module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',
