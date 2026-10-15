@@ -127,14 +127,15 @@ export class PasswordResetService implements OnModuleDestroy {
         throw new BadRequestException(PASSWORD_RESET_INVALID_MESSAGE);
       }
 
-      await userRepo.update(
-        { id: account.id },
-        { passwordHash: await bcrypt.hash(password, BCRYPT_ROUNDS) },
-      );
-      // Ends every signed-in session now: access tokens and sockets carry the old version.
+      // Both columns are `update: false` on UserEntity, so TypeORM's save() and update() skip
+      // them and a user loaded before this reset cannot write the old hash back. Raising the
+      // session version ends every signed-in session now: access tokens and sockets carry
+      // the old version.
       await manager.query(
-        'UPDATE public.users SET session_version = session_version + 1 WHERE id = $1',
-        [account.id],
+        `UPDATE public.users
+            SET password_hash = $2, session_version = session_version + 1, updated_at = CURRENT_TIMESTAMP
+          WHERE id = $1`,
+        [account.id, await bcrypt.hash(password, BCRYPT_ROUNDS)],
       );
       // Single use: this link and any other outstanding link for the account stop working.
       await tokenRepo.delete({ userId: account.id });

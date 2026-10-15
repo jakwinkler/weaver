@@ -15,7 +15,7 @@ describe('PasswordResetService', () => {
     authProviders: ['local', 'google'],
   };
 
-  let users: { findOneBy: jest.Mock; update: jest.Mock };
+  let users: { findOneBy: jest.Mock };
   let tokens: {
     findOneBy: jest.Mock;
     findOne: jest.Mock;
@@ -34,7 +34,7 @@ describe('PasswordResetService', () => {
   const request = { ip: '203.0.113.9', get: () => 'jest' } as never;
 
   beforeEach(() => {
-    users = { findOneBy: jest.fn().mockResolvedValue(passwordUser), update: jest.fn() };
+    users = { findOneBy: jest.fn().mockResolvedValue(passwordUser) };
     tokens = {
       findOneBy: jest.fn(),
       findOne: jest.fn(),
@@ -214,7 +214,6 @@ describe('PasswordResetService', () => {
       await expect(
         service.confirmReset(`${selector}${'c'.repeat(64)}`, 'new-password-1', request),
       ).rejects.toThrow(PASSWORD_RESET_INVALID_MESSAGE);
-      expect(users.update).not.toHaveBeenCalled();
       expect(tokens.delete).not.toHaveBeenCalled();
       expect(manager.query).not.toHaveBeenCalled();
       expect(gateway.disconnectUser).not.toHaveBeenCalled();
@@ -225,7 +224,7 @@ describe('PasswordResetService', () => {
       await expect(service.confirmReset(token, 'new-password-1', request)).rejects.toThrow(
         PASSWORD_RESET_INVALID_MESSAGE,
       );
-      expect(users.update).not.toHaveBeenCalled();
+      expect(manager.query).not.toHaveBeenCalled();
     });
 
     it('refuses to give a password to an account that has none', async () => {
@@ -233,7 +232,7 @@ describe('PasswordResetService', () => {
       await expect(service.confirmReset(token, 'new-password-1', request)).rejects.toThrow(
         PASSWORD_RESET_INVALID_MESSAGE,
       );
-      expect(users.update).not.toHaveBeenCalled();
+      expect(manager.query).not.toHaveBeenCalled();
     });
 
     it('answers 429 once the account has used its confirm budget', async () => {
@@ -256,15 +255,17 @@ describe('PasswordResetService', () => {
         where: { selector },
         lock: { mode: 'pessimistic_write' },
       });
-      const [where, change] = users.update.mock.calls[0];
-      expect(where).toEqual({ id: 'user-1' });
-      await expect(bcrypt.compare('new-password-1', change.passwordHash)).resolves.toBe(true);
+      // One explicit statement: UserEntity marks both columns `update: false`, so TypeORM's
+      // update() would silently skip them.
+      expect(manager.query).toHaveBeenCalledTimes(1);
+      const [sql, [userId, passwordHash]] = manager.query.mock.calls[0];
+      expect(sql).toMatch(
+        /UPDATE public\.users\s+SET password_hash = \$2, session_version = session_version \+ 1, updated_at = CURRENT_TIMESTAMP\s+WHERE id = \$1/,
+      );
+      expect(userId).toBe('user-1');
+      await expect(bcrypt.compare('new-password-1', passwordHash)).resolves.toBe(true);
       expect(tokens.delete).toHaveBeenCalledWith({ userId: 'user-1' });
       expect(sessions.delete).toHaveBeenCalledWith({ userId: 'user-1' });
-      expect(manager.query).toHaveBeenCalledWith(
-        'UPDATE public.users SET session_version = session_version + 1 WHERE id = $1',
-        ['user-1'],
-      );
       expect(gateway.disconnectUser).toHaveBeenCalledWith('user-1');
       expect(audit.log).toHaveBeenCalledTimes(2);
       expect(audit.log).toHaveBeenCalledWith(
@@ -286,8 +287,7 @@ describe('PasswordResetService', () => {
 
     it('ends access tokens in the same transaction as the password change', async () => {
       const order: string[] = [];
-      users.update.mockImplementation(async () => order.push('password'));
-      manager.query.mockImplementation(async () => order.push('session version'));
+      manager.query.mockImplementation(async () => order.push('password and session version'));
       const { transaction } = (tokens as unknown as { manager: { transaction: jest.Mock } }).manager;
       transaction.mockImplementation(async (work: (m: typeof manager) => Promise<unknown>) => {
         order.push('begin');
@@ -299,7 +299,12 @@ describe('PasswordResetService', () => {
 
       await service.confirmReset(token, 'new-password-1', request);
 
-      expect(order).toEqual(['begin', 'password', 'session version', 'commit', 'disconnect sockets']);
+      expect(order).toEqual([
+        'begin',
+        'password and session version',
+        'commit',
+        'disconnect sockets',
+      ]);
     });
 
     it('still completes when open sockets cannot be disconnected', async () => {

@@ -1,15 +1,19 @@
 import { INestApplication, LoggerService } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { UserEntity } from '@weaver/db';
 import type { AccountEmailJobData } from '@weaver/shared';
 import { createHash, randomBytes } from 'crypto';
 import { io, Socket } from 'socket.io-client';
 import request from 'supertest';
-import { DataSource } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { AppModule } from '../src/app.module';
+import { AuthService } from '../src/core/auth/auth.service';
 import { PasswordResetService } from '../src/core/auth/password-reset.service';
 import { RateLimitingGuard } from '../src/core/rate-limiting';
 import { TenantConnectionProvider } from '../src/core/tenant';
 import { AccountMailQueueService } from '../src/modules/mail/account-mail-queue.service';
+import { MailService } from '../src/modules/mail/mail.service';
+import { UsersService } from '../src/modules/users/users.service';
 
 jest.setTimeout(60_000);
 
@@ -438,6 +442,164 @@ describe('Password reset (e2e)', () => {
       .set('Authorization', `Bearer ${raced.body.refreshToken}`)
       .expect(401);
     await http().post('/api/v1/auth/login').send({ email: ownerEmail, password }).expect(201);
+  });
+
+  describe('a user loaded before the reset and saved after it', () => {
+    let resets = 0;
+
+    function userRepoOf(service: object): Repository<UserEntity> {
+      return (service as { userRepo: Repository<UserEntity> }).userRepo;
+    }
+
+    async function ownerSession() {
+      const signIn = await http()
+        .post('/api/v1/auth/login')
+        .send({ email: ownerEmail, password })
+        .expect(201);
+      return signIn.body.accessToken as string;
+    }
+
+    /**
+     * Starts `run`, holds it just after it loads the owner through `repo`, resets the
+     * password, then lets it save the copy it loaded before the reset.
+     */
+    async function resetWhileLoaded(repo: Repository<UserEntity>, run: () => Promise<unknown>) {
+      const load = repo.findOneBy.bind(repo);
+      let held = false;
+      let markLoaded!: () => void;
+      const loaded = new Promise<void>((resolve) => (markLoaded = resolve));
+      let release!: () => void;
+      const released = new Promise<void>((resolve) => (release = resolve));
+      const hold = jest.spyOn(repo, 'findOneBy').mockImplementation(async (where) => {
+        const user = await load(where);
+        if (!held && user?.id === ownerId) {
+          held = true;
+          markLoaded();
+          await released;
+        }
+        return user;
+      });
+
+      try {
+        const outcome = run();
+        await Promise.race([
+          loaded,
+          outcome.then(() => {
+            throw new Error('finished without loading the account');
+          }),
+        ]);
+        const [{ password_hash: loadedHash }] = await dataSource.query(
+          'SELECT password_hash FROM public.users WHERE id = $1',
+          [ownerId],
+        );
+
+        await requestLink(ownerEmail);
+        const token = latestToken(ownerEmail);
+        const oldPassword = password;
+        resets += 1;
+        password = `stale-save-password-${resets}`;
+        await http()
+          .post('/api/v1/auth/password-reset/confirm')
+          .send({ token, password })
+          .expect(200);
+        const [{ password_hash: resetHash }] = await dataSource.query(
+          'SELECT password_hash FROM public.users WHERE id = $1',
+          [ownerId],
+        );
+        expect(resetHash).not.toBe(loadedHash);
+
+        release();
+        await outcome;
+
+        const [{ password_hash: finalHash }] = await dataSource.query(
+          'SELECT password_hash FROM public.users WHERE id = $1',
+          [ownerId],
+        );
+        expect(finalHash).toBe(resetHash);
+        await http()
+          .post('/api/v1/auth/login')
+          .send({ email: ownerEmail, password: oldPassword })
+          .expect(401);
+        await http().post('/api/v1/auth/login').send({ email: ownerEmail, password }).expect(201);
+      } finally {
+        release();
+        hold.mockRestore();
+      }
+    }
+
+    async function ownerRow() {
+      const [row] = await dataSource.query(
+        'SELECT display_name, notification_preferences, auth_providers FROM public.users WHERE id = $1',
+        [ownerId],
+      );
+      return row;
+    }
+
+    it('keeps the new password when a profile update saves', async () => {
+      const access = await ownerSession();
+      await resetWhileLoaded(userRepoOf(app.get(UsersService)), () =>
+        http()
+          .patch('/api/v1/users/me')
+          .set('Authorization', `Bearer ${access}`)
+          .set('X-Tenant-ID', tenantId)
+          .send({ displayName: 'Renamed During Reset' })
+          .expect(200)
+          .then(),
+      );
+      expect((await ownerRow()).display_name).toBe('Renamed During Reset');
+    });
+
+    it('keeps the new password when notification preferences save', async () => {
+      const access = await ownerSession();
+      await resetWhileLoaded(userRepoOf(app.get(UsersService)), () =>
+        http()
+          .patch('/api/v1/users/me/notification-preferences')
+          .set('Authorization', `Bearer ${access}`)
+          .set('X-Tenant-ID', tenantId)
+          .send({ emailOnComment: false })
+          .expect(200)
+          .then(),
+      );
+      expect((await ownerRow()).notification_preferences.emailOnComment).toBe(false);
+    });
+
+    it('keeps the new password when an email unsubscribe link saves', async () => {
+      const mail = app.get(MailService);
+      const unsubscribe = mail.createUnsubscribeToken(ownerId, 'emailOnMention');
+      await resetWhileLoaded(userRepoOf(mail), () =>
+        http()
+          .post('/api/v1/notifications/unsubscribe')
+          .send({ token: unsubscribe })
+          .expect(201)
+          .then(),
+      );
+      expect((await ownerRow()).notification_preferences.emailOnMention).toBe(false);
+    });
+
+    it('keeps the new password when a social sign-in links a provider', async () => {
+      const auth = app.get(AuthService);
+      await resetWhileLoaded(userRepoOf(auth), () =>
+        auth.completeOAuth({
+          provider: 'github',
+          email: ownerEmail,
+          displayName: 'Reset Owner',
+          avatarUrl: null,
+        }),
+      );
+      expect((await ownerRow()).auth_providers).toContain('github');
+    });
+
+    it('keeps the new password when a social sign-in has nothing new to save', async () => {
+      const auth = app.get(AuthService);
+      await resetWhileLoaded(userRepoOf(auth), () =>
+        auth.completeOAuth({
+          provider: 'github',
+          email: ownerEmail,
+          displayName: 'Reset Owner',
+          avatarUrl: null,
+        }),
+      );
+    });
   });
 
   it('never adds a password to an SSO-only account', async () => {

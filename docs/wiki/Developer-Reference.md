@@ -76,6 +76,7 @@ Routes below are relative to `/api/v1`. This is an orientation map, not an exhau
 - Do not assume an update field is supported because a service type accepts it; controller validation can strip it.
 - Worker environment must match the API's database, Redis, queue, and `SMTP_*` configuration.
 - Account email, such as a password reset link, must use only the installation's `SMTP_*` server and the `account-mail` queue, never an organization's mail server. Never log a reset token or put it in a URL the API receives.
+- `UserEntity.passwordHash` and `sessionVersion` are `update: false`. TypeORM's `save()` and `update()` leave both columns alone, so a user loaded before a password reset cannot write the old values back, and an `update()` that sets either one silently does nothing. Change them with explicit SQL, as `PasswordResetService.confirmReset` does. Inserts still set them.
 - A queue's accepted response does not establish completed work.
 - Roadmap proposed thresholds, npm examples, and deployment claims need verification at their actual runtime surface.
 

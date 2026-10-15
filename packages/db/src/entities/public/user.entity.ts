@@ -28,7 +28,13 @@ export class UserEntity {
   @Column({ name: 'display_name', length: 255 })
   displayName!: string;
 
-  @Column({ name: 'password_hash', type: 'varchar', nullable: true })
+  /**
+   * `save()` writes back every column that differs from the row at save time, so a user
+   * loaded before a password reset would restore the old hash. `update: false` leaves this
+   * column out of `save()` and `update()`; inserts still set it, and a reset changes it with
+   * explicit SQL.
+   */
+  @Column({ name: 'password_hash', type: 'varchar', nullable: true, update: false })
   passwordHash!: string | null;
 
   @Column({ name: 'auth_provider', length: 20, default: 'local' })
