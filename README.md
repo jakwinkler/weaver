@@ -219,7 +219,9 @@ pnpm test
 
 The API integration tests and the Playwright browser suite need disposable PostgreSQL and Redis services and a database whose name starts with `weaver_e2e`. [`apps/web/e2e/README.md`](apps/web/e2e/README.md) has the exact commands. The [October 14 readiness record](apps/web/e2e/READINESS-2026-10-14.md) lists the runs behind the pilot release.
 
-CI runs on every push and pull request to `main`: lint and typecheck, unit tests, API integration tests against PostgreSQL and Redis, a full build, and Docker image builds. Separate workflows run Gitleaks secret scanning across the full history and a weekly `pnpm audit` of production dependencies. The Playwright suite runs locally, not in CI.
+`node deploy/compose/verify-sql-migrations.cjs` checks the SQL files in [`packages/db/migrations`](packages/db/migrations). It creates the public tables that no SQL file creates from the TypeORM entities, applies every SQL file twice in file name order, and fails if `schema-plan.cjs` still plans a change. So a new SQL file must be safe to run twice and must leave its table exactly as the entity describes it, including TypeORM's index and foreign key names. The check needs `psql` and the `DATABASE_*` variables for a disposable PostgreSQL server, where it recreates the `weaver_e2e_sql_migrations` database.
+
+CI runs on every push and pull request to `main`: lint and typecheck, unit tests, API integration tests against PostgreSQL and Redis, the SQL migration check, a full build, and Docker image builds. Separate workflows run Gitleaks secret scanning across the full history and a weekly `pnpm audit` of production dependencies. The Playwright suite runs locally, not in CI.
 
 ### Deploy
 
