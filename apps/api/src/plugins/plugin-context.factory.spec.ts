@@ -33,6 +33,7 @@ describe('PluginContextFactory core capability enforcement', () => {
   };
 
   const projectAccess = { assertIssueKey: jest.fn(), accessibleProjectIds: jest.fn().mockResolvedValue([]) };
+  const tenants = { findById: jest.fn() };
   let factory: PluginContextFactory;
 
   beforeEach(() => {
@@ -41,6 +42,7 @@ describe('PluginContextFactory core capability enforcement', () => {
     projectAccess.assertIssueKey.mockResolvedValue(undefined);
     tenantConnections.getEntityManager.mockResolvedValue(entityManager);
     installedPlugins.findOne.mockResolvedValue({ enabled: true });
+    tenants.findById.mockResolvedValue({ id: 'tenant-1', slug: 'acme', schemaName: 'tenant_test' });
     loader.getManifest.mockReturnValue({
       id: '@weaver/plugin-automatic-time',
       requires: { coreCapabilities: ['issue-candidates', 'time-entries'] },
@@ -53,6 +55,7 @@ describe('PluginContextFactory core capability enforcement', () => {
       timeTracking as any,
       projectAccess as any,
       { processOnce: jest.fn() } as any,
+      tenants as any,
     );
   });
 
@@ -159,5 +162,47 @@ describe('PluginContextFactory core capability enforcement', () => {
       new ForbiddenException('Plugin @weaver/plugin-automatic-time is not installed and enabled'),
     );
     expect(timeTracking.createBatch).not.toHaveBeenCalled();
+  });
+
+  describe('tenant identity', () => {
+    it('exposes the slug carried by the tenant context without a lookup', async () => {
+      const context = await tenantStorage.run(
+        { tenantId: 'tenant-1', schemaName: 'tenant_test', slug: 'from-context' },
+        () => factory.create('@weaver/plugin-automatic-time', {}),
+      );
+
+      expect(context.tenant).toEqual({
+        id: 'tenant-1',
+        slug: 'from-context',
+        schemaName: 'tenant_test',
+      });
+      expect(tenants.findById).not.toHaveBeenCalled();
+    });
+
+    it('looks the slug up by tenant id when the context carries only the id', async () => {
+      const context = await tenantStorage.run(
+        { tenantId: 'tenant-1', schemaName: 'tenant_test' },
+        () => factory.create('@weaver/plugin-automatic-time', {}),
+      );
+
+      expect(context.tenant).toEqual({
+        id: 'tenant-1',
+        slug: 'acme',
+        schemaName: 'tenant_test',
+      });
+      expect(tenants.findById).toHaveBeenCalledTimes(1);
+      expect(tenants.findById).toHaveBeenCalledWith('tenant-1');
+    });
+
+    it('fails instead of handing a plugin an empty slug when the tenant record is missing', async () => {
+      tenants.findById.mockResolvedValue(null);
+
+      await expect(
+        tenantStorage.run(
+          { tenantId: 'tenant-1', schemaName: 'tenant_test' },
+          () => factory.create('@weaver/plugin-automatic-time', {}),
+        ),
+      ).rejects.toThrow('Tenant not found: tenant-1');
+    });
   });
 });

@@ -8,7 +8,7 @@ describe('API key tenant binding', () => {
   function fixture() {
     const keyRepo = { findOneBy: jest.fn().mockResolvedValue({ tenantId, userId, expiresAt: null }) };
     const middleware = new (TenantMiddleware as any)(
-      { findOneBy: jest.fn().mockResolvedValue({ id: tenantId, schemaName: 'tenant_one' }) },
+      { findOneBy: jest.fn().mockResolvedValue({ id: tenantId, schemaName: 'tenant_one', slug: 'acme' }) },
       { findOneBy: jest.fn().mockResolvedValue({ role: 'member' }) },
       { verifyAsync: jest.fn().mockRejectedValue(new Error('not JWT')) },
       keyRepo,
@@ -21,7 +21,7 @@ describe('API key tenant binding', () => {
     let context: unknown;
     await middleware.use(request(), {}, () => { context = getTenantContext(); });
     expect(keyRepo.findOneBy).toHaveBeenCalled();
-    expect(context).toEqual({ tenantId, schemaName: 'tenant_one' });
+    expect(context).toEqual({ tenantId, schemaName: 'tenant_one', slug: 'acme' });
   });
   it('rejects a conflicting tenant header', async () => {
     await expect(fixture().middleware.use(request({ 'x-tenant-id': userId }), {}, jest.fn())).rejects.toThrow('does not match');

@@ -71,7 +71,7 @@ export class PluginRouteController {
     }
 
     return tenantStorage.run(
-      { tenantId: tenant.id, schemaName: tenant.schemaName },
+      { tenantId: tenant.id, schemaName: tenant.schemaName, slug: tenant.slug },
       () => this.dispatch(req, res, match),
     );
   }
