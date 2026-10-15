@@ -5,8 +5,9 @@ test('issue creation, detail editing, and reload preserve changes', async ({ pag
   await page.goto('/projects/TEST/issues');
   await page.getByRole('button', { name: 'Create Issue' }).click();
   await page.getByLabel('Summary').fill('Browser issue');
-  await page.getByLabel('Type').selectOption({ label: 'Task' });
-  await page.getByLabel('Priority').selectOption({ label: 'High' });
+  await page.getByText('More options (optional)', { exact: true }).click();
+  await page.getByLabel('Type', { exact: true }).selectOption({ label: 'Task' });
+  await page.getByLabel('Priority', { exact: true }).selectOption({ label: 'High' });
   await page.getByRole('button', { name: 'Create', exact: true }).click();
   await expect(page.getByRole('link', { name: 'TEST-1' })).toBeVisible();
   const createdRow = page.getByRole('row', { name: /TEST-1.*Browser issue/ });

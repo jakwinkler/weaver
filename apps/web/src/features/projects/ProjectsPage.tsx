@@ -220,7 +220,9 @@ export function ProjectsPage() {
             {data?.data.length === 0 && (
               <TableRow>
                 <TableCell colSpan={3} className="py-8 text-center text-sm text-muted-foreground">
-                  No projects yet. Create your first project to get started.
+                  {canCreate
+                    ? 'No projects yet. Create your first project to get started.'
+                    : 'No projects are available yet. Ask your team to add you to a project.'}
                 </TableCell>
               </TableRow>
             )}

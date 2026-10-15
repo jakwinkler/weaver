@@ -8,6 +8,8 @@ import { IssueListPage } from './IssueListPage';
 
 const apiMocks = vi.hoisted(() => ({
   canEdit: true,
+  canCreate: true,
+  create: vi.fn(),
   mutateAsync: vi.fn(),
   transitionMutateAsync: vi.fn(),
   issuePage: {
@@ -58,10 +60,10 @@ vi.mock('@/api', async () => {
     useCreateIssue: () => ({
       isError: false,
       isPending: false,
-      mutateAsync: vi.fn(),
+      mutateAsync: apiMocks.create,
     }),
     useHasPermission: (permission: string) =>
-      permission === 'issues.create' ||
+      (permission === 'issues.create' && apiMocks.canCreate) ||
       (['issues.update', 'issues.transition'].includes(permission) && apiMocks.canEdit),
     useIssueTypes: () => ({ data: [] }),
     useProject: () => ({
@@ -101,6 +103,24 @@ vi.mock('@/api', async () => {
     }),
   };
 });
+
+vi.mock('@/components/RichTextEditor', () => ({
+  RichTextEditor: ({
+    content,
+    onChange,
+    ariaLabel,
+  }: {
+    content: Record<string, unknown> | null;
+    onChange: (content: Record<string, unknown>) => void;
+    ariaLabel: string;
+  }) => (
+    <textarea
+      aria-label={ariaLabel}
+      value={content ? JSON.stringify(content) : ''}
+      onChange={(event) => onChange(JSON.parse(event.target.value))}
+    />
+  ),
+}));
 
 Object.defineProperty(Element.prototype, 'hasPointerCapture', {
   configurable: true,
@@ -154,6 +174,8 @@ function renderPage(initialEntry = '/projects/TEST/issues') {
 describe('IssueListPage inline editing', () => {
   beforeEach(() => {
     apiMocks.canEdit = true;
+    apiMocks.canCreate = true;
+    apiMocks.create.mockReset().mockResolvedValue({ key: 'TEST-3' });
     apiMocks.mutateAsync.mockReset();
     apiMocks.mutateAsync.mockResolvedValue({});
     apiMocks.transitionMutateAsync.mockReset();
@@ -272,5 +294,40 @@ describe('IssueListPage inline editing', () => {
     expect(summaryInput).toBeInTheDocument();
     await waitFor(() => expect(summaryInput).toHaveFocus());
     expect(screen.getByTestId('location')).toHaveTextContent('/projects/TEST/issues');
+  });
+
+  it('creates an issue with a rich description and resets the editor after success', async () => {
+    renderPage('/projects/TEST/issues?create=1');
+    const description = {
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [{ type: 'text', text: 'The form never sends a confirmation.' }],
+        },
+      ],
+    };
+    fireEvent.change(screen.getByLabelText('Summary'), {
+      target: { value: 'Contact form confirmation' },
+    });
+    fireEvent.change(screen.getByLabelText('Description'), {
+      target: { value: JSON.stringify(description) },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+    await waitFor(() =>
+      expect(apiMocks.create).toHaveBeenCalledWith(
+        expect.objectContaining({ summary: 'Contact form confirmation', description }),
+      ),
+    );
+    await waitFor(() => expect(screen.queryByLabelText('Summary')).not.toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Create Issue' }));
+    expect(screen.getByLabelText('Description')).toHaveValue('');
+  });
+
+  it('keeps the create form hidden for a viewer using the create shortcut URL', () => {
+    apiMocks.canCreate = false;
+    renderPage('/projects/TEST/issues?create=1');
+    expect(screen.queryByLabelText('Summary')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Create Issue' })).not.toBeInTheDocument();
   });
 });

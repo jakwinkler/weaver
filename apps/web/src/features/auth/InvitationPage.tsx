@@ -59,6 +59,7 @@ export function InvitationPage() {
                 <Label htmlFor="invitedPassword">Password</Label>
                 <Input id="invitedPassword" type="password" required minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} />
                 <p className="text-xs text-muted-foreground">Use your existing password if you already have a Weaver account.</p>
+                <p className="text-xs text-muted-foreground">If you normally use a sign-in button and have no Weaver password, ask your team for help joining.</p>
               </div>
               {accept.isError && <p role="alert" className="text-sm text-destructive">Could not join. Check your password or ask for a new invitation.</p>}
               <Button type="submit" disabled={accept.isPending} className="w-full">Join organization</Button>
