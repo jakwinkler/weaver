@@ -1,3 +1,4 @@
+import { assertSafeOidcUrl } from '../security/oidc-http';
 import { preserveSettingsSecrets } from '../security/settings-secrets';
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -8,7 +9,6 @@ import type { TenantSettings } from '@weaver/shared';
 const DEFAULT_SETTINGS: TenantSettings = {
   timezone: 'UTC',
   theme: 'system',
-  allowedDomains: [],
   smtp: null,
   sso: {
     google: { enabled: true },
@@ -70,6 +70,10 @@ export class TenantService {
   async updateSettings(tenantId: string, partial: Partial<TenantSettings>): Promise<TenantSettings> {
     const tenant = await this.tenantRepo.findOneByOrFail({ id: tenantId });
     const current = this.mergeSettings(tenant.settings as Partial<TenantSettings>);
+    const oidc = partial.sso?.oidc;
+    if (oidc?.discoveryUrl && (oidc.discoveryUrl !== current.sso.oidc.discoveryUrl || (oidc.enabled && !current.sso.oidc.enabled))) {
+      await assertSafeOidcUrl(oidc.discoveryUrl);
+    }
     partial = preserveSettingsSecrets(partial, current);
     const merged = this.mergeSettings({
       ...current,
@@ -85,15 +89,17 @@ export class TenantService {
           }
         : current.sso,
     });
-    tenant.settings = merged as unknown as Record<string, unknown>;
+    tenant.settings = { ...tenant.settings, ...merged } as unknown as Record<string, unknown>;
     await this.tenantRepo.save(tenant);
     return merged;
   }
 
   private mergeSettings(partial: Partial<TenantSettings>): TenantSettings {
+    const active = { ...partial } as Partial<TenantSettings> & { allowedDomains?: unknown };
+    delete active.allowedDomains;
     return {
       ...DEFAULT_SETTINGS,
-      ...partial,
+      ...active,
       sso: {
         ...DEFAULT_SETTINGS.sso,
         ...(partial.sso ?? {}),

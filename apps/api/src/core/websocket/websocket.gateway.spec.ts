@@ -11,6 +11,7 @@ describe('WeaverGateway project room isolation', () => {
       tenantRepo as never,
       membershipRepo as never,
       projectAccess as never,
+      { allowProjectJoin: jest.fn().mockResolvedValue(true) } as never,
     );
     const client = {
       id: 'socket-a',
@@ -50,6 +51,7 @@ describe('WeaverGateway project room isolation', () => {
       tenantRepo as never,
       membershipRepo as never,
       projectAccess as never,
+      { allowProjectJoin: jest.fn().mockResolvedValue(true) } as never,
     );
     const client = {
       id: 'socket-b',
@@ -72,6 +74,7 @@ describe('WeaverGateway project room isolation', () => {
       tenantRepo as never,
       membershipRepo as never,
       {} as never,
+      { allowProjectJoin: jest.fn().mockResolvedValue(true) } as never,
     );
     const disconnectSockets = jest.fn();
     const inRoom = jest.fn().mockReturnValue({ disconnectSockets });
@@ -83,5 +86,30 @@ describe('WeaverGateway project room isolation', () => {
 
     expect(inRoom).toHaveBeenCalledWith('tenant:tenant-a:user:user-a');
     expect(disconnectSockets).toHaveBeenCalledWith(true);
+  });
+});
+
+describe('project join abuse limits', () => {
+  const setup = (allow = true) => {
+    const access = { assertProjectKey: jest.fn().mockResolvedValue(undefined) };
+    const limiter = { allowProjectJoin: jest.fn().mockResolvedValue(allow) };
+    const gateway: WeaverGateway = Reflect.construct(WeaverGateway, [{}, {}, {}, access, limiter]);
+    const client = { id: 'socket', tenantId: 'tenant', tenantSchemaName: 'tenant_test', userId: 'user', role: 'member', join: jest.fn() };
+    return { gateway, access, limiter, client };
+  };
+  it('bounds a socket burst before database authorization', async () => {
+    const { gateway, access, client } = setup();
+    await Promise.all(Array.from({ length: 50 }, () => gateway.handleJoinProject(client as never, { projectKey: 'DEMO' })));
+    expect(access.assertProjectKey.mock.calls.length).toBeLessThanOrEqual(20);
+  });
+  it('rejects a user-wide budget denial before authorization', async () => {
+    const { gateway, access, client } = setup(false);
+    expect(await gateway.handleJoinProject(client as never, { projectKey: 'DEMO' })).toEqual({ joined: false });
+    expect(access.assertProjectKey).not.toHaveBeenCalled();
+  });
+  it.each([42, 'x'.repeat(10000), {}, null])('rejects invalid project keys without database work', async projectKey => {
+    const { gateway, access, client } = setup();
+    expect(await gateway.handleJoinProject(client as never, { projectKey } as never)).toEqual({ joined: false });
+    expect(access.assertProjectKey).not.toHaveBeenCalled();
   });
 });

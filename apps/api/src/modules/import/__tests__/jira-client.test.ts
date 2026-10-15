@@ -15,7 +15,7 @@ const cloudConfig: JiraConnectionConfig = {
 
 describe('JiraClient', () => {
   it('blocks private destinations through its default transport', async () => {
-    await expect(new JiraClient().testConnection({ ...serverConfig, baseUrl: 'http://127.0.0.1:6379' })).rejects.toThrow('private or reserved');
+    await expect(new JiraClient().testConnection({ ...serverConfig, baseUrl: 'https://127.0.0.1:6379' })).rejects.toThrow('private or reserved');
   });
   it('does not reflect remote error response bodies', async () => {
     const client = new JiraClient(jest.fn().mockResolvedValue(new Response('private upstream secret', { status: 403 })));

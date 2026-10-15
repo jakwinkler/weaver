@@ -18,8 +18,8 @@ export const jiraConnectionSchema = z
       .string()
       .url()
       .max(2000)
-      .refine((value) => ['http:', 'https:'].includes(new URL(value).protocol), {
-        message: 'Jira URL must use HTTP or HTTPS',
+      .refine((value) => new URL(value).protocol === 'https:', {
+        message: 'Jira URL must use HTTPS',
       }),
     auth: z.discriminatedUnion('type', [apiTokenSchema, oauthSchema]),
   })

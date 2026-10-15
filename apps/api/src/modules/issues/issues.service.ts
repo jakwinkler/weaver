@@ -62,8 +62,14 @@ export class IssuesService {
 
   private async resolveUserName(userId: string | null): Promise<string | null> {
     if (!userId) return null;
-    const user = await this.userRepo.findOneBy({ id: userId });
+    const user = await this.userRepo.findOne({ where: { id: userId, memberships: { tenantId: requireTenantContext().tenantId } } });
     return user?.displayName || user?.email || userId;
+  }
+
+  private async assertValidAssignee(userId: string | null | undefined): Promise<void> {
+    if (userId == null) return;
+    const exists = await this.userRepo.exists({ where: { id: userId, memberships: { tenantId: requireTenantContext().tenantId } } });
+    if (!exists) throw new BadRequestException('Assignee must be a member of this organization');
   }
 
   private async resolveStatusName(em: any, statusId: string | null): Promise<string | null> {
@@ -87,6 +93,7 @@ export class IssuesService {
     const project = await this.projectsService.findByKey(projectKey);
     const em = await this.tenantConnections.getEntityManager();
 
+    await this.assertValidAssignee(dto.assigneeId);
     await this.customFieldsService.validateCustomFields(dto.customFields ?? {});
 
     // Resolve workflow: project-specific or default
@@ -385,6 +392,7 @@ export class IssuesService {
       }
     }
     const { tenantId } = requireTenantContext();
+    await this.assertValidAssignee(dto.assigneeId);
     const result = await this.tenantConnections.runInTenantTransaction(async (em) => {
       const repo = em.getRepository(IssueEntity);
       const issue = await repo.findOne({
@@ -544,6 +552,7 @@ export class IssuesService {
     userId: string,
   ): Promise<IssueEntity[]> {
     this.validateBulkRequest(issueIds, updates);
+    await this.assertValidAssignee(updates.assigneeId);
     const uniqueIssueIds = [...new Set(issueIds)];
     const { tenantId } = requireTenantContext();
 
@@ -707,7 +716,7 @@ export class IssuesService {
       sprintIds.size > 0
         ? manager.getRepository(SprintEntity).find({ where: { id: In([...sprintIds]) } })
         : [],
-      assigneeIds.size > 0 ? this.userRepo.find({ where: { id: In([...assigneeIds]) } }) : [],
+      assigneeIds.size > 0 ? this.userRepo.find({ where: { id: In([...assigneeIds]), memberships: { tenantId: requireTenantContext().tenantId } } }) : [],
     ]);
     const statusNames = new Map<string, string>(statuses.map((status) => [status.id, status.name]));
     const sprintNames = new Map<string, string>(sprints.map((sprint) => [sprint.id, sprint.name]));

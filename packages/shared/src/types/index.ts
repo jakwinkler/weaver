@@ -230,7 +230,6 @@ export interface FormSubmission {
 export interface TenantSettings {
   timezone: string;
   theme: 'light' | 'dark' | 'system';
-  allowedDomains: string[];
   smtp: {
     host: string;
     port: number;
@@ -600,3 +599,5 @@ export interface TimeEntry {
   createdAt: Date;
   updatedAt: Date;
 }
+
+export * from './public-project';

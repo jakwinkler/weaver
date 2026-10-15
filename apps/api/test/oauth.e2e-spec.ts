@@ -4,6 +4,8 @@ import { DataSource } from 'typeorm';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { AuthService } from '../src/core/auth';
+import { TenantConnectionProvider } from '../src/core/tenant';
+import { TenantProvisioningService } from '../src/core/tenant/tenant-provisioning.service';
 
 describe('OAuth SSO (e2e)', () => {
   let app: INestApplication;
@@ -29,6 +31,10 @@ describe('OAuth SSO (e2e)', () => {
   });
 
   afterAll(async () => {
+    await app.get(TenantConnectionProvider).closeAll();
+    for (const schema of ['tenant_oauth_multi_one', 'tenant_oauth_multi_two']) {
+      await dataSource.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+    }
     await dataSource.query(`DELETE FROM public.tenants WHERE slug = ANY($1::text[])`, [
       ['oauth-multi-one', 'oauth-multi-two'],
     ]);
@@ -130,6 +136,9 @@ describe('OAuth SSO (e2e)', () => {
       avatarUrl: null,
     });
     const userId = firstLogin.user.id;
+    for (const schema of ['tenant_oauth_multi_one', 'tenant_oauth_multi_two']) {
+      await app.get(TenantProvisioningService).provisionSchema(schema);
+    }
     const tenants = await dataSource.query(
       `INSERT INTO public.tenants (name, slug, schema_name, plan, settings)
        VALUES
@@ -172,7 +181,8 @@ describe('OAuth SSO (e2e)', () => {
           },
           oidc: {
             enabled: true,
-            discoveryUrl: 'https://login.example.com',
+            // Save-time validation checks the address without contacting the provider.
+            discoveryUrl: 'https://8.8.8.8',
             clientId: 'test-client',
             clientSecret: 'test-secret',
           },

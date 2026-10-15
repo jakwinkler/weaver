@@ -13,6 +13,7 @@ import { ApiKeyRateLimitGuard } from './api-key-rate-limit.guard';
 import { GoogleStrategy } from './google.strategy';
 import { GitHubStrategy } from './github.strategy';
 import { GoogleOAuthGuard, GitHubOAuthGuard } from './oauth.guard';
+import { SamlRequestCache } from './saml-request-cache';
 import { SamlStrategy } from './saml.strategy';
 import { SamlAuthGuard } from './saml.guard';
 import { OidcStrategy } from './oidc.strategy';
@@ -43,6 +44,7 @@ import { OidcStrategy } from './oidc.strategy';
     GitHubStrategy,
     GoogleOAuthGuard,
     GitHubOAuthGuard,
+    SamlRequestCache,
     SamlStrategy,
     SamlAuthGuard,
     OidcStrategy,

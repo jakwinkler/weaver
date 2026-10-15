@@ -3,12 +3,14 @@ import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
 import {
   MultiSamlStrategy,
+  ValidateInResponseTo,
   PassportSamlConfig,
   Profile,
   VerifiedCallback,
 } from '@node-saml/passport-saml';
 import { Request } from 'express';
 import { TenantService } from '../tenant';
+import { SamlRequestCache, SAML_REQUEST_TTL_MS } from './saml-request-cache';
 import { OAuthIdentity } from './auth.service';
 
 function routeParam(value: string | string[]) {
@@ -17,7 +19,7 @@ function routeParam(value: string | string[]) {
 
 @Injectable()
 export class SamlStrategy extends PassportStrategy(MultiSamlStrategy, 'saml') {
-  constructor(tenantService: TenantService, config: ConfigService) {
+  constructor(tenantService: TenantService, config: ConfigService, requests: SamlRequestCache) {
     const getSamlOptions = (
       request: Request,
       callback: (error: Error | null, options?: Partial<PassportSamlConfig>) => void,
@@ -40,6 +42,9 @@ export class SamlStrategy extends PassportStrategy(MultiSamlStrategy, 'saml') {
           idpCert: saml.cert.replace(/\\n/g, '\n'),
           issuer: config.get<string>('SAML_ISSUER', 'weaver'),
           callbackUrl: `${apiUrl}/${prefix}/auth/saml/${tenant.slug}/callback`,
+          validateInResponseTo: ValidateInResponseTo.always,
+          requestIdExpirationPeriodMs: SAML_REQUEST_TTL_MS,
+          cacheProvider: requests.forTenant(tenant.id),
           wantAssertionsSigned: true,
           wantAuthnResponseSigned: true,
         });

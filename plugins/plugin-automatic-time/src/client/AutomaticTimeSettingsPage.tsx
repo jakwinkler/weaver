@@ -188,6 +188,11 @@ export function AutomaticTimeSettingsPage({ api }: { api: AutomaticTimeApi }) {
                 macOS companion {pairing.companionVersion} · code {pairing.userCode} · expires{' '}
                 {formatTimestamp(pairing.expiresAt)}
               </p>
+              <p className="mt-3 text-sm font-medium text-foreground">
+                Only approve a code you started on your own Mac. If someone sent you this link or
+                asked you to approve their code, do not approve it. The device name is supplied by
+                the device and does not verify its identity.
+              </p>
               <ul className="mt-4 space-y-2 text-sm text-foreground">
                 {pairing.requestedScopes.map((scope) => (
                   <li key={scope} className="flex items-start gap-2">

@@ -354,9 +354,7 @@ export class AuditService implements OnModuleInit, OnModuleDestroy {
   }
 
   private extractIpAddress(req: Request): string | null {
-    const forwarded = req.headers['x-forwarded-for'];
-    const first = Array.isArray(forwarded) ? forwarded[0] : forwarded;
-    return first?.split(',')[0]?.trim() || req.ip || req.socket.remoteAddress || null;
+    return req.ip || req.socket.remoteAddress || null;
   }
 
   private parseDate(value: string, field: string): Date {

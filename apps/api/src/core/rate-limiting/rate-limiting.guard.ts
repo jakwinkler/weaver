@@ -159,6 +159,22 @@ export class RateLimitingGuard implements CanActivate, OnModuleInit, OnModuleDes
     return true;
   }
 
+  async allowProjectJoin(tenantId: string, userId: string): Promise<boolean> {
+    if (this.redis.status !== 'ready') return false;
+    try {
+      for (const [scope, limit] of [[`user:${tenantId}:${userId}`, 60], [`tenant:${tenantId}`, 600]] as const) {
+        const key = `${this.keyPrefix}:socket-join:${scope}`;
+        if (this.config.get<string>('RATE_LIMIT_RESET_ON_SHUTDOWN') === 'true') this.touchedKeys.add(key);
+        const [count] = await this.redis.eval(INCREMENT_WINDOW, 1, key, '60000') as [number, number];
+        if (Number(count) > limit) return false;
+      }
+      return true;
+    } catch {
+      this.warnStoreUnavailable('Socket join limiting unavailable');
+      return false;
+    }
+  }
+
   private handleUnavailable(request: any): boolean {
     const path = String(request.originalUrl || request.url || '').split('?')[0];
     if (this.isAuthenticationEndpoint(request) || path.includes('/public/')) {
