@@ -39,7 +39,7 @@ export class SprintsService {
     private readonly eventDispatcher: EventDispatcherService,
   ) {}
 
-  async create(projectId: string, dto: CreateSprintDto): Promise<SprintEntity> {
+  async create(projectId: string, dto: CreateSprintDto, userId?: string): Promise<SprintEntity> {
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(SprintEntity);
 
@@ -54,7 +54,9 @@ export class SprintsService {
     });
 
     if (sprint.startDate && sprint.endDate) this.getDateRange(sprint.startDate, sprint.endDate);
-    return repo.save(sprint);
+    const saved = await repo.save(sprint);
+    await this.emitSprintEvent('sprint.created', saved, userId);
+    return saved;
   }
 
   async findAll(projectId: string): Promise<SprintEntity[]> {
@@ -117,6 +119,7 @@ export class SprintsService {
       endDate?: string | null;
       capacity?: number | null;
     },
+    userId?: string,
   ): Promise<SprintEntity> {
     const sprint = await this.findById(id);
     this.assertPlanned(sprint, 'edited');
@@ -125,10 +128,12 @@ export class SprintsService {
 
     Object.assign(sprint, dto);
     if (sprint.startDate && sprint.endDate) this.getDateRange(sprint.startDate, sprint.endDate);
-    return repo.save(sprint);
+    const saved = await repo.save(sprint);
+    await this.emitSprintEvent('sprint.updated', saved, userId);
+    return saved;
   }
 
-  async delete(id: string): Promise<void> {
+  async delete(id: string, userId?: string): Promise<void> {
     const sprint = await this.findById(id);
     this.assertPlanned(sprint, 'deleted');
     const em = await this.tenantConnections.getEntityManager();
@@ -136,9 +141,10 @@ export class SprintsService {
       await manager.getRepository(IssueEntity).update({ sprintId: id }, { sprintId: null });
       await manager.getRepository(SprintEntity).remove(sprint);
     });
+    await this.emitSprintEvent('sprint.deleted', { ...sprint, id }, userId);
   }
 
-  async start(id: string): Promise<SprintEntity> {
+  async start(id: string, userId?: string): Promise<SprintEntity> {
     const saved = await this.tenantConnections.runInTenantTransaction(async (manager) => {
       const repo = manager.getRepository(SprintEntity);
       const sprint = await repo.findOne({
@@ -175,11 +181,11 @@ export class SprintsService {
       if (sprint.startDate && sprint.endDate) this.getDateRange(sprint.startDate, sprint.endDate);
       return repo.save(sprint);
     });
-    await this.eventDispatcher.emit('sprint.started', { sprintId: saved.id, projectId: saved.projectId });
+    await this.emitSprintEvent('sprint.started', saved, userId);
     return saved;
   }
 
-  async complete(id: string): Promise<SprintEntity> {
+  async complete(id: string, userId?: string): Promise<SprintEntity> {
     const saved = await this.tenantConnections.runInTenantTransaction(async (manager) => {
       const repo = manager.getRepository(SprintEntity);
       const sprint = await repo.findOne({
@@ -209,7 +215,7 @@ export class SprintsService {
       if (sprint.startDate && sprint.endDate) this.getDateRange(sprint.startDate, sprint.endDate);
       return repo.save(sprint);
     });
-    await this.eventDispatcher.emit('sprint.completed', { sprintId: saved.id, projectId: saved.projectId });
+    await this.emitSprintEvent('sprint.completed', saved, userId);
     return saved;
   }
 
@@ -254,6 +260,20 @@ export class SprintsService {
       }
       await issueRepo.save(changedIssues);
       if (activities.length) await activityRepo.save(activities);
+    });
+  }
+
+  /** The dispatcher resolves projectId to the project room that receives the event. */
+  private async emitSprintEvent(
+    event: string,
+    sprint: Pick<SprintEntity, 'id' | 'projectId' | 'name'>,
+    userId?: string,
+  ): Promise<void> {
+    await this.eventDispatcher.emit(event, {
+      sprintId: sprint.id,
+      projectId: sprint.projectId,
+      name: sprint.name,
+      userId: userId ?? null,
     });
   }
 

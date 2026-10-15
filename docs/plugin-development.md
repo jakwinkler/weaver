@@ -247,7 +247,7 @@ export async function onEvent(event: string, data: unknown, context: PluginConte
 }
 ```
 
-Only installed and enabled plugins receive events. A subscription of `"*"` receives every tenant event. Common core events include `issue.created`, `issue.updated`, `issue.assigned`, `issue.moved`, `issue.status_changed`, `issue.deleted`, `project.created`, `project.updated`, `comment.created`, `comment.deleted`, and `time.logged`.
+Only installed and enabled plugins receive events. A subscription of `"*"` receives every tenant event. Common core events include `issue.created`, `issue.updated`, `issue.assigned`, `issue.moved`, `issue.status_changed`, `issue.deleted`, `project.created`, `project.updated`, `comment.created`, `comment.deleted`, `sprint.created`, `sprint.started`, `sprint.completed`, and `time.logged`.
 
 ## Register custom fields
 

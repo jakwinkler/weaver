@@ -5,6 +5,7 @@ import { TimeTrackingService } from './time-tracking.service';
 describe('TimeTrackingService manual worklog contract', () => {
   const issueRepository = {
     findOneBy: jest.fn(),
+    find: jest.fn(),
   };
   const timeEntryRepository = {
     create: jest.fn(),
@@ -37,6 +38,8 @@ describe('TimeTrackingService manual worklog contract', () => {
     tenantConnections.getEntityManager.mockResolvedValue(entityManager);
     eventDispatcher.emit.mockResolvedValue(undefined);
     issueRepository.findOneBy.mockResolvedValue({ id: 'issue-1', key: 'WEB-1' });
+    issueRepository.find.mockResolvedValue([]);
+    timeEntryRepository.remove.mockImplementation(async (value) => value);
     entityManager.transaction.mockImplementation(async (callback) => callback(entityManager));
     service = new TimeTrackingService(tenantConnections as any, eventDispatcher as any);
   });
@@ -79,6 +82,7 @@ describe('TimeTrackingService manual worklog contract', () => {
     );
     expect(eventDispatcher.emit).toHaveBeenCalledWith('time.logged', {
       issueKey: 'WEB-1',
+      projectKey: 'WEB',
       minutes: 45,
       description: 'Review plugin architecture',
       userId: 'user-1',
@@ -170,6 +174,12 @@ describe('TimeTrackingService manual worklog contract', () => {
       userId: 'user-1',
     });
     expect(timeEntryRepository.save).toHaveBeenCalledWith(entry);
+    expect(eventDispatcher.emit).toHaveBeenCalledWith('time.updated', {
+      entryId: 'entry-1',
+      issueKey: 'WEB-1',
+      projectKey: 'WEB',
+      userId: 'user-1',
+    });
   });
 
   it('rejects updates to locked official time', async () => {
@@ -191,9 +201,21 @@ describe('TimeTrackingService manual worklog contract', () => {
     const entry = { id: 'entry-1', userId: 'user-1' } as TimeEntryEntity;
     timeEntryRepository.findOneBy.mockResolvedValue(entry);
 
+    // TypeORM clears the primary key of entities it removes.
+    timeEntryRepository.remove.mockImplementation(async (value) => {
+      value.id = undefined;
+      return value;
+    });
+
     await service.delete('WEB-1', 'entry-1', 'user-1');
 
     expect(timeEntryRepository.remove).toHaveBeenCalledWith(entry);
+    expect(eventDispatcher.emit).toHaveBeenCalledWith('time.deleted', {
+      entryId: 'entry-1',
+      issueKey: 'WEB-1',
+      projectKey: 'WEB',
+      userId: 'user-1',
+    });
   });
 
   it('rejects deletion of locked official time', async () => {
@@ -260,12 +282,18 @@ describe('TimeTrackingService manual worklog contract', () => {
         sourceReference: 'draft-1',
       }),
     );
+    expect(eventDispatcher.emit).toHaveBeenCalledTimes(1);
+    expect(eventDispatcher.emit).toHaveBeenCalledWith(
+      'time.logged',
+      expect.objectContaining({ entryId: 'entry-1', issueKey: 'WEB-1', projectKey: 'WEB' }),
+    );
   });
 
   it('deletes an unlocked plugin batch atomically for an explicit reopen', async () => {
     const entries = [
       {
         id: 'entry-1',
+        issueId: 'issue-1',
         userId: 'user-1',
         sourcePluginId: '@weaver/plugin-automatic-time',
         lockedAt: null,
@@ -273,6 +301,7 @@ describe('TimeTrackingService manual worklog contract', () => {
       },
       {
         id: 'entry-2',
+        issueId: 'issue-2',
         userId: 'user-1',
         sourcePluginId: '@weaver/plugin-automatic-time',
         lockedAt: null,
@@ -280,6 +309,14 @@ describe('TimeTrackingService manual worklog contract', () => {
       },
     ] as TimeEntryEntity[];
     timeEntryRepository.find.mockResolvedValue(entries);
+    timeEntryRepository.remove.mockImplementation(async (values: TimeEntryEntity[]) => {
+      for (const value of values) (value as { id?: string }).id = undefined;
+      return values;
+    });
+    issueRepository.find.mockResolvedValue([
+      { id: 'issue-1', key: 'WEB-1' },
+      { id: 'issue-2', key: 'OPS-7' },
+    ]);
 
     await expect(
       service.deletePluginEntriesBatch(
@@ -291,6 +328,72 @@ describe('TimeTrackingService manual worklog contract', () => {
 
     expect(entityManager.transaction).toHaveBeenCalledTimes(1);
     expect(timeEntryRepository.remove).toHaveBeenCalledWith(entries);
+    expect(eventDispatcher.emit).toHaveBeenCalledWith('time.deleted', {
+      entryId: 'entry-1',
+      issueKey: 'WEB-1',
+      projectKey: 'WEB',
+      userId: 'user-1',
+      sourcePluginId: '@weaver/plugin-automatic-time',
+    });
+    expect(eventDispatcher.emit).toHaveBeenCalledWith('time.deleted', {
+      entryId: 'entry-2',
+      issueKey: 'OPS-7',
+      projectKey: 'OPS',
+      userId: 'user-1',
+      sourcePluginId: '@weaver/plugin-automatic-time',
+    });
+  });
+
+  it('keeps a committed plugin delete when the event lookup fails', async () => {
+    const entry = {
+      id: 'entry-1',
+      issueId: 'issue-1',
+      userId: 'user-1',
+      sourcePluginId: '@weaver/plugin-automatic-time',
+      lockedAt: null,
+      lockReason: null,
+    } as TimeEntryEntity;
+    timeEntryRepository.findOneBy.mockResolvedValue(entry);
+    issueRepository.find.mockRejectedValue(new Error('connection reset'));
+
+    await expect(
+      service.deletePluginEntry('@weaver/plugin-automatic-time', 'entry-1', 'user-1'),
+    ).resolves.toBeUndefined();
+    expect(eventDispatcher.emit).toHaveBeenCalledWith('time.deleted', {
+      entryId: 'entry-1',
+      userId: 'user-1',
+      sourcePluginId: '@weaver/plugin-automatic-time',
+    });
+  });
+
+  it('routes a plugin edit to the project of the entry issue', async () => {
+    const entry = {
+      id: 'entry-1',
+      issueId: 'issue-1',
+      userId: 'user-1',
+      minutes: 30,
+      sourcePluginId: '@weaver/plugin-automatic-time',
+      lockedAt: null,
+      lockReason: null,
+    } as TimeEntryEntity;
+    timeEntryRepository.findOneBy.mockResolvedValue(entry);
+    timeEntryRepository.save.mockImplementation(async (value) => value);
+    issueRepository.find.mockResolvedValue([{ id: 'issue-1', key: 'WEB-1' }]);
+
+    await service.updatePluginEntry(
+      '@weaver/plugin-automatic-time',
+      'entry-1',
+      { minutes: 45 },
+      'user-1',
+    );
+
+    expect(eventDispatcher.emit).toHaveBeenCalledWith('time.updated', {
+      entryId: 'entry-1',
+      issueKey: 'WEB-1',
+      projectKey: 'WEB',
+      userId: 'user-1',
+      sourcePluginId: '@weaver/plugin-automatic-time',
+    });
   });
 
   it('keeps every plugin entry when one entry in a reopen batch is locked', async () => {

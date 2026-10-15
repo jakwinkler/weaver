@@ -46,8 +46,9 @@ export class SprintsController {
   async create(
     @Query('projectId') projectId: string,
     @Body(new ZodValidationPipe(createSprintSchema)) dto: any,
+    @CurrentUser() user: RequestUser,
   ) {
-    return this.sprintsService.create(projectId, dto);
+    return this.sprintsService.create(projectId, dto, user.userId);
   }
 
   @Get()
@@ -91,30 +92,31 @@ export class SprintsController {
   async update(
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateSprintSchema)) dto: any,
+    @CurrentUser() user: RequestUser,
   ) {
-    return this.sprintsService.update(id, dto);
+    return this.sprintsService.update(id, dto, user.userId);
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   @RequirePermission('sprints', 'delete')
   @RequireProjectAccess('sprint-id', 'write')
-  async delete(@Param('id') id: string) {
-    await this.sprintsService.delete(id);
+  async delete(@Param('id') id: string, @CurrentUser() user: RequestUser) {
+    await this.sprintsService.delete(id, user.userId);
   }
 
   @Post(':id/start')
   @RequirePermission('sprints', 'manage')
   @RequireProjectAccess('sprint-id', 'write')
-  async start(@Param('id') id: string) {
-    return this.sprintsService.start(id);
+  async start(@Param('id') id: string, @CurrentUser() user: RequestUser) {
+    return this.sprintsService.start(id, user.userId);
   }
 
   @Post(':id/complete')
   @RequirePermission('sprints', 'manage')
   @RequireProjectAccess('sprint-id', 'write')
-  async complete(@Param('id') id: string) {
-    return this.sprintsService.complete(id);
+  async complete(@Param('id') id: string, @CurrentUser() user: RequestUser) {
+    return this.sprintsService.complete(id, user.userId);
   }
 
   @Post(':id/issues')

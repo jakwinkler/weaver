@@ -24,10 +24,24 @@ export const DOMAIN_EVENTS = [
   'checklist.item_removed',
   'relation.created',
   'relation.removed',
+  'sprint.created',
+  'sprint.updated',
+  'sprint.started',
+  'sprint.completed',
+  'sprint.deleted',
+  'time.logged',
+  'time.updated',
+  'time.deleted',
 ] as const;
 
 /** Board cards, the backlog, and sprint totals cache issues under keys of their own. */
 const ISSUE_PLANNING_KEYS = [['boardIssues'], ['backlog'], ['sprintStats']];
+
+/**
+ * Sprint lists are keyed by project ID and sprint reports by sprint ID or
+ * project key, so sprint events invalidate both by prefix.
+ */
+const SPRINT_KEYS = [['sprints'], ['sprint-report']];
 
 /** Map domain events to React Query keys that should be invalidated. */
 export function getInvalidationKeys(event: string, data: Record<string, unknown>): string[][] {
@@ -92,6 +106,18 @@ export function getInvalidationKeys(event: string, data: Record<string, unknown>
         ...(issueKey ? [['activity', issueKey]] : []),
       ];
     }
+    case 'sprint.created':
+    case 'sprint.updated':
+    case 'sprint.started':
+      return [...SPRINT_KEYS];
+    // Completing or deleting a sprint moves issues back to the backlog without issue events.
+    case 'sprint.completed':
+    case 'sprint.deleted':
+      return [...SPRINT_KEYS, ['issues'], ...ISSUE_PLANNING_KEYS];
+    case 'time.logged':
+    case 'time.updated':
+    case 'time.deleted':
+      return issueKey ? [['timeEntries', issueKey], ['timeEntrySummary', issueKey]] : [];
     default:
       return [];
   }
@@ -126,6 +152,10 @@ export function buildToastMessage(event: string, data: Record<string, unknown>):
       return `Comment updated on ${issueKey ?? 'an issue'}`;
     case 'project.created':
       return `New project created: ${data.name ?? projectKey ?? ''}`;
+    case 'sprint.started':
+      return `${data.name ?? 'A sprint'} started`;
+    case 'sprint.completed':
+      return `${data.name ?? 'A sprint'} was completed`;
     default:
       return null;
   }

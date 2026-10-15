@@ -144,6 +144,7 @@ describe('Real-Time WebSocket (e2e)', () => {
 
   describe('Events', () => {
     let projectKey: string;
+    let projectId: string;
 
     beforeAll(async () => {
       // Reuse the project created before the room authorization tests.
@@ -154,6 +155,7 @@ describe('Real-Time WebSocket (e2e)', () => {
         .expect(200);
 
       projectKey = createProjectRes.body.key;
+      projectId = createProjectRes.body.id;
 
       // Create a default workflow and status
       const wfRes = await request(httpServer)
@@ -393,6 +395,117 @@ describe('Real-Time WebSocket (e2e)', () => {
       );
       expect(payload.data.userId).toBe(userId);
     }, 15000);
+
+    it('should announce a new sprint to the project room', async () => {
+      const name = `Live sprint ${Date.now()}`;
+      const payload = await waitForEvent(
+        'sprint.created',
+        async () => {
+          await request(httpServer)
+            .post(`/api/v1/sprints?projectId=${projectId}`)
+            .set('Authorization', `Bearer ${accessToken}`)
+            .set('X-Tenant-ID', tenantId)
+            .send({ name })
+            .expect(201);
+        },
+        (p) => p.data?.name === name,
+      );
+
+      expect(payload.data).toEqual(
+        expect.objectContaining({ projectId, projectKey, name, userId }),
+      );
+      expect(payload.data.sprintId).toEqual(expect.any(String));
+    }, 15000);
+
+    it('should name the sprint and actor when a sprint starts and completes', async () => {
+      const name = `Started sprint ${Date.now()}`;
+      const sprint = await request(httpServer)
+        .post(`/api/v1/sprints?projectId=${projectId}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .set('X-Tenant-ID', tenantId)
+        .send({ name })
+        .expect(201);
+
+      const started = await waitForEvent(
+        'sprint.started',
+        async () => {
+          await request(httpServer)
+            .post(`/api/v1/sprints/${sprint.body.id}/start`)
+            .set('Authorization', `Bearer ${accessToken}`)
+            .set('X-Tenant-ID', tenantId)
+            .expect(201);
+        },
+        (p) => p.data?.sprintId === sprint.body.id,
+      );
+      expect(started.data).toEqual(expect.objectContaining({ projectKey, name, userId }));
+
+      const completed = await waitForEvent(
+        'sprint.completed',
+        async () => {
+          await request(httpServer)
+            .post(`/api/v1/sprints/${sprint.body.id}/complete`)
+            .set('Authorization', `Bearer ${accessToken}`)
+            .set('X-Tenant-ID', tenantId)
+            .expect(201);
+        },
+        (p) => p.data?.sprintId === sprint.body.id,
+      );
+      expect(completed.data).toEqual(expect.objectContaining({ projectKey, name, userId }));
+    }, 30000);
+
+    it('should route logged, edited, and deleted time to the issue project room', async () => {
+      const issueRes = await request(httpServer)
+        .post(`/api/v1/projects/${projectKey}/issues`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .set('X-Tenant-ID', tenantId)
+        .send({ summary: 'Time event test issue' });
+      const issueKey = issueRes.body.key;
+      let entryId = '';
+
+      const logged = await waitForEvent(
+        'time.logged',
+        async () => {
+          const entry = await request(httpServer)
+            .post(`/api/v1/issues/${issueKey}/time-entries`)
+            .set('Authorization', `Bearer ${accessToken}`)
+            .set('X-Tenant-ID', tenantId)
+            .send({ minutes: 30 })
+            .expect(201);
+          entryId = entry.body.id;
+        },
+        (p) => p.data?.issueKey === issueKey,
+      );
+      expect(logged.data).toEqual(
+        expect.objectContaining({ issueKey, projectKey, minutes: 30, userId }),
+      );
+
+      const updated = await waitForEvent(
+        'time.updated',
+        async () => {
+          await request(httpServer)
+            .patch(`/api/v1/issues/${issueKey}/time-entries/${entryId}`)
+            .set('Authorization', `Bearer ${accessToken}`)
+            .set('X-Tenant-ID', tenantId)
+            .send({ minutes: 45 })
+            .expect(200);
+        },
+        (p) => p.data?.issueKey === issueKey,
+      );
+      expect(updated.data).toEqual(expect.objectContaining({ entryId, projectKey, userId }));
+
+      const deleted = await waitForEvent(
+        'time.deleted',
+        async () => {
+          await request(httpServer)
+            .delete(`/api/v1/issues/${issueKey}/time-entries/${entryId}`)
+            .set('Authorization', `Bearer ${accessToken}`)
+            .set('X-Tenant-ID', tenantId)
+            .expect(204);
+        },
+        (p) => p.data?.issueKey === issueKey,
+      );
+      expect(deleted.data).toEqual(expect.objectContaining({ entryId, projectKey, userId }));
+    }, 30000);
 
     it('should emit one issue event to a client in tenant and project rooms', async () => {
       const socket = connectSocket(accessToken);

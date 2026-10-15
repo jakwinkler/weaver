@@ -29,7 +29,12 @@ function watchProjectRooms(page: Page) {
   return rooms;
 }
 
-async function addTeammate(context: BrowserContext, owner: Owner, teammateContext: BrowserContext) {
+async function addTeammate(
+  context: BrowserContext,
+  owner: Owner,
+  teammateContext: BrowserContext,
+  role: 'member' | 'admin' = 'member',
+) {
   const email = `realtime-${uniqueId()}@example.invalid`;
   const invitation = await apiCall(context, owner, 'post', '/users/invitations', { email, role: 'member' });
   expect(invitation.status()).toBe(201);
@@ -41,7 +46,20 @@ async function addTeammate(context: BrowserContext, owner: Owner, teammateContex
   const userId = (await accepted.json()).user.id;
   const added = await apiCall(context, owner, 'post', '/projects/LIVE/members', { userId, role: 'member' });
   expect(added.status()).toBe(201);
+  if (role === 'admin') {
+    // Invitations only grant member or viewer roles.
+    const promoted = await apiCall(context, owner, 'patch', `/users/${userId}/role`, { role });
+    expect(promoted.ok()).toBe(true);
+  }
   return email;
+}
+
+async function signIn(page: Page, email: string) {
+  await page.goto('/login');
+  await page.getByLabel('Email').fill(email);
+  await page.getByLabel('Password').fill(password);
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Projects', level: 1 })).toBeVisible();
 }
 
 test('two sessions see each other\'s issue edits and comments without reloading', async ({
@@ -57,11 +75,7 @@ test('two sessions see each other\'s issue edits and comments without reloading'
     const email = await addTeammate(context, owner, teammateContext);
     const teammatePage = await teammateContext.newPage();
     const teammateRooms = watchProjectRooms(teammatePage);
-    await teammatePage.goto('/login');
-    await teammatePage.getByLabel('Email').fill(email);
-    await teammatePage.getByLabel('Password').fill(password);
-    await teammatePage.getByRole('button', { name: 'Sign in', exact: true }).click();
-    await expect(teammatePage.getByRole('heading', { name: 'Projects', level: 1 })).toBeVisible();
+    await signIn(teammatePage, email);
 
     const ownerRooms = watchProjectRooms(page);
     await page.goto('/issues/LIVE-1');
@@ -148,4 +162,62 @@ test('a board shows issues created in another session without reloading', async 
 
   await createIssue(context, owner, 'LIVE', { summary: 'Added elsewhere' });
   await expect(page.getByTestId('kanban-card').filter({ hasText: 'Added elsewhere' })).toBeVisible();
+});
+
+test('two sessions see sprint changes and logged time without reloading', async ({
+  browser,
+  page,
+  context,
+  owner,
+}) => {
+  await createProject(context, owner, { name: 'Live Updates', key: 'LIVE' });
+  await createIssue(context, owner, 'LIVE', { summary: 'Timed work' });
+  for (const pluginId of ['@weaver/plugin-sprints', '@weaver/plugin-time-tracking']) {
+    const installed = await apiCall(context, owner, 'post', '/plugins/install', { pluginId });
+    expect(installed.status()).toBe(201);
+  }
+  const teammateContext = await browser.newContext();
+  try {
+    // Members can read sprints but not create or start them.
+    const email = await addTeammate(context, owner, teammateContext, 'admin');
+    const teammatePage = await teammateContext.newPage();
+    await signIn(teammatePage, email);
+
+    const ownerRooms = watchProjectRooms(page);
+    await page.goto('/projects/LIVE/sprints');
+    await teammatePage.goto('/projects/LIVE/sprints');
+    await expect(page.getByRole('heading', { name: 'Sprint planning', level: 1 })).toBeVisible();
+    await expect(teammatePage.getByRole('heading', { name: 'Sprint planning', level: 1 })).toBeVisible();
+    await expect.poll(() => ownerRooms.joined).toEqual(['LIVE']);
+
+    await teammatePage.getByRole('button', { name: 'New Sprint' }).click();
+    await teammatePage.getByLabel('Name').fill('Live Sprint');
+    await teammatePage.getByRole('button', { name: 'Create Sprint' }).click();
+    await expect(page.getByRole('heading', { name: 'Live Sprint' })).toBeVisible();
+
+    await teammatePage.getByRole('button', { name: 'Start Sprint' }).click();
+    await expect(page.getByText('active', { exact: true })).toBeVisible();
+    await expect(page.getByRole('status').filter({ hasText: 'Live Sprint started' }).first()).toBeVisible();
+
+    await teammatePage.getByRole('button', { name: 'Complete Sprint' }).first().click();
+    await expect(page.getByText('completed', { exact: true })).toBeVisible();
+    await expect(
+      page.getByRole('status').filter({ hasText: 'Live Sprint was completed' }).first(),
+    ).toBeVisible();
+
+    await page.goto('/issues/LIVE-1');
+    await page.getByRole('button', { name: 'Logs' }).click();
+    await expect(page.getByText('No time entries logged yet.')).toBeVisible();
+    await expect.poll(() => ownerRooms.joined).toEqual(['LIVE', 'LIVE']);
+
+    await teammatePage.goto('/issues/LIVE-1');
+    await teammatePage.getByRole('button', { name: 'Logs' }).click();
+    await teammatePage.getByLabel('Minutes').fill('45');
+    await teammatePage.getByLabel('Description').fill('Logged by teammate');
+    await teammatePage.getByRole('button', { name: 'Log Time' }).click();
+    await expect(page.getByText('Logged by teammate')).toBeVisible();
+    await expect(page.getByText('Total: 0h 45m')).toBeVisible();
+  } finally {
+    await teammateContext.close();
+  }
 });

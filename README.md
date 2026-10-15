@@ -300,7 +300,7 @@ These are known gaps in this release:
 
 - No password reset or email verification.
 - The sign-in page shows only Google and GitHub buttons. SAML and OIDC sign-in start from `/api/v1/auth/saml/<organization-slug>` and `/api/v1/auth/oidc/<organization-slug>`.
-- Live updates reach project pages and issue pages, but not the dashboard or search. New, started, and completed sprints and time that other people log still need a reload.
+- Live updates reach project pages and issue pages, but not the dashboard or search.
 - Administrators can define custom fields, and forms or the API can fill them, but the issue page doesn't show or edit their values.
 - Board cards and the backlog's assignee filter show a short user ID instead of a name.
 - The workflow editor saves its diagram layout in each administrator's browser, not on the server.
