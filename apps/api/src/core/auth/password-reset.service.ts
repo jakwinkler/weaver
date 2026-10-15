@@ -22,6 +22,7 @@ import { AuditService } from '../../modules/audit/audit.service';
 import { MailService } from '../../modules/mail/mail.service';
 import { RateLimitingGuard } from '../rate-limiting/rate-limiting.guard';
 import { tenantStorage } from '../tenant/tenant.context';
+import { WeaverGateway } from '../websocket/websocket.gateway';
 import { BCRYPT_ROUNDS } from './auth.service';
 
 export const PASSWORD_RESET_TOKEN_LIFETIME_MS = 30 * 60 * 1000;
@@ -60,6 +61,7 @@ export class PasswordResetService implements OnModuleDestroy {
     private readonly memberships: Repository<TenantMembershipEntity>,
     private readonly mail: MailService,
     private readonly rateLimiting: RateLimitingGuard,
+    private readonly gateway: WeaverGateway,
     // AuditModule's controller imports the auth barrel, so AuthModule cannot import that
     // module without a load-order cycle. Resolve the service from the application instead.
     private readonly moduleRef: ModuleRef,
@@ -129,6 +131,11 @@ export class PasswordResetService implements OnModuleDestroy {
         { id: account.id },
         { passwordHash: await bcrypt.hash(password, BCRYPT_ROUNDS) },
       );
+      // Ends every signed-in session now: access tokens and sockets carry the old version.
+      await manager.query(
+        'UPDATE public.users SET session_version = session_version + 1 WHERE id = $1',
+        [account.id],
+      );
       // Single use: this link and any other outstanding link for the account stop working.
       await tokenRepo.delete({ userId: account.id });
       const revoked = await manager
@@ -138,6 +145,7 @@ export class PasswordResetService implements OnModuleDestroy {
     });
 
     this.logger.log(`Password reset completed for user ${user.id}`);
+    this.disconnectSockets(user.id);
     await this.recordAudit(user.id, revokedSessions, request);
     await this.mail.enqueueAccountEmail(user, 'password-changed', {
       changedAt: new Date().toUTCString(),
@@ -226,6 +234,17 @@ export class PasswordResetService implements OnModuleDestroy {
       providers.includes('github') ? 'GitHub' : null,
     ].filter((name): name is string => name !== null);
     return names.length ? names.join(' or ') : "your organization's single sign-on";
+  }
+
+  private disconnectSockets(userId: string): void {
+    try {
+      this.gateway.disconnectUser(userId);
+    } catch (error) {
+      // Sockets still fail their next handshake; the password change itself has committed.
+      this.logger.warn(
+        `Could not disconnect sockets for user ${userId}: ${this.errorMessage(error)}`,
+      );
+    }
   }
 
   private async recordAudit(userId: string, revokedSessions: number, request: Request) {

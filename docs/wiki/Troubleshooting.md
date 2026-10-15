@@ -7,6 +7,7 @@ Start with the exact page, action, and error. Confirm the organization and proje
 | An invitation link says it is invalid, expired, or already used | Ask the sender for a new private link; invitations expire after seven days and work once |
 | An existing external-sign-in account cannot accept an invitation | The current form requires a Weaver password; contact the team before trying another link |
 | You forgot your password | Choose **Forgot password?** on the sign-in page. The emailed link works once and expires after 30 minutes |
+| Every browser and device asks you to sign in at the same time | The account's password was reset, which ends every session at once, and Weaver emailed the account about it. If you didn't reset it, reset the password again now |
 | No reset email arrives | Check spam and the spelling of the address. Accounts that only use Google, GitHub, or SSO get an email about signing in instead. Operators: the API and worker both need `SMTP_HOST` and `SMTP_FROM`; organization mail settings are never used for resets |
 | A reset link says it is invalid, expired, or already used | Request a new link. Each link works once, expires after 30 minutes, and a newer request cancels it |
 | Sign-in or a reset request says to wait | Weaver limits repeated attempts from one address and for one account; wait the time shown |

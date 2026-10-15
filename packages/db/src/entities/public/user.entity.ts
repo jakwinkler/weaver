@@ -47,6 +47,14 @@ export class UserEntity {
   })
   notificationPreferences!: typeof DEFAULT_NOTIFICATION_PREFERENCES;
 
+  /**
+   * Every access and refresh token carries the version it was issued under; raising it ends
+   * every signed-in session at once. `update: false` keeps a stale `save()` from lowering it,
+   * so only an explicit SQL increment changes it.
+   */
+  @Column({ name: 'session_version', type: 'integer', default: 0, update: false })
+  sessionVersion!: number;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;
 

@@ -1,4 +1,4 @@
-import { BadRequestException, HttpException } from '@nestjs/common';
+import { BadRequestException, HttpException, Logger } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { createHash } from 'crypto';
 import { PASSWORD_RESET_INVALID_MESSAGE, PasswordResetService } from './password-reset.service';
@@ -29,6 +29,7 @@ describe('PasswordResetService', () => {
   let mail: { enqueueAccountEmail: jest.Mock; hasSystemSmtp: jest.Mock; webUrl: jest.Mock };
   let audit: { log: jest.Mock };
   let rateLimiting: { consume: jest.Mock };
+  let gateway: { disconnectUser: jest.Mock };
   let service: PasswordResetService;
   const request = { ip: '203.0.113.9', get: () => 'jest' } as never;
 
@@ -66,12 +67,14 @@ describe('PasswordResetService', () => {
     };
     audit = { log: jest.fn().mockResolvedValue(undefined) };
     rateLimiting = { consume: jest.fn().mockResolvedValue(true) };
+    gateway = { disconnectUser: jest.fn() };
     service = new PasswordResetService(
       users as never,
       tokens as never,
       memberships as never,
       mail as never,
       rateLimiting as never,
+      gateway as never,
       { get: jest.fn(() => audit) } as never,
     );
   });
@@ -213,6 +216,8 @@ describe('PasswordResetService', () => {
       ).rejects.toThrow(PASSWORD_RESET_INVALID_MESSAGE);
       expect(users.update).not.toHaveBeenCalled();
       expect(tokens.delete).not.toHaveBeenCalled();
+      expect(manager.query).not.toHaveBeenCalled();
+      expect(gateway.disconnectUser).not.toHaveBeenCalled();
     });
 
     it('rejects an expired link', async () => {
@@ -256,6 +261,11 @@ describe('PasswordResetService', () => {
       await expect(bcrypt.compare('new-password-1', change.passwordHash)).resolves.toBe(true);
       expect(tokens.delete).toHaveBeenCalledWith({ userId: 'user-1' });
       expect(sessions.delete).toHaveBeenCalledWith({ userId: 'user-1' });
+      expect(manager.query).toHaveBeenCalledWith(
+        'UPDATE public.users SET session_version = session_version + 1 WHERE id = $1',
+        ['user-1'],
+      );
+      expect(gateway.disconnectUser).toHaveBeenCalledWith('user-1');
       expect(audit.log).toHaveBeenCalledTimes(2);
       expect(audit.log).toHaveBeenCalledWith(
         'user-1',
@@ -272,6 +282,38 @@ describe('PasswordResetService', () => {
           forgotPasswordUrl: 'https://weaver.example.com/forgot-password',
         }),
       );
+    });
+
+    it('ends access tokens in the same transaction as the password change', async () => {
+      const order: string[] = [];
+      users.update.mockImplementation(async () => order.push('password'));
+      manager.query.mockImplementation(async () => order.push('session version'));
+      const { transaction } = (tokens as unknown as { manager: { transaction: jest.Mock } }).manager;
+      transaction.mockImplementation(async (work: (m: typeof manager) => Promise<unknown>) => {
+        order.push('begin');
+        const result = await work(manager);
+        order.push('commit');
+        return result;
+      });
+      gateway.disconnectUser.mockImplementation(() => order.push('disconnect sockets'));
+
+      await service.confirmReset(token, 'new-password-1', request);
+
+      expect(order).toEqual(['begin', 'password', 'session version', 'commit', 'disconnect sockets']);
+    });
+
+    it('still completes when open sockets cannot be disconnected', async () => {
+      gateway.disconnectUser.mockImplementation(() => {
+        throw new Error('server not ready');
+      });
+      const warn = jest
+        .spyOn((service as unknown as { logger: Logger }).logger, 'warn')
+        .mockImplementation(() => undefined);
+      await expect(service.confirmReset(token, 'new-password-1', request)).resolves.toBeUndefined();
+      expect(warn).toHaveBeenCalledWith(
+        'Could not disconnect sockets for user user-1: server not ready',
+      );
+      expect(mail.enqueueAccountEmail).toHaveBeenCalled();
     });
 
     it('still completes when one organization cannot record the audit entry', async () => {

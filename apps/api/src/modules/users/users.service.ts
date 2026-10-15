@@ -31,16 +31,16 @@ export class UsersService {
     private readonly memberVisibility: MemberVisibilityService,
   ) {}
 
-  async findById(id: string): Promise<Omit<UserEntity, 'passwordHash'>> {
+  async findById(id: string): Promise<Omit<UserEntity, 'passwordHash' | 'sessionVersion'>> {
     const user = await this.userRepo.findOneBy({ id });
     if (!user) {
       throw new NotFoundException('User not found');
     }
-    const { passwordHash, ...rest } = user;
+    const { passwordHash, sessionVersion, ...rest } = user;
     return rest;
   }
 
-  async update(id: string, dto: UpdateUserDto): Promise<Omit<UserEntity, 'passwordHash'>> {
+  async update(id: string, dto: UpdateUserDto): Promise<Omit<UserEntity, 'passwordHash' | 'sessionVersion'>> {
     const user = await this.userRepo.findOneBy({ id });
     if (!user) {
       throw new NotFoundException('User not found');
@@ -50,7 +50,7 @@ export class UsersService {
     if (dto.avatarUrl !== undefined) user.avatarUrl = dto.avatarUrl;
 
     const saved = await this.userRepo.save(user);
-    const { passwordHash, ...rest } = saved;
+    const { passwordHash, sessionVersion, ...rest } = saved;
     return rest;
   }
 
@@ -75,7 +75,7 @@ export class UsersService {
   async uploadAvatar(
     userId: string,
     file: Express.Multer.File,
-  ): Promise<Omit<UserEntity, 'passwordHash'>> {
+  ): Promise<Omit<UserEntity, 'passwordHash' | 'sessionVersion'>> {
     const bytes = file.buffer;
     const png = bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
     const jpeg = bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;

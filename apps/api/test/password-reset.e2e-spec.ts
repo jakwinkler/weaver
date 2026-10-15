@@ -2,6 +2,7 @@ import { INestApplication, LoggerService } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import type { AccountEmailJobData } from '@weaver/shared';
 import { createHash, randomBytes } from 'crypto';
+import { io, Socket } from 'socket.io-client';
 import request from 'supertest';
 import { DataSource } from 'typeorm';
 import { AppModule } from '../src/app.module';
@@ -59,6 +60,37 @@ describe('Password reset (e2e)', () => {
 
   const http = () => request(app.getHttpServer());
 
+  function connectSocket(token: string): Socket {
+    const { port } = app.getHttpServer().address();
+    return io(`http://127.0.0.1:${port}/ws`, {
+      auth: { token },
+      transports: ['websocket'],
+      reconnection: false,
+      forceNew: true,
+    });
+  }
+
+  /** Resolves true when the gateway keeps the socket for the whole window. */
+  function staysConnected(socket: Socket, windowMs = 1500): Promise<boolean> {
+    return new Promise((resolve) => {
+      let connected = false;
+      const timer = setTimeout(() => resolve(connected), windowMs);
+      socket.on('connect', () => {
+        connected = true;
+      });
+      for (const event of ['disconnect', 'connect_error']) {
+        socket.on(event, () => {
+          clearTimeout(timer);
+          resolve(false);
+        });
+      }
+    });
+  }
+
+  function signedIn(token: string, path: string) {
+    return http().get(path).set('Authorization', `Bearer ${token}`).set('X-Tenant-ID', tenantId);
+  }
+
   async function resetRateLimits() {
     const guard = app.get(RateLimitingGuard) as any;
     if (guard.touchedKeys.size) await guard.redis.del(...guard.touchedKeys);
@@ -100,6 +132,8 @@ describe('Password reset (e2e)', () => {
     app.useLogger(logger);
     app.setGlobalPrefix('api/v1');
     await app.init();
+    // Sockets need a listening server.
+    await app.listen(0);
     dataSource = app.get(DataSource);
     connections = app.get(TenantConnectionProvider);
     passwordReset = app.get(PasswordResetService);
@@ -303,6 +337,107 @@ describe('Password reset (e2e)', () => {
       resourceId: ownerId,
       metadata: { method: 'email_link', revokedSessions: sessionsBefore },
     });
+  });
+
+  it('ends signed-in sessions at once: API routes, /auth/me, /auth/session, and sockets', async () => {
+    const before = await http()
+      .post('/api/v1/auth/login')
+      .send({ email: ownerEmail, password })
+      .expect(201);
+    const oldAccess: string = before.body.accessToken;
+    await http()
+      .post('/api/v1/projects')
+      .set('Authorization', `Bearer ${oldAccess}`)
+      .set('X-Tenant-ID', tenantId)
+      .send({ key: 'RST', name: 'Reset sessions' })
+      .expect(201);
+    await signedIn(oldAccess, '/api/v1/projects').expect(200);
+    await signedIn(oldAccess, '/api/v1/auth/me').expect(200);
+
+    const openSocket = connectSocket(oldAccess);
+    expect(await staysConnected(openSocket, 1000)).toBe(true);
+    await expect(
+      openSocket.timeout(3000).emitWithAck('join:project', { projectKey: 'RST' }),
+    ).resolves.toEqual({ joined: true, projectKey: 'RST' });
+    const ended = new Promise<string>((resolve) => openSocket.on('disconnect', resolve));
+
+    await requestLink(ownerEmail);
+    const token = latestToken(ownerEmail);
+    const newPassword = 'session-ending-password-3';
+    await http()
+      .post('/api/v1/auth/password-reset/confirm')
+      .send({ token, password: newPassword })
+      .expect(200);
+    password = newPassword;
+
+    // The open socket is closed by the server, not left to expire.
+    await expect(ended).resolves.toBe('io server disconnect');
+    openSocket.close();
+
+    // The access token is still inside its 15 minutes but no longer works anywhere.
+    await signedIn(oldAccess, '/api/v1/projects').expect(401);
+    await http()
+      .get('/api/v1/projects')
+      .set('Cookie', `weaver_token=${oldAccess}`)
+      .set('X-Tenant-ID', tenantId)
+      .expect(401);
+    await signedIn(oldAccess, '/api/v1/auth/me').expect(401);
+    await signedIn(oldAccess, '/api/v1/auth/session').expect(401);
+    const lateSocket = connectSocket(oldAccess);
+    // Depending on timing the join is answered "not joined" or not answered before the drop.
+    const lateJoin = lateSocket
+      .timeout(1000)
+      .emitWithAck('join:project', { projectKey: 'RST' })
+      .then(
+        (ack: { joined?: boolean }) => (ack?.joined ? 'joined' : 'refused'),
+        () => 'refused',
+      );
+    expect(await staysConnected(lateSocket)).toBe(false);
+    await expect(lateJoin).resolves.toBe('refused');
+    lateSocket.close();
+
+    const after = await http()
+      .post('/api/v1/auth/login')
+      .send({ email: ownerEmail, password })
+      .expect(201);
+    const newAccess: string = after.body.accessToken;
+    expect(after.body.user).not.toHaveProperty('sessionVersion');
+    await signedIn(newAccess, '/api/v1/projects').expect(200);
+    const me = await signedIn(newAccess, '/api/v1/auth/me').expect(200);
+    expect(me.body).not.toHaveProperty('sessionVersion');
+    await signedIn(newAccess, '/api/v1/auth/session').expect(200);
+    const freshSocket = connectSocket(newAccess);
+    expect(await staysConnected(freshSocket, 1000)).toBe(true);
+    await expect(
+      freshSocket.timeout(3000).emitWithAck('join:project', { projectKey: 'RST' }),
+    ).resolves.toEqual({ joined: true, projectKey: 'RST' });
+    freshSocket.close();
+
+    // Refreshing the new session issues tokens that keep working.
+    const refreshed = await http()
+      .post('/api/v1/auth/refresh')
+      .set('Authorization', `Bearer ${after.body.refreshToken}`)
+      .expect(201);
+    await signedIn(refreshed.body.accessToken, '/api/v1/projects').expect(200);
+  });
+
+  it('does not let a sign-in that raced a reset keep its session', async () => {
+    const raced = await http()
+      .post('/api/v1/auth/login')
+      .send({ email: ownerEmail, password })
+      .expect(201);
+    // The sign-in checked the old password and wrote its session row after the reset's
+    // cleanup; only the version moved.
+    await dataSource.query(
+      'UPDATE public.users SET session_version = session_version + 1 WHERE id = $1',
+      [ownerId],
+    );
+    await signedIn(raced.body.accessToken, '/api/v1/projects').expect(401);
+    await http()
+      .post('/api/v1/auth/refresh')
+      .set('Authorization', `Bearer ${raced.body.refreshToken}`)
+      .expect(401);
+    await http().post('/api/v1/auth/login').send({ email: ownerEmail, password }).expect(201);
   });
 
   it('never adds a password to an SSO-only account', async () => {

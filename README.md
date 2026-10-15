@@ -73,7 +73,7 @@ Everything in Weaver starts with an issue: one piece of work, such as a task, a 
 - Administrators draw the workflow on a visual canvas: the statuses, and which moves between them are allowed.
 - An audit log records changes to projects, workflows, roles, plugins, settings, and more, with before and after values, filters, and CSV export.
 - Sign in with email and password, Google, or GitHub. The first time you continue with Google or GitHub, Weaver creates your account and asks you to name your organization. An organization can also set up SAML or OIDC single sign-on.
-- Forgot your password? The sign-in page emails a reset link that works once and expires after 30 minutes. Changing the password signs you out on every device within 15 minutes.
+- Forgot your password? The sign-in page emails a reset link that works once and expires after 30 minutes. Changing the password signs you out on every device at once.
 - Press `?` to see keyboard shortcuts. Switch between light and dark themes from the header.
 
 ## If a team invited you
@@ -225,7 +225,7 @@ CI runs on every push and pull request to `main`: lint and typecheck, unit tests
 
 [`deploy/compose`](deploy/compose/README.md) is the maintained deployment template. It runs the API, worker, web server, PostgreSQL, and Redis, and publishes only the web server, on a loopback port behind your HTTPS reverse proxy. It is a building block, not a one-command installer. Before the first start:
 
-- **Plan the database.** Production turns off automatic schema changes. `schema-plan.cjs` writes a read-only plan for you to review, and `apply-schema-plan.cjs` applies only that reviewed plan. Installations without schema synchronization also need [`packages/db/migrations/20261014_organization_invitations.sql`](packages/db/migrations/20261014_organization_invitations.sql) before invitations work, and [`packages/db/migrations/20261015_password_reset_tokens.sql`](packages/db/migrations/20261015_password_reset_tokens.sql) before password reset works.
+- **Plan the database.** Production turns off automatic schema changes. `schema-plan.cjs` writes a read-only plan for you to review, and `apply-schema-plan.cjs` applies only that reviewed plan. Installations without schema synchronization also need [`packages/db/migrations/20261014_organization_invitations.sql`](packages/db/migrations/20261014_organization_invitations.sql) before invitations work, and [`packages/db/migrations/20261015_password_reset_tokens.sql`](packages/db/migrations/20261015_password_reset_tokens.sql) before password reset works. Apply [`packages/db/migrations/20261015_session_version.sql`](packages/db/migrations/20261015_session_version.sql) before deploying this API version: every signed-in request reads the column it adds.
 - **List the plugins you trust** in `WEAVER_TRUSTED_PLUGINS`. Production loads none by default, which also hides the board, backlog, sprint, Gantt, and calendar views.
 - **Decide how organizations get created.** Production refuses to create new organizations unless `ALLOW_TENANT_SCHEMA_BOOTSTRAP=true`. Read the [September rollout notes](docs/security/review-2026-09-23-rollout.md) before turning it on.
 - **Configure mail.** Set the `SMTP_*` values in your env file; the template passes them to the API and the worker. Without them, "Forgot password?" sends nothing. Reset email never uses an organization's own server from **System Settings → Email**, because that organization's owner could read a member's reset link. If a proxy in front of Weaver logs request paths, keep `/reset-password/` out of its logs; the bundled nginx already does.
@@ -301,7 +301,7 @@ These are known gaps in this release:
 
 - No email verification, and registration says when an email address already has an account. Password reset doesn't reveal that.
 - No change-password screen for a signed-in user. Use "Forgot password?" on the sign-in page.
-- Changing a password ends every refresh session at once, but an access token already issued keeps working for up to 15 minutes.
+- A password reset doesn't revoke API keys. Revoke any key you don't recognize in the API Keys list.
 - Accounts that only use Google, GitHub, SAML, or OIDC can't set a Weaver password. A reset request emails them how to sign in instead.
 - The sign-in page shows Google and GitHub buttons only when the installation configured them. SAML and OIDC sign-in start from `/api/v1/auth/saml/<organization-slug>` and `/api/v1/auth/oidc/<organization-slug>`.
 - The API publishes live issue and comment events, but the web app never joins a project room, so browsers don't receive them yet.

@@ -12,6 +12,7 @@ import {
   PasswordResetTokenEntity,
 } from '@weaver/db';
 import { MailModule } from '../../modules/mail/mail.module';
+import { WebSocketModule } from '../websocket/websocket.module';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './jwt.strategy';
@@ -48,6 +49,7 @@ import { PasswordResetService } from './password-reset.service';
       PasswordResetTokenEntity,
     ]),
     MailModule,
+    WebSocketModule,
   ],
   controllers: [AuthController],
   providers: [

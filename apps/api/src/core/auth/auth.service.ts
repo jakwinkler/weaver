@@ -20,6 +20,7 @@ import {
 } from '@weaver/db';
 import type { AuthProvider, AuthResponse, CreateOAuthOrganizationDto, LoginDto, RegisterDto, CreateInvitationDto, AcceptInvitationDto } from '@weaver/shared';
 import { TenantService, TenantProvisioningService } from '../tenant';
+import { tokenSessionVersion } from './session-version';
 
 export interface JwtPayload {
   sub: string;
@@ -28,6 +29,8 @@ export interface JwtPayload {
   role: string;
   tokenType: 'access' | 'refresh';
   jti?: string;
+  /** The account's session version at issue time; absent on tokens issued before it existed. */
+  sessionVersion?: number;
 }
 
 export type ExternalAuthProvider = Exclude<AuthProvider, 'local'>;
@@ -59,7 +62,7 @@ const REFRESH_TOKEN_EXPIRY = '7d';
 const REFRESH_TOKEN_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
 const INVITATION_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
 
-type SanitizedUser = Omit<UserEntity, 'passwordHash'>;
+type SanitizedUser = Omit<UserEntity, 'passwordHash' | 'sessionVersion'>;
 
 @Injectable()
 export class AuthService {
@@ -133,6 +136,7 @@ export class AuthService {
           email: user.email,
           tenantId: tenant.id,
           role: 'owner',
+          sessionVersion: user.sessionVersion,
         };
         const { accessToken, refreshToken } = await this.issueTokenPair(payload, manager);
 
@@ -173,6 +177,7 @@ export class AuthService {
       email: user.email,
       tenantId: membership.tenantId,
       role: membership.role,
+      sessionVersion: user.sessionVersion,
     };
 
     const { accessToken, refreshToken } = await this.issueTokenPair(payload);
@@ -213,6 +218,7 @@ export class AuthService {
       email: user.email,
       tenantId: membership.tenantId,
       role: membership.role,
+      sessionVersion: user.sessionVersion,
     });
     return { accessToken, refreshToken, user: this.sanitizeUser(user), tenantId: membership.tenantId };
   }
@@ -298,6 +304,7 @@ export class AuthService {
         email: user.email,
         tenantId: invitation.tenantId,
         role: invitation.role,
+        sessionVersion: user.sessionVersion,
       }, manager);
       return { accessToken, refreshToken, user: this.sanitizeUser(user), tenantId: invitation.tenantId };
     });
@@ -342,7 +349,9 @@ export class AuthService {
         userId: payload.sub,
         tenantId: payload.tenantId,
       });
-      if (!user || !membership) {
+      // A sign-in that raced a password reset can leave a session row behind the reset's
+      // cleanup; its token still carries the old version.
+      if (!user || !membership || tokenSessionVersion(payload) !== user.sessionVersion) {
         throw new UnauthorizedException('Refresh session is no longer valid');
       }
 
@@ -354,6 +363,7 @@ export class AuthService {
           email: user.email,
           tenantId: membership.tenantId,
           role: membership.role,
+          sessionVersion: user.sessionVersion,
         },
         manager,
       );
@@ -567,7 +577,7 @@ export class AuthService {
   }
 
   private sanitizeUser(user: UserEntity): SanitizedUser {
-    const { passwordHash, ...rest } = user;
+    const { passwordHash, sessionVersion, ...rest } = user;
     return rest;
   }
 
@@ -589,6 +599,7 @@ export class AuthService {
       email: user.email,
       tenantId: membership.tenantId,
       role: membership.role,
+      sessionVersion: user.sessionVersion,
     };
     return {
       ...await this.issueTokenPair(payload),
@@ -621,7 +632,7 @@ export class AuthService {
   }
 
   private async issueTokenPair(
-    payload: Omit<JwtPayload, 'tokenType' | 'jti'>,
+    payload: Omit<JwtPayload, 'tokenType' | 'jti' | 'sessionVersion'> & { sessionVersion: number },
     manager?: EntityManager,
   ): Promise<{ accessToken: string; refreshToken: string }> {
     const accessToken = this.jwtService.sign(
