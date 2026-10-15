@@ -1,25 +1,52 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, apiCall, createProject, openProjects } from './fixtures';
 
-test.describe('Project CRUD', () => {
-  test.beforeEach(async ({ page }) => {
-    // Login first
-    await page.goto('/login');
-    await page.fill('[name="email"]', 'e2e-test@example.com');
-    await page.fill('[name="password"]', 'password123');
-    await page.click('button[type="submit"]');
-    await expect(page).toHaveURL(/\/projects/);
-  });
+test('owner creates a project, opens it, and edits its name', async ({ page, context, owner }) => {
+  await openProjects(page);
+  await page.getByRole('button', { name: 'Create Project' }).click();
+  await page.getByLabel('Name', { exact: true }).fill('Browser Project');
+  await page.getByLabel('Key', { exact: true }).fill('BROW');
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
 
-  test('should create a new project', async ({ page }) => {
-    await page.click('text=New Project');
-    await page.fill('[name="name"]', 'E2E Test Project');
-    await page.fill('[name="key"]', 'E2E');
-    await page.click('button[type="submit"]');
-    await expect(page.locator('text=E2E Test Project')).toBeVisible();
-  });
+  await expect(page.getByRole('link', { name: /BROW.*Browser Project/ }).last()).toBeVisible();
+  await page.getByRole('link', { name: /BROW.*Browser Project/ }).last().click();
+  await expect(page).toHaveURL(/\/projects\/BROW$/);
+  await expect(page.getByRole('heading', { name: 'Browser Project' })).toBeVisible();
 
-  test('should navigate to project detail', async ({ page }) => {
-    await page.click('text=E2E Test Project');
-    await expect(page).toHaveURL(/\/projects\/E2E/);
-  });
+  await page.getByRole('link', { name: 'Settings' }).click();
+  await expect(page.getByRole('heading', { name: 'Project Settings' })).toBeVisible();
+  await page.getByLabel('Project Name').fill('Renamed Browser Project');
+  await page.getByRole('button', { name: /save/i }).first().click();
+  await page.reload();
+  await expect(page.getByLabel('Project Name')).toHaveValue('Renamed Browser Project');
+
+  const response = await apiCall(context, owner, 'get', '/projects/BROW');
+  expect(response.status()).toBe(200);
+  expect((await response.json()).name).toBe('Renamed Browser Project');
+});
+
+test('projects are listed and can be sorted by name', async ({ page, context, owner }) => {
+  await createProject(context, owner, { name: 'Zebra Project', key: 'ZEBR' });
+  await createProject(context, owner, { name: 'Alpha Project', key: 'ALPH' });
+  await openProjects(page);
+  await expect(page.getByRole('link', { name: /Alpha Project/ }).last()).toBeVisible();
+  await expect(page.getByRole('link', { name: /Zebra Project/ }).last()).toBeVisible();
+
+  await page.getByRole('columnheader', { name: /Project/ }).click();
+  const rows = page.getByRole('row').filter({ has: page.getByRole('link', { name: /Project/ }) });
+  await expect(rows.first()).toContainText('Alpha Project');
+  await page.getByRole('columnheader', { name: /Project/ }).click();
+  await expect(rows.first()).toContainText('Zebra Project');
+});
+
+test('duplicate project keys show a recoverable error', async ({ page, context, owner }) => {
+  await createProject(context, owner, { name: 'Existing Project', key: 'SAME' });
+  await openProjects(page);
+  await page.getByRole('button', { name: 'Create Project' }).click();
+  await page.getByLabel('Name', { exact: true }).fill('Duplicate Project');
+  await page.getByLabel('Key', { exact: true }).fill('SAME');
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
+  await expect(page.getByText('Failed to create project.')).toBeVisible();
+  await page.getByLabel('Key', { exact: true }).fill('NEWK');
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
+  await expect(page.getByRole('link', { name: /NEWK.*Duplicate Project/ }).last()).toBeVisible();
 });

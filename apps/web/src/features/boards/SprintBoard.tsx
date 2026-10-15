@@ -26,12 +26,12 @@ import { GripVertical } from 'lucide-react';
 import {
   useProject,
   useProjectIssues,
-  useProjectPlugins,
   useHasPermission,
   useUpdateIssueDynamic,
   useReorderIssues,
 } from '@/api';
 import { FeatureNotEnabled } from './FeatureNotEnabled';
+import { useProjectFeatureEnabled } from '@/features/projects/useProjectFeatureEnabled';
 import { useSprints, useCreateSprint, useStartSprint, useCompleteSprint } from '@/api/hooks-phase2';
 import type { Issue, Sprint, SprintStatus } from '@weaver/shared';
 import { Button } from '@/components/ui/button';
@@ -373,7 +373,7 @@ function SprintPlanningContainer({
 export function SprintBoard() {
   const { projectKey } = useParams<{ projectKey: string }>();
   const queryClient = useQueryClient();
-  const { data: projectPlugins } = useProjectPlugins(projectKey!);
+  const sprintFeature = useProjectFeatureEnabled(projectKey!, '@weaver/plugin-sprints');
   const { data: project, isLoading: projectLoading } = useProject(projectKey!);
   const {
     data: sprints,
@@ -400,14 +400,11 @@ export function SprintBoard() {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
-  if (
-    projectPlugins &&
-    !projectPlugins.some((plugin) => plugin.pluginId === '@weaver/plugin-sprints')
-  ) {
+  if (!sprintFeature.isLoading && !sprintFeature.enabled) {
     return <FeatureNotEnabled featureName="Sprints" projectKey={projectKey!} />;
   }
 
-  const isLoading = projectLoading || sprintsLoading || issuesLoading;
+  const isLoading = projectLoading || sprintsLoading || issuesLoading || sprintFeature.isLoading;
 
   if (isLoading) {
     return (

@@ -15,11 +15,13 @@ import {
 } from '@nestjs/common';
 import { CookieOptions, Request, Response } from 'express';
 import {
+  acceptInvitationSchema,
   createOAuthOrganizationSchema,
   loginSchema,
   registerSchema,
   selectOrganizationSchema,
 } from '@weaver/shared';
+import { z } from 'zod';
 import { AuthService, OAuthIdentity } from './auth.service';
 import { JwtAuthGuard, JwtOnlyAuthGuard } from './jwt-auth.guard';
 import { CurrentUser, RequestUser } from './current-user.decorator';
@@ -82,6 +84,22 @@ export class AuthController {
     return res.json(data);
   }
 
+  @Get('invitations/:token')
+  async getInvitation(@Param('token') token: string) {
+    return this.authService.getInvitation(token);
+  }
+
+  @Post('invitations/:token/accept')
+  async acceptInvitation(@Param('token') token: string, @Body() body: unknown, @Res() res: Response) {
+    const result = acceptInvitationSchema.safeParse(body);
+    if (!result.success) {
+      throw new BadRequestException(result.error.flatten());
+    }
+    const data = await this.authService.acceptInvitation(token, result.data);
+    this.setAuthCookies(res, data.accessToken, data.refreshToken);
+    return res.json(data);
+  }
+
   @Post('refresh')
   async refresh(@Req() req: Request, @Res() res: Response) {
     const refreshToken = extractRefreshToken(req);
@@ -100,6 +118,31 @@ export class AuthController {
     res.clearCookie('weaver_token', cookieOptions('/', 0));
     res.clearCookie('weaver_refresh', cookieOptions(apiPath('auth'), 0));
     return res.status(HttpStatus.NO_CONTENT).send();
+  }
+
+  @Get('organizations')
+  @UseGuards(JwtAuthGuard)
+  async organizations(@CurrentUser() user: RequestUser) {
+    return this.authService.listOrganizations(user.userId);
+  }
+
+  @Post('switch-organization')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  async switchOrganization(
+    @CurrentUser() user: RequestUser,
+    @Body() body: unknown,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const result = z.object({ tenantId: z.string().uuid() }).safeParse(body);
+    if (!result.success) {
+      throw new BadRequestException(result.error.flatten());
+    }
+    const data = await this.authService.switchOrganization(user.userId, result.data.tenantId);
+    await this.authService.revokeRefreshToken(extractRefreshToken(req));
+    this.setAuthCookies(res, data.accessToken, data.refreshToken);
+    return res.json(data);
   }
 
   @Get('me')

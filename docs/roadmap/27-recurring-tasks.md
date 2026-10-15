@@ -1,43 +1,45 @@
 # Recurring Tasks
 
-> Issues that automatically recreate on a schedule: daily standup prep, weekly review, monthly report.
+**Status: Implemented; scheduled generation verification pending.** Recurring issues have validated rules, scheduled cloning, chain history, and controls.
 
-## Why
-Recurring tasks eliminate the need to manually create the same issue every week/month. ClickUp, Monday, and Todoist all support this. Common use case: weekly team review, monthly report prep, sprint ceremonies.
+Reconciled September 23, 2026 against main [`27b14d7`](https://github.com/jakwinkler/weaver/commit/27b14d72ab8d201c4bf4fcbffd00830091dd21ce). This is the source baseline, which can differ from the checked-out application branch. Checked implementation items below mean the code exists; they do not certify a release or a fresh test pass.
 
-## Current State
-- Issues have full CRUD
-- No recurrence concept or scheduler
-- BullMQ worker exists for async jobs
+User guide: [Recurring Tasks](https://github.com/jakwinkler/weaver/wiki/Recurring-Tasks).
 
-## Tasks
+## Implemented
 
-### Backend
-- [ ] **Add recurrence fields to IssueEntity** — `recurrenceRule` (JSONB, nullable): `{ frequency: 'daily' | 'weekly' | 'monthly', interval: number, daysOfWeek?: number[], dayOfMonth?: number, endDate?: string, maxOccurrences?: number }`. `recurrenceParentId` (UUID, nullable): links to original issue. _Files: `packages/db/src/entities/tenant/issue.entity.ts`_
-- [ ] **Recurrence scheduler** — BullMQ repeatable job (runs daily at midnight). Query all issues with active recurrenceRule. For each due recurrence: clone issue (same project, type, assignee, labels, priority), clear status to initial, set new dates, increment occurrence count. _Files: `apps/api/src/modules/issues/recurrence.service.ts`_
-- [ ] **Include recurrence in issue create/update** — Allow setting recurrenceRule on issue creation and update. Validate structure. _Files: `apps/api/src/modules/issues/issues.controller.ts`, `packages/shared/src/schemas/index.ts`_
-- [ ] **Stop recurrence** — Setting `recurrenceRule` to null stops future recurrences. Also stop if maxOccurrences reached or endDate passed. _Files: `apps/api/src/modules/issues/recurrence.service.ts`_
-- [ ] **Recurrence chain** — New recurring issues link back to parent via `recurrenceParentId`. GET /issues/:key/recurrence returns all instances. _Files: `apps/api/src/modules/issues/issues.service.ts`_
+- [x] Recurrence rule/parent/occurrence fields and create/update validation.
+- [x] Daily scheduler, due-date calculation, shifted instance dates, initial-status reset, and duplicate prevention.
+- [x] End-date/max-occurrence stopping and null-rule cancellation.
+- [x] Create/detail recurrence picker, list/board indicators, and generated-instance history.
 
-### Frontend
-- [ ] **Recurrence picker** — In issue detail sidebar and create form: dropdown to set frequency (none, daily, weekly, monthly), interval, end condition (never, after N occurrences, on date). _Files: `apps/web/src/components/RecurrencePicker.tsx`_
-- [ ] **Recurrence indicator** — Show repeat icon on recurring issues in list and board views. _Files: `apps/web/src/features/issues/IssueListPage.tsx`, `apps/web/src/features/boards/KanbanBoard.tsx`_
-- [ ] **Recurrence history** — In issue detail, link to "View all occurrences" showing past/future instances. _Files: `apps/web/src/features/issues/IssueDetailPage.tsx`_
+## Differences from the original plan
 
-### Tests
-- [ ] **E2E: set recurrence** — Create issue with weekly recurrence, verify recurrenceRule stored. _File: `apps/api/test/recurring-tasks.e2e-spec.ts`_
-- [ ] **E2E: recurrence creates new issue** — Manually trigger scheduler, verify new issue created with recurrenceParentId. _File: `apps/api/test/recurring-tasks.e2e-spec.ts`_
-- [ ] **E2E: max occurrences** — Set maxOccurrences=2, trigger twice, verify no third creation. _File: `apps/api/test/recurring-tasks.e2e-spec.ts`_
-- [ ] **E2E: stop recurrence** — Set recurrenceRule to null, verify scheduler skips. _File: `apps/api/test/recurring-tasks.e2e-spec.ts`_
+- The recurrence concept and scheduler are implemented.
+- History lists the original and generated instances; it does not materialize every future planned occurrence in advance.
+- maxOccurrences counts generated children. Date calculations use UTC; the scheduler's deployment timezone still needs explicit operational verification.
 
-## Acceptance Criteria
-- Issues can have recurrence rules (daily, weekly, monthly)
-- Scheduler auto-creates new issue instances
-- New instances link back to parent
-- Recurrence stops at max occurrences or end date
-- Recurrence icon visible on recurring issues
-- Can view all occurrences from any instance
-- Can stop recurrence by clearing rule
+## Remaining work and verification
+
+- [ ] Observe real scheduled generation, restart/retry, month-end and weekday behavior, and stop conditions across timezones.
+- [ ] Verify copied fields and initial workflow status when projects or templates change.
+
+## Evidence
+
+A local weekly recurrence rule was saved. Scheduler logic and existing tests were reviewed; no overnight instance generation was observed.
+
+### Implementation
+
+- [apps/api/src/modules/issues/recurrence.service.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/api/src/modules/issues/recurrence.service.ts)
+- [apps/api/src/modules/issues/issues.service.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/api/src/modules/issues/issues.service.ts)
+- [apps/web/src/components/RecurrencePicker.tsx](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/web/src/components/RecurrencePicker.tsx)
+- [apps/web/src/features/issues/IssueDetailPage.tsx](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/web/src/features/issues/IssueDetailPage.tsx)
+
+### Existing automated coverage, not rerun for this documentation edit
+
+- [apps/api/test/recurring-tasks.e2e-spec.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/api/test/recurring-tasks.e2e-spec.ts)
+- [apps/api/src/modules/issues/recurrence.service.spec.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/api/src/modules/issues/recurrence.service.spec.ts)
 
 ## Dependencies
+
 - None

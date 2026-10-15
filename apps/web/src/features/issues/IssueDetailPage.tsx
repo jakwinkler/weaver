@@ -6,8 +6,7 @@ import {
   useIssueRecurrence,
   useUpdateIssue,
   useProject,
-  useWorkflow,
-  useWorkflowTransitions,
+  useProjectWorkflow,
   useTransitionIssue,
   useUsers,
   useHasPermission,
@@ -48,8 +47,10 @@ export function IssueDetailPage() {
   const projectKey = issueKey?.split('-')[0] || '';
   const { data: project } = useProject(projectKey);
   const workflowId = project?.workflowId || '';
-  const { data: workflow } = useWorkflow(workflowId);
-  const { data: availableTransitions } = useWorkflowTransitions(workflowId, issue?.statusId || '');
+  const { data: workflow } = useProjectWorkflow(projectKey, workflowId);
+  const availableTransitions = workflow?.transitions.filter(
+    (transition) => transition.fromStatusId === issue?.statusId,
+  );
   const { data: users } = useUsers();
   const canUpdate = useHasPermission('issues.update');
   const canTransition = useHasPermission('issues.transition');
@@ -223,9 +224,9 @@ export function IssueDetailPage() {
         <span className="text-foreground">{issue.key}</span>
       </div>
 
-      <div className="grid grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Main content */}
-        <div className="col-span-2 space-y-6">
+        <div className="min-w-0 space-y-6 lg:col-span-2">
           {/* Issue header + edit form */}
           <Card>
             <CardContent className="p-6">
@@ -325,22 +326,29 @@ export function IssueDetailPage() {
                       </div>
                     </div>
                   ) : (
-                    <div className="group relative">
+                    <div className="space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <h2 className="text-sm font-medium">Description</h2>
+                        {canUpdate && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={startEditingDesc}
+                          >
+                            <Pencil className="h-4 w-4" aria-hidden="true" />
+                            {hasDescription ? 'Edit description' : 'Add details'}
+                          </Button>
+                        )}
+                      </div>
                       {hasDescription ? (
                         <RichTextRenderer content={normalizedDescription} />
                       ) : (
                         <p className="text-sm italic text-muted-foreground">
-                          {canUpdate ? 'Click to add a description...' : 'No description provided.'}
+                          {canUpdate
+                            ? 'Add details so your team can understand this request.'
+                            : 'No description provided.'}
                         </p>
-                      )}
-                      {canUpdate && (
-                        <button
-                          onClick={startEditingDesc}
-                          className="absolute top-0 right-0 rounded-md bg-card p-1.5 text-muted-foreground opacity-0 shadow-sm ring-1 ring-border transition-opacity hover:text-primary group-hover:opacity-100"
-                          title="Edit description"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </button>
                       )}
                     </div>
                   )}
@@ -380,7 +388,7 @@ export function IssueDetailPage() {
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start">
                     {availableTransitions.map((t) => {
-                      const targetStatus = (t as any).toStatus;
+                      const targetStatus = t.toStatus;
                       const targetColor = targetStatus?.color || '#6b7280';
                       const targetName = targetStatus?.name || t.name || 'Transition';
                       return (
@@ -651,8 +659,11 @@ export function IssueDetailPage() {
                 <div>
                   <dt className="text-xs text-muted-foreground">% Done</dt>
                   <dd className="mt-0.5 flex items-center gap-2">
-                    <PercentDoneField value={issue.percentDone ?? 0} disabled={!canUpdate || updateIssue.isPending}
-                      onCommit={(percentDone) => updateIssue.mutateAsync({ percentDone })} />
+                    <PercentDoneField
+                      value={issue.percentDone ?? 0}
+                      disabled={!canUpdate || updateIssue.isPending}
+                      onCommit={(percentDone) => updateIssue.mutateAsync({ percentDone })}
+                    />
                   </dd>
                 </div>
                 <div>

@@ -1,43 +1,43 @@
 # Keyboard Shortcuts
 
-> Global and contextual keyboard shortcuts for power users: c=create issue, /=search, j/k=navigate, ?=help.
+**Status: Implemented.** Global and contextual shortcuts cover search, navigation, issue actions, and board/list focus.
 
-## Why
+Reconciled September 23, 2026 against main [`27b14d7`](https://github.com/jakwinkler/weaver/commit/27b14d72ab8d201c4bf4fcbffd00830091dd21ce). This is the source baseline, which can differ from the checked-out application branch. Checked implementation items below mean the code exists; they do not certify a release or a fresh test pass.
 
-Power users in Jira and Linear rely heavily on shortcuts. It's a small effort feature that dramatically improves perceived quality. Keyboard-driven workflows reduce context switching between mouse and keyboard, making triage and navigation significantly faster for daily users.
+User guide: [Keyboard Shortcuts](https://github.com/jakwinkler/weaver/wiki/Keyboard-Shortcuts).
 
-## Current State
+## Implemented
 
-- AppLayout registers global shortcuts through a shared, context-aware `useHotkeys` hook
-- The shortcut help dialog groups commands by global, list, detail, and board context
-- Search, project issue creation, dashboard, and project navigation have global shortcuts
-- Issue lists and boards expose visible keyboard focus, selection, and open actions
-- Issue detail shortcuts open editing, assignee, and workflow status controls
+- [x] Shared useHotkeys registration, editable-target suppression, and sequence handling.
+- [x] Help dialog; search, create issue, project/dashboard navigation, and issue detail actions.
+- [x] List j/k navigation, Enter to open, x selection, and board arrow-key navigation.
+- [x] Visible focus and contextual handling for dialogs/editors.
 
-## Tasks
+## Differences from the original plan
 
-### Frontend
+- The keyboard infrastructure and help dialog exist; no new shortcut framework is needed.
+- Sequences use successive keys, while edit controls also provide their own native keyboard behavior.
 
-- [x] **Create useHotkeys hook** — Wrapper around keyboard events. Register global shortcuts in AppLayout. Support modifier keys (Ctrl, Shift, Alt). Disable when input/textarea focused. Track active context (global, list, board, detail) to scope shortcuts. _Files: `apps/web/src/hooks/useHotkeys.ts`_
-- [x] **Global shortcuts** — `/` focuses search bar. `c` opens create issue dialog (when on a project page). `?` opens shortcut help dialog. `g p` (sequence) goes to projects. `g d` goes to dashboard. _Files: `apps/web/src/layouts/AppLayout.tsx`_
-- [x] **List navigation** — `j`/`k` moves selection up/down in issue list. `Enter` opens selected issue. `x` toggles selection for bulk. Visual highlight on the currently focused row. _Files: `apps/web/src/features/issues/IssueListPage.tsx`_
-- [x] **Issue detail shortcuts** — `e` enters edit mode. `a` opens assignee picker. `s` opens status transition. `Escape` closes modals/dialogs. _Files: `apps/web/src/features/issues/IssueDetailPage.tsx`_
-- [x] **Board shortcuts** — Arrow keys navigate between cards. `Enter` opens card. Visual focus indicator on active card. _Files: `apps/web/src/features/boards/KanbanBoard.tsx`_
-- [x] **Shortcuts help dialog** — Modal listing all shortcuts grouped by context (Global, Issues, Board). Triggered by `?`. Styled consistently with existing dialogs. _Files: `apps/web/src/components/ShortcutsDialog.tsx`_
+## Remaining work and verification
 
-### Tests
+- [ ] Repeat keyboard-only flows with dialogs, rich-text fields, permission-restricted roles, and narrow layouts.
+- [ ] Keep the help dialog synchronized with registered shortcuts.
 
-- [x] **Automated: shortcut behavior** — Cover matching, modifiers, context scoping, input suppression, sequences, dialogs, page navigation, list selection, issue detail menus, and two-dimensional board navigation.
-- [x] **Manual: all shortcuts work** — Verify each shortcut in context. Shortcuts disabled in input fields. Verify sequences (`g p`, `g d`) work with reasonable timeout between keys.
+## Evidence
 
-## Acceptance Criteria
+Key bindings and existing tests were inspected. No full keyboard-accessibility audit was performed.
 
-- [x] `/` focuses search, `c` opens create, `?` shows help
-- [x] `j`/`k` navigates lists with visible highlight
-- [x] Shortcuts don't fire when typing in inputs or textareas
-- [x] Help dialog shows all available shortcuts grouped by context
-- [x] Works across all major pages (dashboard, projects, issues, boards)
-- [x] Sequences like `g p` have a reasonable timeout (~500ms)
+### Implementation
+
+- [apps/web/src/hooks/useHotkeys.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/web/src/hooks/useHotkeys.ts)
+- [apps/web/src/components/ShortcutsDialog.tsx](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/web/src/components/ShortcutsDialog.tsx)
+- [apps/web/src/layouts/AppLayout.tsx](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/web/src/layouts/AppLayout.tsx)
+
+### Existing automated coverage, not rerun for this documentation edit
+
+- [apps/web/src/hooks/useHotkeys.test.tsx](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/web/src/hooks/useHotkeys.test.tsx)
+- [apps/web/src/components/ShortcutsDialog.test.tsx](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/web/src/components/ShortcutsDialog.test.tsx)
+- [apps/web/src/features/boards/KanbanBoard.keyboard.test.tsx](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/web/src/features/boards/KanbanBoard.keyboard.test.tsx)
 
 ## Dependencies
 

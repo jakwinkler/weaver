@@ -1,50 +1,41 @@
 # Pagination & Sorting
 
-> Add pagination controls, sortable columns, and page-size selector to all list views.
+**Status: Implemented with limits.** Issue and project lists have pagination and sorting; aggregate views still need complete-data handling.
 
-## Why
+Reconciled September 23, 2026 against main [`27b14d7`](https://github.com/jakwinkler/weaver/commit/27b14d72ab8d201c4bf4fcbffd00830091dd21ce). This is the source baseline, which can differ from the checked-out application branch. Checked implementation items below mean the code exists; they do not certify a release or a fresh test pass.
 
-Currently, list views fetch data with pagination params but the UI has no controls to navigate pages, change page size, or sort by column. Users see only page 1 with no way to see more.
+User guide: [Working with Issues](https://github.com/jakwinkler/weaver/wiki/Working-with-Issues).
 
-## Current State
+## Implemented
 
-- Backend `paginate()` helper returns `{ data, meta: { page, perPage, total, totalPages } }`
-- API hooks pass pagination params (page, perPage, sort)
-- Pagination, sorting, and page-size controls available on Issue and Project list views
-- perPage preference persisted in localStorage
-- Page/sort reflected in URL query params
+- [x] Paginated API responses with data and page/perPage/total/totalPages metadata.
+- [x] Issue/project page controls, sortable columns, page-size selection, stored preference, and URL state.
+- [x] Allowlisted sort fields and stable ID tie-breaking in the shared pagination helper.
 
-## Tasks
+## Differences from the original plan
 
-### Frontend
+- The sort contract is `sort=field` or `sort=-field`; there is no separate generic `order` parameter.
+- Ordinary list pagination does not prove completeness of boards, backlog, dashboards, or exports that fetch a fixed first page.
 
-- [x] **Create Pagination component** — Reusable component showing: page numbers (with ellipsis), prev/next buttons, "Showing X-Y of Z" text, page size selector (10, 25, 50, 100). _Files: `apps/web/src/components/Pagination.tsx`_
-- [x] **Create SortableHeader component** — Table header that shows sort direction arrow. Clicking toggles asc/desc/none. _Files: `apps/web/src/components/SortableHeader.tsx`_
-- [x] **Add pagination to IssueListPage** — Wire Pagination component to page/perPage state. Pass to `useProjectIssues`. Add sortable headers for Key, Summary, Priority, Due Date, Created. _Files: `apps/web/src/features/issues/IssueListPage.tsx`_
-- [x] **Add pagination to ProjectsPage** — Wire Pagination to `useProjects`. Add sortable headers for Key, Name. _Files: `apps/web/src/features/projects/ProjectsPage.tsx`_
-- [x] **Add pagination to search results** — Wire to search API response meta. _Files: `apps/web/src/features/search/SearchPage.tsx`_
-- [x] **Persist pagination preferences** — Store perPage in localStorage. Restore on page load. _Files: `apps/web/src/components/Pagination.tsx`_
-- [x] **URL sync** — Reflect page/sort in URL query params (`?page=2&sort=priority`). Restore from URL on load. _Files: all list pages_
+## Remaining work and verification
 
-### Backend
+- [ ] Replace or clearly expose fixed fetch caps in aggregate views; board/backlog planning currently requests up to 200 issues per fetch.
+- [ ] Verify filters, page changes, empty last pages, and sort persistence with a dataset spanning several pages.
 
-- [x] **Validate sortBy against allowed fields** — `paginate()` rejects unknown sort fields with 400. All services pass `allowedSortFields` param. _Files: `apps/api/src/common/pagination.ts`_
+## Evidence
 
-### Tests
+Local lists loaded with synthetic data. Large-dataset completeness was not exercised; the fetch limit is visible in source.
 
-- [x] **E2E: pagination params work** — `GET /projects?page=1&perPage=1` returns correct slice (existing test). _File: `apps/api/test/projects-issues.e2e-spec.ts`_
-- [x] **E2E: sort params work** — `GET /projects?sort=name` returns sorted results (existing test). _File: `apps/api/test/projects-issues.e2e-spec.ts`_
-- [x] **E2E: invalid sortBy rejected** — `GET /projects?sort=invalid` returns 400 (existing test). _File: `apps/api/test/projects-issues.e2e-spec.ts`_
+### Implementation
 
-## Acceptance Criteria
+- [apps/api/src/common/pagination.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/api/src/common/pagination.ts)
+- [apps/web/src/features/issues/IssueListPage.tsx](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/web/src/features/issues/IssueListPage.tsx)
+- [apps/web/src/features/projects/ProjectsPage.tsx](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/web/src/features/projects/ProjectsPage.tsx)
+- [apps/web/src/features/boards/BacklogView.tsx](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/web/src/features/boards/BacklogView.tsx)
 
-- [x] All list views show pagination controls with page numbers
-- [x] Page size selectable (10, 25, 50, 100)
-- [x] "Showing 1-25 of 142" text visible
-- [x] Column headers clickable to sort asc/desc
-- [x] Sort direction shown with arrow icon
-- [x] Page/sort reflected in URL (shareable links)
-- [x] Page size preference persisted in localStorage
+### Existing automated coverage, not rerun for this documentation edit
+
+- [apps/api/src/common/pagination.spec.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/api/src/common/pagination.spec.ts)
 
 ## Dependencies
 

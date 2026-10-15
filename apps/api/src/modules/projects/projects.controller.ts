@@ -26,7 +26,7 @@ import { ProjectMembersService } from './project-members.service';
 import { ProjectIssueTypesService } from './project-issue-types.service';
 import { ProjectPluginsService } from './project-plugins.service';
 import { Audit } from '../audit';
-import { ProjectAccessGuard, RequireProjectAccess } from '../../core/tenant';
+import { MemberVisibilityService, ProjectAccessGuard, RequireProjectAccess } from '../../core/tenant';
 
 const memberRoleSchema = z.enum(['lead', 'member', 'viewer']);
 const pluginIdSchema = z.object({ pluginId: z.string().min(1).max(255).regex(/^(@[a-z0-9-]+\/)?[a-z0-9-]+$/) }).strict();
@@ -39,6 +39,7 @@ export class ProjectsController {
     private readonly projectMembersService: ProjectMembersService,
     private readonly projectIssueTypesService: ProjectIssueTypesService,
     private readonly projectPluginsService: ProjectPluginsService,
+    private readonly memberVisibility: MemberVisibilityService,
   ) {}
 
   @Post()
@@ -86,14 +87,25 @@ export class ProjectsController {
     await this.projectsService.delete(key);
   }
 
+  @Get(':key/workflow')
+  @RequirePermission('projects', 'read')
+  @RequireProjectAccess('project-key')
+  async workflow(@Param('key') key: string) {
+    return this.projectsService.workflow(key);
+  }
+
   // ── Project Members ──
 
   @Get(':key/members')
   @RequirePermission('projects', 'read')
   @RequireProjectAccess('project-key')
-  async getMembers(@Param('key') key: string) {
+  async getMembers(@Param('key') key: string, @CurrentUser() user: RequestUser) {
     const project = await this.projectsService.findByKey(key);
-    return this.projectMembersService.findByProject(project.id);
+    const members = await this.projectMembersService.findByProject(project.id);
+    const visible = await this.memberVisibility.visibleMemberIds(user);
+    if (visible === null) return members;
+    const allowed = new Set(visible);
+    return members.filter((member) => allowed.has(member.userId));
   }
 
   @Post(':key/members')

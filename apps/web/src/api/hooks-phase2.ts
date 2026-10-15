@@ -4,6 +4,7 @@ import type {
   Workflow,
   WorkflowStatus,
   WorkflowTransition,
+  ProjectWorkflowDetail,
   Board,
   BoardIssuesResponse,
   Sprint,
@@ -45,6 +46,17 @@ export function useWorkflow(id: string) {
       return res.data;
     },
     enabled: !!id,
+  });
+}
+
+export function useProjectWorkflow(projectKey: string, workflowId: string) {
+  return useQuery({
+    queryKey: ['workflow', workflowId, projectKey],
+    queryFn: async () => {
+      const res = await apiClient.get<ProjectWorkflowDetail>(`/projects/${projectKey}/workflow`);
+      return res.data;
+    },
+    enabled: !!projectKey && !!workflowId,
   });
 }
 

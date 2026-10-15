@@ -1,36 +1,44 @@
 # Automation Rules UI
 
-> Visual rule builder for creating and managing automation rules.
+**Status: Implemented.** Admins can build, scope, enable, and inspect rules through the UI.
 
-## Why
-The automation engine (feature 15) is useless without a UI. Non-technical users need a visual builder like Jira's automation or Zapier.
+Reconciled September 23, 2026 against main [`27b14d7`](https://github.com/jakwinkler/weaver/commit/27b14d72ab8d201c4bf4fcbffd00830091dd21ce). This is the source baseline, which can differ from the checked-out application branch. Checked implementation items below mean the code exists; they do not certify a release or a fresh test pass.
 
-## Current State
-- No automation UI
-- Will depend on automation engine backend (feature 15)
+User guide: [Automations](https://github.com/jakwinkler/weaver/wiki/Automations).
 
-## Tasks
+## Implemented
 
-### Frontend
-- [ ] **Automation list page** — Route: `/admin/automations` (admin only) and `/projects/:key/settings` automations tab. List rules with: name, trigger description, enabled toggle, last executed, edit/delete. _Files: `apps/web/src/features/admin/AutomationsPage.tsx`_
-- [ ] **Rule builder dialog** — Multi-step form: 1) Name + trigger selector, 2) Condition builder (add/remove conditions), 3) Action builder (add/remove/reorder actions), 4) Review + save. _Files: `apps/web/src/features/admin/RuleBuilder.tsx`_
-- [ ] **Trigger selector** — Dropdown grouped by category: Issue (created, updated, transitioned, assigned, commented), Sprint (started, completed), Schedule (daily, weekly, custom cron). _Files: `apps/web/src/features/admin/TriggerSelector.tsx`_
-- [ ] **Condition builder** — Rows of: field selector, operator (equals, not equals, empty, contains), value input. AND logic between rows. Add/remove buttons. _Files: `apps/web/src/features/admin/ConditionBuilder.tsx`_
-- [ ] **Action builder** — Sortable list of actions. Each action has a type dropdown and config form (field+value for set_field, status selector for transition, text for comment, etc.). Add/remove buttons. _Files: `apps/web/src/features/admin/ActionBuilder.tsx`_
-- [ ] **Execution log viewer** — Expandable section on rule detail showing recent executions with timestamp, trigger, success/failure, error message. _Files: `apps/web/src/features/admin/AutomationLog.tsx`_
-- [ ] **API hooks** — `useAutomations(projectId?)`, `useCreateAutomation()`, `useUpdateAutomation(id)`, `useDeleteAutomation(id)`, `useAutomationLog(ruleId)`. _Files: `apps/web/src/api/hooks-automations.ts`_
-- [ ] **Navigation** — Add "Automations" to admin sidebar under Administration. _Files: `apps/web/src/layouts/AppLayout.tsx`_
+- [x] Admin list and embedded project-settings automation view.
+- [x] Four-step trigger/conditions/actions/review builder, with global or project scope.
+- [x] Trigger selection, condition rows, action configuration/reordering, and enabled toggles.
+- [x] Execution history, editing/deletion, API hooks, and administration navigation.
 
-### Tests
-- [ ] **Manual: full rule creation flow** — Create a rule via UI, verify it appears in list, toggle enable/disable, delete.
+## Differences from the original plan
 
-## Acceptance Criteria
-- Admin can create automation rules via visual builder
-- Triggers, conditions, actions selectable from dropdowns
-- Rules can be enabled/disabled with toggle
-- Execution log shows recent history
-- Rule can be scoped to project or global
-- Non-admin users cannot access automation management
+- The UI and project settings integration already exist.
+- The UI offers a curated set of fields; the validated backend contract can support a wider set.
+- Saving a rule and seeing it in the list does not prove its downstream actions succeeded.
+
+## Remaining work and verification
+
+- [ ] Repeat enable/disable/delete, error display, condition combinations, and restricted-role browser checks.
+- [ ] Verify execution history after partial failures and real scheduled runs.
+
+## Evidence
+
+The four-step local wizard created the rule used in the successful event-automation check. Toggle/delete paths were not all repeated.
+
+### Implementation
+
+- [apps/web/src/features/admin/AutomationsPage.tsx](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/web/src/features/admin/AutomationsPage.tsx)
+- [apps/web/src/features/admin/RuleBuilder.tsx](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/web/src/features/admin/RuleBuilder.tsx)
+- [apps/web/src/features/projects/ProjectSettingsPage.tsx](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/web/src/features/projects/ProjectSettingsPage.tsx)
+
+### Existing automated coverage, not rerun for this documentation edit
+
+- [apps/web/src/features/admin/automation-utils.test.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/web/src/features/admin/automation-utils.test.ts)
+- [apps/api/test/automations.e2e-spec.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/api/test/automations.e2e-spec.ts)
 
 ## Dependencies
+
 - 15-automation-engine (backend must exist)

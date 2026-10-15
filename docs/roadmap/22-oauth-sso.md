@@ -1,53 +1,47 @@
 # OAuth SSO
 
-Google and GitHub sign-in are implemented. For provider registration, callback
-URLs, credential changes, and API reload commands, use the
-[OAuth sign-in guide](../wiki/OAuth-Sign-In.md).
-The checklist below records the original implementation plan.
+**Status: Implemented for Google, GitHub, SAML, and OIDC.** Provider routes, identity linking, organization selection, and SSO settings are present.
 
-> Sign in with Google, GitHub, and Microsoft. SAML/OIDC for enterprise SSO.
+Reconciled September 23, 2026 against main [`27b14d7`](https://github.com/jakwinkler/weaver/commit/27b14d72ab8d201c4bf4fcbffd00830091dd21ce). This is the source baseline, which can differ from the checked-out application branch. Checked implementation items below mean the code exists; they do not certify a release or a fresh test pass.
 
-## Why
-Most teams already use Google or GitHub. Requiring a separate password creates friction. Enterprise customers require SAML/OIDC for compliance.
+User guide: [OAuth Sign In](https://github.com/jakwinkler/weaver/wiki/OAuth-Sign-In).
 
-## Current State
-- UserEntity has `authProvider` field (local/google/saml/oidc) — only 'local' implemented
-- JWT authentication fully working
-- No OAuth routes, no provider configuration
-- Tenant settings schema exists but no SSO config
+## Implemented
 
-## Tasks
+- [x] Google/GitHub strategies and callbacks, verified-email identity handling, and session issuance.
+- [x] Tenant-configured SAML and OIDC flows, protected state handling, and provider configuration.
+- [x] Social sign-in controls, callback/session bootstrap, organization creation/selection, and admin SSO forms.
+- [x] Generic deployment configuration and OAuth configuration regression check under deploy/compose.
 
-### Backend
-- [ ] **Install passport strategies** — Add `passport-google-oauth20`, `passport-github2` dependencies. _Files: `apps/api/package.json`_
-- [ ] **Google OAuth strategy** — Passport strategy using Google client ID/secret from env vars. On callback: find or create user by email, create/update membership, issue JWT. _Files: `apps/api/src/core/auth/google.strategy.ts`_
-- [ ] **GitHub OAuth strategy** — Same pattern for GitHub. _Files: `apps/api/src/core/auth/github.strategy.ts`_
-- [ ] **OAuth routes** — `GET /auth/google` (redirect to Google), `GET /auth/google/callback` (handle response, set cookie, redirect to app). Same for GitHub. _Files: `apps/api/src/core/auth/auth.controller.ts`_
-- [ ] **Account linking** — If user with same email exists (local auth), link OAuth provider to existing account instead of creating duplicate. _Files: `apps/api/src/core/auth/auth.service.ts`_
-- [ ] **Tenant association** — After OAuth, if user has no memberships, show "Join or Create Organization" page. If single membership, auto-select. If multiple, show picker. _Files: `apps/api/src/core/auth/auth.service.ts`_
-- [ ] **SAML strategy** — Using `passport-saml`. Configurable per tenant (IdP URL, certificate). _Files: `apps/api/src/core/auth/saml.strategy.ts`_
-- [ ] **OIDC strategy** — Using `openid-client`. Configurable per tenant (discovery URL, client ID/secret). _Files: `apps/api/src/core/auth/oidc.strategy.ts`_
-- [ ] **SSO config in tenant settings** — Add `sso` section to tenant settings: `{ google: { enabled }, github: { enabled }, saml: { idpUrl, cert }, oidc: { discoveryUrl, clientId, clientSecret } }`. _Files: `apps/api/src/modules/settings/settings.service.ts`_
+## Differences from the original plan
 
-### Frontend
-- [ ] **Social login buttons** — "Sign in with Google" and "Sign in with GitHub" buttons on LoginPage. Link to `/auth/google` and `/auth/github`. _Files: `apps/web/src/features/auth/LoginPage.tsx`_
-- [ ] **OAuth callback handler** — Route `/auth/callback` reads JWT from cookie (set by backend redirect), stores in auth store, redirects to dashboard. _Files: `apps/web/src/features/auth/OAuthCallback.tsx`_
-- [ ] **SSO configuration in admin** — Toggle Google/GitHub SSO. SAML config form (IdP URL, certificate upload). OIDC config form (discovery URL, client ID/secret). _Files: `apps/web/src/features/settings/SystemSettingsPage.tsx`_
-- [ ] **Organization picker** — Post-OAuth page when user has multiple memberships. Select which org to enter. _Files: `apps/web/src/features/auth/OrgPicker.tsx`_
+- The original only-local-auth/no-routes/no-settings claims are obsolete.
+- There is no dedicated Microsoft social-login strategy/button in the reviewed source. An appropriate enterprise OIDC/SAML configuration is a separate route, not that missing branded integration.
+- The browser does not read an HTTP-only JWT cookie directly; callback/session endpoints bootstrap authenticated state.
+- Provider setup is operator configuration. Visible buttons do not prove working credentials, and a redirect does not prove a completed login.
 
-### Tests
-- [ ] **E2E: OAuth redirect** — GET /auth/google returns 302 to Google URL. _File: `apps/api/test/oauth.e2e-spec.ts`_
-- [ ] **E2E: account linking** — Create local user, OAuth login with same email, verify single user with both providers. _File: `apps/api/test/oauth.e2e-spec.ts`_
-- [ ] **E2E: new OAuth user** — OAuth callback with unknown email creates user + prompts org creation. _File: `apps/api/test/oauth.e2e-spec.ts`_
+## Remaining work and verification
 
-## Acceptance Criteria
-- "Sign in with Google" and "Sign in with GitHub" on login page
-- OAuth creates account if new, links if existing email
-- JWT issued after OAuth (same as local login)
-- Multi-org users see org picker
-- Admin can enable/disable OAuth providers
-- SAML/OIDC configurable per tenant for enterprise
-- Auth provider stored on user record
+- [ ] Complete Google, GitHub, SAML, and OIDC provider round trips, including account linking and multiple organizations, in configured test environments.
+- [ ] Implement and verify a dedicated Microsoft social-login flow only if that original scope is still wanted.
+
+## Evidence
+
+Current main uses the generic deploy/compose path. This reconciliation inspected configuration/source; it did not perform real external-provider login.
+
+### Implementation
+
+- [apps/api/src/core/auth/auth.controller.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/api/src/core/auth/auth.controller.ts)
+- [apps/api/src/core/auth/auth.service.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/api/src/core/auth/auth.service.ts)
+- [apps/api/src/core/auth/oidc.strategy.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/api/src/core/auth/oidc.strategy.ts)
+- [apps/api/src/core/auth/saml.strategy.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/api/src/core/auth/saml.strategy.ts)
+- [deploy/compose/README.md](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/deploy/compose/README.md)
+
+### Existing automated coverage, not rerun for this documentation edit
+
+- [apps/api/test/oauth.e2e-spec.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/api/test/oauth.e2e-spec.ts)
+- [deploy/compose/oauth-config.test.cjs](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/deploy/compose/oauth-config.test.cjs)
 
 ## Dependencies
+
 - None

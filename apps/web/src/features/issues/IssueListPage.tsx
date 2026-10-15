@@ -25,7 +25,7 @@ import {
   useCreateIssue,
   useProject,
   useIssueTypes,
-  useWorkflow,
+  useProjectWorkflow,
   useSprints,
   useHasPermission,
   useUpdateIssueDynamic,
@@ -42,6 +42,10 @@ import type {
 } from '@weaver/shared';
 import { IssueTypeIcon } from '@/components/IconPicker';
 import { RecurrencePicker } from '@/components/RecurrencePicker';
+import { RichTextEditor } from '@/components/RichTextEditor';
+import { FieldHelp } from '@/components/FieldHelp';
+import { isRichTextEmpty } from '@/lib/richText';
+import { IssueHelp } from './IssueHelp';
 import { Pagination, getStoredPerPage } from '@/components/Pagination';
 import { SortableHeader, type SortDirection } from '@/components/SortableHeader';
 import { EditableCell } from '@/components/EditableCell';
@@ -341,7 +345,7 @@ export function IssueListPage() {
   const reorderIssues = useReorderIssues();
   const transitionIssue = useTransitionIssueDynamic();
   const { data: issueTypes } = useIssueTypes();
-  const { data: workflow } = useWorkflow(project?.workflowId || '');
+  const { data: workflow } = useProjectWorkflow(projectKey!, project?.workflowId || '');
   const { data: sprints } = useSprints(project?.id || '');
   const { data: users } = useUsers();
   const canCreate = useHasPermission('issues.create');
@@ -461,6 +465,7 @@ export function IssueListPage() {
 
   const [showForm, setShowForm] = useState(false);
   const [summary, setSummary] = useState('');
+  const [description, setDescription] = useState<Record<string, unknown> | null>(null);
   const [issueTypeId, setIssueTypeId] = useState('');
   const [priority, setPriority] = useState<IssuePriority>('medium');
   const [startDate, setStartDate] = useState('');
@@ -523,10 +528,10 @@ export function IssueListPage() {
   }, [focusedIndex, issueKeys]);
 
   useEffect(() => {
-    if (searchParams.get('create') !== '1') return;
+    if (searchParams.get('create') !== '1' || !canCreate) return;
     setShowForm(true);
     updateParams({ create: undefined });
-  }, [searchParams, updateParams]);
+  }, [canCreate, searchParams, updateParams]);
 
   const moveFocus = (delta: -1 | 1) => {
     if (issues.length === 0) return;
@@ -562,19 +567,26 @@ export function IssueListPage() {
 
   const handleCreate = async (e: FormEvent) => {
     e.preventDefault();
-    await createIssue.mutateAsync({
-      summary,
-      priority,
-      labels: [],
-      customFields: {},
-      percentDone: 0,
-      ...(storyPoints !== null ? { storyPoints } : {}),
-      ...(issueTypeId ? { issueTypeId } : {}),
-      ...(startDate ? { startDate } : {}),
-      ...(dueDate ? { dueDate } : {}),
-      recurrenceRule,
-    });
+    try {
+      await createIssue.mutateAsync({
+        summary,
+        ...(description && !isRichTextEmpty(description) ? { description } : {}),
+        priority,
+        labels: [],
+        customFields: {},
+        percentDone: 0,
+        ...(storyPoints !== null ? { storyPoints } : {}),
+        ...(issueTypeId ? { issueTypeId } : {}),
+        ...(startDate ? { startDate } : {}),
+        ...(dueDate ? { dueDate } : {}),
+        recurrenceRule,
+      });
+    } catch {
+      // Keep the form and its text available when the request fails.
+      return;
+    }
     setSummary('');
+    setDescription(null);
     setIssueTypeId('');
     setPriority('medium');
     setStartDate('');
@@ -655,7 +667,7 @@ export function IssueListPage() {
 
   return (
     <div>
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Link to={`/projects/${projectKey}`} className="hover:text-primary">
@@ -678,12 +690,16 @@ export function IssueListPage() {
         )}
       </div>
 
-      {showForm && (
+      <div className="mb-4">
+        <IssueHelp />
+      </div>
+
+      {canCreate && showForm && (
         <Card className="mb-6">
           <CardContent className="pt-5">
             <form onSubmit={handleCreate}>
-              <div className="grid grid-cols-4 gap-4">
-                <div className="col-span-2">
+              <div className="space-y-4">
+                <div>
                   <Label htmlFor="issueSummary">Summary</Label>
                   <Input
                     id="issueSummary"
@@ -693,90 +709,144 @@ export function IssueListPage() {
                     value={summary}
                     onChange={(e) => setSummary(e.target.value)}
                     className="mt-1"
-                    placeholder="Issue summary"
+                    placeholder="A short title for your request"
                   />
                 </div>
-                <div>
-                  <Label htmlFor="issueType">Type</Label>
-                  <select
-                    id="issueType"
-                    value={issueTypeId}
-                    onChange={(e) => setIssueTypeId(e.target.value)}
-                    className={cn(
-                      'border-input mt-1 block w-full rounded-md border px-3 py-2 text-sm shadow-sm',
-                      'focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary',
-                    )}
-                  >
-                    <option value="">None</option>
-                    {issueTypes?.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <Label htmlFor="issuePriority">Priority</Label>
-                  <select
-                    id="issuePriority"
-                    value={priority}
-                    onChange={(e) => setPriority(e.target.value as IssuePriority)}
-                    className={cn(
-                      'border-input mt-1 block w-full rounded-md border px-3 py-2 text-sm shadow-sm',
-                      'focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary',
-                    )}
-                  >
-                    <option value="lowest">Lowest</option>
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                    <option value="highest">Highest</option>
-                  </select>
+                <div className="space-y-2">
+                  <Label htmlFor="issueDescription">Description</Label>
+                  <p id="issueDescription-help" className="text-sm text-muted-foreground">
+                    What happened, and what would you like us to do?
+                  </p>
+                  <RichTextEditor
+                    id="issueDescription"
+                    ariaLabel="Description"
+                    ariaDescribedBy="issueDescription-help"
+                    allowUploads={false}
+                    content={description}
+                    onChange={setDescription}
+                    placeholder="Add the details your team needs..."
+                  />
                 </div>
               </div>
-              <div className="mt-4 grid grid-cols-3 gap-4">
-                <div>
-                  <Label htmlFor="issueStoryPoints">Story Points</Label>
-                  <div className="mt-1">
-                    <StoryPointsField
-                      id="issueStoryPoints"
-                      value={storyPoints}
-                      onChange={setStoryPoints}
-                      values={[1, 2, 3, 5, 8, 13]}
+              <details className="mt-4">
+                <summary className="w-fit cursor-pointer rounded-sm py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  More options (optional)
+                </summary>
+                <p className="mb-3 text-sm text-muted-foreground">
+                  Leave these as they are unless your team has asked you to use them.
+                </p>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  <div>
+                    <div className="flex items-center gap-1">
+                      <Label htmlFor="issueType">Type</Label>
+                      <FieldHelp label="Type">
+                        The kind of request, such as a task or bug. Leave it unset if you are
+                        unsure.
+                      </FieldHelp>
+                    </div>
+                    <select
+                      id="issueType"
+                      value={issueTypeId}
+                      onChange={(e) => setIssueTypeId(e.target.value)}
+                      className={cn(
+                        'border-input mt-1 block w-full rounded-md border px-3 py-2 text-sm shadow-sm',
+                        'focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary',
+                      )}
+                    >
+                      <option value="">None</option>
+                      {issueTypes?.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-1">
+                      <Label htmlFor="issuePriority">Priority</Label>
+                      <FieldHelp label="Priority">
+                        How urgent this request is. Keep the default unless your team has agreed
+                        otherwise.
+                      </FieldHelp>
+                    </div>
+                    <select
+                      id="issuePriority"
+                      value={priority}
+                      onChange={(e) => setPriority(e.target.value as IssuePriority)}
+                      className={cn(
+                        'border-input mt-1 block w-full rounded-md border px-3 py-2 text-sm shadow-sm',
+                        'focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary',
+                      )}
+                    >
+                      <option value="lowest">Lowest</option>
+                      <option value="low">Low</option>
+                      <option value="medium">Medium</option>
+                      <option value="high">High</option>
+                      <option value="highest">Highest</option>
+                    </select>
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-1">
+                      <Label htmlFor="issueStoryPoints">Story Points</Label>
+                      <FieldHelp label="Story Points">
+                        An estimate your team uses for planning. You can leave this blank.
+                      </FieldHelp>
+                    </div>
+                    <div className="mt-1">
+                      <StoryPointsField
+                        id="issueStoryPoints"
+                        value={storyPoints}
+                        onChange={setStoryPoints}
+                        values={[1, 2, 3, 5, 8, 13]}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-1">
+                      <Label htmlFor="issueStartDate">Start Date</Label>
+                      <FieldHelp label="Start Date">
+                        When work should begin. Leave it blank if your team will plan the timing.
+                      </FieldHelp>
+                    </div>
+                    <Input
+                      id="issueStartDate"
+                      type="date"
+                      value={startDate}
+                      onChange={(e) => setStartDate(e.target.value)}
+                      className="mt-1"
+                    />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-1">
+                      <Label htmlFor="issueDueDate">Due Date</Label>
+                      <FieldHelp label="Due Date">
+                        A requested finish date. Check with your team before treating it as a
+                        commitment.
+                      </FieldHelp>
+                    </div>
+                    <Input
+                      id="issueDueDate"
+                      type="date"
+                      value={dueDate}
+                      onChange={(e) => setDueDate(e.target.value)}
+                      className="mt-1"
                     />
                   </div>
                 </div>
-                <div>
-                  <Label htmlFor="issueStartDate">Start Date</Label>
-                  <Input
-                    id="issueStartDate"
-                    type="date"
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                    className="mt-1"
+                <div className="mt-4 max-w-md rounded-md border border-border p-4">
+                  <RecurrencePicker
+                    value={recurrenceRule}
+                    onChange={setRecurrenceRule}
+                    disabled={createIssue.isPending}
+                    idPrefix="create-recurrence"
+                    helpText="Creates future copies on a schedule. Keep None for a one-time request."
                   />
                 </div>
-                <div>
-                  <Label htmlFor="issueDueDate">Due Date</Label>
-                  <Input
-                    id="issueDueDate"
-                    type="date"
-                    value={dueDate}
-                    onChange={(e) => setDueDate(e.target.value)}
-                    className="mt-1"
-                  />
-                </div>
-              </div>
-              <div className="mt-4 max-w-md rounded-md border border-border p-4">
-                <RecurrencePicker
-                  value={recurrenceRule}
-                  onChange={setRecurrenceRule}
-                  disabled={createIssue.isPending}
-                  idPrefix="create-recurrence"
-                />
-              </div>
+              </details>
               {createIssue.isError && (
-                <p className="mt-2 text-sm text-red-600">Failed to create issue.</p>
+                <p role="alert" className="mt-2 text-sm text-destructive">
+                  Could not create the issue. Your text is still here. Try again.
+                </p>
               )}
               <div className="mt-4">
                 <Button type="submit" disabled={createIssue.isPending}>

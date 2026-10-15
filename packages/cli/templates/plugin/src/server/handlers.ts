@@ -9,7 +9,7 @@ export async function getHello(
   return {
     status: 200,
     body: {
-      message: `Hello from ${pluginName} in tenant ${context.tenant.slug}`,
+      message: `Hello from ${pluginName} in tenant ${context.tenant.id}`,
     },
   };
 }

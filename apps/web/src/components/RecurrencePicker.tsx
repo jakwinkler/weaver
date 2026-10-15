@@ -2,12 +2,14 @@ import type { RecurrenceRule } from '@weaver/shared';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
+import { FieldHelp } from '@/components/FieldHelp';
 
 interface RecurrencePickerProps {
   value: RecurrenceRule | null;
   onChange: (value: RecurrenceRule | null) => void;
   disabled?: boolean;
   idPrefix?: string;
+  helpText?: string;
 }
 
 const WEEKDAYS = [
@@ -31,6 +33,7 @@ export function RecurrencePicker({
   onChange,
   disabled = false,
   idPrefix = 'recurrence',
+  helpText,
 }: RecurrencePickerProps) {
   const frequency = value?.frequency ?? 'none';
   const endCondition = value?.maxOccurrences ? 'count' : value?.endDate ? 'date' : 'never';
@@ -84,7 +87,10 @@ export function RecurrencePicker({
   return (
     <div className="space-y-3">
       <div>
-        <Label htmlFor={`${idPrefix}-frequency`}>Repeat</Label>
+        <div className="flex items-center gap-1">
+          <Label htmlFor={`${idPrefix}-frequency`}>Repeat</Label>
+          {helpText && <FieldHelp label="Repeat">{helpText}</FieldHelp>}
+        </div>
         <select
           id={`${idPrefix}-frequency`}
           value={frequency}

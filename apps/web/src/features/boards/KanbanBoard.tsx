@@ -4,6 +4,7 @@ import {
   DndContext,
   DragOverlay,
   closestCorners,
+  pointerWithin,
   KeyboardSensor,
   PointerSensor,
   useSensor,
@@ -12,6 +13,7 @@ import {
   type DragStartEvent,
   type DragEndEvent,
   type DragOverEvent,
+  type CollisionDetection,
 } from '@dnd-kit/core';
 import {
   SortableContext,
@@ -24,13 +26,13 @@ import { useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, ChevronRight, GripVertical, Repeat2 } from 'lucide-react';
 import {
   useProject,
-  useWorkflow,
-  useProjectPlugins,
+  useProjectWorkflow,
   useUpdateIssueDynamic,
   useReorderIssues,
   useHasPermission,
 } from '@/api';
 import { FeatureNotEnabled } from './FeatureNotEnabled';
+import { useProjectFeatureEnabled } from '@/features/projects/useProjectFeatureEnabled';
 import { useBoardIssues, useBoards, useCreateBoard, useUpdateBoard } from '@/api/hooks-phase2';
 import type { BoardConfig, Issue, UpdateIssueDto } from '@weaver/shared';
 import { Button } from '@/components/ui/button';
@@ -58,6 +60,13 @@ interface StatusColumn {
   issues: Issue[];
   position: number;
 }
+
+const boardCollisionDetection: CollisionDetection = (args) => {
+  const pointerHits = pointerWithin(args).filter((hit) => hit.id !== args.active.id);
+  return pointerHits.length > 0
+    ? pointerHits
+    : closestCorners(args).filter((hit) => hit.id !== args.active.id);
+};
 
 interface WorkflowStatus {
   id: string;
@@ -361,7 +370,7 @@ function CreateBoardForm({ projectId, onCreated }: { projectId: string; onCreate
 export function KanbanBoard() {
   const { projectKey } = useParams<{ projectKey: string }>();
   const navigate = useNavigate();
-  const { data: projectPlugins } = useProjectPlugins(projectKey!);
+  const boardFeature = useProjectFeatureEnabled(projectKey!, '@weaver/plugin-board');
   const { data: project, isLoading: projectLoading } = useProject(projectKey!);
   const {
     data: boards,
@@ -370,7 +379,7 @@ export function KanbanBoard() {
   } = useBoards(project?.id || '');
   const activeBoardId = boards?.[0]?.id ?? '';
   const { data: boardData, isLoading: boardIssuesLoading } = useBoardIssues(activeBoardId);
-  const { data: workflow } = useWorkflow(project?.workflowId || '');
+  const { data: workflow } = useProjectWorkflow(projectKey!, project?.workflowId || '');
   const queryClient = useQueryClient();
   const updateIssue = useUpdateIssueDynamic();
   const reorderIssues = useReorderIssues();
@@ -386,11 +395,9 @@ export function KanbanBoard() {
   const [collapsedLanes, setCollapsedLanes] = useState<Set<string>>(() => new Set());
   const [focusedIssueId, setFocusedIssueId] = useState<string | null>(null);
 
-  const isLoading = projectLoading || boardsLoading || (!!boards?.length && boardIssuesLoading);
+  const isLoading = projectLoading || boardsLoading || boardFeature.isLoading || (!!boards?.length && boardIssuesLoading);
   const hasBoards = Boolean(boards && boards.length > 0);
-  const boardEnabled =
-    projectPlugins === undefined ||
-    projectPlugins.some((plugin) => plugin.pluginId === '@weaver/plugin-board');
+  const boardEnabled = boardFeature.enabled;
   const keyboardIssues = localIssues ?? boardData?.issues ?? [];
   const keyboardStatuses = (workflow?.statuses || []) as WorkflowStatus[];
   const keyboardColumns = buildStatusColumns(keyboardIssues, keyboardStatuses).map((column) => ({
@@ -448,7 +455,7 @@ export function KanbanBoard() {
     }),
   );
 
-  if (projectPlugins && !projectPlugins.some((p) => p.pluginId === '@weaver/plugin-board')) {
+  if (!boardFeature.isLoading && !boardFeature.enabled) {
     return <FeatureNotEnabled featureName="Kanban Board" projectKey={projectKey!} />;
   }
 
@@ -722,7 +729,7 @@ export function KanbanBoard() {
 
       <DndContext
         sensors={sensors}
-        collisionDetection={closestCorners}
+        collisionDetection={boardCollisionDetection}
         onDragStart={handleDragStart}
         onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}

@@ -74,10 +74,11 @@ function settingLabel(key: string, schema: PluginSettingsSchema): string {
 }
 
 export function formatSettingsSummary(
-  settings: Record<string, unknown>,
+  settings: Record<string, unknown> | null | undefined,
   schema: PluginSettingsSchema,
 ): string {
   if (Object.keys(schema).length === 0) return 'No configurable settings';
+  if (settings == null) return 'Open Settings to view configuration.';
   const configuredSettings = Object.entries(settings).filter(
     ([, value]) => value !== '' && value !== null && value !== undefined,
   );

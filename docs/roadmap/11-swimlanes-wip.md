@@ -1,45 +1,40 @@
 # Board Swimlanes & WIP Limits
 
-> Group board cards into horizontal swimlanes (by assignee, priority, epic) and set WIP limits per column.
+**Status: Implemented with a display issue.** Swimlanes and soft WIP limits are implemented.
 
-## Why
+Reconciled September 23, 2026 against main [`27b14d7`](https://github.com/jakwinkler/weaver/commit/27b14d72ab8d201c4bf4fcbffd00830091dd21ce). This is the source baseline, which can differ from the checked-out application branch. Checked implementation items below mean the code exists; they do not certify a release or a fresh test pass.
 
-Swimlanes organize busy boards into manageable rows. WIP limits enforce team process (a key Kanban principle). Both are Jira board essentials.
+User guide: [Boards and Views](https://github.com/jakwinkler/weaver/wiki/Boards-and-Views).
 
-## Current State
+## Implemented
 
-- Board config is validated on create and update and persisted in the existing JSONB field
-- Board issues can be grouped by assignee, priority, or epic with readable server-provided labels
-- KanbanBoard renders collapsible swimlanes, configurable WIP counts, and soft-limit warnings
+- [x] Validated, persisted board configuration for assignee/priority/epic grouping and status-column WIP limits.
+- [x] Grouped board API data, collapsible swimlanes, and a Group by selector.
+- [x] Column counts/limits, board settings, and warnings that allow the drop to continue.
 
-## Tasks
+## Differences from the original plan
 
-### Backend
+- WIP limits warn; they do not enforce a hard prohibition on adding work.
+- Server grouping can supply labels, but some local board/backlog assignee displays still use an ID fallback. The earlier readable-label claim was too broad.
 
-- [x] **Add board config schema** — Define `config` structure: `{ swimlaneField?: 'assignee' | 'priority' | 'epic' | 'none', wipLimits?: Record<statusId, number> }`. Validate on board create/update. _Files: `apps/api/src/modules/boards/boards.service.ts`_
-- [x] **Return grouped issues in board endpoint** — When `GET /boards/:id/issues` and board has swimlaneField, return issues grouped by that field value. _Files: `apps/api/src/modules/boards/boards.service.ts`_
+## Remaining work and verification
 
-### Frontend
+- [ ] Resolve assignee identity display and verify grouped and ungrouped cards.
+- [ ] Repeat cross-lane pointer/keyboard moves and boundary conditions at/over the WIP limit.
 
-- [x] **Swimlane renderer** — When board config has swimlaneField, render horizontal swimlane rows. Each row has a label (assignee name, priority, epic name) and columns within it. Collapsible rows. _Files: `apps/web/src/features/boards/KanbanBoard.tsx`_
-- [x] **Swimlane selector** — Dropdown in board header: "Group by: None / Assignee / Priority / Epic". Persists to board config via PATCH. _Files: `apps/web/src/features/boards/KanbanBoard.tsx`_
-- [x] **WIP limit display** — Show column header as "In Progress (3/5)" with count/limit. Column header turns red when at or over limit. _Files: `apps/web/src/features/boards/KanbanBoard.tsx`_
-- [x] **WIP limit config** — In board settings (or inline edit on column header), set max cards per column. _Files: `apps/web/src/features/boards/BoardSettings.tsx`_
-- [x] **WIP limit warning** — When dragging to a full column, show warning but still allow drop (soft limit, Jira-style). _Files: `apps/web/src/features/boards/KanbanBoard.tsx`_
+## Evidence
 
-### Tests
+A local board with a WIP configuration rendered. Grouping/warning paths were source-reviewed; every drag warning was not exercised.
 
-- [x] **E2E: board config persists** — PATCH board config with swimlaneField and wipLimits, GET returns same. _File: `apps/api/test/boards.e2e-spec.ts`_
-- [x] **E2E: grouped issues** — Create issues with different assignees, GET board with swimlaneField=assignee, verify grouping. _File: `apps/api/test/boards.e2e-spec.ts`_
+### Implementation
 
-## Acceptance Criteria
+- [apps/api/src/modules/boards/boards.service.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/api/src/modules/boards/boards.service.ts)
+- [apps/web/src/features/boards/KanbanBoard.tsx](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/web/src/features/boards/KanbanBoard.tsx)
+- [apps/web/src/features/boards/BoardSettings.tsx](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/web/src/features/boards/BoardSettings.tsx)
 
-- Board can be grouped by assignee, priority, or epic
-- Swimlane rows are collapsible
-- WIP limits show as "X/Y" in column headers
-- Over-limit columns highlighted in red
-- Drag to full column shows warning but allows it
-- Board config persisted server-side
+### Existing automated coverage, not rerun for this documentation edit
+
+- [apps/api/test/boards.e2e-spec.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/api/test/boards.e2e-spec.ts)
 
 ## Dependencies
 

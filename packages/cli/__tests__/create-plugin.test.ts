@@ -1,8 +1,9 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 
-import { createPlugin } from '../src/commands/create-plugin';
+import { createPlugin, pluginLocationWarning } from '../src/commands/create-plugin';
 import { validatePlugin } from '../src/manifest';
 
 describe('create-plugin', () => {
@@ -61,6 +62,16 @@ describe('create-plugin', () => {
       },
     });
 
+    const packageJson = JSON.parse(readFileSync(join(pluginRoot, 'package.json'), 'utf8'));
+    expect(packageJson.devDependencies).toMatchObject({
+      '@weaver/cli': 'workspace:*',
+      '@weaver/sdk': 'workspace:*',
+    });
+
+    const viteConfig = readFileSync(join(pluginRoot, 'vite.config.ts'), 'utf8');
+    expect(viteConfig).toContain('name: getPluginRemoteName(pluginId)');
+    expect(viteConfig).toContain('[PLUGIN_REMOTE_EXPOSE]:');
+
     expect(validatePlugin(pluginRoot)).toEqual({ errors: [], warnings: [] });
     execFileSync(
       process.execPath,
@@ -94,6 +105,18 @@ describe('create-plugin', () => {
     const manifest = JSON.parse(readFileSync(join(pluginRoot, 'weaver-plugin.json'), 'utf8'));
     expect(manifest.entrypoints).toEqual({ server: 'src/server/index.ts' });
     expect(manifest.ui).toBeUndefined();
+  });
+
+  it('warns when a plugin is created outside the Weaver plugins directory', () => {
+    const repositoryRoot = resolve(__dirname, '../../..');
+
+    expect(pluginLocationWarning(join(repositoryRoot, 'plugins', 'release-notes'))).toBeUndefined();
+    expect(pluginLocationWarning(join(testOutputRoot, 'release-notes'))).toContain(
+      `--directory ${join(repositoryRoot, 'plugins')}`,
+    );
+    expect(pluginLocationWarning(join(tmpdir(), 'release-notes'))).toContain(
+      'is not inside a Weaver checkout',
+    );
   });
 
   it('rejects invalid names before creating files', async () => {

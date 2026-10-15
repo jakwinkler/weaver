@@ -375,6 +375,16 @@ export interface WorkflowTransition {
   postFunctions: Record<string, unknown>[];
 }
 
+export type ProjectWorkflowTransition = Pick<
+  WorkflowTransition,
+  'id' | 'workflowId' | 'fromStatusId' | 'toStatusId' | 'name'
+> & { toStatus: WorkflowStatus };
+
+export interface ProjectWorkflowDetail extends Workflow {
+  statuses: WorkflowStatus[];
+  transitions: ProjectWorkflowTransition[];
+}
+
 export interface Board {
   id: string;
   projectId: string;

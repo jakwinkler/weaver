@@ -1,5 +1,13 @@
 # Weaver Plugin Development Guide
 
+> This is a historical document. It predates the `weaver` CLI and runtime plugin loading, and it no longer matches the code. Use these instead:
+>
+> - [Plugin development](docs/plugin-development.md) to create, install, and develop a plugin
+> - [Plugin manifest reference](docs/plugin-manifest-reference.md) for `weaver-plugin.json`
+> - [Plugin API reference](docs/plugin-api-reference.md) for `PluginContext`, requests, and responses
+>
+> What changed: `SLOT_REGISTRY`, `NAVIGATION_REGISTRY`, `PAGE_REGISTRY`, and `PLUGIN_ICONS` no longer exist. The web app loads each plugin's client bundle at runtime from its manifest, so plugins do not edit core files. Icons are any Lucide icon name. Plugin routes are served under `/api/v1/plugin-routes/<encoded-plugin-id>`, not `/api/plugin-routes` or `/plugin-routes`.
+
 This guide covers everything you need to create a Weaver plugin — from a minimal example to full-featured extensions with custom pages, API routes, and UI components.
 
 ## Overview

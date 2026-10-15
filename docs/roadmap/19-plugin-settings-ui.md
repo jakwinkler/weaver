@@ -1,42 +1,44 @@
 # Plugin Settings UI
 
-> Auto-generate settings forms from plugin manifest schema. Admin configures plugins without editing JSON.
+**Status: UI blocked; settings API implemented.** Schema-driven settings exist, but the management page has an observed rendering failure.
 
-## Why
-Plugin manifests define `settings.schema` with typed fields, but there's no UI to configure them. Admins must use raw API calls. This makes plugins feel unfinished.
+Reconciled September 23, 2026 against main [`27b14d7`](https://github.com/jakwinkler/weaver/commit/27b14d72ab8d201c4bf4fcbffd00830091dd21ce). This is the source baseline, which can differ from the checked-out application branch. Checked implementation items below mean the code exists; they do not certify a release or a fresh test pass.
 
-## Current State
-- Plugin manifests can define `settings.schema` with field definitions (type, label, default, options)
-- `PATCH /plugins/settings` endpoint stores settings in InstalledPluginEntity.settings JSONB
-- PluginsPage shows installed plugins with install/enable/disable buttons
-- No settings form, no per-plugin config UI
+User guide: [Plugins](https://github.com/jakwinkler/weaver/wiki/Plugins).
 
-## Tasks
+## Implemented
 
-### Frontend
-- [ ] **Schema-driven form renderer** — Component that reads plugin manifest `settings.schema` and renders appropriate form fields: text input, number input, boolean toggle, select dropdown, textarea. Respect field labels, descriptions, defaults, required. _Files: `apps/web/src/features/settings/PluginSettingsForm.tsx`_
-- [ ] **Settings dialog on PluginsPage** — Add "Settings" button next to each installed plugin. Opens dialog with schema-driven form. Save calls `PATCH /plugins/settings`. _Files: `apps/web/src/features/settings/PluginsPage.tsx`_
-- [ ] **Validation** — Validate required fields. Show error messages inline. Type-check values (number fields reject text). _Files: `apps/web/src/features/settings/PluginSettingsForm.tsx`_
-- [ ] **Settings display** — Show current settings values as summary when dialog is closed: key=value pairs or "Default settings" if unchanged. _Files: `apps/web/src/features/settings/PluginsPage.tsx`_
-- [ ] **Settings API hook** — `usePluginSettings(pluginId)` fetches current settings. `useUpdatePluginSettings(pluginId)` calls PATCH. _Files: `apps/web/src/api/hooks-phase4.ts`_
+- [x] Manifest-driven string, number, boolean, select, and textarea controls with labels/defaults/validation.
+- [x] Settings dialog, fetch/update hooks, merged defaults, and server-side field validation.
+- [x] Settings summaries that mask sensitive-looking fields when the expected settings object is supplied.
 
-### Backend
-- [ ] **Validate settings against schema** — When PATCH /plugins/settings called, validate the values against the manifest's settings.schema. Return 400 with field errors if invalid. _Files: `apps/api/src/plugins/plugin-registry.service.ts`_
-- [ ] **Default values** — When reading settings, merge with defaults from schema for missing keys. _Files: `apps/api/src/plugins/plugin-registry.service.ts`_
+## Differences from the original plan
 
-### Tests
-- [ ] **E2E: update plugin settings** — PATCH with valid settings, verify GET returns them. _File: `apps/api/test/plugin-settings.e2e-spec.ts`_
-- [ ] **E2E: validate settings** — PATCH with invalid type (string for number field), expect 400. _File: `apps/api/test/plugin-settings.e2e-spec.ts`_
-- [ ] **E2E: defaults merged** — GET settings without PATCH, verify defaults from schema present. _File: `apps/api/test/plugin-settings.e2e-spec.ts`_
+- The form and settings API are implemented; they are not missing work.
+- The installed-plugin list deliberately omits settings. PluginsPage still passes `plugin.settings` to a summary helper that calls Object.entries for nonempty schemas. This contract mismatch matches the locally observed blank page.
+- Fetching private settings through the dedicated authorized endpoint is separate from the general installed-plugin list.
 
-## Acceptance Criteria
-- Settings button appears on installed plugins
-- Form auto-generated from manifest schema
-- Text, number, boolean, select field types supported
-- Validation errors shown inline
-- Settings saved via API
-- Defaults shown when no custom settings configured
-- Invalid settings rejected with clear error
+## Remaining work and verification
+
+- [ ] Fix the page/list contract without restoring secrets to the general list response.
+- [ ] Verify list rendering, settings open/save, default merging, invalid fields, sensitive summaries, and recovery after errors in the browser.
+
+## Evidence
+
+The Plugins page rendered blank after the local example plugin set was installed, including after a fresh login. API installation and issue panels worked. No application fix was made during documentation work.
+
+### Implementation
+
+- [apps/web/src/features/settings/PluginsPage.tsx](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/web/src/features/settings/PluginsPage.tsx)
+- [apps/web/src/features/settings/PluginSettingsForm.tsx](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/web/src/features/settings/PluginSettingsForm.tsx)
+- [apps/api/src/plugins/plugins.controller.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/api/src/plugins/plugins.controller.ts)
+- [apps/api/src/plugins/plugin-registry.service.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/api/src/plugins/plugin-registry.service.ts)
+
+### Existing automated coverage, not rerun for this documentation edit
+
+- [apps/api/test/plugin-settings.e2e-spec.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/api/test/plugin-settings.e2e-spec.ts)
+- [apps/web/src/features/settings/PluginSettingsForm.test.tsx](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/web/src/features/settings/PluginSettingsForm.test.tsx)
 
 ## Dependencies
+
 - None

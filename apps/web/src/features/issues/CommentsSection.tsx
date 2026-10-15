@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect, type FormEvent } from 'react';
+import { useState, useRef, useCallback, useEffect, useId, type FormEvent } from 'react';
 import { useComments, useCreateComment } from '@/api/hooks-phase2';
 import { useHasPermission } from '@/api';
 import { apiClient } from '@/api/client';
@@ -9,12 +9,14 @@ import { loadDraft, saveDraft, clearDraft } from './useCommentDraft';
 import { UserAvatar } from '@/components/UserAvatar';
 import { Trash2 } from 'lucide-react';
 import { useAuthStore } from '@/stores';
+import { IssueHelp } from './IssueHelp';
 
 interface CommentsSectionProps {
   issueKey: string;
 }
 
 export function CommentsSection({ issueKey }: CommentsSectionProps) {
+  const hintId = useId();
   const { data: comments, isLoading } = useComments(issueKey);
   const createComment = useCreateComment(issueKey);
   const queryClient = useQueryClient();
@@ -49,6 +51,10 @@ export function CommentsSection({ issueKey }: CommentsSectionProps) {
     e.preventDefault();
     if (!editorContent) return;
     await createComment.mutateAsync({ body: editorContent });
+    if (draftTimerRef.current) {
+      clearTimeout(draftTimerRef.current);
+      draftTimerRef.current = undefined;
+    }
     setEditorContent(null);
     clearDraft(issueKey);
   };
@@ -73,7 +79,10 @@ export function CommentsSection({ issueKey }: CommentsSectionProps) {
   }
 
   return (
-    <div>
+    <section aria-label="Issue comments">
+      <div className="mb-3">
+        <IssueHelp />
+      </div>
       {/* Add comment form */}
       {canCreate && (
         <form onSubmit={handleSubmit} className="mb-6">
@@ -83,7 +92,11 @@ export function CommentsSection({ issueKey }: CommentsSectionProps) {
             content={editorContent}
             onChange={handleEditorChange}
             placeholder="Add a comment..."
+            ariaDescribedBy={hintId}
           />
+          <p id={hintId} className="mt-2 text-sm text-muted-foreground">
+            Need someone's attention? Type @ and choose their name.
+          </p>
           {createComment.isError && (
             <p className="mt-1 text-sm text-red-600">Failed to add comment.</p>
           )}
@@ -142,6 +155,6 @@ export function CommentsSection({ issueKey }: CommentsSectionProps) {
           </div>
         ))}
       </div>
-    </div>
+    </section>
   );
 }

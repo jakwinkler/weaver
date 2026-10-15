@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="206" viewBox="0 0 960 206" role="img" aria-labelledby="title desc">
+  <title id="title">Three steps for invited clients</title>
+  <desc id="desc">Open your invitation, create an issue, and discuss it in Comments.</desc>
+  <rect width="960" height="206" rx="16" fill="#f8fafc"/>
+  <g font-family="Arial, Helvetica, sans-serif">
+    <rect x="24" y="28" width="276" height="150" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <circle cx="63" cy="67" r="22" fill="#4f46e5"/>
+    <text x="63" y="75" text-anchor="middle" font-size="21" font-weight="700" fill="#ffffff">1</text>
+    <text x="42" y="122" font-size="24" font-weight="700" fill="#0f172a">Open your invitation</text>
+    <text x="42" y="151" font-size="16" fill="#475569">Join your team's workspace</text>
+    <line x1="308" y1="103" x2="326" y2="103" stroke="#64748b" stroke-width="3" stroke-linecap="round"/>
+    <polygon points="326,94 337,103 326,112" fill="#64748b"/>
+    <rect x="342" y="28" width="276" height="150" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <circle cx="381" cy="67" r="22" fill="#4f46e5"/>
+    <text x="381" y="75" text-anchor="middle" font-size="21" font-weight="700" fill="#ffffff">2</text>
+    <text x="360" y="122" font-size="24" font-weight="700" fill="#0f172a">Create an issue</text>
+    <text x="360" y="151" font-size="16" fill="#475569">Tell the team what you need</text>
+    <line x1="626" y1="103" x2="644" y2="103" stroke="#64748b" stroke-width="3" stroke-linecap="round"/>
+    <polygon points="644,94 655,103 644,112" fill="#64748b"/>
+    <rect x="660" y="28" width="276" height="150" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <circle cx="699" cy="67" r="22" fill="#4f46e5"/>
+    <text x="699" y="75" text-anchor="middle" font-size="21" font-weight="700" fill="#ffffff">3</text>
+    <text x="678" y="122" font-size="24" font-weight="700" fill="#0f172a">Discuss it</text>
+    <text x="678" y="151" font-size="16" fill="#475569">Reply in Comments</text>
+  </g>
+</svg>

@@ -10,7 +10,7 @@ RUN pnpm install --frozen-lockfile
 ARG VITE_API_URL=/api/v1
 ENV VITE_API_URL=${VITE_API_URL}
 RUN pnpm build
-RUN node deploy/compose/verify-plugin-runtime.cjs
+RUN ./apps/api/node_modules/.bin/tsx deploy/compose/verify-plugin-runtime.cjs
 
 FROM node:22-alpine AS api
 

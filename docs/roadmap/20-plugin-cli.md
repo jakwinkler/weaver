@@ -1,44 +1,46 @@
 # Plugin CLI & Scaffolding
 
-> `npx weaver-cli create-plugin my-plugin` scaffolds a complete plugin with manifest, server, client, and tests.
+**Status: Implemented; package distribution unverified.** The repository CLI scaffolds, validates, serves, and builds client plugins.
 
-## Why
-The #1 barrier to plugin development is "where do I start?" A CLI that scaffolds everything — with working examples — turns hours into minutes. Every major plugin platform (WordPress, Shopify, VS Code) has this.
+Reconciled September 23, 2026 against main [`27b14d7`](https://github.com/jakwinkler/weaver/commit/27b14d72ab8d201c4bf4fcbffd00830091dd21ce). This is the source baseline, which can differ from the checked-out application branch. Checked implementation items below mean the code exists; they do not certify a release or a fresh test pass.
 
-## Current State
-- No CLI tool
-- Plugin development requires copying an existing plugin and modifying it
-- No documentation on plugin authoring
-- Plugin structure is consistent but undocumented
+User guide: [Plugin Development](https://github.com/jakwinkler/weaver/wiki/Plugin-Development).
 
-## Tasks
+## Implemented
 
-### CLI Package
-- [ ] **Create packages/cli package** — New package: `@weaver/cli`. Uses commander.js for CLI commands. Entry point: `bin/weaver.js`. _Files: `packages/cli/package.json`, `packages/cli/bin/weaver.js`, `packages/cli/src/index.ts`_
-- [ ] **`create-plugin` command** — Interactive prompts: plugin name, display name, type (app/widget/feature/integration), scope (tenant/project), include server? include client? Validates name format. _Files: `packages/cli/src/commands/create-plugin.ts`_
-- [ ] **Plugin template files** — Templates for: weaver-plugin.json (pre-filled), src/server/index.ts (lifecycle hooks), src/server/handlers.ts (route handlers), src/client/index.ts (React components), vite.config.ts (federation), package.json, tsconfig.json, README.md. _Files: `packages/cli/templates/plugin/`_
-- [ ] **Template variables** — Replace `{{pluginId}}`, `{{pluginName}}`, `{{author}}`, `{{type}}`, etc. in templates during scaffolding. _Files: `packages/cli/src/commands/create-plugin.ts`_
-- [ ] **`dev` command** — `weaver dev` starts the plugin dev server with HMR. Proxies to main Weaver instance. _Files: `packages/cli/src/commands/dev.ts`_
-- [ ] **`build` command** — `weaver build` compiles the plugin's client bundle (federation) and validates the manifest. _Files: `packages/cli/src/commands/build.ts`_
-- [ ] **`validate` command** — `weaver validate` checks manifest against SDK interfaces. Reports missing fields, invalid types, unreferenced handlers. _Files: `packages/cli/src/commands/validate.ts`_
+- [x] The @weaver/cli package and create-plugin, validate, dev, and build commands.
+- [x] Interactive/noninteractive template generation for identity, scope, server/client examples, and federation configuration.
+- [x] Manifest/reference validation, Vite development proxy/HMR, and client-bundle build command.
+- [x] Authoring, manifest, and PluginContext reference documents.
 
-### Documentation
-- [ ] **Plugin authoring guide** — Step-by-step guide: create plugin, add route, add UI slot, add page, handle events, use custom fields, permissions. _Files: `docs/plugin-development.md`_
-- [ ] **Manifest reference** — Document every manifest field with types and examples. _Files: `docs/plugin-manifest-reference.md`_
-- [ ] **Plugin API reference** — Document PluginContext, PluginRequest, PluginResponse, all core API methods. _Files: `docs/plugin-api-reference.md`_
+## Differences from the original plan
 
-### Tests
-- [ ] **CLI: scaffold creates valid plugin** — Run create-plugin, verify all files exist, manifest parses, TypeScript compiles. _File: `packages/cli/__tests__/create-plugin.test.ts`_
-- [ ] **CLI: validate catches errors** — Feed malformed manifest, verify error messages. _File: `packages/cli/__tests__/validate.test.ts`_
-- [ ] **Integration: scaffolded plugin installs** — Create plugin via CLI, install in test tenant, verify lifecycle hooks fire. _File: manual testing_
+- Use the repository-local entrypoint: `node packages/cli/bin/weaver.js create-plugin my-plugin --yes --directory plugins` after building the CLI.
+- The earlier npx examples assume registry publication that was not verified. CLI existence does not prove an external npm release.
+- Client build/dev commands require client/Vite configuration; server-only packaging needs its own verification. The template does not currently generate a plugin test suite, despite the original scaffold description mentioning tests.
+- Older reference documents do not fully describe all newer companion/capability/upgrade fields; use the SDK interfaces and current wiki reference.
 
-## Acceptance Criteria
-- `npx @weaver/cli create-plugin my-plugin` scaffolds a working plugin
-- Scaffolded plugin can be installed without modification
-- Interactive prompts guide configuration choices
-- `weaver validate` catches manifest errors
-- `weaver build` produces client bundle
-- Plugin authoring docs cover all extension points
+## Remaining work and verification
+
+- [ ] Run install/build/render/lifecycle acceptance on a newly scaffolded plugin in a disposable tenant. Add generated test examples if that original scaffold requirement remains desired.
+- [ ] Update older references for current SDK additions and verify any public package release separately.
+
+## Evidence
+
+The local repository CLI created a disposable documentation-example scaffold and validation passed during the preceding walkthrough. Full scaffold installation and npm publication were not tested.
+
+### Implementation
+
+- [packages/cli/src/commands/create-plugin.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/packages/cli/src/commands/create-plugin.ts)
+- [packages/cli/src/commands/validate.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/packages/cli/src/commands/validate.ts)
+- [packages/cli/src/commands/dev.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/packages/cli/src/commands/dev.ts)
+- [packages/cli/src/commands/build.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/packages/cli/src/commands/build.ts)
+
+### Existing automated coverage, not rerun for this documentation edit
+
+- [packages/cli/__tests__/create-plugin.test.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/packages/cli/__tests__/create-plugin.test.ts)
+- [packages/cli/__tests__/validate.test.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/packages/cli/__tests__/validate.test.ts)
 
 ## Dependencies
+
 - 18-dynamic-plugin-loading (for client build/federation setup)

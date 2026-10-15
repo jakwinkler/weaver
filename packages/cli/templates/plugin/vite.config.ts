@@ -1,9 +1,10 @@
 import { federation } from '@module-federation/vite';
 import react from '@vitejs/plugin-react';
+// The compiled helper, because Node cannot load the SDK's TypeScript entry when Vite reads this file.
+import { getPluginRemoteName, PLUGIN_REMOTE_EXPOSE } from '@weaver/sdk/dist/plugin-federation.js';
 import { defineConfig } from 'vite';
 
 const pluginId = WEAVER_PLUGIN_ID;
-const remoteName = pluginId.replace(/[^A-Za-z0-9_]/g, '_');
 const weaverUrl = process.env.WEAVER_URL ?? 'http://localhost:3000';
 
 export default defineConfig({
@@ -11,10 +12,10 @@ export default defineConfig({
   plugins: [
     react(),
     federation({
-      name: remoteName,
+      name: getPluginRemoteName(pluginId),
       filename: 'remoteEntry.js',
       exposes: {
-        './plugin': './src/client/index.ts',
+        [PLUGIN_REMOTE_EXPOSE]: './src/client/index.ts',
       },
       publicPath: 'auto',
       bundleAllCSS: true,
@@ -52,7 +53,6 @@ export default defineConfig({
     cors: true,
     proxy: {
       '/api': { target: weaverUrl, changeOrigin: true },
-      '/plugin-routes': { target: weaverUrl, changeOrigin: true },
     },
   },
   build: {

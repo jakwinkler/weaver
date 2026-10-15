@@ -1,53 +1,47 @@
 # Dynamic Plugin Loading
 
-> Eliminate hardcoded plugin imports. Plugins register themselves, client loads components at runtime.
+**Status: Implemented with a bundled fallback.** Module Federation handles runtime client loading, with a retained first-party fallback.
 
-## Why
-Currently, adding a client-side plugin requires editing `dynamic-loader.ts` to add a static import. This kills community plugins — nobody can ship a plugin without modifying core code. This is THE blocker for an open plugin ecosystem.
+Reconciled September 23, 2026 against main [`27b14d7`](https://github.com/jakwinkler/weaver/commit/27b14d72ab8d201c4bf4fcbffd00830091dd21ce). This is the source baseline, which can differ from the checked-out application branch. Checked implementation items below mean the code exists; they do not certify a release or a fresh test pass.
 
-## Current State
-- `dynamic-loader.ts` has a hardcoded `pluginImporters` map with static `import()` expressions
-- `plugin-slot-registry.ts` aggregates UI contributions from manifests
-- Server-side: plugins are discovered by scanning `/plugins/` directory for `weaver-plugin.json`
-- Client-side: no runtime discovery, only build-time imports
-- Plugin manifests define entrypoints.client but this path is only used server-side
+User guide: [Plugin Development](https://github.com/jakwinkler/weaver/wiki/Plugin-Development).
 
-## Tasks
+## Implemented
 
-### Architecture Decision
-- [ ] **Choose loading strategy** — Option A: Module Federation (webpack/vite-plugin-federation) — plugins built as separate bundles, loaded at runtime via remote entry. Option B: Import Maps — plugins published to CDN, browser resolves at runtime. Option C: Server-rendered manifest with bundled plugin URLs — backend serves compiled plugin JS, frontend loads via script tag. **Recommended: Option A (Module Federation)** for Vite ecosystem compatibility. _Files: architecture decision record_
+- [x] Module Federation architecture and plugin client builds producing remoteEntry.js.
+- [x] Asset-serving routes, manifest clientBundle URLs, and development server mapping/proxy behavior.
+- [x] Remote registration, component caching, lazy loading, loading indicators, and plugin failure boundaries.
+- [x] Shared React/router/query/state dependencies and migrated bundled plugin client configurations.
 
-### Backend
-- [ ] **Plugin build pipeline** — Add build step for each plugin with client entrypoint. Output: `dist/client/remoteEntry.js` per plugin. Use vite-plugin-federation to expose components. _Files: `plugins/*/vite.config.ts`_
-- [ ] **Serve plugin assets** — Static file serving for plugin client bundles at `/plugin-assets/{pluginId}/remoteEntry.js`. _Files: `apps/api/src/plugins/plugin-assets.controller.ts`_
-- [ ] **Plugin manifest includes client bundle URL** — When serving available plugins, include `clientBundle` URL in response. _Files: `apps/api/src/plugins/plugin-loader.service.ts`_
-- [ ] **Plugin dev server** — In development, proxy plugin module requests to individual plugin dev servers (vite HMR per plugin). _Files: `apps/api/src/plugins/plugin-assets.controller.ts`_
+## Differences from the original plan
 
-### Frontend
-- [ ] **Replace static imports with dynamic federation** — Remove hardcoded `pluginImporters` map. Instead, use `loadRemote()` from `@module-federation/runtime` to load plugin components from their `clientBundle` URL. _Files: `apps/web/src/plugins/dynamic-loader.ts`_
-- [ ] **Plugin component resolution** — `getPluginComponent(pluginId, componentName)` fetches the remote entry, resolves the named export, wraps in React.lazy(). Cache loaded modules. _Files: `apps/web/src/plugins/dynamic-loader.ts`_
-- [ ] **Shared dependencies** — Configure react, react-dom, zustand, @tanstack/react-query as shared singletons in federation config. Plugins use host's copies. _Files: `apps/web/vite.config.ts`_
-- [ ] **Graceful fallback** — If a plugin's client bundle fails to load (network error, 404), show error boundary with "Plugin failed to load" instead of crashing the app. _Files: `apps/web/src/plugins/PluginErrorBoundary.tsx`_
-- [ ] **Plugin loading indicator** — Show skeleton/spinner while remote module loads. _Files: `apps/web/src/plugins/PluginSlot.tsx`_
+- The loading strategy is settled and implemented; it is not an open choice among federation/import maps/script tags.
+- The host uses `@module-federation/enhanced/runtime`. Automatic Time still has a static fallback importer when no clientBundle URL is supplied, so the original zero-hardcoded-import claim is not yet true.
+- Scaffolding lives in the CLI templates; a separate plugin-template package is not required.
 
-### Plugin Template
-- [ ] **Create plugin template** — A minimal example plugin (`plugins/plugin-template/`) with: manifest, vite.config.ts with federation, server handler, client component, README. This is what `weaver create-plugin` will scaffold. _Files: `plugins/plugin-template/`_
-- [ ] **Migrate existing plugins** — Add vite.config.ts with federation to: checklist, timer, time-reports. Verify they load dynamically. _Files: `plugins/plugin-*/vite.config.ts`_
+## Remaining work and verification
 
-### Tests
-- [ ] **E2E: plugin client bundle served** — `GET /plugin-assets/@weaver/plugin-checklist/remoteEntry.js` returns valid JS. _File: `apps/api/test/plugin-loading.e2e-spec.ts`_
-- [ ] **E2E: plugin component renders** — Install plugin, navigate to its page, verify component renders (not "Plugin failed to load"). _File: manual testing_
-- [ ] **Integration: shared deps not duplicated** — Verify React is loaded once, not per-plugin. Check bundle analysis. _File: build verification_
-- [ ] **E2E: disabled plugin not loaded** — Disable plugin, verify client bundle not fetched. _File: `apps/api/test/plugin-loading.e2e-spec.ts`_
+- [ ] Remove the Automatic Time fallback only after its remote build and host behavior pass the same acceptance path.
+- [ ] Verify a new external plugin, disabled-plugin requests, failed remote rendering, shared contexts, and HMR end to end.
+- [ ] Keep generic page rendering failures separate from the plugin remote error boundary; see feature 19.
 
-## Acceptance Criteria
-- No hardcoded plugin imports in core codebase
-- New plugins work by: create plugin dir, add manifest, build, install via API
-- Plugin client bundles loaded at runtime from server
-- Shared React/React Query/Zustand not duplicated
-- Failed plugin loads show error boundary, not crash
-- Existing plugins (checklist, timer, time-reports) work after migration
-- Dev mode supports HMR for plugin development
+## Evidence
+
+Ten bundled plugins were installed through the local API and enabled issue panels rendered. Asset tests alone do not establish browser federation acceptance for every plugin.
+
+### Implementation
+
+- [docs/architecture/0001-dynamic-plugin-loading.md](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/docs/architecture/0001-dynamic-plugin-loading.md)
+- [apps/web/src/plugins/dynamic-loader.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/web/src/plugins/dynamic-loader.ts)
+- [apps/api/src/plugins/plugin-assets.controller.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/api/src/plugins/plugin-assets.controller.ts)
+- [plugins/vite.config.factory.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/plugins/vite.config.factory.ts)
+
+### Existing automated coverage, not rerun for this documentation edit
+
+- [apps/api/test/plugin-loading.e2e-spec.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/api/test/plugin-loading.e2e-spec.ts)
+- [apps/web/src/plugins/dynamic-loader.test.tsx](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/web/src/plugins/dynamic-loader.test.tsx)
+- [apps/web/src/plugins/router-federation.test.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/web/src/plugins/router-federation.test.ts)
 
 ## Dependencies
+
 - None (but unblocks 20-plugin-cli)

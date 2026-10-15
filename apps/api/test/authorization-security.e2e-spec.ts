@@ -444,7 +444,8 @@ describe('Administrative authorization security (e2e)', () => {
 
     const avatar = await authenticated(ownerToken).post('/api/v1/users/me/avatar')
       .attach('file', Buffer.from('89504e470d0a1a0a00000000', 'hex'), { filename: 'avatar.png', contentType: 'image/png' }).expect(201);
-    await authenticated(viewerToken).get(`/api/v1${avatar.body.avatarUrl}`).expect(200);
+    await authenticated(viewerToken).get(`/api/v1${avatar.body.avatarUrl}`).expect(403);
+    await authenticated(adminToken).get(`/api/v1${avatar.body.avatarUrl}`).expect(200);
     await authenticated(ownerToken).post('/api/v1/users/me/avatar')
       .attach('file', Buffer.from('<svg/>'), { filename: 'avatar.svg', contentType: 'image/svg+xml' }).expect(400);
   });

@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "test": "vitest run",
+    "test:e2e": "playwright test",
     "clean": "rm -rf dist node_modules .turbo",
     "typecheck": "tsc --noEmit"
   },
@@ -66,6 +67,7 @@
   },
   "devDependencies": {
     "@module-federation/vite": "^1.21.0",
+    "@playwright/test": "1.60.0",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.1.0",
     "@types/qrcode": "^1.5.6",

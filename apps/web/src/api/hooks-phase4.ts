@@ -73,7 +73,8 @@ interface InstalledPlugin {
   pluginId: string;
   version: string;
   enabled: boolean;
-  settings: Record<string, unknown>;
+  // The plugin list omits settings; administrators load them through /plugins/settings.
+  settings?: Record<string, unknown> | null;
   installedAt: string;
 }
 

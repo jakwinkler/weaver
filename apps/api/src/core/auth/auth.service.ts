@@ -3,15 +3,22 @@ import {
   UnauthorizedException,
   ConflictException,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Raw, Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
-import { createHash, randomUUID } from 'crypto';
-import { UserEntity, TenantEntity, TenantMembershipEntity, RefreshSessionEntity } from '@weaver/db';
-import type { AuthProvider, AuthResponse, CreateOAuthOrganizationDto, LoginDto, RegisterDto } from '@weaver/shared';
+import { createHash, randomBytes, randomUUID } from 'crypto';
+import {
+  UserEntity,
+  TenantEntity,
+  TenantMembershipEntity,
+  RefreshSessionEntity,
+  OrganizationInvitationEntity,
+} from '@weaver/db';
+import type { AuthProvider, AuthResponse, CreateOAuthOrganizationDto, LoginDto, RegisterDto, CreateInvitationDto, AcceptInvitationDto } from '@weaver/shared';
 import { TenantService, TenantProvisioningService } from '../tenant';
 
 export interface JwtPayload {
@@ -50,6 +57,7 @@ const BCRYPT_ROUNDS = 10;
 const ACCESS_TOKEN_EXPIRY = '15m';
 const REFRESH_TOKEN_EXPIRY = '7d';
 const REFRESH_TOKEN_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
+const INVITATION_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
 
 type SanitizedUser = Omit<UserEntity, 'passwordHash'>;
 
@@ -63,6 +71,8 @@ export class AuthService {
     private readonly membershipRepo: Repository<TenantMembershipEntity>,
     @InjectRepository(RefreshSessionEntity)
     private readonly refreshSessionRepo: Repository<RefreshSessionEntity>,
+    @InjectRepository(OrganizationInvitationEntity)
+    private readonly invitationRepo: Repository<OrganizationInvitationEntity>,
     private readonly jwtService: JwtService,
     private readonly config: ConfigService,
     private readonly tenantService: TenantService,
@@ -87,9 +97,7 @@ export class AuthService {
           [`registration-email:${email}`, `registration-slug:${dto.orgSlug}`],
         );
 
-        if (await manager.getRepository(UserEntity).findOneBy({
-          email: Raw((column) => `LOWER(${column}) = :email`, { email }),
-        })) {
+        if (await this.findUserByEmail(dto.email, manager)) {
           throw new ConflictException('A user with this email already exists');
         }
         if (await manager.getRepository(TenantEntity).findOneBy({ slug: dto.orgSlug })) {
@@ -175,6 +183,138 @@ export class AuthService {
       user: this.sanitizeUser(user),
       tenantId: membership.tenantId,
     };
+  }
+
+  async listOrganizations(userId: string) {
+    const memberships = await this.membershipRepo.find({
+      where: { userId },
+      relations: { tenant: true },
+      order: { createdAt: 'ASC' },
+    });
+    return memberships.map((membership) => ({
+      tenantId: membership.tenantId,
+      name: membership.tenant.name,
+      slug: membership.tenant.slug,
+      role: membership.role,
+    }));
+  }
+
+  async switchOrganization(userId: string, tenantId: string): Promise<AuthResponse<SanitizedUser>> {
+    const membership = await this.membershipRepo.findOneBy({ userId, tenantId });
+    if (!membership) {
+      throw new UnauthorizedException('User has no tenant membership');
+    }
+    const user = await this.userRepo.findOneBy({ id: userId });
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+    const { accessToken, refreshToken } = await this.issueTokenPair({
+      sub: user.id,
+      email: user.email,
+      tenantId: membership.tenantId,
+      role: membership.role,
+    });
+    return { accessToken, refreshToken, user: this.sanitizeUser(user), tenantId: membership.tenantId };
+  }
+
+  async createInvitation(tenantId: string, dto: CreateInvitationDto) {
+    const existing = await this.findUserByEmail(dto.email);
+    if (existing && await this.membershipRepo.findOneBy({ tenantId, userId: existing.id })) {
+      throw new ConflictException('User is already a member of this organization');
+    }
+    const token = randomBytes(32).toString('hex');
+    const invitation = await this.invitationRepo.save(this.invitationRepo.create({
+      tenantId,
+      email: dto.email,
+      role: dto.role,
+      tokenHash: this.hashToken(token),
+      expiresAt: new Date(Date.now() + INVITATION_LIFETIME_MS),
+    }));
+    return {
+      id: invitation.id,
+      email: invitation.email,
+      role: invitation.role,
+      expiresAt: invitation.expiresAt,
+      token,
+    };
+  }
+
+  async getInvitation(token: string) {
+    const invitation = await this.findActiveInvitation(token);
+    return {
+      email: invitation.email,
+      role: invitation.role,
+      organizationName: invitation.tenant.name,
+      expiresAt: invitation.expiresAt,
+    };
+  }
+
+  async acceptInvitation(token: string, dto: AcceptInvitationDto): Promise<AuthResponse<SanitizedUser>> {
+    if (!/^[a-f0-9]{64}$/.test(token)) {
+      throw new UnauthorizedException('Invalid invitation');
+    }
+    return this.invitationRepo.manager.transaction(async (manager) => {
+      const invitation = await manager.getRepository(OrganizationInvitationEntity).findOne({
+        where: { tokenHash: this.hashToken(token) },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!invitation || invitation.acceptedAt || invitation.expiresAt.getTime() <= Date.now()) {
+        throw new UnauthorizedException('Invalid or expired invitation');
+      }
+      if (dto.email !== invitation.email) {
+        throw new BadRequestException('Email does not match invitation');
+      }
+
+      await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`registration-email:${dto.email}`]);
+      const userRepo = manager.getRepository(UserEntity);
+      let user = await this.findUserByEmail(dto.email, manager);
+      if (user) {
+        if (!user.passwordHash || !(await bcrypt.compare(dto.password, user.passwordHash))) {
+          throw new UnauthorizedException('Invalid credentials');
+        }
+      } else {
+        user = await userRepo.save(userRepo.create({
+          email: dto.email,
+          displayName: dto.displayName,
+          passwordHash: await bcrypt.hash(dto.password, BCRYPT_ROUNDS),
+          authProvider: 'local',
+          authProviders: ['local'],
+        }));
+      }
+
+      const membershipRepo = manager.getRepository(TenantMembershipEntity);
+      if (await membershipRepo.findOneBy({ tenantId: invitation.tenantId, userId: user.id })) {
+        throw new ConflictException('User is already a member of this organization');
+      }
+      await membershipRepo.save(membershipRepo.create({
+        tenantId: invitation.tenantId,
+        userId: user.id,
+        role: invitation.role,
+      }));
+      invitation.acceptedAt = new Date();
+      await manager.getRepository(OrganizationInvitationEntity).save(invitation);
+      const { accessToken, refreshToken } = await this.issueTokenPair({
+        sub: user.id,
+        email: user.email,
+        tenantId: invitation.tenantId,
+        role: invitation.role,
+      }, manager);
+      return { accessToken, refreshToken, user: this.sanitizeUser(user), tenantId: invitation.tenantId };
+    });
+  }
+
+  private async findActiveInvitation(token: string): Promise<OrganizationInvitationEntity> {
+    if (!/^[a-f0-9]{64}$/.test(token)) {
+      throw new UnauthorizedException('Invalid invitation');
+    }
+    const invitation = await this.invitationRepo.findOne({
+      where: { tokenHash: this.hashToken(token) },
+      relations: ['tenant'],
+    });
+    if (!invitation || invitation.acceptedAt || invitation.expiresAt.getTime() <= Date.now()) {
+      throw new UnauthorizedException('Invalid or expired invitation');
+    }
+    return invitation;
   }
 
   async rotateRefreshToken(refreshToken: string) {
@@ -423,9 +563,10 @@ export class AuthService {
     return email.trim().toLowerCase();
   }
 
-  private findUserByEmail(email: string) {
+  private findUserByEmail(email: string, manager?: EntityManager) {
     const normalizedEmail = this.normalizeEmail(email);
-    return this.userRepo.findOneBy({
+    const repo = manager?.getRepository(UserEntity) ?? this.userRepo;
+    return repo.findOneBy({
       email: Raw((column) => `LOWER(${column}) = :normalizedEmail`, { normalizedEmail }),
     });
   }

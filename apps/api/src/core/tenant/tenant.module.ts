@@ -7,6 +7,7 @@ import { TenantConnectionProvider } from './tenant-connection.provider';
 import { TenantProvisioningService } from './tenant-provisioning.service';
 import { ProjectAccessService } from './project-access.service';
 import { ProjectAccessGuard } from './project-access.guard';
+import { MemberVisibilityService } from './member-visibility.service';
 
 @Global()
 @Module({
@@ -25,6 +26,7 @@ import { ProjectAccessGuard } from './project-access.guard';
     TenantConnectionProvider,
     TenantProvisioningService,
     ProjectAccessService,
+    MemberVisibilityService,
     ProjectAccessGuard,
   ],
   exports: [
@@ -32,6 +34,7 @@ import { ProjectAccessGuard } from './project-access.guard';
     TenantConnectionProvider,
     TenantProvisioningService,
     ProjectAccessService,
+    MemberVisibilityService,
     ProjectAccessGuard,
   ],
 })

@@ -1,65 +1,46 @@
 # Email Notifications
 
-> Send email for issue assignments, mentions, status changes, and comment replies.
+**Status: Implemented; external delivery unverified.** Notification triggers, preferences, templates, and SMTP delivery code are present.
 
-## Why
+Reconciled September 23, 2026 against main [`27b14d7`](https://github.com/jakwinkler/weaver/commit/27b14d72ab8d201c4bf4fcbffd00830091dd21ce). This is the source baseline, which can differ from the checked-out application branch. Checked implementation items below mean the code exists; they do not certify a release or a fresh test pass.
 
-In-app notifications only work when users have the app open. Email is the fallback channel that every PM tool supports. The queue infrastructure already exists via BullMQ -- we just need to wire the triggers, build the templates, and respect user preferences.
+User guide: [Collaboration and Notifications](https://github.com/jakwinkler/weaver/wiki/Collaboration-and-Notifications).
 
-## Current State
+## Implemented
 
-- BullMQ `notifications` queue exists with `processNotification()` handler in the worker
-- NotificationJobData has `type: 'in_app' | 'email'`
-- Worker has email sending skeleton (SMTP/SES) but no actual implementation
-- Tenant settings have SMTP config schema (`smtpSettingsSchema`)
-- `POST /settings/smtp/test` endpoint exists for testing SMTP connectivity
-- No triggers actually enqueue email notifications yet
-- No email templates exist
-- No user notification preferences
+- [x] Assignment, mention, comment, and status-change email job creation with preference checks.
+- [x] Worker email processing, rendered templates, tenant SMTP configuration, and fallback configuration.
+- [x] Profile preference controls, signed unsubscribe flow with one-click headers, SMTP settings, and a test-mail action.
+- [x] Tenant email throttling in the worker (10 messages/second per worker process).
 
-## Tasks
+## Differences from the original plan
 
-### Backend
+- The old claims that only a worker skeleton exists and no templates/triggers/preferences exist are obsolete.
+- In-app notification success is separate from queue completion and actual SMTP delivery.
+- Unsubscribing changes the relevant category; it is not a universal communication opt-out.
+- The email throttle uses process-local state. Multiple workers do not share one global per-tenant 10/second budget.
 
-- [x] **Create email templates** — Handlebars/MJML templates for: issue assigned, mentioned in comment, issue status changed, comment added. Each has subject line, body with issue link, unsubscribe link. Responsive design for mobile email clients. _Files: `apps/api/src/modules/mail/templates/`_
-- [x] **Email rendering service** — Compile templates with data (issueKey, projectName, userName, actionText, issueUrl). Support both HTML and plain text output. _Files: `apps/api/src/modules/mail/mail.service.ts`_
-- [x] **Wire assignment notification** — When `assigneeId` changes on issue update, enqueue email to new assignee. Include issue title, project, and who assigned them. _Files: `apps/api/src/modules/issues/issues.service.ts`_
-- [x] **Wire comment notification** — When comment created, enqueue email to issue reporter + assignee (except comment author). Include comment excerpt and link to issue. _Files: `apps/api/src/modules/comments/comments.service.ts`_
-- [x] **Wire mention notification** — When mention detected in comment, enqueue email to mentioned user. Include comment excerpt with mention context. _Files: `apps/api/src/modules/comments/comments.service.ts`_
-- [x] **Wire status change notification** — When issue transitions, enqueue email to assignee + reporter. Include old status, new status, and who triggered the change. _Files: `apps/api/src/modules/issues/issues.service.ts`_
-- [x] **User notification preferences** — Add `notificationPreferences` JSONB column to UserEntity. Fields: `emailOnAssign`, `emailOnMention`, `emailOnComment`, `emailOnStatusChange`. Default all true. Add `PATCH /users/me/notification-preferences` endpoint. _Files: `packages/db/src/entities/public/user.entity.ts`_
-- [x] **Respect preferences before enqueuing** — Check user's preferences before adding email job to queue. Skip silently if preference is off. _Files: `apps/api/src/modules/mail/mail.service.ts`_
-- [x] **Unsubscribe endpoint** — `POST /notifications/unsubscribe` with signed token to toggle specific preference without login. Token encodes userId + preference key. _Files: `apps/api/src/modules/notifications/notifications.controller.ts`_
+## Remaining work and verification
 
-### Worker
+- [ ] Run a configured provider delivery check for each notification category and unsubscribe behavior.
+- [ ] Exercise delivery failures, retries, tenant configuration precedence, and recipient permissions.
 
-- [x] **Implement SMTP sending** — Use nodemailer with tenant SMTP settings. Fallback to system SMTP if tenant has none. Handle connection errors gracefully with retry (3 attempts, exponential backoff). _Files: `apps/worker/src/processors/notification.processor.ts`_
-- [x] **Rate limiting** — Max 10 emails/second per tenant to avoid spam classification. Use BullMQ rate limiter or token bucket in processor. _Files: `apps/worker/src/processors/notification.processor.ts`_
+## Evidence
 
-### Frontend
+Source and existing tests were inspected. No external email was sent during the documentation work.
 
-- [x] **Notification preferences page** — Toggle switches for each email type in Profile page. Save via PATCH endpoint. Show current state on load. _Files: `apps/web/src/features/profile/ProfilePage.tsx`_
-- [x] **SMTP setup in system settings** — Form for host, port, user, password, from address, TLS toggle. Test button that calls `POST /settings/smtp/test` and shows success/error. _Files: `apps/web/src/features/settings/SystemSettingsPage.tsx`_
+### Implementation
 
-### Tests
+- [apps/api/src/modules/notifications/notifications.service.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/api/src/modules/notifications/notifications.service.ts)
+- [apps/worker/src/processors/notifications.processor.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/worker/src/processors/notifications.processor.ts)
+- [apps/web/src/features/profile/ProfilePage.tsx](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/web/src/features/profile/ProfilePage.tsx)
+- [apps/web/src/features/settings/SystemSettingsPage.tsx](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/web/src/features/settings/SystemSettingsPage.tsx)
 
-- [x] **E2E: assignment triggers email job** — Assign issue, verify notification job enqueued with type 'email' and correct recipient. _File: `apps/api/test/email-notifications.e2e-spec.ts`_
-- [x] **E2E: preferences respected** — Disable emailOnAssign, assign issue, verify no email job enqueued. _File: `apps/api/test/email-notifications.e2e-spec.ts`_
-- [x] **E2E: SMTP test endpoint** — POST /settings/smtp/test sends test email (mock SMTP server). _File: `apps/api/test/email-notifications.e2e-spec.ts`_
+### Existing automated coverage, not rerun for this documentation edit
 
-## Acceptance Criteria
-
-- Email sent when assigned to issue
-- Email sent when mentioned in comment
-- Email sent when issue you reported/are assigned to changes status
-- Email sent when someone comments on your issue
-- User can toggle each notification type in profile settings
-- Admin can configure SMTP in system settings
-- Test email button works and reports success/failure
-- Emails contain direct link to issue
-- Emails include one-click unsubscribe link (RFC 8058)
-- Rate limited to 10/second per tenant to prevent spam
-- Graceful fallback when SMTP is not configured (log warning, skip silently)
+- [apps/api/test/email-notifications.e2e-spec.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/api/test/email-notifications.e2e-spec.ts)
+- [apps/api/src/modules/notifications/notifications.service.spec.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/api/src/modules/notifications/notifications.service.spec.ts)
+- [apps/web/src/features/notifications/EmailUnsubscribePage.test.tsx](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/web/src/features/notifications/EmailUnsubscribePage.test.tsx)
 
 ## Dependencies
 

@@ -34,6 +34,10 @@ import {
 const lowlight = createLowlight(common);
 
 interface RichTextEditorProps {
+  id?: string;
+  ariaLabel?: string;
+  ariaDescribedBy?: string;
+  allowUploads?: boolean;
   issueKey?: string;
   content: Record<string, unknown> | null;
   onChange?: (json: Record<string, unknown>) => void;
@@ -43,6 +47,10 @@ interface RichTextEditorProps {
 }
 
 export function RichTextEditor({
+  id,
+  ariaLabel,
+  ariaDescribedBy,
+  allowUploads = true,
   issueKey,
   content,
   onChange,
@@ -51,6 +59,7 @@ export function RichTextEditor({
   editorClassName,
 }: RichTextEditorProps) {
   const [uploadError, setUploadError] = useState(false);
+  const [uploadBlocked, setUploadBlocked] = useState(false);
   const issueUpload = useUploadAttachment(issueKey || '__noop__');
   const genericUpload = useGenericUploadAttachment();
   const onChangeRef = useRef(onChange);
@@ -137,10 +146,15 @@ export function RichTextEditor({
     },
     editorProps: {
       attributes: {
-        class: `${editable
-          ? 'prose prose-sm max-w-none focus:outline-none min-h-[80px] px-3 py-2'
-          : 'prose prose-sm max-w-none'} ${editorClassName ?? ''}`,
-        'aria-label': placeholder,
+        class: `${
+          editable
+            ? 'prose prose-sm max-w-none focus:outline-none min-h-[80px] px-3 py-2'
+            : 'prose prose-sm max-w-none'
+        } ${editorClassName ?? ''}`,
+        'aria-label': ariaLabel ?? placeholder,
+        ...(id ? { id } : {}),
+        ...(ariaDescribedBy ? { 'aria-describedby': ariaDescribedBy } : {}),
+        ...(editable ? { role: 'textbox', 'aria-multiline': 'true' } : {}),
       },
       handlePaste: (_view, event) => {
         const items = event.clipboardData?.items;
@@ -149,11 +163,17 @@ export function RichTextEditor({
         for (const item of items) {
           if (item.type.startsWith('image/')) {
             event.preventDefault();
+            if (!allowUploads) {
+              setUploadBlocked(true);
+              return true;
+            }
             const file = item.getAsFile();
             if (file) {
-              handleImageUpload(file).then((url) => {
-                if (url) editor?.chain().focus().setImage({ src: url }).run();
-              }).catch(() => setUploadError(true));
+              handleImageUpload(file)
+                .then((url) => {
+                  if (url) editor?.chain().focus().setImage({ src: url }).run();
+                })
+                .catch(() => setUploadError(true));
             }
             return true;
           }
@@ -165,11 +185,17 @@ export function RichTextEditor({
         if (!files?.length) return false;
 
         event.preventDefault();
+        if (!allowUploads) {
+          setUploadBlocked(true);
+          return true;
+        }
         for (const file of files) {
           if (file.type.startsWith('image/')) {
-            handleImageUpload(file).then((url) => {
-              if (url) editor?.chain().focus().setImage({ src: url }).run();
-            }).catch(() => setUploadError(true));
+            handleImageUpload(file)
+              .then((url) => {
+                if (url) editor?.chain().focus().setImage({ src: url }).run();
+              })
+              .catch(() => setUploadError(true));
           } else if (issueKey) {
             issueUpload.mutate(file);
           } else {
@@ -203,8 +229,17 @@ export function RichTextEditor({
 
   return (
     <div className="rounded-md border border-border focus-within:border-ring focus-within:ring-1 focus-within:ring-ring">
-      {(uploadError || issueUpload.isError || genericUpload.isError) && <p role="alert" className="px-3 py-2 text-sm text-destructive">Upload failed. Check the file size and try again.</p>}
-      <Toolbar editor={editor} />
+      {(uploadError || issueUpload.isError || genericUpload.isError) && (
+        <p role="alert" className="px-3 py-2 text-sm text-destructive">
+          Upload failed. Check the file size and try again.
+        </p>
+      )}
+      {uploadBlocked && (
+        <p role="alert" className="px-3 py-2 text-sm text-muted-foreground">
+          Create the issue first, then add files from Attachments.
+        </p>
+      )}
+      <Toolbar editor={editor} allowImages={allowUploads} />
       <EditorContent editor={editor} />
     </div>
   );
@@ -214,7 +249,13 @@ export function RichTextRenderer({ content }: Pick<RichTextEditorProps, 'content
   return <RichTextEditor content={content} editable={false} />;
 }
 
-function Toolbar({ editor }: { editor: ReturnType<typeof useEditor> }) {
+function Toolbar({
+  editor,
+  allowImages,
+}: {
+  editor: ReturnType<typeof useEditor>;
+  allowImages: boolean;
+}) {
   if (!editor) return null;
 
   const btn = (active: boolean) =>
@@ -336,9 +377,11 @@ function Toolbar({ editor }: { editor: ReturnType<typeof useEditor> }) {
       >
         <LinkIcon className="h-4 w-4" />
       </button>
-      <button type="button" onClick={handleImage} className={btn(false)} title="Image">
-        <ImageIcon className="h-4 w-4" />
-      </button>
+      {allowImages && (
+        <button type="button" onClick={handleImage} className={btn(false)} title="Image">
+          <ImageIcon className="h-4 w-4" />
+        </button>
+      )}
     </div>
   );
 }

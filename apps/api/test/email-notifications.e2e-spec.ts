@@ -180,6 +180,8 @@ describe('Email notifications (e2e)', () => {
       .post('/api/v1/projects')
       .send({ name: 'Email Project', key: 'MAIL' })
       .expect(201);
+    await authedOwner().post('/api/v1/projects/MAIL/members')
+      .send({ userId: recipientId, role: 'member' }).expect(201);
 
     const issueResponse = await authedOwner()
       .post('/api/v1/projects/MAIL/issues')

@@ -14,7 +14,8 @@ import {
   type UpdateNotificationPreferencesDto,
 } from '@weaver/shared';
 import { AttachmentsService } from '../attachments/attachments.service';
-import { TenantConnectionProvider } from '../../core/tenant';
+import { MemberVisibilityService, TenantConnectionProvider } from '../../core/tenant';
+import type { RequestUser } from '../../core/auth/current-user.decorator';
 import { WeaverGateway } from '../../core/websocket';
 
 @Injectable()
@@ -27,6 +28,7 @@ export class UsersService {
     private readonly attachmentsService: AttachmentsService,
     private readonly tenantConnections: TenantConnectionProvider,
     private readonly gateway: WeaverGateway,
+    private readonly memberVisibility: MemberVisibilityService,
   ) {}
 
   async findById(id: string): Promise<Omit<UserEntity, 'passwordHash'>> {
@@ -89,14 +91,14 @@ export class UsersService {
   }
 
   async searchTenantMembers(
-    tenantId: string,
+    user: RequestUser,
     query: string,
   ): Promise<{ id: string; displayName: string; email: string; avatarUrl: string | null }[]> {
     const escapedQuery = query.trim().replace(/[\\%_]/g, '\\$&');
     const qb = this.membershipRepo
       .createQueryBuilder('m')
       .leftJoinAndSelect('m.user', 'u')
-      .where('m.tenantId = :tenantId', { tenantId })
+      .where('m.tenantId = :tenantId', { tenantId: user.tenantId })
       .andWhere(`(u.displayName ILIKE :q ESCAPE '\\' OR u.email ILIKE :q ESCAPE '\\')`, {
         q: `${escapedQuery}%`,
       })
@@ -105,6 +107,8 @@ export class UsersService {
       .addOrderBy('u.id', 'ASC')
       .take(10);
 
+    const visible = await this.memberVisibility.visibleMemberIds(user);
+    if (visible !== null) qb.andWhere('m.userId IN (:...visibleIds)', { visibleIds: visible });
     const memberships = await qb.getMany();
 
     return memberships.map((m) => ({
@@ -115,19 +119,14 @@ export class UsersService {
     }));
   }
 
-  async filterTenantMemberIds(tenantId: string, userIds: string[]): Promise<Set<string>> {
-    if (userIds.length === 0) return new Set();
-
-    const memberships = await this.membershipRepo.findBy({
-      tenantId,
-      userId: In(userIds),
-    });
-    return new Set(memberships.map((membership) => membership.userId));
+  async filterProjectMemberIds(tenantId: string, projectId: string, userIds: string[]): Promise<Set<string>> {
+    return this.memberVisibility.projectRecipientIds(tenantId, projectId, userIds);
   }
 
-  async findTenantMembers(tenantId: string): Promise<any[]> {
+  async findTenantMembers(user: RequestUser): Promise<any[]> {
+    const visible = await this.memberVisibility.visibleMemberIds(user);
     const memberships = await this.membershipRepo.find({
-      where: { tenantId },
+      where: { tenantId: user.tenantId, ...(visible === null ? {} : { userId: In(visible) }) },
       relations: ['user'],
     });
 

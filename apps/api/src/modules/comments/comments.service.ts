@@ -44,8 +44,9 @@ export class CommentsService {
     const mentionedUserIds = this.mentionService
       .extractMentions(body)
       .filter((mentionedUserId) => mentionedUserId !== authorId);
-    const tenantMemberIds = await this.usersService.filterTenantMemberIds(
+    const tenantMemberIds = await this.usersService.filterProjectMemberIds(
       tenantId,
+      issue.projectId,
       mentionedUserIds,
     );
 
@@ -175,8 +176,10 @@ export class CommentsService {
     const newRecipientIds = newMentions.filter(
       (mentionedUserId) => !oldMentions.has(mentionedUserId) && mentionedUserId !== updaterId,
     );
-    const tenantMemberIds = await this.usersService.filterTenantMemberIds(
+    const issue = await this.resolveIssue(issueKey);
+    const tenantMemberIds = await this.usersService.filterProjectMemberIds(
       tenantId,
+      issue.projectId,
       newRecipientIds,
     );
 
@@ -184,7 +187,6 @@ export class CommentsService {
     const saved = await repo.save(comment);
 
     // Resolve issueKey for notification
-    const issue = await em.getRepository(IssueEntity).findOneBy({ id: comment.issueId });
     if (issue) {
       this.eventDispatcher.emit('comment.updated', {
         commentId: saved.id,

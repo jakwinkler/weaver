@@ -7,3 +7,4 @@ export type { TenantInfo } from './tenant.context';
 export { ProjectAccessService } from './project-access.service';
 export type { ProjectAccessMode } from './project-access.service';
 export { ProjectAccessGuard, RequireProjectAccess } from './project-access.guard';
+export { MemberVisibilityService } from './member-visibility.service';

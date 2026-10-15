@@ -125,7 +125,7 @@ describe('September session, public data, and assignee boundaries', () => {
     'rejects foreign-tenant assignment on %s before changing issues',
     async (mode) => {
       const before = await db.query(
-        'SELECT id, summary, assignee_id FROM tenant_sept24_a.issues ORDER BY id',
+        'SELECT id, summary, priority, assignee_id FROM tenant_sept24_a.issues ORDER BY id',
       );
       const call =
         mode === 'create'
@@ -142,9 +142,15 @@ describe('September session, public data, and assignee boundaries', () => {
                 issueIds: [issue.id],
                 updates: { priority: 'high', assigneeId: foreign.user.id },
               });
-      await call.expect(400);
+      // Directory visibility rejects unavailable people before issue validation runs.
+      const response = await call.expect(403);
+      expect(response.body).toEqual({
+        statusCode: 403,
+        message: 'Selected person is not available',
+        error: 'Forbidden',
+      });
       expect(
-        await db.query('SELECT id, summary, assignee_id FROM tenant_sept24_a.issues ORDER BY id'),
+        await db.query('SELECT id, summary, priority, assignee_id FROM tenant_sept24_a.issues ORDER BY id'),
       ).toEqual(before);
     },
   );

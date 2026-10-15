@@ -1,50 +1,45 @@
 # Docs & Wiki
 
-> Project-scoped wiki pages with rich text, tree navigation, and full-text search.
+**Status: Implemented.** Project wiki pages, hierarchy, editing, search, history, and restore are available.
 
-## Why
-Teams need documentation alongside their issues. ClickUp Docs, Monday Docs, and Notion prove that inline docs are a major value add. Without them, teams use a separate tool.
+Reconciled September 23, 2026 against main [`27b14d7`](https://github.com/jakwinkler/weaver/commit/27b14d72ab8d201c4bf4fcbffd00830091dd21ce). This is the source baseline, which can differ from the checked-out application branch. Checked implementation items below mean the code exists; they do not certify a release or a fresh test pass.
 
-## Current State
-- Rich text editor (TipTap) exists
-- Attachment upload system works
-- No document/page entity or endpoints
-- No wiki navigation
+User guide: [Project Wiki](https://github.com/jakwinkler/weaver/wiki/Project-Wiki).
 
-## Tasks
+## Implemented
 
-### Backend
-- [ ] **Create PageEntity** — Fields: id, projectId, title, slug (auto from title), body (JSONB, TipTap), parentId (nullable, for nesting), sortOrder, createdBy, updatedAt, createdAt. Tree structure via parentId. _Files: `packages/db/src/entities/tenant/page.entity.ts`_
-- [ ] **Pages CRUD endpoints** — `POST /projects/:key/pages` (create), `GET /projects/:key/pages` (list tree), `GET /projects/:key/pages/:slug` (read), `PATCH /projects/:key/pages/:slug` (update), `DELETE /projects/:key/pages/:slug` (delete with children reassignment). _Files: `apps/api/src/modules/pages/pages.controller.ts`, `apps/api/src/modules/pages/pages.service.ts`, `apps/api/src/modules/pages/pages.module.ts`_
-- [ ] **Page tree endpoint** — `GET /projects/:key/pages/tree` returns nested structure: `[{ id, title, slug, children: [...] }]`. _Files: `apps/api/src/modules/pages/pages.service.ts`_
-- [ ] **Page search** — Full-text search across page titles and body content. _Files: `apps/api/src/modules/pages/pages.service.ts`_
-- [ ] **Page version history** — Store previous versions in `page_versions` table. `GET /projects/:key/pages/:slug/history` returns versions. _Files: `packages/db/src/entities/tenant/page-version.entity.ts`, `apps/api/src/modules/pages/pages.service.ts`_
-- [ ] **Permissions** — `@RequirePermission('pages', 'create')`, `'pages.read'`, `'pages.update'`, `'pages.delete'`. Add to seeded roles: member gets read+create+update, viewer gets read. _Files: `apps/api/src/modules/pages/pages.controller.ts`_
+- [x] Page/version entities and permission-checked CRUD, tree, search, history, and restore endpoints.
+- [x] Full-text title/body search; child reassignment on deletion and hierarchy validation.
+- [x] Wiki navigation, collapsible/reorderable page tree, breadcrumbs, rich viewing/editing, debounced autosave, and manual save.
+- [x] History preview and restore controls with author/time information.
 
-### Frontend
-- [ ] **Wiki page** — Route: `/projects/:projectKey/wiki`. Left sidebar: page tree with collapsible nodes. Main area: page content. _Files: `apps/web/src/features/wiki/WikiPage.tsx`_
-- [ ] **Page tree navigation** — Collapsible tree component. Click to navigate. Drag to reorder/reparent. "New page" button at root and under each node. _Files: `apps/web/src/features/wiki/PageTree.tsx`_
-- [ ] **Page viewer** — RichTextRenderer for page body. Title displayed as h1. Breadcrumb from root. Edit button. _Files: `apps/web/src/features/wiki/PageViewer.tsx`_
-- [ ] **Page editor** — Full-page RichTextEditor with toolbar. Auto-save with debounce (2s after last keystroke). Manual save button. _Files: `apps/web/src/features/wiki/PageEditor.tsx`_
-- [ ] **Version history** — Side panel showing previous versions with timestamps and authors. Click to view diff or restore. _Files: `apps/web/src/features/wiki/VersionHistory.tsx`_
-- [ ] **Add to project navigation** — Add "Wiki" tab in project detail page. _Files: `apps/web/src/features/projects/ProjectDetailPage.tsx`_
-- [ ] **Wiki search** — Search bar in wiki sidebar. Results highlight matching pages. _Files: `apps/web/src/features/wiki/WikiPage.tsx`_
+## Differences from the original plan
 
-### Tests
-- [ ] **E2E: page CRUD** — Create page, read, update, delete. Verify tree structure. _File: `apps/api/test/wiki.e2e-spec.ts`_
-- [ ] **E2E: nested pages** — Create parent, create child under parent, verify tree endpoint returns nesting. _File: `apps/api/test/wiki.e2e-spec.ts`_
-- [ ] **E2E: version history** — Update page 3 times, verify 3 versions in history. _File: `apps/api/test/wiki.e2e-spec.ts`_
-- [ ] **E2E: permissions** — Viewer can read but not create pages. _File: `apps/api/test/wiki.e2e-spec.ts`_
+- Pages/entities/routes/navigation exist; the old missing-feature section was stale.
+- History compares selected/current rendered content and supports restore. It does not provide a change-highlighted text diff.
+- The project wiki is distinct from Weaver's published GitHub product documentation.
 
-## Acceptance Criteria
-- Wiki accessible per project
-- Pages stored as rich text (TipTap JSON)
-- Tree navigation with nesting
-- Auto-save while editing
-- Version history with restore
-- Full-text search across pages
-- Permission-gated (viewer=read, member=read+write)
-- Drag to reorder pages in tree
+## Remaining work and verification
+
+- [ ] Repeat browser autosave/failure recovery, reparent/reorder, restore, and restricted-role acceptance.
+- [ ] Verify concurrent edits and version restoration before relying on history as conflict resolution.
+
+## Evidence
+
+Local parent/child pages, a saved edit, and version history rendered. The walkthrough did not perform destructive deletion or restore.
+
+### Implementation
+
+- [apps/api/src/modules/pages/pages.service.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/api/src/modules/pages/pages.service.ts)
+- [apps/api/src/modules/pages/pages.controller.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/api/src/modules/pages/pages.controller.ts)
+- [apps/web/src/features/wiki/WikiPage.tsx](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/web/src/features/wiki/WikiPage.tsx)
+- [apps/web/src/features/wiki/VersionHistory.tsx](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/web/src/features/wiki/VersionHistory.tsx)
+
+### Existing automated coverage, not rerun for this documentation edit
+
+- [apps/api/test/wiki.e2e-spec.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/api/test/wiki.e2e-spec.ts)
+- [apps/web/src/features/wiki/PageEditor.test.tsx](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/web/src/features/wiki/PageEditor.test.tsx)
 
 ## Dependencies
+
 - 02-rich-text (TipTap rendering and editing)

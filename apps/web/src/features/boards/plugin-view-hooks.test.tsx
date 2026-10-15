@@ -8,7 +8,8 @@ import { GanttChart } from './GanttChart';
 let projectPlugins: Array<{ pluginId: string }> | undefined;
 
 vi.mock('@/api', () => ({
-  useProjectPlugins: () => ({ data: projectPlugins }),
+  useProjectPlugins: () => ({ data: projectPlugins, isLoading: projectPlugins === undefined }),
+  useInstalledPlugins: () => ({ data: [], isLoading: false }),
   useProjectIssues: () => ({ data: { data: [] }, isLoading: false, isError: false }),
 }));
 

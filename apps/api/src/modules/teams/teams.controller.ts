@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import {
   JwtAuthGuard,
+  AdminGuard,
   PermissionGuard,
   RequirePermission,
 } from '../../core/auth';
@@ -28,11 +29,13 @@ export class TeamsController {
   }
 
   @Get()
+  @UseGuards(AdminGuard)
   async findAll() {
     return this.teamsService.findAll();
   }
 
   @Get(':id')
+  @UseGuards(AdminGuard)
   async findById(@Param('id') id: string) {
     return this.teamsService.findById(id);
   }
@@ -64,6 +67,7 @@ export class TeamsController {
   }
 
   @Get(':id/members')
+  @UseGuards(AdminGuard)
   async getMembers(@Param('id') id: string) {
     return this.teamsService.getMembers(id);
   }

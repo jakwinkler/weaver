@@ -9,6 +9,7 @@ import { LoginPage } from '@/features/auth/LoginPage';
 import { RegisterPage } from '@/features/auth/RegisterPage';
 import { OAuthCallback } from '@/features/auth/OAuthCallback';
 import { OrgPicker } from '@/features/auth/OrgPicker';
+import { InvitationPage } from '@/features/auth/InvitationPage';
 import { ProjectsPage } from '@/features/projects/ProjectsPage';
 import { ProjectDetailPage } from '@/features/projects/ProjectDetailPage';
 import { ProjectSettingsPage } from '@/features/projects/ProjectSettingsPage';
@@ -54,6 +55,7 @@ export function App() {
             <Route path="/register" element={<RegisterPage />} />
             <Route path="/auth/callback" element={<OAuthCallback />} />
             <Route path="/auth/organizations" element={<OrgPicker />} />
+            <Route path="/invite/:token" element={<InvitationPage />} />
             <Route path="/unsubscribe" element={<EmailUnsubscribePage />} />
             <Route
               path="/public/:tenantSlug/projects/:projectKey"

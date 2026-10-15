@@ -4,11 +4,36 @@
 
 ## Status
 
-- Phases 0 through 6 complete; Phase 7 local-alpha tooling complete, ten-working-day trial pending
-- First user: Matt, single-user workflow
-- Initial platform: macOS
-- Distribution: bundled first-party plugin, disabled by default
-- Companion: separately installed macOS menu bar application owned by the plugin
+**Status: local-alpha implementation present; ten-working-day trial pending.** The plugin is version `0.6.0`. Core worklog capabilities, private drafts/release, device pairing, macOS companion source, and correction/alpha tooling are in the reviewed source.
+
+Reconciled September 23, 2026 against main [`27b14d7`](https://github.com/jakwinkler/weaver/commit/27b14d72ab8d201c4bf4fcbffd00830091dd21ce). The phase checklists and implementation evidence below preserve prior implementation records. They are not fresh test results from this reconciliation. Product invariants and acceptance criteria remain requirements to verify, particularly on a real installed companion.
+
+- First user: Matt, single-user workflow.
+- Initial platform: macOS.
+- Distribution: bundled first-party plugin, disabled on installation.
+- Companion: separately installed macOS menu bar application owned by the plugin.
+- Open release gates: representative ten-working-day alpha, measured acceptance results, signed/distributed companion acceptance, and deployment-specific verification.
+
+User guide: [Automatic Time](https://github.com/jakwinkler/weaver/wiki/Automatic-Time). The documentation walkthrough installed the plugin disabled and inspected source. It did not exercise native capture, pairing, or official-time release.
+
+## Differences from the earlier design
+
+- Runtime federation now exists, but the host retains the Automatic Time workspace fallback when no remote URL is supplied. There is no need to wait for all of feature 18 before testing this plugin.
+- Generic settings, versioned upgrades, personal API keys, and tenant audit infrastructure now exist. Automatic Time still uses plugin-owned user settings and narrow device credentials.
+- Assignment returns a selected issue at confidence `0.65` or above. The `0.90` threshold controls whether additional local semantic ranking is attempted when structural evidence exists; it is not a separate auto-assignment threshold. The earlier three-band proposal is not the implemented state model.
+- Candidate requests are bounded to 100 and include unassigned work. A special recently-viewed issue feed or fixed lookback policy is not established by the original candidate-set proposal.
+- Inference uses a configurable loopback-only chat-completions endpoint/model, with deterministic behavior continuing when semantic ranking is unavailable. No particular runtime/model is a validated incumbent from this roadmap.
+- Final-total adjustment is implemented: allocate at least one minute per released draft, distribute the remaining minutes proportionally, then resolve fractional remainders deterministically. This is no longer an undecided implementation mechanism.
+- A companion artifact identifier in the manifest does not establish a signed downloadable release. Operator distribution and real-device acceptance remain separate gates.
+
+## Source references for this reconciliation
+
+- [plugins/plugin-automatic-time/weaver-plugin.json](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/plugins/plugin-automatic-time/weaver-plugin.json)
+- [plugins/plugin-automatic-time/src/server/handlers.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/plugins/plugin-automatic-time/src/server/handlers.ts)
+- [apps/web/src/plugins/dynamic-loader.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/web/src/plugins/dynamic-loader.ts)
+- [companion/automatic-time-macos/Sources/AutomaticTimeCompanion/AssignmentEngine.swift](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/companion/automatic-time-macos/Sources/AutomaticTimeCompanion/AssignmentEngine.swift)
+- [companion/automatic-time-macos/Sources/AutomaticTimeCompanion/LocalInferenceClient.swift](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/companion/automatic-time-macos/Sources/AutomaticTimeCompanion/LocalInferenceClient.swift)
+- [apps/api/test/automatic-time-plugin.e2e-spec.ts](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/apps/api/test/automatic-time-plugin.e2e-spec.ts)
 
 ## Outcome
 
@@ -44,16 +69,18 @@ These decisions are settled for the first version:
 
 ## Proposed Defaults
 
-These defaults should be validated during the first local trial. They are not reasons to delay the first vertical slice.
+The original proposal remains useful for the alpha comparison, but the current behavior must be distinguished from it.
 
-- Raw-signal processing and inference run locally.
-- Raw signals are deleted 48 hours after the associated day is released and never retained longer than seven days.
-- Context switches shorter than two minutes are folded into surrounding activity unless they contain a strong issue signal.
-- Confidence of 0.90 or higher assigns a private draft automatically.
-- Confidence from 0.65 through 0.89 presents a prominent suggestion.
-- Confidence below 0.65 leaves the draft unassigned.
-- Unassigned work cannot be released until it is assigned, hidden, or deleted.
-- The first candidate set contains open issues assigned to Matt, issues viewed or changed recently, and issues in the repository-mapped project.
+| Area | Implemented behavior or remaining target |
+| --- | --- |
+| Processing/inference | Local processing; optional loopback-only semantic ranking |
+| Raw retention | Source defaults delete released evidence after 48 hours and apply a seven-day maximum; verify the installed build and time-controlled tests |
+| Brief switches | The proposed two-minute smoothing policy remains subject to representative trial acceptance |
+| Confidence | Below 0.65 is unassigned; at or above 0.65 a selected issue can be returned. Below 0.90, structural evidence can permit semantic ranking |
+| Release | Unassigned work must be resolved, hidden, or deleted before explicit release |
+| Candidates | Bounded issue snapshot, including unassigned issues, with a 100-candidate limit; refine the relevance/lookback policy against the alpha data |
+
+The original distinction between a 0.65-to-0.89 suggestion band and a 0.90 automatic-assignment band is not implemented as separate draft states. Validate or deliberately revise that product target using the trial results.
 
 ## Non-Goals
 
@@ -67,7 +94,7 @@ These defaults should be validated during the first local trial. They are not re
 - Automatic issue creation
 - Automatic release
 - A third-party plugin marketplace
-- Completing all Plugin System v2 roadmap work before this feature can ship
+- Completing all Plugin System v2 roadmap work before this feature can be released
 
 ## Product Invariants
 
@@ -84,18 +111,18 @@ These defaults should be validated during the first local trial. They are not re
 
 ## Relationship to Existing Roadmap Work
 
-Automatic Time should build on the existing plugin roadmap without taking a dependency on the entire Plugin System v2 milestone.
+Automatic Time uses existing shared infrastructure and keeps its private-data boundary.
 
-- `18-dynamic-plugin-loading.md`: not required for the first-party bundled release. Add the plugin to the existing build-time importer initially. Migrate it when dynamic loading is implemented.
-- `19-plugin-settings-ui.md`: use a plugin-owned settings page for the first version. Reuse the generic settings renderer later.
-- `21-plugin-upgrades.md`: Automatic Time needs versioned, fail-closed migrations before storing user drafts. Implement the minimum shared upgrade path required by this plugin.
-- `26-api-keys.md`: do not expose a broad personal API key to the companion. Implement narrow device pairing and device-scoped credentials.
-- `28-audit-log.md`: emit plugin install, device pair or revoke, release, reopen, and lock events so the later tenant audit log can consume them.
+- [18: Dynamic loading](18-dynamic-plugin-loading.md): federation exists; the Automatic Time workspace fallback remains in the host.
+- [19: Plugin settings](19-plugin-settings-ui.md): generic schema-driven settings exist, with an open management-page rendering issue. Automatic Time uses its own user settings UI.
+- [21: Upgrades](21-plugin-upgrades.md): versioned, transactional migration and upgrade-hook support exists.
+- [26: API keys](26-api-keys.md): personal API keys exist, but companion authentication uses separate narrow device credentials.
+- [28: Audit log](28-audit-log.md): tenant audit storage exists. Emitting plugin domain events does not automatically persist each event in that audit log; verify intended device/release/reopen/lock coverage explicitly.
 
 ## End-to-End Flow
 
 1. The user installs and enables Automatic Time in Weaver.
-2. The plugin page offers the signed macOS companion and starts a short-lived pairing flow.
+2. The operator provides a compatible companion build; the plugin supports a short-lived pairing flow. Signed distribution must be verified separately.
 3. The authenticated Weaver user approves the device.
 4. The companion stores its revocable device credential in macOS Keychain.
 5. The companion downloads a bounded issue-candidate snapshot and correction rules.
@@ -196,7 +223,7 @@ Implement only the shared platform work required to make this plugin trustworthy
 8. Revoke all device credentials when the plugin is disabled or uninstalled.
 9. Require explicit confirmation before uninstalling plugin-owned private data.
 
-Dynamic client loading remains a separate roadmap item. The first version may add one build-time importer and workspace dependency for this first-party plugin.
+Dynamic client loading is implemented alongside a retained Automatic Time workspace fallback. The first-party package remains a workspace dependency; removing that fallback needs its own remote-bundle acceptance check.
 
 ## Device Pairing and Authentication
 
@@ -442,7 +469,7 @@ Phase 0 evidence:
 - The root test task now treats empty UI and web unit-test suites as valid while excluding Playwright specifications from Vitest discovery. A forced uncached run completed 11 test tasks successfully.
 - `time-tracking.service.spec.ts` adds seven focused manual worklog regression tests.
 - `@weaver/automatic-time-evaluation` validates non-overlapping synthetic labeled days and calculates minute-weighted destination accuracy, suggestion precision, evidence-method coverage, unassigned time, and review duration. Its example day has 450 labeled minutes and an exact `0.80` destination accuracy.
-- [`docs/architecture/automatic-time-companion.md`](../architecture/automatic-time-companion.md) records the native Swift decision and local-alpha defaults.
+- [`docs/architecture/automatic-time-companion.md`](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/docs/architecture/automatic-time-companion.md) records the native Swift decision and local-alpha defaults.
 - `spikes/automatic-time-macos/` compiles the AppKit, Accessibility, CryptoKit, and Keychain boundaries. Two synthetic Swift tests verify encrypted round-trip, plaintext absence, owner-only file permissions, and retention deletion. Its diagnostic reports booleans only.
 
 ### Phase 1: Core worklog and plugin prerequisites
@@ -601,14 +628,14 @@ Phase 7 implementation evidence:
 - Plugin version `0.6.0` learns positive and negative issue-targeted correction memories from reassignment, hide, and delete review actions. Learning uses an opaque context digest rather than server-visible application, title, browser, repository, or Git fields.
 - Correction memories are owner-scoped and inspectable. Enable or disable, delete, and recompute actions advance a per-user revision so the companion requeues only matching unreleased drafts. Released drafts and official time are not rewritten.
 - The private local-alpha view reports working days, captured and released drafts, destination accuracy, corrections, unmatched work, hidden or deleted work, median review time, and manual or timer usage. The core capability returns only the current user's source counts.
-- The [Automatic Time privacy threat model](../security/automatic-time-threat-model.md) covers companion capture, local inference, pairing, credentials, sync, correction learning, metrics, disable, and uninstall. The review also closed a transport gap by requiring HTTPS for every non-loopback Weaver API host.
+- The [Automatic Time privacy threat model](https://github.com/jakwinkler/weaver/blob/27b14d72ab8d201c4bf4fcbffd00830091dd21ce/docs/security/automatic-time-threat-model.md) covers companion capture, local inference, pairing, credentials, sync, correction learning, metrics, disable, and uninstall. The review also closed a transport gap by requiring HTTPS for every non-loopback Weaver API host.
 - Thirty-seven synthetic Swift tests cover correction learning, revision-based recomputation, exact 48-hour and seven-day retention cutoffs, encrypted state, transport policy, and an exact derived-draft network allowlist. API and web coverage exercise the reversible learning flow and private-alpha controls.
 - Full HD browser acceptance verified the empty and populated settings states, a 90-second median review, one of ten working days, correction statistics, and disable, recompute, confirmation, and deletion behavior. The disposable tenant, user, schema, and plugin data were removed after verification.
 - Automated and synthetic checks do not satisfy the ten-working-day gate. The real trial and its day two, five, and ten comparisons remain pending.
 
-## Expected Code Surface
+## Code ownership map
 
-This is the anticipated ownership map. Phase 0 may refine names, but it should preserve these boundaries.
+These boundaries are represented in the implementation. Refer to the exact source revision above when resolving filenames or contracts.
 
 ### Weaver core
 
@@ -639,7 +666,7 @@ This is the anticipated ownership map. Phase 0 may refine names, but it should p
 - `plugins/plugin-automatic-time/src/client/`
 - `plugins/plugin-automatic-time/migrations/`
 - `plugins/plugin-automatic-time/test/`
-- `apps/web/src/plugins/dynamic-loader.ts` for the initial bundled importer
+- `apps/web/src/plugins/dynamic-loader.ts` for federation and the retained bundled fallback
 - `apps/web/package.json` and workspace configuration
 
 ### macOS companion
@@ -767,10 +794,14 @@ Continue only if the system is saving attention rather than moving timer work in
 
 ## Open Decisions
 
-Resolve each item before its smallest relevant implementation phase:
+The implementation settles several earlier mechanism questions. Keep them distinct from the remaining validation and distribution decisions.
 
-- Local inference runtime and model
-- Browser metadata mechanism and permission UX
-- Exact issue-candidate lookback window
-- How final-total adjustments are distributed across drafts
-- How companion updates are signed and delivered
+| Item | Current decision or remaining work |
+| --- | --- |
+| Local inference transport | Configurable loopback-only chat-completions client exists; choose/benchmark the runtime and model on representative local work |
+| Browser metadata | Companion adapters and permission controls exist; verify collection and permission behavior on the intended installed macOS/browser versions |
+| Candidate policy | Requests are bounded to 100; evaluate relevance and any lookback changes against the labeled alpha data |
+| Final-total adjustment | Implemented minimum-one-minute proportional allocation with deterministic remainder handling; validate review usability during the trial |
+| Companion distribution | Signing, update delivery, and exact distributed artifact acceptance remain open release work |
+
+The ten-working-day trial and comparisons after days two, five, and ten remain unchecked. Synthetic fixtures and earlier browser checks do not satisfy them.

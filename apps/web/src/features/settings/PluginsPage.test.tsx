@@ -5,6 +5,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const mutate = vi.fn();
 const mutateAsync = vi.fn();
+const installedQuery = vi.hoisted(() => ({
+  settings: {} as Record<string, unknown> | null | undefined,
+}));
 
 vi.mock('@/api/hooks-phase4', () => ({
   useAvailablePlugins: () => ({
@@ -35,7 +38,7 @@ vi.mock('@/api/hooks-phase4', () => ({
         pluginId: '@weaver/plugin-checklist',
         version: '1.0.0',
         enabled: true,
-        settings: {},
+        settings: installedQuery.settings,
         installedAt: '2026-08-28T00:00:00.000Z',
       },
     ],
@@ -69,9 +72,21 @@ import { formatSettingsSummary, PluginsPage } from './PluginsPage';
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  installedQuery.settings = {};
 });
 
 describe('PluginsPage settings', () => {
+  it.each([undefined, null])('renders when the plugin list omits settings (%s)', (settings) => {
+    installedQuery.settings = settings;
+    render(<PluginsPage />);
+
+    expect(screen.getByRole('heading', { name: 'Plugins' })).toBeInTheDocument();
+    expect(screen.getByText('Open Settings to view configuration.')).toBeInTheDocument();
+    expect(screen.queryByText('Default settings')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    expect(screen.getByRole('switch', { name: 'Track activity' })).toBeChecked();
+  });
+
   it('shows a settings action, default summary, and generated form for an installed plugin', () => {
     render(<PluginsPage />);
 

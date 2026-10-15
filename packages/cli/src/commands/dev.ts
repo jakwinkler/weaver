@@ -26,7 +26,8 @@ export async function devPlugin(pluginDirectory: string, options: DevOptions): P
   }
 
   const args = ['--config', configPath, '--host', options.host];
-  if (options.port) args.push('--port', options.port);
+  // WEAVER_PLUGIN_DEV_SERVERS points at a fixed address, so a busy port must fail instead of moving.
+  if (options.port) args.push('--port', options.port, '--strictPort');
   await runVite(args, {
     cwd: pluginRoot,
     env: { WEAVER_URL: options.weaverUrl },

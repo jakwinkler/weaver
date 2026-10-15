@@ -2,7 +2,11 @@ export { apiClient, API_BASE_URL } from './client';
 export {
   useLogin,
   useRegister,
+  useInvitation,
+  useAcceptInvitation,
   useCurrentUser,
+  useOrganizations,
+  useSwitchOrganization,
   useProjects,
   useProject,
   useCreateProject,
@@ -21,6 +25,7 @@ export {
 export {
   useWorkflows,
   useWorkflow,
+  useProjectWorkflow,
   useCreateWorkflow,
   useWorkflowTransitions,
   useBoards,
@@ -92,6 +97,7 @@ export {
   useAuditLog,
   downloadAuditLog,
   useUsers,
+  useCreateInvitation,
   useUpdateUserRole,
   useCreateIssueType,
   useUpdateIssueType,
