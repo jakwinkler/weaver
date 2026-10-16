@@ -1,0 +1,216 @@
+import { z } from 'zod';
+
+const semverSchema = z
+  .string()
+  .regex(
+    /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/,
+    'must be a semantic version',
+  );
+
+const nonEmptyString = z.string().min(1);
+const permissionList = z.array(nonEmptyString);
+
+const settingDefinitionSchema = z
+  .object({
+    type: z.enum(['string', 'number', 'boolean', 'select', 'textarea']),
+    label: z.string().optional(),
+    required: z.boolean().optional(),
+    default: z.unknown().optional(),
+    description: z.string().optional(),
+    options: z.array(z.string()).optional(),
+  })
+  .strict();
+
+/**
+ * Strict schema for `weaver-plugin.json`.
+ *
+ * The API loads manifests with this schema and the plugin CLI (`weaver validate`) reports its
+ * issues, so a manifest is accepted by one exactly when it is accepted by the other. Keep the
+ * SDK `PluginManifest` type in step with it; the API spec fails to compile when they drift.
+ */
+export const pluginManifestSchema = z
+  .object({
+    id: z
+      .string()
+      .regex(
+        /^(@[a-z0-9-]+\/)?[a-z0-9][a-z0-9-]*$/,
+        'must be a lowercase package identifier such as @weaver/plugin-example',
+      ),
+    name: nonEmptyString,
+    version: semverSchema,
+    description: z.string().optional(),
+    author: z.string().optional(),
+    icon: z.string().optional(),
+    type: z.enum(['app', 'widget', 'feature', 'integration']).optional(),
+    scope: z.enum(['tenant', 'project']).optional(),
+    enabledByDefault: z.boolean().optional(),
+    uninstall: z
+      .object({
+        deletesPrivateData: z.boolean(),
+        confirmationMessage: nonEmptyString.optional(),
+      })
+      .strict()
+      .optional(),
+    entrypoints: z
+      .object({
+        server: nonEmptyString.optional(),
+        client: nonEmptyString.optional(),
+      })
+      .strict(),
+    permissions: permissionList,
+    requires: z
+      .object({
+        coreCapabilities: z.array(z.enum(['issue-candidates', 'time-entries'])).optional(),
+        plugins: z
+          .array(
+            z
+              .object({
+                id: nonEmptyString,
+                minimumVersion: semverSchema.optional(),
+              })
+              .strict(),
+          )
+          .optional(),
+      })
+      .strict()
+      .optional(),
+    companion: z
+      .object({
+        platform: z.enum(['macos', 'windows', 'linux']),
+        downloadArtifact: nonEmptyString,
+        minimumVersion: semverSchema,
+        pairingRoute: z.string().startsWith('/'),
+        authenticator: nonEmptyString.optional(),
+      })
+      .strict()
+      .optional(),
+    declaredPermissions: z
+      .array(
+        z
+          .object({
+            key: nonEmptyString,
+            label: nonEmptyString,
+            description: z.string().optional(),
+          })
+          .strict(),
+      )
+      .optional(),
+    settings: z
+      .object({
+        schema: z.record(settingDefinitionSchema).optional(),
+      })
+      .strict()
+      .optional(),
+    events: z
+      .object({
+        subscribes: z.array(nonEmptyString).optional(),
+        emits: z.array(nonEmptyString).optional(),
+      })
+      .strict()
+      .optional(),
+    ui: z
+      .object({
+        slots: z
+          .array(
+            z
+              .object({
+                slot: nonEmptyString,
+                component: nonEmptyString,
+                requiredPermissions: permissionList.optional(),
+              })
+              .strict(),
+          )
+          .optional(),
+        navigation: z
+          .array(
+            z
+              .object({
+                label: nonEmptyString,
+                icon: nonEmptyString,
+                path: z.string().startsWith('/'),
+                requiredPermissions: permissionList.optional(),
+              })
+              .strict(),
+          )
+          .optional(),
+        pages: z
+          .array(
+            z
+              .object({
+                path: z.string().startsWith('/'),
+                component: nonEmptyString,
+                requiredPermissions: permissionList.optional(),
+              })
+              .strict(),
+          )
+          .optional(),
+        projectViews: z
+          .array(
+            z
+              .object({
+                label: nonEmptyString,
+                icon: nonEmptyString,
+                viewPath: nonEmptyString,
+                requiredPermissions: permissionList.optional(),
+              })
+              .strict(),
+          )
+          .optional(),
+      })
+      .strict()
+      .optional(),
+    routes: z
+      .array(
+        z
+          .object({
+            method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']),
+            path: z.string().startsWith('/'),
+            handler: nonEmptyString,
+            auth: z.enum(['interactive', 'pairing', 'device']).optional(),
+            requiredPermissions: permissionList.optional(),
+            requiredDeviceScopes: permissionList.optional(),
+            public: z.boolean().optional(),
+          })
+          .strict(),
+      )
+      .optional(),
+    migrations: z
+      .array(
+        z.union([
+          nonEmptyString,
+          z
+            .object({
+              version: semverSchema,
+              path: nonEmptyString.optional(),
+              sql: nonEmptyString.optional(),
+            })
+            .strict()
+            .refine((migration) => Boolean(migration.path || migration.sql), {
+              message: 'A versioned migration requires a path or sql file',
+            }),
+        ]),
+      )
+      .optional(),
+  })
+  .strict()
+  .superRefine((manifest, context) => {
+    const deviceRoutes = manifest.routes?.filter((route) => route.auth === 'device') ?? [];
+    if (deviceRoutes.length > 0 && !manifest.companion?.authenticator) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'device routes require a companion authenticator',
+        path: ['companion', 'authenticator'],
+      });
+    }
+    for (const [index, route] of (manifest.routes ?? []).entries()) {
+      if (route.auth === 'device' && !route.requiredDeviceScopes?.length) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'device routes require at least one device scope',
+          path: ['routes', index, 'requiredDeviceScopes'],
+        });
+      }
+    }
+  });
+
+export type PluginManifestInput = z.input<typeof pluginManifestSchema>;
