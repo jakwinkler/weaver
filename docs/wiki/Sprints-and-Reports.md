@@ -34,7 +34,7 @@ Points measure your team's estimates. They are not hours and should not be used 
 
 ## Current limits to know
 
-The pilot release corrected date-only rendering on the main sprint board. The backlog's sprint container still parses a date-only value as UTC and can display it one day earlier in browsers west of UTC. Confirm important dates against the entered/stored values there until that display is corrected.
+Sprint start and end dates show the stored calendar day on the sprint board and in the backlog, in every time zone.
 
 Capacity is accepted when creating a sprint, but the current PATCH controller does not expose capacity changes. Do not expect an API capacity edit to persist. Report history is reconstructed from the recorded scope and activity, so imported or incomplete historical data may not tell the same story as a sprint run entirely in Weaver.
 

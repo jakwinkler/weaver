@@ -13,9 +13,9 @@ An organization is the workspace you sign into. Projects live inside it. A perso
 | Organization viewer | Read-oriented access according to configured permissions and project access |
 | Project viewer | Read access to that project; cannot create issues or comments there |
 
-Default roles are a starting point. Administrators can configure permissions, so ask your administrator when a teammate's controls differ from yours. Joining the organization alone does not give an ordinary member access to every private project.
+Default roles are a starting point. Changing an issue's status needs **issues.transition**, and setting or changing its assignee needs **issues.assign**, in addition to **issues.update**. The default member role has all three. Administrators can configure permissions, so ask your administrator when a teammate's controls differ from yours. Joining the organization alone does not give an ordinary member access to every private project.
 
-For a client who should create issues and reply, an administrator creates a **member** invitation in **Administration → Users** and privately shares its link. After the client joins, add them to the intended private project as a project **member** in **Project Settings → Members**. A viewer invitation or project viewer assignment gives read access instead. [The invited-client guide](https://github.com/jakwinkler/weaver/wiki/For-Invited-Clients) covers the client's side of the process.
+For a client who should create issues and reply, an administrator creates a **member** invitation in **Administration → Users** and privately shares its link. After the client joins, add them to the intended private project as a project **member** in **Project Settings → Members**. A viewer invitation or project viewer assignment gives read access instead. The same page lists pending invitations with a **Revoke** button. Inviting the same address again replaces the earlier link. Anyone who has a link can join as that person until it is used, revoked, or expires, so send it privately. [The invited-client guide](https://github.com/jakwinkler/weaver/wiki/For-Invited-Clients) covers the client's side of the process.
 
 ## Configure a project
 

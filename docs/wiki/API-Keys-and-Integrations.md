@@ -26,7 +26,7 @@ The API Keys list shows names, scopes, creation, last use, and expiration. Revok
 
 ## Send events to another system
 
-Administrators can configure **Webhooks** with the destination and events they want to receive. An automation can also send a webhook as an action. These are outbound calls, so review the receiver, data, authentication, and retry behavior before enabling them.
+Administrators can configure **Webhooks** with the destination and events they want to receive. An automation can also send a webhook as an action. These are outbound calls, so review the receiver, data, authentication, and retry behavior before enabling them. Each delivery carries an `X-Webhook-Delivery` id that stays the same across retries, so a receiver can ignore duplicates. The webhook's delivery list records every attempt, and Weaver switches a webhook off after the last retry of a delivery fails.
 
 Install integration plugins through [Plugins](https://github.com/jakwinkler/weaver/wiki/Plugins) when that is the intended connection. A plugin's presence in the catalog does not prove its external service is configured or working.
 

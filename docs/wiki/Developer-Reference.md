@@ -35,7 +35,7 @@ Routes below are relative to `/api/v1`. This is an orientation map, not an exhau
 | Identity | `/auth/register`, `/auth/login`, `/auth/me`, `/auth/refresh`, `/auth/logout`, `/auth/invitations/:token`, `/auth/organizations`, `/auth/switch-organization`, `/auth/providers` | [Getting Started](https://github.com/jakwinkler/weaver/wiki/Getting-Started), [OAuth Sign In](https://github.com/jakwinkler/weaver/wiki/OAuth-Sign-In) |
 | Password reset | `/auth/password-reset/request` (always 202), `/auth/password-reset/confirm` | [Getting Started](https://github.com/jakwinkler/weaver/wiki/Getting-Started) |
 | Projects | `/projects`, `/projects/:key`, `/projects/:key/workflow`, member/type/plugin subroutes | [Projects and Access](https://github.com/jakwinkler/weaver/wiki/Projects-and-Access) |
-| Invitations | `/users/invitations` (administrator creation) | [Projects and Access](https://github.com/jakwinkler/weaver/wiki/Projects-and-Access) |
+| Invitations | `/users/invitations` (administrator create, list pending, and `DELETE /users/invitations/:id` to revoke) | [Projects and Access](https://github.com/jakwinkler/weaver/wiki/Projects-and-Access) |
 | Issues | `/projects/:projectKey/issues`, `/issues/:issueKey`, `/issues/bulk`, `/issues/reorder` | [Working with Issues](https://github.com/jakwinkler/weaver/wiki/Working-with-Issues) |
 | Planning | `/projects/:projectKey/backlog`, `/projects/:projectKey/epics` | [Roadmaps and Epics](https://github.com/jakwinkler/weaver/wiki/Roadmaps-and-Epics) |
 | Boards | `/boards?projectId=...`, `/boards/:id`, `/boards/:id/issues` | [Boards and Views](https://github.com/jakwinkler/weaver/wiki/Boards-and-Views) |

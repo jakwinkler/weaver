@@ -35,7 +35,7 @@ Everything in Weaver starts with an issue: one piece of work, such as a task, a 
 
 ### Work with clients and the public
 
-- Invite people with a private link. An administrator enters the person's email address and a role (member or viewer), then sends them the link Weaver creates. It works once, only for that address, and expires after seven days.
+- Invite people with a private link. An administrator enters the person's email address and a role (member or viewer), then sends them the link Weaver creates. It works once, only for that address, and expires after seven days. The Users page lists pending invitations and can revoke one, and inviting the same address again replaces the old link.
 - Clients with the member or viewer role see a private project only after you add them to it, and they see only the people who share a project with them.
 - Collect requests with intake forms. Share a link, embed the form on your website, or print its QR code. Each submission becomes an issue, and a hidden spam trap, optional reCAPTCHA, and a rate limit keep junk out.
 - Make a project public to share a read-only view of its issues and board.
@@ -66,11 +66,11 @@ Everything in Weaver starts with an issue: one piece of work, such as a task, a 
 - Import projects from Jira Cloud or Jira Server/Data Center, including issues, comments, attachments, sprints, statuses, and issue types.
 - Import and export a project's issues as CSV or JSON.
 - Create personal API keys with read, write, or admin scope for scripts and other systems.
-- Send webhooks to other systems when issues, comments, or sprints change.
+- Send webhooks to other systems when issues, comments, or sprints change. Each webhook keeps a delivery log, and every delivery carries an id that stays the same across retries so the receiver can ignore duplicates.
 
 ### Stay in control
 
-- Organization roles (owner, admin, member, viewer, and custom roles you define) decide what people can do. Project roles (lead, member, viewer) decide what each person can do inside a project.
+- Organization roles (owner, admin, member, viewer, and custom roles you define) decide what people can do. Project roles (lead, member, viewer) decide what each person can do inside a project. Changing an issue's status and changing its assignee are separate permissions, so a custom role can allow editing without either.
 - Administrators draw the workflow on a visual canvas: the statuses, and which moves between them are allowed.
 - An audit log records changes to projects, workflows, roles, plugins, settings, and more, with before and after values, filters, and CSV export.
 - Sign in with email and password, Google, or GitHub. The first time you continue with Google or GitHub, Weaver creates your account and asks you to name your organization. An organization can also set up SAML or OIDC single sign-on.
@@ -232,7 +232,7 @@ CI runs on every push and pull request to `main`: lint and typecheck, unit tests
 - **Plan the database.** Production turns off automatic schema changes. `schema-plan.cjs` writes a read-only plan for you to review, and `apply-schema-plan.cjs` applies only that reviewed plan. Installations without schema synchronization also need these SQL files, in order: [`20261014_organization_invitations.sql`](packages/db/migrations/20261014_organization_invitations.sql) before invitations work, then [`20261015_organization_invitations_alignment.sql`](packages/db/migrations/20261015_organization_invitations_alignment.sql); [`20261015_password_reset_tokens.sql`](packages/db/migrations/20261015_password_reset_tokens.sql) before password reset works; and [`20261015_session_version.sql`](packages/db/migrations/20261015_session_version.sql) before deploying this API version, because every signed-in request reads the column it adds. Apply the invitations alignment file before you generate a schema plan on every installation that has the invitations table. Without it, the plan drops and re-adds `created_at` and loses every invitation's creation time.
 - **List the plugins you trust** in `WEAVER_TRUSTED_PLUGINS`. Production loads none by default, which also hides the board, backlog, sprint, Gantt, and calendar views.
 - **Decide how organizations get created.** Production refuses to create new organizations unless `ALLOW_TENANT_SCHEMA_BOOTSTRAP=true`. Read the [September rollout notes](docs/security/review-2026-09-23-rollout.md) before turning it on.
-- **Configure mail.** Set the `SMTP_*` values in your env file; the template passes them to the API and the worker. Without them, "Forgot password?" sends nothing. Reset email never uses an organization's own server from **System Settings → Email**, because that organization's owner could read a member's reset link. If a proxy in front of Weaver logs request paths, keep `/reset-password/` out of its logs; the bundled nginx already does.
+- **Configure mail.** Set the `SMTP_*` values in your env file; the template passes them to the API and the worker. Without them, "Forgot password?" sends nothing. Reset email never uses an organization's own server from **System Settings → Email**, because that organization's owner could read a member's reset link. If a proxy in front of Weaver logs request paths, keep `/reset-password/`, `/invite/`, and `/api/v1/auth/invitations/` out of its logs; the bundled nginx already does.
 - **Keep `IMPORT_CREDENTIAL_KEY` identical** for the API and worker if you use Jira import.
 - **Back up together:** PostgreSQL, the uploads volume, your protected env file, and the image references. Rehearse a restore.
 
@@ -240,7 +240,7 @@ After a deploy, check more than the health endpoint. `GET /api/v1/health` return
 
 Other deployment material gets less attention:
 
-- `docker/docker-compose.yml` and `docker/Dockerfile.*` are an older all-in-one stack. CI builds these images, but no guide covers the Compose file. `docker/Dockerfile.api` builds the plugin CLI first, so plugins generated with it in `plugins/` build into the image.
+- `docker/docker-compose.yml` and `docker/Dockerfile.*` are an older all-in-one stack. CI builds these images, but no guide covers the Compose file. It passes `WEAVER_TRUSTED_PLUGINS` through, so set it there too. `docker/Dockerfile.api` builds the plugin CLI first, so plugins generated with it in `plugins/` build into the image.
 - `k8s/base`, `k8s/overlays`, and `k8s/helm/weaver` are Kustomize and Helm starting points with placeholder hosts. The Helm chart needs external PostgreSQL and Redis and a ReadWriteMany volume. socket.io has no Redis adapter yet, so multiple API replicas don't share live events.
 
 ### Plugins
@@ -303,6 +303,7 @@ spikes/                        Early feasibility experiments
 
 These are known gaps in this release:
 
+- Invitation links are bearer links: whoever has one can accept it until it is used, revoked, replaced, or expires. Send them privately.
 - No email verification, and registration says when an email address already has an account. Password reset doesn't reveal that.
 - No change-password screen for a signed-in user. Use "Forgot password?" on the sign-in page.
 - A password reset doesn't revoke API keys. Revoke any key you don't recognize in the API Keys list.
@@ -321,7 +322,7 @@ These are known gaps in this release:
 
 - [`docs/roadmap`](docs/roadmap/README.md) holds planning history. Its checkboxes and "current state" notes are not release status.
 - [Feature coverage](docs/wiki/Feature-Coverage.md) maps each of the 29 roadmap items to a guide and records what was checked.
-- `PROGRESS.md`, `plan.md`, `SCAN.md`, and the `REVIEW-*-RESOLUTION.md` files are historical records.
+- `PROGRESS.md`, `plan.md`, and `SCAN.md` are historical records. The `REVIEW-*-RESOLUTION.md` files record what each security review found and how it was resolved or deferred, most recently [October 15](REVIEW-2026-10-15-RESOLUTION.md).
 
 ### Security
 
@@ -330,6 +331,7 @@ These are known gaps in this release:
 - Password reset links are single use, stored only as hashes, and expire after 30 minutes. The request form answers the same way whether or not an account exists. A reset signs the account out everywhere at once, including access tokens already issued and open live connections.
 - Profile, notification preference, unsubscribe, and sign-in saves write only the columns they change, so a request that started earlier can't undo a newer change such as a password reset.
 - Outbound requests from webhooks, mail settings, OIDC discovery, and plugins block private and reserved addresses.
+- The bundled nginx keeps password reset and invitation links out of its access log and Referer headers, and invitation endpoints use the same per-IP limits as sign-in.
 - Requests are rate limited through Redis, and the API sends a strict Content Security Policy.
 - CI scans the full Git history for secrets. See [repository hygiene](docs/security/repository-hygiene.md), the [project directory privacy policy](docs/security/project-directory-privacy.md), and the [Automatic Time threat model](docs/security/automatic-time-threat-model.md).
 

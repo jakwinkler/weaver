@@ -68,7 +68,7 @@ The Compose template and `docker/docker-compose.yml` pass `SMTP_*` to both conta
 
 The worker refuses an SMTP host on a private or loopback address. If your relay runs on a private network, set `SMTP_ALLOW_PRIVATE_HOST=true`. That applies only to the installation's server, never to an organization's.
 
-Reset links point at `WEB_APP_URL`, or `WEB_URL` when it is unset. The bundled nginx keeps `/reset-password/` paths out of its access log and sends `Referrer-Policy: no-referrer` for them. If a proxy in front of Weaver logs request paths, exclude `/reset-password/` there too.
+Reset links point at `WEB_APP_URL`, or `WEB_URL` when it is unset. The bundled nginx keeps `/reset-password/`, `/invite/`, and `/api/v1/auth/invitations/` paths out of its access log and sends `Referrer-Policy: no-referrer` for them. If a proxy in front of Weaver logs request paths, exclude those paths there too.
 
 After a deployment, verify health, authentication, project access, plugin rendering, file upload/download, and the background functions you use. Retain the previous image/configuration and a tested database rollback or forward-repair plan.
 

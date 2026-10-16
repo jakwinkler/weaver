@@ -4,7 +4,7 @@ Start with the exact page, action, and error. Confirm the organization and proje
 
 | Symptom | First checks |
 | --- | --- |
-| An invitation link says it is invalid, expired, or already used | Ask the sender for a new private link; invitations expire after seven days and work once |
+| An invitation link says it is invalid, expired, or already used | Ask the sender for a new private link; invitations expire after seven days, work once, and stop working when revoked or replaced by a newer invitation |
 | An existing external-sign-in account cannot accept an invitation | The current form requires a Weaver password; contact the team before trying another link |
 | You forgot your password | Choose **Forgot password?** on the sign-in page. The emailed link works once and expires after 30 minutes |
 | Every browser and device asks you to sign in at the same time | The account's password was reset, which ends every session at once, and Weaver emailed the account about it. If you didn't reset it, reset the password again now |
@@ -17,6 +17,7 @@ Start with the exact page, action, and error. Confirm the organization and proje
 | A client can read issues but cannot create or comment | Check both the organization role and project role; viewers cannot write |
 | A project or issue is missing | Correct organization, private-project membership, filters, and pagination |
 | Edit or administration controls are absent | Role permissions and project access |
+| A custom role can edit issues but gets 403 changing status or assignee | Grant **issues.transition** or **issues.assign**; **issues.update** alone no longer covers them |
 | Board, sprint, calendar, or Gantt view is missing | Tenant plugin installation/enablement and project feature settings |
 | A card returns to its previous column | Allowed workflow transition and save error |
 | Manual row dragging is unavailable | Clear explicit column sorting; check edit permission |
@@ -37,7 +38,7 @@ Start with the exact page, action, and error. Confirm the organization and proje
 
 ## Known limitations observed during documentation
 
-The local source walkthrough found that some board/backlog assignee labels show an ID fallback. The pilot release corrected the main sprint board's date-only display, but the backlog's sprint container can still show the previous day west of UTC. The [sprint guide](https://github.com/jakwinkler/weaver/wiki/Sprints-and-Reports) and [board guide](https://github.com/jakwinkler/weaver/wiki/Boards-and-Views) explain the implications.
+The local source walkthrough found that some board/backlog assignee labels show an ID fallback. Sprint dates on the sprint board and in the backlog now show the stored calendar day in every time zone. The [sprint guide](https://github.com/jakwinkler/weaver/wiki/Sprints-and-Reports) and [board guide](https://github.com/jakwinkler/weaver/wiki/Boards-and-Views) explain the implications.
 
 The September walkthrough found the **Plugins** management page blank after installing the example plugin set. PR #21 fixed the cause in [`5d20a39`](https://github.com/jakwinkler/weaver/commit/5d20a39c472c0885ba5658d59ef26e7543857ba5): the page expected settings that the installed-plugin list leaves out. If the page is still blank, confirm the installation runs a revision that includes that commit, and preserve browser errors and the installed plugin list for diagnosis. Do not uninstall data-bearing plugins just to make the page render.
 

@@ -67,6 +67,6 @@ Screenshots capture a point in the walkthrough. Later form submissions and autom
 
 ## Limits that matter before relying on a feature
 
-Read [Troubleshooting](https://github.com/jakwinkler/weaver/wiki/Troubleshooting) for the Plugins page problem fixed in PR #21, the remaining backlog date display issue, and assignee labels. Read [Self Hosting](https://github.com/jakwinkler/weaver/wiki/Self-Hosting) before treating a successful local page load as proof of an operational deployment.
+Read [Troubleshooting](https://github.com/jakwinkler/weaver/wiki/Troubleshooting) for the Plugins page problem fixed in PR #21, the backlog date display fixed in the October 15 review work, and assignee labels. Read [Self Hosting](https://github.com/jakwinkler/weaver/wiki/Self-Hosting) before treating a successful local page load as proof of an operational deployment.
 
 The roadmap remains useful planning history. Its release labels, proposed thresholds, and checked or unchecked boxes are not the verification status of this documentation or of your installation.
