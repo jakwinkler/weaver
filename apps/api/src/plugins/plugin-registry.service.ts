@@ -79,7 +79,11 @@ export class PluginRegistryService implements OnApplicationBootstrap {
 
       try {
         await tenantStorage.run(
-          { tenantId: installed.tenantId, schemaName: installed.tenant.schemaName },
+          {
+            tenantId: installed.tenantId,
+            schemaName: installed.tenant.schemaName,
+            slug: installed.tenant.slug,
+          },
           () => this.upgrade(installed.pluginId),
         );
         this.recordUpgrade(installed.pluginId, fromVersion, manifest.version, true, null);

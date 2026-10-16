@@ -4,7 +4,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import type { PluginContext, PluginCoreCapability, PluginIssueCandidate, PluginIssueCandidateFilters, RequestOptions } from '@weaver/sdk';
 import { InstalledPluginEntity } from '@weaver/db';
 import type { EntityManager, Repository } from 'typeorm';
-import { ProjectAccessService, TenantConnectionProvider, requireTenantContext } from '../core/tenant';
+import { ProjectAccessService, TenantConnectionProvider, TenantService, requireTenantContext } from '../core/tenant';
 import { EventDispatcherService } from '../modules/events';
 import { TimeTrackingService } from '../modules/time-tracking/time-tracking.service';
 import { PluginLoaderService } from './plugin-loader.service';
@@ -23,6 +23,7 @@ export class PluginContextFactory {
     private readonly timeTracking: TimeTrackingService,
     private readonly projectAccess: ProjectAccessService,
     private readonly inboundWebhooks: InboundWebhookService,
+    private readonly tenants: TenantService,
   ) {}
 
   async create(
@@ -35,6 +36,10 @@ export class PluginContextFactory {
     },
   ): Promise<PluginContext> {
     const tenant = requireTenantContext();
+    // Authenticated requests, public and companion plugin routes, and startup upgrades
+    // already hold the tenant record and put its slug in the context. Other entry
+    // points (scheduled work, socket handlers) carry only the id, so look it up.
+    const tenantSlug = tenant.slug ?? (await this.findTenantSlug(tenant.tenantId));
     const runInSchema = async <T>(fn: (manager: EntityManager) => Promise<T>): Promise<T> => {
       if (options?.manager) {
         await options.manager.query(
@@ -295,11 +300,19 @@ export class PluginContextFactory {
       },
       tenant: {
         id: tenant.tenantId,
-        slug: '',
+        slug: tenantSlug,
         schemaName: tenant.schemaName,
       },
       user,
     };
+  }
+
+  private async findTenantSlug(tenantId: string): Promise<string> {
+    const record = await this.tenants.findById(tenantId);
+    if (!record) {
+      throw new Error(`Tenant not found: ${tenantId}`);
+    }
+    return record.slug;
   }
 
   private async assertCapability(

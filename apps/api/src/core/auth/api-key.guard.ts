@@ -69,6 +69,7 @@ export class ApiKeyGuard implements CanActivate {
       tenantStorage.enterWith({
         tenantId: apiKey.tenantId,
         schemaName: apiKey.tenant.schemaName,
+        slug: apiKey.tenant.slug,
       });
     }
 
