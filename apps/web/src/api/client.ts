@@ -50,6 +50,8 @@ apiClient.interceptors.response.use(
     }
 
     if (isRefreshing) {
+      // The refresh in flight covers this request, so a second 401 after it must not start another.
+      originalRequest._retry = true;
       return new Promise((resolve, reject) => {
         refreshQueue.push({
           resolve: () => {
