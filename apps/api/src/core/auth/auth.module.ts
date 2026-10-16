@@ -27,6 +27,7 @@ import { SamlStrategy } from './saml.strategy';
 import { SamlAuthGuard } from './saml.guard';
 import { OidcStrategy } from './oidc.strategy';
 import { PasswordResetService } from './password-reset.service';
+import { PermissionService } from './permission.service';
 
 @Global()
 @Module({
@@ -55,6 +56,7 @@ import { PasswordResetService } from './password-reset.service';
   providers: [
     AuthService,
     PasswordResetService,
+    PermissionService,
     JwtStrategy,
     ApiKeyRateLimitGuard,
     ApiKeyGuard,
@@ -77,6 +79,7 @@ import { PasswordResetService } from './password-reset.service';
     JwtOnlyAuthGuard,
     JwtAuthGuard,
     JwtStrategy,
+    PermissionService,
   ],
 })
 export class AuthModule {}
