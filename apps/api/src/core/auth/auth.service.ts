@@ -4,11 +4,12 @@ import {
   ConflictException,
   ForbiddenException,
   BadRequestException,
+  NotFoundException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, Raw, Repository } from 'typeorm';
+import { EntityManager, IsNull, MoreThan, Raw, Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { createHash, randomBytes, randomUUID } from 'crypto';
 import {
@@ -61,6 +62,7 @@ const ACCESS_TOKEN_EXPIRY = '15m';
 const REFRESH_TOKEN_EXPIRY = '7d';
 const REFRESH_TOKEN_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
 const INVITATION_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
+const INVITATION_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
 type SanitizedUser = Omit<UserEntity, 'passwordHash' | 'sessionVersion'>;
 
@@ -229,13 +231,28 @@ export class AuthService {
       throw new ConflictException('User is already a member of this organization');
     }
     const token = randomBytes(32).toString('hex');
-    const invitation = await this.invitationRepo.save(this.invitationRepo.create({
-      tenantId,
-      email: dto.email,
-      role: dto.role,
-      tokenHash: this.hashToken(token),
-      expiresAt: new Date(Date.now() + INVITATION_LIFETIME_MS),
-    }));
+    const invitation = await this.invitationRepo.manager.transaction(async (manager) => {
+      // Serialize invitations for one person so only the newest link survives.
+      await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+        `organization-invitation:${tenantId}:${dto.email}`,
+      ]);
+      const repo = manager.getRepository(OrganizationInvitationEntity);
+      await repo.delete({ tenantId, email: dto.email, acceptedAt: IsNull() });
+      // Keep used and lapsed invitations for 30 days, then drop them.
+      await repo.createQueryBuilder()
+        .delete()
+        .where('expires_at < :cutoff OR accepted_at < :cutoff', {
+          cutoff: new Date(Date.now() - INVITATION_RETENTION_MS),
+        })
+        .execute();
+      return repo.save(repo.create({
+        tenantId,
+        email: dto.email,
+        role: dto.role,
+        tokenHash: this.hashToken(token),
+        expiresAt: new Date(Date.now() + INVITATION_LIFETIME_MS),
+      }));
+    });
     return {
       id: invitation.id,
       email: invitation.email,
@@ -243,6 +260,33 @@ export class AuthService {
       expiresAt: invitation.expiresAt,
       token,
     };
+  }
+
+  /** Pending, unexpired invitations for one organization. Never includes the token or its hash. */
+  async listInvitations(tenantId: string) {
+    const invitations = await this.invitationRepo.find({
+      where: { tenantId, acceptedAt: IsNull(), expiresAt: MoreThan(new Date()) },
+      order: { createdAt: 'DESC' },
+    });
+    return invitations.map(({ id, email, role, expiresAt, createdAt }) => ({
+      id,
+      email,
+      role,
+      expiresAt,
+      createdAt,
+    }));
+  }
+
+  /** Deletes a pending invitation so its link behaves like an unknown one. */
+  async revokeInvitation(tenantId: string, invitationId: string): Promise<void> {
+    const result = await this.invitationRepo.delete({
+      id: invitationId,
+      tenantId,
+      acceptedAt: IsNull(),
+    });
+    if (!result.affected) {
+      throw new NotFoundException('Invitation not found');
+    }
   }
 
   async getInvitation(token: string) {
