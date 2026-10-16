@@ -246,7 +246,11 @@ export async function createPlugin(options: CreatePluginOptions): Promise<string
 
   const templatesRoot = resolve(__dirname, '../../templates/plugin');
   const renderedFiles = templateFiles(templatesRoot)
-    .filter((file) => options.includeServer || !file.startsWith('src/server/'))
+    .filter(
+      (file) =>
+        options.includeServer ||
+        (!file.startsWith('src/server/') && file !== 'tsconfig.server.json'),
+    )
     .filter(
       (file) =>
         options.includeClient || (!file.startsWith('src/client/') && file !== 'vite.config.ts'),
@@ -387,11 +391,8 @@ export function registerCreatePluginCommand(program: Command): void {
       process.stdout.write(`Created ${options.displayName} in ${target}\n`);
       const warning = pluginLocationWarning(target);
       if (warning) process.stderr.write(`Warning: ${warning}\n`);
-      const steps = options.includeClient
-        ? 'pnpm install, pnpm validate, and pnpm build'
-        : 'pnpm install and pnpm validate';
       process.stdout.write(
-        `Next: cd ${relative(process.cwd(), target) || '.'}, then run ${steps}\n`,
+        `Next: cd ${relative(process.cwd(), target) || '.'}, then run pnpm install, pnpm validate, and pnpm build\n`,
       );
     });
 }

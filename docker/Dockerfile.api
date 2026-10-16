@@ -11,6 +11,8 @@ COPY packages/shared/package.json ./packages/shared/
 COPY packages/db/package.json ./packages/db/
 COPY packages/jira-import/package.json ./packages/jira-import/
 COPY packages/sdk/package.json ./packages/sdk/
+COPY packages/cli/package.json ./packages/cli/
+COPY packages/cli/bin ./packages/cli/bin
 COPY apps/api/package.json ./apps/api/
 COPY plugins ./plugins
 RUN pnpm install --frozen-lockfile
@@ -24,6 +26,7 @@ RUN pnpm --filter @weaver/server-common build && \
     pnpm --filter @weaver/sdk build && \
     pnpm --filter @weaver/db build && \
     pnpm --filter @weaver/jira-import build && \
+    pnpm --filter @weaver/cli build && \
     pnpm --filter './plugins/*' build && \
     pnpm --filter @weaver/api build
 
