@@ -4,6 +4,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { TenantMembershipEntity, UserEntity } from '@weaver/db';
 import {
   DEFAULT_NOTIFICATION_PREFERENCES,
+  type AccountEmailTemplateName,
   type EmailTemplateName,
   type NotificationPreferenceKey,
   type NotificationPreferences,
@@ -17,7 +18,9 @@ import { createTransport } from 'nodemailer';
 import type SMTPTransport from 'nodemailer/lib/smtp-transport';
 import type { Repository } from 'typeorm';
 import { TenantService } from '../../core/tenant/tenant.service';
+import { mergeNotificationPreferences } from '../users/notification-preferences';
 import { NotificationQueueService } from './notification-queue.service';
+import { AccountMailQueueService } from './account-mail-queue.service';
 
 export type SmtpSettings = NonNullable<TenantSettings['smtp']>;
 export type MailTransportFactory = (
@@ -34,6 +37,18 @@ const SUBJECTS: Record<EmailTemplateName, (context: Record<string, unknown>) => 
   'comment-added': (context) => `[${context.issueKey}] ${context.actorName} added a comment`,
   'form-submission': (context) => `[${context.issueKey}] New ${context.formName} submission`,
 };
+
+const ACCOUNT_SUBJECTS: Record<AccountEmailTemplateName, string> = {
+  'password-reset': 'Reset your Weaver password',
+  'password-changed': 'Your Weaver password was changed',
+  'password-reset-unavailable': 'Your Weaver account has no password',
+};
+
+interface AccountEmailRecipient {
+  id: string;
+  email: string;
+  displayName: string | null;
+}
 
 interface EnqueueNotificationOptions {
   tenantId: string;
@@ -55,6 +70,7 @@ export class MailService {
     @InjectRepository(TenantMembershipEntity)
     private readonly membershipRepo: Repository<TenantMembershipEntity>,
     private readonly notificationQueue: NotificationQueueService,
+    private readonly accountMailQueue: AccountMailQueueService,
     private readonly config: ConfigService,
     @Inject(MAIL_TRANSPORT_FACTORY)
     private readonly transportFactory: MailTransportFactory,
@@ -64,21 +80,61 @@ export class MailService {
     template: EmailTemplateName,
     context: Record<string, unknown>,
   ): { subject: string; html: string; text: string } {
-    const templateDirectory = path.join(__dirname, 'templates');
-    const htmlSource = fs.readFileSync(
-      path.join(templateDirectory, `${template}.html.hbs`),
-      'utf8',
-    );
-    const textSource = fs.readFileSync(
-      path.join(templateDirectory, `${template}.text.hbs`),
-      'utf8',
-    );
+    return { subject: SUBJECTS[template](context), ...this.renderBodies(template, context) };
+  }
 
-    return {
-      subject: SUBJECTS[template](context),
-      html: Handlebars.compile(htmlSource)(context),
-      text: Handlebars.compile(textSource, { noEscape: true })(context),
-    };
+  renderAccountTemplate(
+    template: AccountEmailTemplateName,
+    context: Record<string, unknown>,
+  ): { subject: string; html: string; text: string } {
+    return { subject: ACCOUNT_SUBJECTS[template], ...this.renderBodies(template, context) };
+  }
+
+  /** True when the installation's SMTP_* server is set. Account emails use nothing else. */
+  hasSystemSmtp(): boolean {
+    return this.getSystemSmtpSettings() !== null;
+  }
+
+  /**
+   * Queues an email about the account itself, such as a password reset. These never use an
+   * organization's SMTP server: its owner could read a member's reset link and take the account.
+   */
+  async enqueueAccountEmail(
+    recipient: AccountEmailRecipient,
+    template: AccountEmailTemplateName,
+    context: Record<string, unknown>,
+  ): Promise<boolean> {
+    if (!this.hasSystemSmtp()) {
+      this.logger.warn(
+        `SMTP_HOST and SMTP_FROM are not set, so the ${template} email for user ${recipient.id} was not sent`,
+      );
+      return false;
+    }
+
+    const rendered = this.renderAccountTemplate(template, {
+      ...context,
+      recipientName: recipient.displayName || recipient.email,
+    });
+    try {
+      await this.accountMailQueue.enqueue({
+        userId: recipient.id,
+        to: recipient.email,
+        template,
+        title: rendered.subject,
+        body: rendered.text,
+        html: rendered.html,
+      });
+      return true;
+    } catch (error) {
+      this.logger.warn(
+        `Failed to enqueue the ${template} email for user ${recipient.id}: ${this.errorMessage(error)}`,
+      );
+      return false;
+    }
+  }
+
+  webUrl(pathname: string): string {
+    return `${this.webAppUrl()}${pathname}`;
   }
 
   async enqueueNotification(options: EnqueueNotificationOptions): Promise<boolean> {
@@ -164,16 +220,9 @@ export class MailService {
     token: string,
   ): Promise<{ success: true; preference: NotificationPreferenceKey }> {
     const { userId, preference } = this.verifyUnsubscribeToken(token);
-    const user = await this.userRepo.findOneBy({ id: userId });
-    if (!user) {
+    if (!(await mergeNotificationPreferences(this.userRepo, userId, { [preference]: false }))) {
       throw new BadRequestException('Invalid unsubscribe token');
     }
-
-    user.notificationPreferences = {
-      ...this.withPreferenceDefaults(user.notificationPreferences),
-      [preference]: false,
-    };
-    await this.userRepo.save(user);
 
     return { success: true, preference };
   }
@@ -183,17 +232,21 @@ export class MailService {
     toEmail: string,
     smtpOverride?: SmtpSettings,
   ): Promise<void> {
-    const smtp =
-      smtpOverride ??
-      (await this.tenantService.getSettings(tenantId)).smtp ??
-      this.getSystemSmtpSettings();
+    const organizationSmtp =
+      smtpOverride ?? (await this.tenantService.getSettings(tenantId)).smtp;
+    const smtp = organizationSmtp ?? this.getSystemSmtpSettings();
     if (!smtp) {
       throw new BadRequestException('SMTP is not configured');
     }
 
-    const [destination] = await resolveSafeOutboundHost(smtp.host);
+    // Organization SMTP hosts are admin input and must resolve publicly. The installation's
+    // own SMTP_HOST may be a private relay when the operator opts in.
+    const host =
+      !organizationSmtp && this.config.get<string>('SMTP_ALLOW_PRIVATE_HOST') === 'true'
+        ? smtp.host
+        : (await resolveSafeOutboundHost(smtp.host))[0].address;
     const transport = this.transportFactory({
-      host: destination.address,
+      host,
       port: smtp.port,
       secure: smtp.secure,
       auth: smtp.user ? { user: smtp.user, pass: smtp.pass } : undefined,
@@ -206,6 +259,26 @@ export class MailService {
       html: `<p>SMTP is configured correctly for <strong>${Handlebars.escapeExpression(toEmail)}</strong>.</p>`,
       text: `SMTP is configured correctly for ${toEmail}.`,
     });
+  }
+
+  private renderBodies(
+    template: EmailTemplateName | AccountEmailTemplateName,
+    context: Record<string, unknown>,
+  ): { html: string; text: string } {
+    const templateDirectory = path.join(__dirname, 'templates');
+    const htmlSource = fs.readFileSync(
+      path.join(templateDirectory, `${template}.html.hbs`),
+      'utf8',
+    );
+    const textSource = fs.readFileSync(
+      path.join(templateDirectory, `${template}.text.hbs`),
+      'utf8',
+    );
+
+    return {
+      html: Handlebars.compile(htmlSource)(context),
+      text: Handlebars.compile(textSource, { noEscape: true })(context),
+    };
   }
 
   private verifyUnsubscribeToken(token: string): {
@@ -264,7 +337,10 @@ export class MailService {
   }
 
   private webAppUrl(): string {
-    const appUrl = this.config.get('WEB_APP_URL', 'http://localhost:5173');
+    const appUrl =
+      this.config.get<string>('WEB_APP_URL') ||
+      this.config.get<string>('WEB_URL') ||
+      'http://localhost:5173';
     return appUrl.replace(/\/$/, '');
   }
 

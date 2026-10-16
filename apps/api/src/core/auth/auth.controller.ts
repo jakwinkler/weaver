@@ -16,9 +16,11 @@ import {
 import { CookieOptions, Request, Response } from 'express';
 import {
   acceptInvitationSchema,
+  confirmPasswordResetSchema,
   createOAuthOrganizationSchema,
   loginSchema,
   registerSchema,
+  requestPasswordResetSchema,
   selectOrganizationSchema,
 } from '@weaver/shared';
 import { z } from 'zod';
@@ -28,6 +30,14 @@ import { CurrentUser, RequestUser } from './current-user.decorator';
 import { GitHubOAuthGuard, GoogleOAuthGuard } from './oauth.guard';
 import { SamlAuthGuard } from './saml.guard';
 import { OidcStrategy } from './oidc.strategy';
+import { RateLimit } from '../rate-limiting/rate-limiting.guard';
+import {
+  PASSWORD_RESET_CONFIRMS_PER_WINDOW,
+  PASSWORD_RESET_RATE_WINDOW_MS,
+  PASSWORD_RESET_REQUESTED_MESSAGE,
+  PASSWORD_RESET_REQUESTS_PER_WINDOW,
+  PasswordResetService,
+} from './password-reset.service';
 
 const ACCESS_COOKIE_MAX_AGE_MS = 15 * 60 * 1000;
 const REFRESH_COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -58,6 +68,7 @@ export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly oidcStrategy: OidcStrategy,
+    private readonly passwordReset: PasswordResetService,
   ) {}
 
   @Post('register')
@@ -84,6 +95,11 @@ export class AuthController {
     return res.json(data);
   }
 
+  @Get('providers')
+  providers() {
+    return this.authService.getSignInProviders();
+  }
+
   @Get('invitations/:token')
   async getInvitation(@Param('token') token: string) {
     return this.authService.getInvitation(token);
@@ -98,6 +114,33 @@ export class AuthController {
     const data = await this.authService.acceptInvitation(token, result.data);
     this.setAuthCookies(res, data.accessToken, data.refreshToken);
     return res.json(data);
+  }
+
+  @Post('password-reset/request')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @RateLimit(PASSWORD_RESET_REQUESTS_PER_WINDOW, PASSWORD_RESET_RATE_WINDOW_MS)
+  requestPasswordReset(@Body() body: unknown) {
+    const result = requestPasswordResetSchema.safeParse(body);
+    if (!result.success) {
+      throw new BadRequestException(result.error.flatten());
+    }
+    this.passwordReset.requestReset(result.data.email);
+    return { message: PASSWORD_RESET_REQUESTED_MESSAGE };
+  }
+
+  @Post('password-reset/confirm')
+  @RateLimit(PASSWORD_RESET_CONFIRMS_PER_WINDOW, PASSWORD_RESET_RATE_WINDOW_MS)
+  async confirmPasswordReset(@Body() body: unknown, @Req() req: Request, @Res() res: Response) {
+    const result = confirmPasswordResetSchema.safeParse(body);
+    if (!result.success) {
+      throw new BadRequestException(result.error.flatten());
+    }
+    await this.passwordReset.confirmReset(result.data.token, result.data.password, req);
+    // Every session for the account is gone; drop this browser's cookies too.
+    this.clearAuthCookies(res);
+    return res.status(HttpStatus.OK).json({
+      message: 'Your password was changed. Sign in with your new password.',
+    });
   }
 
   @Post('refresh')
@@ -115,8 +158,7 @@ export class AuthController {
   @HttpCode(HttpStatus.NO_CONTENT)
   async logout(@Req() req: Request, @Res() res: Response) {
     await this.authService.revokeRefreshToken(extractRefreshToken(req));
-    res.clearCookie('weaver_token', cookieOptions('/', 0));
-    res.clearCookie('weaver_refresh', cookieOptions(apiPath('auth'), 0));
+    this.clearAuthCookies(res);
     return res.status(HttpStatus.NO_CONTENT).send();
   }
 
@@ -149,6 +191,11 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   async me(@CurrentUser() user: RequestUser) {
     return this.authService.getProfile(user.userId, user.tenantId);
+  }
+
+  private clearAuthCookies(res: Response): void {
+    res.clearCookie('weaver_token', cookieOptions('/', 0));
+    res.clearCookie('weaver_refresh', cookieOptions(apiPath('auth'), 0));
   }
 
   private setAuthCookies(

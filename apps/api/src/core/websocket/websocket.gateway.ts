@@ -11,10 +11,11 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
-import { TenantEntity, TenantMembershipEntity } from '@weaver/db';
+import { TenantMembershipEntity } from '@weaver/db';
 import { Repository } from 'typeorm';
 import { validateCorsOrigin } from '../security/cors.config';
-import type { RequestUser } from '../auth';
+import type { JwtPayload, RequestUser } from '../auth';
+import { findMembershipSession, tokenSessionVersion } from '../auth/session-version';
 import { ProjectAccessService } from '../tenant/project-access.service';
 import { RateLimitingGuard } from '../rate-limiting/rate-limiting.guard';
 import { PROJECT_KEY_REGEX } from '@weaver/shared';
@@ -43,8 +44,6 @@ export class WeaverGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   constructor(
     private readonly jwtService: JwtService,
-    @InjectRepository(TenantEntity)
-    private readonly tenantRepo: Repository<TenantEntity>,
     @InjectRepository(TenantMembershipEntity)
     private readonly membershipRepo: Repository<TenantMembershipEntity>,
     private readonly projectAccess: ProjectAccessService,
@@ -63,25 +62,31 @@ export class WeaverGateway implements OnGatewayConnection, OnGatewayDisconnect {
         return;
       }
 
-      const payload = this.jwtService.verify(token);
-      if (payload.tokenType !== 'access') {
+      const payload = this.jwtService.verify<JwtPayload>(token);
+      if (payload.tokenType !== 'access' || typeof payload.sub !== 'string') {
         client.disconnect();
         return;
       }
-      const [tenant, membership] = await Promise.all([
-        this.tenantRepo.findOneBy({ id: payload.tenantId }),
-        this.membershipRepo.findOneBy({
-          tenantId: payload.tenantId,
-          userId: payload.sub,
-        }),
-      ]);
-      if (!tenant || !membership) {
+      // Join before reading the session version: a password reset that commits after the
+      // read still finds this socket when it disconnects the account's sockets.
+      client.join(this.accountRoom(payload.sub));
+      const membership = await findMembershipSession(
+        this.membershipRepo,
+        payload.tenantId,
+        payload.sub,
+      );
+      if (
+        !membership?.tenant ||
+        membership.user?.sessionVersion !== tokenSessionVersion(payload)
+      ) {
         client.disconnect();
         return;
       }
+      // A password reset may have ended this socket while the session was being read.
+      if (!client.connected) return;
       (client as any).userId = payload.sub;
       (client as any).tenantId = payload.tenantId;
-      (client as any).tenantSchemaName = tenant.schemaName;
+      (client as any).tenantSchemaName = membership.tenant.schemaName;
       (client as any).role = membership.role;
       (client as any).userEmail = payload.email;
 
@@ -173,11 +178,20 @@ export class WeaverGateway implements OnGatewayConnection, OnGatewayDisconnect {
       .disconnectSockets(true);
   }
 
+  /** Ends every socket the account has open, in every organization. */
+  disconnectUser(userId: string): void {
+    this.server.in(this.accountRoom(userId)).disconnectSockets(true);
+  }
+
   private projectRoom(tenantId: string, projectKey: string): string {
     return `tenant:${tenantId}:project:${projectKey}`;
   }
 
   private userRoom(tenantId: string, userId: string): string {
     return `tenant:${tenantId}:user:${userId}`;
+  }
+
+  private accountRoom(userId: string): string {
+    return `user:${userId}`;
   }
 }

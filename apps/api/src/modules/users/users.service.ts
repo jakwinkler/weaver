@@ -8,15 +8,12 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { RoleEntity, UserEntity, TenantMembershipEntity } from '@weaver/db';
 import { UpdateUserDto } from '@weaver/shared';
-import {
-  DEFAULT_NOTIFICATION_PREFERENCES,
-  type NotificationPreferences,
-  type UpdateNotificationPreferencesDto,
-} from '@weaver/shared';
+import type { NotificationPreferences, UpdateNotificationPreferencesDto } from '@weaver/shared';
 import { AttachmentsService } from '../attachments/attachments.service';
 import { MemberVisibilityService, TenantConnectionProvider } from '../../core/tenant';
 import type { RequestUser } from '../../core/auth/current-user.decorator';
 import { WeaverGateway } from '../../core/websocket';
+import { mergeNotificationPreferences } from './notification-preferences';
 
 @Injectable()
 export class UsersService {
@@ -31,51 +28,46 @@ export class UsersService {
     private readonly memberVisibility: MemberVisibilityService,
   ) {}
 
-  async findById(id: string): Promise<Omit<UserEntity, 'passwordHash'>> {
+  async findById(id: string): Promise<Omit<UserEntity, 'passwordHash' | 'sessionVersion'>> {
     const user = await this.userRepo.findOneBy({ id });
     if (!user) {
       throw new NotFoundException('User not found');
     }
-    const { passwordHash, ...rest } = user;
+    const { passwordHash, sessionVersion, ...rest } = user;
     return rest;
   }
 
-  async update(id: string, dto: UpdateUserDto): Promise<Omit<UserEntity, 'passwordHash'>> {
-    const user = await this.userRepo.findOneBy({ id });
-    if (!user) {
-      throw new NotFoundException('User not found');
+  async update(id: string, dto: UpdateUserDto): Promise<Omit<UserEntity, 'passwordHash' | 'sessionVersion'>> {
+    // Write only the changed columns: save() would also write every other column back as
+    // it was loaded, undoing a concurrent change to it.
+    const changes: Partial<Pick<UserEntity, 'displayName' | 'avatarUrl'>> = {};
+    if (dto.displayName !== undefined) changes.displayName = dto.displayName;
+    if (dto.avatarUrl !== undefined) changes.avatarUrl = dto.avatarUrl;
+
+    if (Object.keys(changes).length > 0) {
+      const { affected } = await this.userRepo.update({ id }, changes);
+      if (!affected) {
+        throw new NotFoundException('User not found');
+      }
     }
-
-    if (dto.displayName !== undefined) user.displayName = dto.displayName;
-    if (dto.avatarUrl !== undefined) user.avatarUrl = dto.avatarUrl;
-
-    const saved = await this.userRepo.save(user);
-    const { passwordHash, ...rest } = saved;
-    return rest;
+    return this.findById(id);
   }
 
   async updateNotificationPreferences(
     id: string,
     dto: UpdateNotificationPreferencesDto,
   ): Promise<NotificationPreferences> {
-    const user = await this.userRepo.findOneBy({ id });
-    if (!user) {
+    const preferences = await mergeNotificationPreferences(this.userRepo, id, dto);
+    if (!preferences) {
       throw new NotFoundException('User not found');
     }
-
-    user.notificationPreferences = {
-      ...DEFAULT_NOTIFICATION_PREFERENCES,
-      ...(user.notificationPreferences ?? {}),
-      ...dto,
-    };
-    const saved = await this.userRepo.save(user);
-    return saved.notificationPreferences;
+    return preferences;
   }
 
   async uploadAvatar(
     userId: string,
     file: Express.Multer.File,
-  ): Promise<Omit<UserEntity, 'passwordHash'>> {
+  ): Promise<Omit<UserEntity, 'passwordHash' | 'sessionVersion'>> {
     const bytes = file.buffer;
     const png = bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
     const jpeg = bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;

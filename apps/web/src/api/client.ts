@@ -44,7 +44,7 @@ apiClient.interceptors.response.use(
     // Public auth actions cannot be recovered by refreshing the current session.
     // Protected auth actions, including organization switching, can.
     const url = originalRequest.url ?? '';
-    if (/^\/auth\/(?:login|register|refresh|logout)(?:\/|$)/.test(url)
+    if (/^\/auth\/(?:login|register|refresh|logout|providers|password-reset)(?:\/|$)/.test(url)
       || /^\/auth\/invitations(?:\/|$)/.test(url)) {
       return Promise.reject(error);
     }

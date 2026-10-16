@@ -20,6 +20,7 @@ import {
 } from '@weaver/db';
 import type { AuthProvider, AuthResponse, CreateOAuthOrganizationDto, LoginDto, RegisterDto, CreateInvitationDto, AcceptInvitationDto } from '@weaver/shared';
 import { TenantService, TenantProvisioningService } from '../tenant';
+import { tokenSessionVersion } from './session-version';
 
 export interface JwtPayload {
   sub: string;
@@ -28,6 +29,8 @@ export interface JwtPayload {
   role: string;
   tokenType: 'access' | 'refresh';
   jti?: string;
+  /** The account's session version at issue time; absent on tokens issued before it existed. */
+  sessionVersion?: number;
 }
 
 export type ExternalAuthProvider = Exclude<AuthProvider, 'local'>;
@@ -53,13 +56,13 @@ export interface OrganizationChoice {
   role: string;
 }
 
-const BCRYPT_ROUNDS = 10;
+export const BCRYPT_ROUNDS = 10;
 const ACCESS_TOKEN_EXPIRY = '15m';
 const REFRESH_TOKEN_EXPIRY = '7d';
 const REFRESH_TOKEN_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
 const INVITATION_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
 
-type SanitizedUser = Omit<UserEntity, 'passwordHash'>;
+type SanitizedUser = Omit<UserEntity, 'passwordHash' | 'sessionVersion'>;
 
 @Injectable()
 export class AuthService {
@@ -133,6 +136,7 @@ export class AuthService {
           email: user.email,
           tenantId: tenant.id,
           role: 'owner',
+          sessionVersion: user.sessionVersion,
         };
         const { accessToken, refreshToken } = await this.issueTokenPair(payload, manager);
 
@@ -173,6 +177,7 @@ export class AuthService {
       email: user.email,
       tenantId: membership.tenantId,
       role: membership.role,
+      sessionVersion: user.sessionVersion,
     };
 
     const { accessToken, refreshToken } = await this.issueTokenPair(payload);
@@ -213,6 +218,7 @@ export class AuthService {
       email: user.email,
       tenantId: membership.tenantId,
       role: membership.role,
+      sessionVersion: user.sessionVersion,
     });
     return { accessToken, refreshToken, user: this.sanitizeUser(user), tenantId: membership.tenantId };
   }
@@ -298,6 +304,7 @@ export class AuthService {
         email: user.email,
         tenantId: invitation.tenantId,
         role: invitation.role,
+        sessionVersion: user.sessionVersion,
       }, manager);
       return { accessToken, refreshToken, user: this.sanitizeUser(user), tenantId: invitation.tenantId };
     });
@@ -342,7 +349,9 @@ export class AuthService {
         userId: payload.sub,
         tenantId: payload.tenantId,
       });
-      if (!user || !membership) {
+      // A sign-in that raced a password reset can leave a session row behind the reset's
+      // cleanup; its token still carries the old version.
+      if (!user || !membership || tokenSessionVersion(payload) !== user.sessionVersion) {
         throw new UnauthorizedException('Refresh session is no longer valid');
       }
 
@@ -354,6 +363,7 @@ export class AuthService {
           email: user.email,
           tenantId: membership.tenantId,
           role: membership.role,
+          sessionVersion: user.sessionVersion,
         },
         manager,
       );
@@ -376,22 +386,17 @@ export class AuthService {
 
     let user = await this.findUserByEmail(email);
     if (!user) {
-      user = this.userRepo.create({
+      user = await this.userRepo.save(this.userRepo.create({
         email,
         displayName: identity.displayName || email,
         passwordHash: null,
         authProvider: identity.provider,
         authProviders: [identity.provider],
         avatarUrl: identity.avatarUrl,
-      });
+      }));
     } else {
-      const linkedProviders = user.authProviders?.length ? user.authProviders : [user.authProvider];
-      user.authProviders = Array.from(new Set([...linkedProviders, identity.provider]));
-      if (!user.avatarUrl && identity.avatarUrl) {
-        user.avatarUrl = identity.avatarUrl;
-      }
+      user = await this.linkOAuthIdentity(user.id, identity);
     }
-    user = await this.userRepo.save(user);
 
     if (identity.tenantSlug) {
       const tenant = await this.tenantService.findBySlug(identity.tenantSlug);
@@ -448,6 +453,40 @@ export class AuthService {
     };
   }
 
+  /**
+   * Adds the provider, and the avatar if the account has none, to an existing account. The row
+   * lock makes concurrent sign-ins read each other's provider before adding their own, and
+   * update() writes only these columns, so a concurrent profile change is kept.
+   */
+  private linkOAuthIdentity(userId: string, identity: OAuthIdentity): Promise<UserEntity> {
+    return this.userRepo.manager.transaction(async (manager) => {
+      const userRepo = manager.getRepository(UserEntity);
+      const user = await userRepo.findOne({
+        where: { id: userId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!user) {
+        throw new UnauthorizedException('Account not found');
+      }
+
+      const linkedProviders = user.authProviders?.length ? user.authProviders : [user.authProvider];
+      const authProviders = Array.from(new Set([...linkedProviders, identity.provider]));
+      const changes: Partial<Pick<UserEntity, 'authProviders' | 'avatarUrl'>> = {};
+      if (authProviders.join(',') !== (user.authProviders ?? []).join(',')) {
+        changes.authProviders = authProviders;
+      }
+      if (!user.avatarUrl && identity.avatarUrl) {
+        changes.avatarUrl = identity.avatarUrl;
+      }
+      if (Object.keys(changes).length === 0) {
+        return user;
+      }
+
+      await userRepo.update({ id: userId }, changes);
+      return userRepo.findOneByOrFail({ id: userId });
+    });
+  }
+
   createOAuthContextToken(userId: string, provider: ExternalAuthProvider) {
     const payload: OAuthContextPayload = {
       sub: userId,
@@ -469,14 +508,26 @@ export class AuthService {
     }
   }
 
+  /** Which instance-wide social sign-in buttons can work. Organizations may still turn them off. */
+  getSignInProviders(): { google: boolean; github: boolean } {
+    const configured = (key: 'GOOGLE' | 'GITHUB') =>
+      !!this.config.get<string>(`${key}_CLIENT_ID`) && !!this.config.get<string>(`${key}_CLIENT_SECRET`);
+    return { google: configured('GOOGLE'), github: configured('GITHUB') };
+  }
+
   async getOAuthContext(userId: string, provider: ExternalAuthProvider) {
     const user = await this.userRepo.findOneBy({ id: userId });
     if (!user) {
       throw new UnauthorizedException('User not found');
     }
     const memberships = await this.getEnabledMemberships(user.id, provider);
+    const allMemberships = await this.membershipRepo.countBy({ userId: user.id });
     return {
       user: this.sanitizeUser(user),
+      provider,
+      // Organizations the account belongs to that turned this provider off. The sign-up
+      // screen uses it to steer existing members back to sign-in, not into a new organization.
+      blockedOrganizationCount: allMemberships - memberships.length,
       organizations: memberships.map((membership) => ({
         id: membership.tenant.id,
         name: membership.tenant.name,
@@ -555,7 +606,7 @@ export class AuthService {
   }
 
   private sanitizeUser(user: UserEntity): SanitizedUser {
-    const { passwordHash, ...rest } = user;
+    const { passwordHash, sessionVersion, ...rest } = user;
     return rest;
   }
 
@@ -577,6 +628,7 @@ export class AuthService {
       email: user.email,
       tenantId: membership.tenantId,
       role: membership.role,
+      sessionVersion: user.sessionVersion,
     };
     return {
       ...await this.issueTokenPair(payload),
@@ -609,7 +661,7 @@ export class AuthService {
   }
 
   private async issueTokenPair(
-    payload: Omit<JwtPayload, 'tokenType' | 'jti'>,
+    payload: Omit<JwtPayload, 'tokenType' | 'jti' | 'sessionVersion'> & { sessionVersion: number },
     manager?: EntityManager,
   ): Promise<{ accessToken: string; refreshToken: string }> {
     const accessToken = this.jwtService.sign(

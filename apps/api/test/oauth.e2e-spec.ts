@@ -203,4 +203,22 @@ describe('OAuth SSO (e2e)', () => {
     expect(samlRedirect.headers.location).toContain('https://idp.example.com/saml');
     expect(samlRedirect.headers.location).toContain('SAMLRequest=');
   });
+
+  it('tells the organization step which memberships turned the provider off', async () => {
+    const [user] = await dataSource.query('SELECT id FROM public.users WHERE email = $1', [multiEmail]);
+
+    const google = await authService.getOAuthContext(user.id, 'google');
+    expect(google.provider).toBe('google');
+    expect(google.organizations.map((organization) => organization.slug)).toEqual(['oauth-multi-one']);
+    expect(google.blockedOrganizationCount).toBe(1);
+
+    const github = await authService.getOAuthContext(user.id, 'github');
+    expect(github.organizations).toHaveLength(2);
+    expect(github.blockedOrganizationCount).toBe(0);
+  });
+
+  it('reports which social sign-in providers this installation configured', async () => {
+    const response = await request(app.getHttpServer()).get('/api/v1/auth/providers').expect(200);
+    expect(response.body).toEqual({ google: true, github: true });
+  });
 });

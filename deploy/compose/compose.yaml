@@ -12,6 +12,18 @@ x-redis-environment: &redis-environment
   REDIS_PORT: 6379
   REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
 
+# The installation's mail server. Password reset email uses only this server; the worker
+# sends, and the API checks it is set before issuing a reset link.
+x-smtp-environment: &smtp-environment
+  SMTP_HOST: ${SMTP_HOST:-}
+  SMTP_PORT: ${SMTP_PORT:-587}
+  SMTP_SECURE: ${SMTP_SECURE:-false}
+  SMTP_USER: ${SMTP_USER:-}
+  SMTP_PASS: ${SMTP_PASS:-}
+  SMTP_FROM: ${SMTP_FROM:-}
+  SMTP_FROM_NAME: ${SMTP_FROM_NAME:-Weaver}
+  SMTP_ALLOW_PRIVATE_HOST: ${SMTP_ALLOW_PRIVATE_HOST:-false}
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -55,7 +67,7 @@ services:
       target: api
     restart: unless-stopped
     environment:
-      <<: [*database-environment, *redis-environment]
+      <<: [*database-environment, *redis-environment, *smtp-environment]
       NODE_ENV: production
       IMPORT_CREDENTIAL_KEY: ${IMPORT_CREDENTIAL_KEY:-}
       TZ: UTC
@@ -97,7 +109,7 @@ services:
       target: worker
     restart: unless-stopped
     environment:
-      <<: [*database-environment, *redis-environment]
+      <<: [*database-environment, *redis-environment, *smtp-environment]
       NODE_ENV: production
       IMPORT_CREDENTIAL_KEY: ${IMPORT_CREDENTIAL_KEY:-}
       TZ: UTC

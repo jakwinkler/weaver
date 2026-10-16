@@ -7,7 +7,7 @@ Your project team will send you a private invitation link and add you to a proje
 ## Join and find your project
 
 1. Open the invitation link your team sent you. Check the organization name and invited email address.
-2. Enter your name and a password, then choose **Join organization**. If you already sign in to Weaver with a password, use that password.
+2. Enter your name and a password, then choose **Join organization**. If you already sign in to Weaver with a password, use that password. If you forgot it, choose **Forgot password?** on the sign-in page first.
 3. Open your project from **Projects**. If you belong to more than one organization, use your account menu to switch to the right one.
 
 An invitation can only be used once and expires after seven days. If the link has expired, ask the sender for a new one. If you joined but cannot see the project, ask the team to add you to that project.

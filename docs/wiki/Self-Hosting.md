@@ -42,7 +42,7 @@ Start the built worker with the same configuration explicitly loaded:
 node --env-file=.env apps/worker/dist/main.js
 ```
 
-The API reads `.env` through its configuration module. The worker reads process environment directly; starting it without the same environment can connect it to the wrong database or Redis instance. Keep SMTP unset for a disposable walkthrough that should not send real mail.
+The API reads `.env` through its configuration module. The worker reads process environment directly; starting it without the same environment can connect it to the wrong database or Redis instance. Keep SMTP unset for a disposable walkthrough that should not send real mail. To try password reset locally, run a mail catcher such as Mailpit and point `SMTP_HOST`, `SMTP_PORT`, and `SMTP_FROM` at it, with `SMTP_ALLOW_PRIVATE_HOST=true` because it listens on your own machine.
 
 Open `http://localhost:5173/register`, create a fictional organization, and follow [Getting Started](https://github.com/jakwinkler/weaver/wiki/Getting-Started). The API health endpoint is `http://localhost:3000/api/v1/health`.
 
@@ -56,7 +56,19 @@ Check worker queues separately for imports, email, and scheduled automation hand
 
 Use HTTPS and correct public URLs, production-mode secrets/cookies, persistent storage, and a trusted plugin list. Back up PostgreSQL, attachments, protected configuration, and the package/image identifiers together. Rehearse restoration into a separate environment so a backup is more than a file that exists.
 
-Production disables automatic TypeORM schema synchronization. Inspect and approve the exact migration plan for the intended database. The [Compose deployment template](https://github.com/jakwinkler/weaver/blob/ce5494a445f0a5412cf7e0be378308afbeb5e5f8/deploy/compose/README.md) provides a read-only schema planner and an explicit apply step. Its examples are not universal migrations for any Weaver database. A deployment with schema synchronization disabled also needs the organization-invitations table before using the client invitation flow: apply `packages/db/migrations/20261014_organization_invitations.sql`, then `20261015_organization_invitations_alignment.sql`. Apply the second file before generating a schema plan on any installation that already has the table; otherwise the plan drops and re-adds the invitations' `created_at` column.
+Production disables automatic TypeORM schema synchronization. Inspect and approve the exact migration plan for the intended database. The [Compose deployment template](https://github.com/jakwinkler/weaver/blob/ce5494a445f0a5412cf7e0be378308afbeb5e5f8/deploy/compose/README.md) provides a read-only schema planner and an explicit apply step. Its examples are not universal migrations for any Weaver database. A deployment with schema synchronization disabled also needs the organization-invitations table before using the client invitation flow: apply `packages/db/migrations/20261014_organization_invitations.sql`, then `20261015_organization_invitations_alignment.sql`. Apply the second file before generating a schema plan on any installation that already has the table; otherwise the plan drops and re-adds the invitations' `created_at` column. Password reset needs the password-reset-tokens table (`packages/db/migrations/20261015_password_reset_tokens.sql`). Add the `users.session_version` column (`packages/db/migrations/20261015_session_version.sql`) before deploying an API that includes it, because every signed-in request reads it.
+
+## Mail and password reset
+
+Password reset needs the installation's own mail server. Give both the API and the worker `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`, and `SMTP_FROM_NAME`. The API checks them before it creates a reset link, and the worker sends the email. Without them, **Forgot password?** still shows its usual message, but no email leaves and the API logs a warning.
+
+Reset email never uses an organization's mail server from **System Settings → Email**. That organization's owner controls the server and could read a member's reset link, which would also open the member's other organizations. Organization servers still send their own notifications.
+
+The Compose template and `docker/docker-compose.yml` pass `SMTP_*` to both containers. The Kubernetes manifests don't list them; add them to the shared Weaver secret, which the API and worker both read.
+
+The worker refuses an SMTP host on a private or loopback address. If your relay runs on a private network, set `SMTP_ALLOW_PRIVATE_HOST=true`. That applies only to the installation's server, never to an organization's.
+
+Reset links point at `WEB_APP_URL`, or `WEB_URL` when it is unset. The bundled nginx keeps `/reset-password/` paths out of its access log and sends `Referrer-Policy: no-referrer` for them. If a proxy in front of Weaver logs request paths, exclude `/reset-password/` there too.
 
 After a deployment, verify health, authentication, project access, plugin rendering, file upload/download, and the background functions you use. Retain the previous image/configuration and a tested database rollback or forward-repair plan.
 
@@ -74,7 +86,7 @@ The guidance above covers everyday use. The details below explain API contracts,
 | --- | --- |
 | `apps/web` | React/Vite UI and federated plugin host |
 | `apps/api` | Auth, tenant context, REST, live events, plugin loading, and several queue consumers |
-| `apps/worker` | Event/webhook/email/import jobs and scheduled-automation handoff |
+| `apps/worker` | Event, webhook, notification email, account email, and import jobs, and scheduled-automation handoff |
 | PostgreSQL | Public identity/install records and tenant project data |
 | Redis | BullMQ queues, scheduling, and rate-limit state |
 | Local or S3 storage | Attachments and other stored files |
@@ -82,6 +94,8 @@ The guidance above covers everyday use. The details below explain API contracts,
 ### Configuration to verify
 
 Database settings use `DATABASE_HOST`, `DATABASE_PORT`, `DATABASE_USER`, `DATABASE_PASSWORD`, and `DATABASE_NAME`. Redis uses `REDIS_HOST`, `REDIS_PORT`, and optional `REDIS_PASSWORD`. Public routing uses `API_PORT`, `API_PREFIX`, `API_PUBLIC_URL`, `WEB_URL`, `WEB_APP_URL`, and `CORS_ORIGINS`.
+
+Mail uses `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`, `SMTP_FROM_NAME`, and `SMTP_ALLOW_PRIVATE_HOST`, set the same on the API and the worker. Account email, such as password reset, goes through its own queue, named by `ACCOUNT_MAIL_QUEUE_NAME` (default `account-mail`).
 
 Storage uses `STORAGE_DRIVER`, `STORAGE_LOCAL_PATH`, or the S3 settings. The default attachment byte limit is 10 MiB through `ATTACHMENT_MAX_BYTES`. Production JWT access/refresh secrets must be strong, distinct values. Never put secrets in `VITE_` variables, which are client-visible build configuration.
 

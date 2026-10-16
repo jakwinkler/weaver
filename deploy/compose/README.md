@@ -28,6 +28,11 @@ The examples below run from the repository root.
   image tags or digests. Preserve those pins when changing configuration.
 - Choose `WEB_PORT` for the host's loopback listener and configure an HTTPS
   reverse proxy to forward to it.
+- Set `SMTP_HOST`, `SMTP_FROM`, and the other `SMTP_*` values for the
+  installation's mail server. The API and worker both receive them. Password
+  reset email uses only this server, so without it "Forgot password?" sends
+  nothing. Set `SMTP_ALLOW_PRIVATE_HOST=true` only when the server is a relay on
+  a private network.
 
 The optional Google and GitHub credentials reach only the API at runtime. See
 [OAuth sign-in](../../docs/wiki/OAuth-Sign-In.md) for callback registration and

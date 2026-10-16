@@ -1,9 +1,13 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
+import { InjectRepository } from '@nestjs/typeorm';
+import { UserEntity } from '@weaver/db';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { Request } from 'express';
+import { Repository } from 'typeorm';
 import { JwtPayload } from './auth.service';
+import { currentSessionVersion, tokenSessionVersion } from './session-version';
 
 function cookieOrBearerExtractor(req: Request): string | null {
   const fromHeader = ExtractJwt.fromAuthHeaderAsBearerToken()(req);
@@ -13,7 +17,11 @@ function cookieOrBearerExtractor(req: Request): string | null {
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    @InjectRepository(UserEntity)
+    private readonly users: Repository<UserEntity>,
+  ) {
     super({
       jwtFromRequest: cookieOrBearerExtractor,
       ignoreExpiration: false,
@@ -22,7 +30,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     });
   }
 
-  validate(
+  async validate(
     req: Request & { tenantMembershipRole?: string },
     payload: JwtPayload,
   ) {
@@ -31,6 +39,11 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     }
     if (!payload?.sub || !payload.email || !payload.tenantId || !payload.role) {
       throw new UnauthorizedException('Invalid access token');
+    }
+    // Outside /auth and /public the tenant middleware has already read the version.
+    const current = await currentSessionVersion(req, payload.sub, this.users);
+    if (current !== tokenSessionVersion(payload)) {
+      throw new UnauthorizedException('Session has ended');
     }
     return {
       userId: payload.sub,

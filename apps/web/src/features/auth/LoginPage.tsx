@@ -1,31 +1,51 @@
 import { useState, type FormEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { isAxiosError } from 'axios';
 import { useLogin } from '@/api';
 import { useAuthStore } from '@/stores';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Github } from 'lucide-react';
-import { API_BASE_URL } from '@/api/client';
+import { SocialSignInButtons } from './SocialSignInButtons';
+
+export interface LoginLocationState {
+  notice?: 'password-changed';
+}
+
+function loginErrorMessage(error: unknown): string {
+  if (isAxiosError(error) && error.response?.status === 429) {
+    return 'Too many sign-in attempts. Wait a minute and try again.';
+  }
+  if (isAxiosError(error) && (error.response?.status ?? 0) >= 500) {
+    return 'Weaver could not sign you in right now. Try again shortly.';
+  }
+  return 'Invalid email or password. Please try again.';
+}
 
 export function LoginPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const login = useAuthStore((s) => s.login);
   const loginMutation = useLogin();
+  const notice = (location.state as LoginLocationState | null)?.notice;
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    const result = await loginMutation.mutateAsync({ email, password });
-    login(result.accessToken, result.user, result.tenantId);
-    navigate('/projects');
+    try {
+      const result = await loginMutation.mutateAsync({ email, password });
+      login(result.accessToken, result.user, result.tenantId);
+      navigate('/projects');
+    } catch {
+      // The inline mutation error keeps the form available for another attempt.
+    }
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/50">
+    <div className="flex min-h-screen items-center justify-center bg-muted/50 p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <CardTitle className="text-2xl font-bold text-primary">Weaver</CardTitle>
@@ -33,31 +53,16 @@ export function LoginPage() {
         </CardHeader>
 
         <CardContent>
-          <div className="mb-5 grid gap-3">
-            <Button asChild variant="outline" className="w-full">
-              <a href={`${API_BASE_URL}/auth/google`}>
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path
-                    fill="currentColor"
-                    d="M21.35 12.24c0-.69-.06-1.2-.2-1.73H12v3.32h5.37a4.65 4.65 0 0 1-2 3.05l-.02.11 2.9 2.24.2.02c1.84-1.7 2.9-4.2 2.9-7.01ZM12 21.75c2.63 0 4.83-.87 6.44-2.5l-3.07-2.37c-.82.55-1.94.94-3.37.94a5.85 5.85 0 0 1-5.54-4.04l-.1.01-3.02 2.34-.04.1A9.73 9.73 0 0 0 12 21.75ZM6.46 13.78A5.99 5.99 0 0 1 6.14 12c0-.62.11-1.22.3-1.78v-.12L3.4 7.72l-.1.05A9.77 9.77 0 0 0 2.25 12c0 1.52.36 2.96 1.05 4.23l3.16-2.45ZM12 6.18c1.83 0 3.06.79 3.76 1.44l2.75-2.68A9.36 9.36 0 0 0 12 2.25a9.73 9.73 0 0 0-8.7 5.52l3.14 2.45A5.87 5.87 0 0 1 12 6.18Z"
-                  />
-                </svg>
-                Sign in with Google
-              </a>
-            </Button>
-            <Button asChild variant="outline" className="w-full">
-              <a href={`${API_BASE_URL}/auth/github`}>
-                <Github aria-hidden="true" />
-                Sign in with GitHub
-              </a>
-            </Button>
-          </div>
+          {notice === 'password-changed' && (
+            <p role="status" className="mb-5 rounded-md border border-border bg-muted p-3 text-sm">
+              Your password was changed. Sign in with your new password.
+            </p>
+          )}
 
-          <div className="mb-5 flex items-center gap-3 text-xs uppercase tracking-wide text-muted-foreground">
-            <span className="h-px flex-1 bg-border" />
-            or use your password
-            <span className="h-px flex-1 bg-border" />
-          </div>
+          <SocialSignInButtons
+            hint="New to Weaver? Either button also creates your account, then asks you to name your organization."
+            divider="or sign in with email"
+          />
 
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-2">
@@ -65,6 +70,7 @@ export function LoginPage() {
               <Input
                 id="email"
                 type="email"
+                autoComplete="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -73,10 +79,19 @@ export function LoginPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+              <div className="flex items-center justify-between gap-3">
+                <Label htmlFor="password">Password</Label>
+                <Link
+                  to="/forgot-password"
+                  className="text-sm font-medium text-primary hover:text-primary/80"
+                >
+                  Forgot password?
+                </Link>
+              </div>
               <Input
                 id="password"
                 type="password"
+                autoComplete="current-password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -85,8 +100,8 @@ export function LoginPage() {
             </div>
 
             {loginMutation.isError && (
-              <p className="text-sm text-destructive">
-                Invalid email or password. Please try again.
+              <p role="alert" className="text-sm text-destructive">
+                {loginErrorMessage(loginMutation.error)}
               </p>
             )}
 
@@ -98,7 +113,7 @@ export function LoginPage() {
           <p className="mt-6 text-center text-sm text-muted-foreground">
             Don&apos;t have an account?{' '}
             <Link to="/register" className="font-medium text-primary hover:text-primary/80">
-              Register
+              Create one
             </Link>
           </p>
         </CardContent>
