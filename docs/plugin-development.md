@@ -338,7 +338,27 @@ export async function onEvent(event: string, data: unknown, context: PluginConte
 }
 ```
 
-Only installed and enabled plugins receive events. A subscription of `"*"` receives every tenant event. Common core events include `issue.created`, `issue.updated`, `issue.assigned`, `issue.moved`, `issue.status_changed`, `issue.deleted`, `project.created`, `project.updated`, `comment.created`, `comment.deleted`, `sprint.created`, `sprint.started`, `sprint.completed`, and `time.logged`.
+Only installed and enabled plugins receive events. A subscription of `"*"` receives every tenant event. `WEAVER_EVENTS` in `@weaver/sdk` names every core event, and its payload types (`SprintEvent`, `TimeLoggedEvent`, and the rest) describe what each one carries:
+
+| Area     | Events                                                                                                                                                                                            |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Issues   | `issue.created`, `issue.updated`, `issue.assigned`, `issue.status_changed`, `issue.moved`, `issue.sprint_changed`, `issue.reordered`, `issue.deleted`, `issue.bulk_updated`, `issue.bulk_deleted` |
+| Comments | `comment.created`, `comment.updated`, `comment.deleted`                                                                                                                                           |
+| Projects | `project.created`, `project.updated`                                                                                                                                                              |
+| Sprints  | `sprint.created`, `sprint.updated`, `sprint.started`, `sprint.completed`, `sprint.deleted`                                                                                                        |
+| Time     | `time.logged`, `time.updated`, `time.deleted`                                                                                                                                                     |
+
+Bulk events arrive once per project. `PATCH /issues/bulk` and `POST /sprints/:id/issues` both send `issue.bulk_updated`; adding issues to a sprint sets `updates.sprintId`. Deleting a project sends no event, so `WEAVER_EVENTS.PROJECT_DELETED` is deprecated.
+
+### Migrate from `comment.added`
+
+Earlier SDK versions exported `WEAVER_EVENTS.COMMENT_ADDED` as `comment.added`. The API never sends that name, so a plugin subscribed to it received nothing. `COMMENT_ADDED` now equals `comment.created`, and a manifest subscription to `comment.added` receives `comment.created` events. `onEvent` gets the name `comment.created`. To finish the migration:
+
+1. In `weaver-plugin.json`, replace `comment.added` with `comment.created` under `events.subscribes`. `pnpm validate` warns until you do.
+2. Compare against `WEAVER_EVENTS.COMMENT_CREATED` or the string `comment.created`, then rebuild. A built plugin keeps the old value of `COMMENT_ADDED` until it is rebuilt.
+3. Read the author from `userId`. The payload is a `CommentCreatedEvent` with `commentId`, `issueKey`, `projectKey`, and `userId`; there is no `authorId`.
+
+Webhooks saved with `comment.added` also receive `comment.created` deliveries, with the header `X-Webhook-Event: comment.created`.
 
 ## Register custom fields
 

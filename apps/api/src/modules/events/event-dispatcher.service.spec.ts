@@ -85,4 +85,29 @@ describe('EventDispatcherService project isolation', () => {
     expect(enqueue).toHaveBeenCalledWith('project-a', 'issue.updated', expect.any(Object));
     expect(enqueue).not.toHaveBeenCalledWith('project-b', expect.anything(), expect.anything());
   });
+
+  it('delivers new comments to webhooks saved with the retired comment.added name', async () => {
+    const enqueue = jest.fn().mockResolvedValue(undefined);
+    const webhooks = [
+      { id: 'legacy', projectId: null, active: true, events: ['comment.added'] },
+      { id: 'current', projectId: null, active: true, events: ['comment.created'] },
+    ];
+    const entityManager = {
+      getRepository: jest.fn(() => ({ find: jest.fn().mockResolvedValue(webhooks) })),
+    };
+    const service = new EventDispatcherService(
+      { getEntityManager: jest.fn().mockResolvedValue(entityManager) } as never,
+      { enqueue } as never,
+      { emitToProject: jest.fn() } as never,
+    );
+
+    await tenantStorage.run({ tenantId: 'tenant-a', schemaName: 'tenant_a' }, async () => {
+      await service.emit('comment.created', { projectKey: 'A', issueKey: 'A-1', commentId: 'c-1' });
+      await service.emit('comment.updated', { projectKey: 'A', issueKey: 'A-1', commentId: 'c-1' });
+    });
+
+    expect(enqueue).toHaveBeenCalledTimes(2);
+    expect(enqueue).toHaveBeenCalledWith('legacy', 'comment.created', expect.any(Object));
+    expect(enqueue).toHaveBeenCalledWith('current', 'comment.created', expect.any(Object));
+  });
 });

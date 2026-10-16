@@ -14,23 +14,31 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 
+/** Example bodies of the events the API delivers, keyed by event name. */
 const EVENT_EXAMPLES: Record<string, Record<string, unknown>> = {
-  'issue.created': { issueKey: 'PROJ-42', projectKey: 'PROJ', summary: 'Fix login bug', priority: 'high', assigneeId: 'user-uuid' },
-  'issue.updated': { issueKey: 'PROJ-42', fields: { summary: 'Updated title', priority: 'medium' } },
-  'issue.bulk_updated': { issueIds: ['issue-uuid-1', 'issue-uuid-2'], issueKeys: ['PROJ-42', 'PROJ-43'], updates: { priority: 'high' }, count: 2 },
-  'issue.deleted': { issueKey: 'PROJ-42' },
-  'issue.bulk_deleted': { issueIds: ['issue-uuid-1', 'issue-uuid-2'], issueKeys: ['PROJ-42', 'PROJ-43'], count: 2 },
-  'issue.status_changed': { issueKey: 'PROJ-42', projectKey: 'PROJ', fromStatus: 'status-uuid-1', toStatus: 'status-uuid-2' },
-  'issue.assigned': { issueKey: 'PROJ-42', assigneeId: 'new-user-uuid', previousAssigneeId: 'old-user-uuid' },
-  'comment.added': { issueKey: 'PROJ-42', commentId: 'comment-uuid', authorId: 'user-uuid' },
-  'comment.updated': { issueKey: 'PROJ-42', commentId: 'comment-uuid', authorId: 'user-uuid' },
-  'comment.deleted': { issueKey: 'PROJ-42', commentId: 'comment-uuid' },
-  'project.created': { projectKey: 'PROJ', name: 'My Project', leadUserId: 'user-uuid' },
-  'project.updated': { projectKey: 'PROJ', fields: { name: 'Renamed Project' } },
-  'project.deleted': { projectKey: 'PROJ' },
-  'sprint.started': { sprintId: 'sprint-uuid', name: 'Sprint 1', boardId: 'board-uuid' },
-  'sprint.completed': { sprintId: 'sprint-uuid', name: 'Sprint 1', boardId: 'board-uuid' },
-  'time.logged': { issueKey: 'PROJ-42', minutes: 120, description: 'Backend work', userId: 'user-uuid' },
+  'issue.created': { issueKey: 'PROJ-42', projectKey: 'PROJ', summary: 'Fix login bug', priority: 'high', assigneeId: 'user-uuid', userId: 'user-uuid' },
+  'issue.updated': { issueKey: 'PROJ-42', projectKey: 'PROJ', fields: { summary: 'Updated title', priority: 'medium' }, userId: 'user-uuid' },
+  'issue.assigned': { issueKey: 'PROJ-42', projectKey: 'PROJ', assigneeId: 'new-user-uuid', previousAssigneeId: 'old-user-uuid', userId: 'user-uuid' },
+  'issue.status_changed': { issueKey: 'PROJ-42', projectKey: 'PROJ', fromStatus: 'status-uuid-1', toStatus: 'status-uuid-2', userId: 'user-uuid' },
+  'issue.moved': { issueKey: 'PROJ-42', projectKey: 'PROJ', fromStatus: 'status-uuid-1', toStatus: 'status-uuid-2', fromSprint: null, toSprint: 'sprint-uuid', userId: 'user-uuid' },
+  'issue.sprint_changed': { issueKey: 'PROJ-42', projectKey: 'PROJ', fromSprint: null, toSprint: 'sprint-uuid', sortOrder: 2000, userId: 'user-uuid' },
+  'issue.reordered': { projectKey: 'PROJ', issueKeys: ['PROJ-42', 'PROJ-43'], userId: 'user-uuid' },
+  'issue.deleted': { issueKey: 'PROJ-42', projectKey: 'PROJ', userId: 'user-uuid' },
+  'issue.bulk_updated': { updates: { priority: 'high' }, userId: 'user-uuid', projectKey: 'PROJ', projectKeys: ['PROJ'], issueIds: ['issue-uuid-1', 'issue-uuid-2'], issueKeys: ['PROJ-42', 'PROJ-43'], count: 2 },
+  'issue.bulk_deleted': { userId: 'user-uuid', projectKey: 'PROJ', projectKeys: ['PROJ'], issueIds: ['issue-uuid-1', 'issue-uuid-2'], issueKeys: ['PROJ-42', 'PROJ-43'], count: 2 },
+  'comment.created': { commentId: 'comment-uuid', issueKey: 'PROJ-42', projectKey: 'PROJ', userId: 'user-uuid' },
+  'comment.updated': { commentId: 'comment-uuid', issueKey: 'PROJ-42', projectKey: 'PROJ', userId: 'user-uuid' },
+  'comment.deleted': { commentId: 'comment-uuid', issueKey: 'PROJ-42', projectKey: 'PROJ', userId: 'user-uuid' },
+  'project.created': { projectKey: 'PROJ', name: 'My Project', leadUserId: 'user-uuid', userId: 'user-uuid' },
+  'project.updated': { projectKey: 'PROJ', fields: { name: 'Renamed Project' }, userId: 'user-uuid' },
+  'sprint.created': { sprintId: 'sprint-uuid', projectId: 'project-uuid', projectKey: 'PROJ', name: 'Sprint 1', userId: 'user-uuid' },
+  'sprint.updated': { sprintId: 'sprint-uuid', projectId: 'project-uuid', projectKey: 'PROJ', name: 'Sprint 1', userId: 'user-uuid' },
+  'sprint.started': { sprintId: 'sprint-uuid', projectId: 'project-uuid', projectKey: 'PROJ', name: 'Sprint 1', userId: 'user-uuid' },
+  'sprint.completed': { sprintId: 'sprint-uuid', projectId: 'project-uuid', projectKey: 'PROJ', name: 'Sprint 1', userId: 'user-uuid' },
+  'sprint.deleted': { sprintId: 'sprint-uuid', projectId: 'project-uuid', projectKey: 'PROJ', name: 'Sprint 1', userId: 'user-uuid' },
+  'time.logged': { issueKey: 'PROJ-42', projectKey: 'PROJ', minutes: 120, description: 'Backend work', userId: 'user-uuid' },
+  'time.updated': { entryId: 'time-entry-uuid', issueKey: 'PROJ-42', projectKey: 'PROJ', userId: 'user-uuid' },
+  'time.deleted': { entryId: 'time-entry-uuid', issueKey: 'PROJ-42', projectKey: 'PROJ', userId: 'user-uuid' },
 };
 
 const AVAILABLE_EVENTS = Object.keys(EVENT_EXAMPLES);

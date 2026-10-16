@@ -6,6 +6,7 @@ import { io, Socket } from 'socket.io-client';
 import { AppModule } from '../src/app.module';
 import { TenantConnectionProvider } from '../src/core/tenant';
 import { WeaverGateway } from '../src/core/websocket';
+import { WebhooksService } from '../src/modules/webhooks';
 
 describe('Real-Time WebSocket (e2e)', () => {
   let app: INestApplication;
@@ -299,6 +300,59 @@ describe('Real-Time WebSocket (e2e)', () => {
       expect(payload.data.issueKey).toBe(issueKey);
     }, 15000);
 
+    it('should queue new comments for a webhook saved with the retired comment.added name', async () => {
+      const webhook = await request(httpServer)
+        .post('/api/v1/webhooks')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .set('X-Tenant-ID', tenantId)
+        .send({
+          url: 'https://example.com/legacy-comments',
+          events: ['comment.added'],
+          secret: 'legacy-comment-secret-legacy-comment',
+        })
+        .expect(201);
+      const enqueue = jest.spyOn(app.get(WebhooksService), 'enqueue');
+      try {
+        const issueRes = await request(httpServer)
+          .post(`/api/v1/projects/${projectKey}/issues`)
+          .set('Authorization', `Bearer ${accessToken}`)
+          .set('X-Tenant-ID', tenantId)
+          .send({ summary: 'Legacy webhook comment' })
+          .expect(201);
+        const comment = await request(httpServer)
+          .post(`/api/v1/issues/${issueRes.body.key}/comments`)
+          .set('Authorization', `Bearer ${accessToken}`)
+          .set('X-Tenant-ID', tenantId)
+          .send({
+            body: {
+              type: 'doc',
+              content: [{ type: 'paragraph', content: [{ type: 'text', text: 'For the old webhook' }] }],
+            },
+          })
+          .expect(201);
+
+        // The comment service emits without awaiting the dispatch.
+        const deadline = Date.now() + 5000;
+        while (!enqueue.mock.calls.some(([id]) => id === webhook.body.id) && Date.now() < deadline) {
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+        expect(enqueue.mock.calls.filter(([id]) => id === webhook.body.id)).toEqual([
+          [
+            webhook.body.id,
+            'comment.created',
+            expect.objectContaining({ commentId: comment.body.id, issueKey: issueRes.body.key }),
+          ],
+        ]);
+      } finally {
+        enqueue.mockRestore();
+        await request(httpServer)
+          .delete(`/api/v1/webhooks/${webhook.body.id}`)
+          .set('Authorization', `Bearer ${accessToken}`)
+          .set('X-Tenant-ID', tenantId)
+          .expect(204);
+      }
+    }, 15000);
+
     it('should receive comment.updated event after editing a comment', async () => {
       const issueRes = await request(httpServer)
         .post(`/api/v1/projects/${projectKey}/issues`)
@@ -452,6 +506,54 @@ describe('Real-Time WebSocket (e2e)', () => {
       );
       expect(completed.data).toEqual(expect.objectContaining({ projectKey, name, userId }));
     }, 30000);
+
+    it('should announce issues added to a sprint as one bulk update', async () => {
+      const sprint = await request(httpServer)
+        .post(`/api/v1/sprints?projectId=${projectId}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .set('X-Tenant-ID', tenantId)
+        .send({ name: `Planned sprint ${Date.now()}` })
+        .expect(201);
+      const issues = await Promise.all(
+        ['First sprint issue', 'Second sprint issue'].map((summary) =>
+          request(httpServer)
+            .post(`/api/v1/projects/${projectKey}/issues`)
+            .set('Authorization', `Bearer ${accessToken}`)
+            .set('X-Tenant-ID', tenantId)
+            .send({ summary })
+            .expect(201),
+        ),
+      );
+
+      const payload = await waitForEvent(
+        'issue.bulk_updated',
+        async () => {
+          await request(httpServer)
+            .post(`/api/v1/sprints/${sprint.body.id}/issues`)
+            .set('Authorization', `Bearer ${accessToken}`)
+            .set('X-Tenant-ID', tenantId)
+            .send({ issueIds: issues.map((issue) => issue.body.id) })
+            .expect(201);
+        },
+        (p) => p.data?.updates?.sprintId === sprint.body.id,
+      );
+
+      expect(payload.data).toEqual(
+        expect.objectContaining({
+          updates: { sprintId: sprint.body.id },
+          projectKey,
+          projectKeys: [projectKey],
+          userId,
+          count: 2,
+        }),
+      );
+      expect(payload.data.issueKeys).toEqual(
+        expect.arrayContaining(issues.map((issue) => issue.body.key)),
+      );
+      expect(payload.data.issueIds).toEqual(
+        expect.arrayContaining(issues.map((issue) => issue.body.id)),
+      );
+    }, 15000);
 
     it('should route logged, edited, and deleted time to the issue project room', async () => {
       const issueRes = await request(httpServer)

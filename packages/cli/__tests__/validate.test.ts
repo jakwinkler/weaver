@@ -254,6 +254,24 @@ describe('validate', () => {
       expect(validatePlugin(writePlugin(manifest)).errors.length).toBeGreaterThan(0);
     });
 
+    it('warns that comment.added subscriptions receive comment.created', () => {
+      const manifest = cloneManifest((m) => {
+        m.events = { subscribes: ['issue.created', 'comment.added'] };
+      });
+
+      expect(validatePlugin(writePlugin(manifest))).toEqual({
+        errors: [],
+        warnings: [
+          expect.objectContaining({
+            severity: 'warning',
+            code: 'renamed-event',
+            path: 'events.subscribes[1]',
+            message: expect.stringContaining('subscribe to comment.created instead'),
+          }),
+        ],
+      });
+    });
+
     it('accepts manifests the API schema accepts', () => {
       const manifest = cloneManifest((m) => {
         m.settings = {};
