@@ -3,6 +3,21 @@ import { useCallback, useMemo, useRef } from 'react';
 const NODE_STORAGE_PREFIX = 'weaver:workflow-positions:';
 const EDGE_STORAGE_PREFIX = 'weaver:workflow-edge-waypoints:';
 const HANDLE_STORAGE_PREFIX = 'weaver:workflow-edge-handles:';
+const STORAGE_PREFIXES = [NODE_STORAGE_PREFIX, EDGE_STORAGE_PREFIX, HANDLE_STORAGE_PREFIX];
+
+/** Saved layouts describe the signed-in organization's workflows, so logout removes them. */
+export function clearAllWorkflowLayouts(): void {
+  try {
+    for (let index = localStorage.length - 1; index >= 0; index -= 1) {
+      const key = localStorage.key(index);
+      if (key && STORAGE_PREFIXES.some((prefix) => key.startsWith(prefix))) {
+        localStorage.removeItem(key);
+      }
+    }
+  } catch {
+    // Storage may be unavailable; the rest of logout must still run.
+  }
+}
 
 type PositionMap = Record<string, { x: number; y: number }>;
 type HandleMap = Record<string, { sourceHandle: string; targetHandle: string }>;
