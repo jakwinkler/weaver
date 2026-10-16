@@ -45,6 +45,24 @@ describe('useHotkeys', () => {
     expect(handler).toHaveBeenCalledTimes(1);
   });
 
+  it('leaves browser shortcuts such as copy to the browser', () => {
+    const handler = vi.fn();
+
+    render(<Harness activeContext="global" context="global" bindings={[{ keys: 'c', handler }]} />);
+
+    const copyWithMeta = fireEvent.keyDown(document, { key: 'c', metaKey: true });
+    const copyWithCtrl = fireEvent.keyDown(document, { key: 'c', ctrlKey: true });
+    fireEvent.keyDown(document, { key: 'c', altKey: true });
+
+    expect(handler).not.toHaveBeenCalled();
+    // fireEvent returns false only when a listener called preventDefault.
+    expect(copyWithMeta).toBe(true);
+    expect(copyWithCtrl).toBe(true);
+
+    fireEvent.keyDown(document, { key: 'c' });
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
   it('does not fire while the user is typing', () => {
     const handler = vi.fn();
 
