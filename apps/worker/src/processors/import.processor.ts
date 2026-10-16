@@ -1,6 +1,5 @@
 import { Job } from 'bullmq';
-import { DataSource } from 'typeorm';
-import { TENANT_ENTITIES } from '@weaver/db';
+import { createPostgresDataSource, TENANT_ENTITIES } from '@weaver/db';
 import { FieldMapper, ImportOrchestrator, JiraClient } from '@weaver/jira-import';
 import type { JiraImportJobData, SealedJiraImportJobData } from '@weaver/shared';
 import { config } from '../config';
@@ -13,7 +12,7 @@ export async function processImport(job: Job<SealedJiraImportJobData>): Promise<
   if (data.tenantId !== job.data.tenantId || data.importJobId !== job.data.importJobId) throw new Error('Import job identity mismatch');
   assertTenantSchemaName(data.schemaName);
 
-  const dataSource = new DataSource({
+  const dataSource = createPostgresDataSource({
     type: 'postgres',
     host: config.database.host,
     port: config.database.port,

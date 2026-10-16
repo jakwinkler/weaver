@@ -1,7 +1,7 @@
 import { createHmac } from 'crypto';
 import { Job } from 'bullmq';
 import { DataSource } from 'typeorm';
-import { WebhookEntity } from '@weaver/db';
+import { createPostgresDataSource, WebhookEntity } from '@weaver/db';
 import type { WebhookDeliveryJobData } from '@weaver/shared';
 import { config } from '../config';
 import { fetchWithSafeRedirects, readLimitedText } from '../security/outbound-http';
@@ -15,7 +15,7 @@ interface ProcessorDependencies {
 }
 
 function createTenantDataSource(schemaName: string): DataSource {
-  return new DataSource({
+  return createPostgresDataSource({
     type: 'postgres',
     ...config.database,
     schema: schemaName,
