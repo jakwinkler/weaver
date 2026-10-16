@@ -46,6 +46,6 @@ docker stop weaver-e2e-pg weaver-e2e-redis
 
 ## Coverage
 
-Browser scenarios cover account registration, login and logout, invitations for new and existing users, organization switching and role isolation, private project membership, client directory and people-picker privacy with full agency access, project and issue creation and edits, comments, time entries, WQL search and saved filters, workflow editing, board drag persistence, sprint lifecycle, plugin gates, administration forms, route rendering, and a phone-sized core journey. API integration tests provide deeper authorization, tenant isolation, realtime, import, plugin, and webhook checks.
+Browser scenarios cover account registration, login and logout, invitations for new and existing users, organization switching and role isolation, private project membership, client directory and people-picker privacy with full agency access, project and issue creation and edits, comments, time entries, WQL search and saved filters, workflow editing, board drag persistence, sprint lifecycle, live updates between two sessions (including a board, sprint changes, logged time, and a dropped connection), plugin gates, administration forms, route rendering, and a phone-sized core journey. API integration tests provide deeper authorization, tenant isolation, realtime, import, plugin, and webhook checks.
 
 For the October 14 readiness findings and remaining pilot limits, see [READINESS-2026-10-14.md](./READINESS-2026-10-14.md).
