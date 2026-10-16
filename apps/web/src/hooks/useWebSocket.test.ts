@@ -1,9 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   buildToastMessage,
+  createInvalidationBatch,
   DOMAIN_EVENTS,
   getInvalidationKeys,
   getToastMessageForEvent,
+  INVALIDATION_BATCH_MS,
 } from './websocketEvents';
 
 describe('getInvalidationKeys', () => {
@@ -145,5 +147,61 @@ describe('getToastMessageForEvent', () => {
     expect(
       getToastMessageForEvent('comment.created', { issueKey: 'WS-1' }, 'current-user'),
     ).toBeNull();
+  });
+});
+
+describe('createInvalidationBatch', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('invalidates each key once for events inside the batch window', () => {
+    vi.useFakeTimers();
+    const invalidate = vi.fn();
+    const batch = createInvalidationBatch(invalidate);
+
+    for (let index = 0; index < 10; index += 1) {
+      batch.add(getInvalidationKeys('issue.reordered', { projectKey: 'WS' }));
+    }
+    vi.advanceTimersByTime(INVALIDATION_BATCH_MS - 1);
+    expect(invalidate).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+
+    // ['issues'] already refreshes ['issues', 'WS'] by prefix.
+    expect(invalidate.mock.calls.map(([key]) => key)).toEqual([
+      ['issues'],
+      ['boards'],
+      ['boardIssues'],
+      ['backlog'],
+      ['sprintStats'],
+      ['dashboard'],
+    ]);
+  });
+
+  it('starts a new batch after a flush', () => {
+    vi.useFakeTimers();
+    const invalidate = vi.fn();
+    const batch = createInvalidationBatch(invalidate);
+
+    batch.add([['comments', 'WS-1']]);
+    vi.advanceTimersByTime(INVALIDATION_BATCH_MS);
+    batch.add([['comments', 'WS-1']]);
+    vi.advanceTimersByTime(INVALIDATION_BATCH_MS);
+
+    expect(invalidate.mock.calls).toEqual([[['comments', 'WS-1']], [['comments', 'WS-1']]]);
+  });
+
+  it('keeps narrower keys that no broader key in the batch covers', () => {
+    const invalidate = vi.fn();
+    const batch = createInvalidationBatch(invalidate);
+
+    batch.add([['issues', 'WS'], ['issue', 'WS-1'], ['issues', 'OPS']]);
+    batch.flush();
+
+    expect(invalidate.mock.calls.map(([key]) => key)).toEqual([
+      ['issues', 'WS'],
+      ['issue', 'WS-1'],
+      ['issues', 'OPS'],
+    ]);
   });
 });

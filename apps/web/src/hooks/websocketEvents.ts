@@ -123,6 +123,59 @@ export function getInvalidationKeys(event: string, data: Record<string, unknown>
   }
 }
 
+/** Window for coalescing invalidations from a burst of live events. */
+export const INVALIDATION_BATCH_MS = 250;
+
+export interface InvalidationBatch {
+  add(keys: string[][]): void;
+  flush(): void;
+}
+
+function coversKey(prefix: string[], key: string[]): boolean {
+  return prefix.length <= key.length && prefix.every((part, index) => part === key[index]);
+}
+
+/**
+ * Collect query keys from events that arrive within `delayMs` of the first one and
+ * invalidate each key once. Every viewer receives every event, and broad keys such as
+ * ['issues'] refetch whole issue lists, so one refresh per burst replaces one per event.
+ * A key covered by a broader key in the same batch is skipped because prefix
+ * invalidation already refreshes it.
+ */
+export function createInvalidationBatch(
+  invalidate: (queryKey: string[]) => void,
+  delayMs = INVALIDATION_BATCH_MS,
+): InvalidationBatch {
+  let pending: string[][] = [];
+  let timer: ReturnType<typeof setTimeout> | null = null;
+
+  const flush = () => {
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
+    const keys = pending;
+    pending = [];
+    for (const key of keys) {
+      const covered = keys.some((other) => other.length < key.length && coversKey(other, key));
+      if (!covered) invalidate(key);
+    }
+  };
+
+  return {
+    add(keys) {
+      for (const key of keys) {
+        const queued = pending.some(
+          (existing) => existing.length === key.length && coversKey(existing, key),
+        );
+        if (!queued) pending.push(key);
+      }
+      if (pending.length > 0 && !timer) timer = setTimeout(flush, delayMs);
+    },
+    flush,
+  };
+}
+
 /** Build a human-readable toast message for events from other users. */
 export function buildToastMessage(event: string, data: Record<string, unknown>): string | null {
   const issueKey = typeof data.issueKey === 'string' ? data.issueKey : undefined;

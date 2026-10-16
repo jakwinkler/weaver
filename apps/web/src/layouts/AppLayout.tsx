@@ -42,7 +42,7 @@ import {
   Building2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { getNavigationEntries } from '@/plugins/plugin-slot-registry';
+import { getNavigationEntries, matchesPagePath } from '@/plugins/plugin-slot-registry';
 import { getPluginIcon } from '@/plugins/plugin-icons';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { getProjectKeyForPath } from '@/hooks/projectRoom';
@@ -238,7 +238,7 @@ export function AppLayout() {
                 <ul className="mt-1 space-y-1">
                   {navEntries.map((entry) => {
                     const Icon = getPluginIcon(entry.icon);
-                    const isActive = location.pathname.startsWith(entry.path);
+                    const isActive = matchesPagePath(location.pathname, entry.path);
                     return (
                       <li key={entry.path}>
                         <Link
@@ -497,7 +497,7 @@ export function AppLayout() {
                     <ul className="mt-1 space-y-1">
                       {navEntries.map((entry) => {
                         const Icon = getPluginIcon(entry.icon);
-                        const isActive = location.pathname.startsWith(entry.path);
+                        const isActive = matchesPagePath(location.pathname, entry.path);
                         return (
                           <li key={entry.path}>
                             <Link
