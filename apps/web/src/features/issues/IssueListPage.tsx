@@ -407,12 +407,18 @@ export function IssueListPage() {
   ) => {
     // Optimistic update
     const queryKeyPrefix = ['issues', projectKey];
-    const previousData = queryClient.getQueriesData<PaginatedResponse<Issue>>({
-      queryKey: queryKeyPrefix,
-    });
+    const fieldOf = (issue: Issue | undefined) =>
+      (issue as unknown as Record<string, unknown> | undefined)?.[field];
+    const previousValue = fieldOf(
+      queryClient
+        .getQueriesData<PaginatedResponse<Issue>>({ queryKey: queryKeyPrefix })
+        .flatMap(([, data]) => (Array.isArray(data?.data) ? data.data : []))
+        .find((issue) => issue.key === issueKey),
+    );
 
+    // The roadmap caches a plain epic list under the same prefix; only issue pages change.
     queryClient.setQueriesData<PaginatedResponse<Issue>>({ queryKey: queryKeyPrefix }, (old) => {
-      if (!old) return old;
+      if (!Array.isArray(old?.data)) return old;
       return {
         ...old,
         data: old.data.map((issue) =>
@@ -424,12 +430,19 @@ export function IssueListPage() {
     try {
       await persist();
     } catch (error) {
-      // Rollback on error
-      for (const [key, data] of previousData) {
-        if (data) {
-          queryClient.setQueryData(key, data);
-        }
-      }
+      // Roll back only this field, and only where it still holds the optimistic value, so
+      // edits and refetches that landed while the request was in flight survive.
+      queryClient.setQueriesData<PaginatedResponse<Issue>>({ queryKey: queryKeyPrefix }, (old) => {
+        if (!Array.isArray(old?.data)) return old;
+        return {
+          ...old,
+          data: old.data.map((issue) =>
+            issue.key === issueKey && fieldOf(issue) === value
+              ? { ...issue, [field]: previousValue }
+              : issue,
+          ),
+        };
+      });
       setInlineEditError(`Could not update ${issueKey}. Your change was reverted.`);
       throw error;
     }

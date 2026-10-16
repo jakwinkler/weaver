@@ -268,6 +268,107 @@ describe('IssueListPage inline editing', () => {
     });
   });
 
+  it('reverts only the failed field and keeps changes that landed during the save', async () => {
+    let rejectFirstSave!: (error: Error) => void;
+    apiMocks.mutateAsync
+      .mockImplementationOnce(
+        () =>
+          new Promise((_, reject) => {
+            rejectFirstSave = reject;
+          }),
+      )
+      .mockResolvedValueOnce({});
+    const { queryClient } = renderPage();
+    type IssuePage = typeof apiMocks.issuePage;
+    // Let the mount refetch settle so only the edits below change the cache.
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+
+    fireEvent.click(screen.getByRole('button', { name: 'First issue' }));
+    const firstInput = screen.getByDisplayValue('First issue');
+    fireEvent.change(firstInput, { target: { value: 'Failed edit' } });
+    fireEvent.keyDown(firstInput, { key: 'Enter' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Second issue' }));
+    const secondInput = screen.getByDisplayValue('Second issue');
+    fireEvent.change(secondInput, { target: { value: 'Concurrent edit' } });
+    fireEvent.keyDown(secondInput, { key: 'Enter' });
+    await waitFor(() => expect(apiMocks.mutateAsync).toHaveBeenCalledTimes(2));
+
+    // A refetch brings another field of the failing issue up to date while its save is pending.
+    queryClient.setQueriesData<IssuePage>({ queryKey: ['issues', 'TEST'] }, (old) =>
+      old && {
+        ...old,
+        data: old.data.map((issue) =>
+          issue.key === 'TEST-1' ? { ...issue, priority: 'highest' } : issue,
+        ),
+      },
+    );
+    rejectFirstSave(new Error('Network unavailable'));
+
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('reverted'));
+    const page = queryClient.getQueriesData<IssuePage>({ queryKey: ['issues', 'TEST'] })[0]?.[1];
+    expect(page?.data.find((issue) => issue.key === 'TEST-1')).toMatchObject({
+      summary: 'First issue',
+      priority: 'highest',
+    });
+    expect(page?.data.find((issue) => issue.key === 'TEST-2')?.summary).toBe('Concurrent edit');
+  });
+
+  it('leaves a failed field alone once the server has replaced the optimistic value', async () => {
+    let rejectSave!: (error: Error) => void;
+    apiMocks.mutateAsync.mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          rejectSave = reject;
+        }),
+    );
+    const { queryClient } = renderPage();
+    type IssuePage = typeof apiMocks.issuePage;
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+
+    fireEvent.click(screen.getByRole('button', { name: 'First issue' }));
+    const input = screen.getByDisplayValue('First issue');
+    fireEvent.change(input, { target: { value: 'Failed edit' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() => expect(apiMocks.mutateAsync).toHaveBeenCalledTimes(1));
+
+    queryClient.setQueriesData<IssuePage>({ queryKey: ['issues', 'TEST'] }, (old) =>
+      old && {
+        ...old,
+        data: old.data.map((issue) =>
+          issue.key === 'TEST-1' ? { ...issue, summary: 'Renamed by a teammate' } : issue,
+        ),
+      },
+    );
+    rejectSave(new Error('Network unavailable'));
+
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('reverted'));
+    const page = queryClient.getQueriesData<IssuePage>({ queryKey: ['issues', 'TEST'] })[0]?.[1];
+    expect(page?.data.find((issue) => issue.key === 'TEST-1')?.summary).toBe(
+      'Renamed by a teammate',
+    );
+  });
+
+  it('saves inline edits while a roadmap list for the project is cached', async () => {
+    const { queryClient } = renderPage();
+    queryClient.setQueryData(['issues', 'TEST', 'roadmap'], [{ id: 'epic-1', key: 'TEST-9' }]);
+
+    fireEvent.click(screen.getByRole('button', { name: 'First issue' }));
+    const input = screen.getByDisplayValue('First issue');
+    fireEvent.change(input, { target: { value: 'Edited with roadmap cached' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() =>
+      expect(apiMocks.mutateAsync).toHaveBeenCalledWith({
+        issueKey: 'TEST-1',
+        summary: 'Edited with roadmap cached',
+      }),
+    );
+    expect(queryClient.getQueryData(['issues', 'TEST', 'roadmap'])).toEqual([
+      { id: 'epic-1', key: 'TEST-9' },
+    ]);
+  });
+
   it('navigates and selects issues from the keyboard with a visible active row', async () => {
     renderPage();
 
