@@ -1,5 +1,5 @@
 import { PercentDoneField } from '@/components/PercentDoneField';
-import { useState, useEffect, useCallback, type FormEvent } from 'react';
+import { useState, useEffect, useCallback, useRef, type FormEvent } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
   useIssue,
@@ -11,7 +11,7 @@ import {
   useUsers,
   useHasPermission,
 } from '@/api';
-import type { IssuePriority, RecurrenceRule } from '@weaver/shared';
+import type { Issue, IssuePriority, RecurrenceRule } from '@weaver/shared';
 import { IssueActivityTabs } from './IssueActivityTabs';
 import { PluginSlot } from '@/plugins';
 import {
@@ -37,8 +37,22 @@ import {
 import { cn } from '@/lib/utils';
 import { useHotkeys } from '@/hooks/useHotkeys';
 
+/** The fields the edit form saves, compared to spot server changes made while it is open. */
+function editableFieldsKey(issue: Pick<Issue, 'summary' | 'priority' | 'labels'>): string {
+  return JSON.stringify([issue.summary, issue.priority, issue.labels]);
+}
+
+function recurrenceKey(rule: RecurrenceRule | null | undefined): string {
+  return JSON.stringify(rule ?? null);
+}
+
 export function IssueDetailPage() {
   const { issueKey } = useParams<{ issueKey: string }>();
+  // Drafts belong to one issue, so opening another issue starts from fresh state.
+  return <IssueDetail key={issueKey} issueKey={issueKey} />;
+}
+
+function IssueDetail({ issueKey }: { issueKey: string | undefined }) {
   const { data: issue, isLoading } = useIssue(issueKey!);
   const { data: recurrenceHistory } = useIssueRecurrence(issueKey!);
   const updateIssue = useUpdateIssue(issueKey!);
@@ -57,6 +71,7 @@ export function IssueDetailPage() {
   const canAssign = useHasPermission('issues.assign');
 
   const [isEditing, setIsEditing] = useState(false);
+  const [editBase, setEditBase] = useState<string | null>(null);
   const [summary, setSummary] = useState('');
   const [priority, setPriority] = useState<IssuePriority>('medium');
   const [labels, setLabels] = useState('');
@@ -66,13 +81,28 @@ export function IssueDetailPage() {
   const [assigneeMenuOpen, setAssigneeMenuOpen] = useState(false);
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
 
+  // Live updates refetch the issue. The recurrence draft follows the server only while the
+  // user has not changed it, so a teammate's edit does not discard an unsaved rule.
+  const recurrenceSeedRef = useRef<string | null>(null);
   useEffect(() => {
-    if (issue) {
-      setSummary(issue.summary);
-      setPriority(issue.priority);
-      setLabels(issue.labels.join(', '));
-      setRecurrenceDraft(issue.recurrenceRule);
-    }
+    if (!issue) return;
+    const serverRule = recurrenceKey(issue.recurrenceRule);
+    const previousSeed = recurrenceSeedRef.current;
+    if (serverRule === previousSeed) return;
+    recurrenceSeedRef.current = serverRule;
+    setRecurrenceDraft((draft) =>
+      previousSeed === null || recurrenceKey(draft) === previousSeed ? issue.recurrenceRule : draft,
+    );
+  }, [issue]);
+
+  // The edit form is seeded when it opens and then left alone, so a refetch cannot wipe a draft.
+  const startIssueEdit = useCallback(() => {
+    if (!issue) return;
+    setSummary(issue.summary);
+    setPriority(issue.priority);
+    setLabels(issue.labels.join(', '));
+    setEditBase(editableFieldsKey(issue));
+    setIsEditing(true);
   }, [issue]);
 
   const startEditingDesc = useCallback(() => {
@@ -89,13 +119,8 @@ export function IssueDetailPage() {
   }, [descJson, updateIssue]);
 
   const cancelIssueEdit = useCallback(() => {
-    if (issue) {
-      setSummary(issue.summary);
-      setPriority(issue.priority);
-      setLabels(issue.labels.join(', '));
-    }
     setIsEditing(false);
-  }, [issue]);
+  }, []);
 
   const cancelDescriptionEdit = useCallback(() => {
     setEditingDesc(false);
@@ -106,7 +131,7 @@ export function IssueDetailPage() {
     [
       {
         keys: 'e',
-        handler: () => setIsEditing(true),
+        handler: startIssueEdit,
         enabled: canUpdate && !isEditing,
       },
       {
@@ -157,6 +182,8 @@ export function IssueDetailPage() {
 
   const saveRecurrence = async () => {
     await updateIssue.mutateAsync({ recurrenceRule: recurrenceDraft });
+    // The saved rule is the server's now, so the refetch that follows replaces the draft.
+    recurrenceSeedRef.current = null;
   };
 
   // Helpers
@@ -208,6 +235,8 @@ export function IssueDetailPage() {
 
   const normalizedDescription = normalizeCommentBody(issue.description);
   const hasDescription = !isRichTextEmpty(normalizedDescription);
+  const updatedWhileEditing =
+    isEditing && editBase !== null && editableFieldsKey(issue) !== editBase;
 
   return (
     <div>
@@ -236,7 +265,11 @@ export function IssueDetailPage() {
                   {isEditing ? null : issue.summary}
                 </h1>
                 {canUpdate && (
-                  <Button variant="secondary" size="sm" onClick={() => setIsEditing(!isEditing)}>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={isEditing ? cancelIssueEdit : startIssueEdit}
+                  >
                     {isEditing ? 'Cancel' : 'Edit'}
                   </Button>
                 )}
@@ -244,6 +277,16 @@ export function IssueDetailPage() {
 
               {isEditing ? (
                 <form onSubmit={handleSave} className="space-y-4">
+                  {updatedWhileEditing && (
+                    <p
+                      role="status"
+                      className="border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200"
+                    >
+                      This issue was updated while you were editing. Saving will replace those
+                      changes with yours.
+                    </p>
+                  )}
+
                   <div>
                     <Label htmlFor="editSummary">Summary</Label>
                     <Input
