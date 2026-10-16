@@ -18,6 +18,7 @@ import { createTransport } from 'nodemailer';
 import type SMTPTransport from 'nodemailer/lib/smtp-transport';
 import type { Repository } from 'typeorm';
 import { TenantService } from '../../core/tenant/tenant.service';
+import { mergeNotificationPreferences } from '../users/notification-preferences';
 import { NotificationQueueService } from './notification-queue.service';
 import { AccountMailQueueService } from './account-mail-queue.service';
 
@@ -219,16 +220,9 @@ export class MailService {
     token: string,
   ): Promise<{ success: true; preference: NotificationPreferenceKey }> {
     const { userId, preference } = this.verifyUnsubscribeToken(token);
-    const user = await this.userRepo.findOneBy({ id: userId });
-    if (!user) {
+    if (!(await mergeNotificationPreferences(this.userRepo, userId, { [preference]: false }))) {
       throw new BadRequestException('Invalid unsubscribe token');
     }
-
-    user.notificationPreferences = {
-      ...this.withPreferenceDefaults(user.notificationPreferences),
-      [preference]: false,
-    };
-    await this.userRepo.save(user);
 
     return { success: true, preference };
   }

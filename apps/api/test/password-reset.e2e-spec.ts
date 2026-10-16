@@ -14,6 +14,7 @@ import { TenantConnectionProvider } from '../src/core/tenant';
 import { AccountMailQueueService } from '../src/modules/mail/account-mail-queue.service';
 import { MailService } from '../src/modules/mail/mail.service';
 import { UsersService } from '../src/modules/users/users.service';
+import { holdFirstTouch } from './user-row-hold';
 
 jest.setTimeout(60_000);
 
@@ -444,7 +445,7 @@ describe('Password reset (e2e)', () => {
     await http().post('/api/v1/auth/login').send({ email: ownerEmail, password }).expect(201);
   });
 
-  describe('a user loaded before the reset and saved after it', () => {
+  describe('a user change that spans the reset', () => {
     let resets = 0;
 
     function userRepoOf(service: object): Repository<UserEntity> {
@@ -460,32 +461,18 @@ describe('Password reset (e2e)', () => {
     }
 
     /**
-     * Starts `run`, holds it just after it loads the owner through `repo`, resets the
-     * password, then lets it save the copy it loaded before the reset.
+     * Starts `run`, holds it at its first touch of the owner's row through `repo` (just after
+     * it loads the row, or just before it writes it), resets the password, then lets it finish.
      */
-    async function resetWhileLoaded(repo: Repository<UserEntity>, run: () => Promise<unknown>) {
-      const load = repo.findOneBy.bind(repo);
-      let held = false;
-      let markLoaded!: () => void;
-      const loaded = new Promise<void>((resolve) => (markLoaded = resolve));
-      let release!: () => void;
-      const released = new Promise<void>((resolve) => (release = resolve));
-      const hold = jest.spyOn(repo, 'findOneBy').mockImplementation(async (where) => {
-        const user = await load(where);
-        if (!held && user?.id === ownerId) {
-          held = true;
-          markLoaded();
-          await released;
-        }
-        return user;
-      });
+    async function resetWhileHeld(repo: Repository<UserEntity>, run: () => Promise<unknown>) {
+      const hold = holdFirstTouch(repo, ownerId);
 
       try {
         const outcome = run();
         await Promise.race([
-          loaded,
+          hold.reached,
           outcome.then(() => {
-            throw new Error('finished without loading the account');
+            throw new Error('finished without touching the account');
           }),
         ]);
         const [{ password_hash: loadedHash }] = await dataSource.query(
@@ -508,7 +495,7 @@ describe('Password reset (e2e)', () => {
         );
         expect(resetHash).not.toBe(loadedHash);
 
-        release();
+        hold.release();
         await outcome;
 
         const [{ password_hash: finalHash }] = await dataSource.query(
@@ -522,8 +509,7 @@ describe('Password reset (e2e)', () => {
           .expect(401);
         await http().post('/api/v1/auth/login').send({ email: ownerEmail, password }).expect(201);
       } finally {
-        release();
-        hold.mockRestore();
+        hold.restore();
       }
     }
 
@@ -537,7 +523,7 @@ describe('Password reset (e2e)', () => {
 
     it('keeps the new password when a profile update saves', async () => {
       const access = await ownerSession();
-      await resetWhileLoaded(userRepoOf(app.get(UsersService)), () =>
+      await resetWhileHeld(userRepoOf(app.get(UsersService)), () =>
         http()
           .patch('/api/v1/users/me')
           .set('Authorization', `Bearer ${access}`)
@@ -551,7 +537,7 @@ describe('Password reset (e2e)', () => {
 
     it('keeps the new password when notification preferences save', async () => {
       const access = await ownerSession();
-      await resetWhileLoaded(userRepoOf(app.get(UsersService)), () =>
+      await resetWhileHeld(userRepoOf(app.get(UsersService)), () =>
         http()
           .patch('/api/v1/users/me/notification-preferences')
           .set('Authorization', `Bearer ${access}`)
@@ -566,7 +552,7 @@ describe('Password reset (e2e)', () => {
     it('keeps the new password when an email unsubscribe link saves', async () => {
       const mail = app.get(MailService);
       const unsubscribe = mail.createUnsubscribeToken(ownerId, 'emailOnMention');
-      await resetWhileLoaded(userRepoOf(mail), () =>
+      await resetWhileHeld(userRepoOf(mail), () =>
         http()
           .post('/api/v1/notifications/unsubscribe')
           .send({ token: unsubscribe })
@@ -578,7 +564,7 @@ describe('Password reset (e2e)', () => {
 
     it('keeps the new password when a social sign-in links a provider', async () => {
       const auth = app.get(AuthService);
-      await resetWhileLoaded(userRepoOf(auth), () =>
+      await resetWhileHeld(userRepoOf(auth), () =>
         auth.completeOAuth({
           provider: 'github',
           email: ownerEmail,
@@ -591,7 +577,7 @@ describe('Password reset (e2e)', () => {
 
     it('keeps the new password when a social sign-in has nothing new to save', async () => {
       const auth = app.get(AuthService);
-      await resetWhileLoaded(userRepoOf(auth), () =>
+      await resetWhileHeld(userRepoOf(auth), () =>
         auth.completeOAuth({
           provider: 'github',
           email: ownerEmail,

@@ -386,22 +386,17 @@ export class AuthService {
 
     let user = await this.findUserByEmail(email);
     if (!user) {
-      user = this.userRepo.create({
+      user = await this.userRepo.save(this.userRepo.create({
         email,
         displayName: identity.displayName || email,
         passwordHash: null,
         authProvider: identity.provider,
         authProviders: [identity.provider],
         avatarUrl: identity.avatarUrl,
-      });
+      }));
     } else {
-      const linkedProviders = user.authProviders?.length ? user.authProviders : [user.authProvider];
-      user.authProviders = Array.from(new Set([...linkedProviders, identity.provider]));
-      if (!user.avatarUrl && identity.avatarUrl) {
-        user.avatarUrl = identity.avatarUrl;
-      }
+      user = await this.linkOAuthIdentity(user.id, identity);
     }
-    user = await this.userRepo.save(user);
 
     if (identity.tenantSlug) {
       const tenant = await this.tenantService.findBySlug(identity.tenantSlug);
@@ -456,6 +451,40 @@ export class AuthService {
         role: membership.role,
       })),
     };
+  }
+
+  /**
+   * Adds the provider, and the avatar if the account has none, to an existing account. The row
+   * lock makes concurrent sign-ins read each other's provider before adding their own, and
+   * update() writes only these columns, so a concurrent profile change is kept.
+   */
+  private linkOAuthIdentity(userId: string, identity: OAuthIdentity): Promise<UserEntity> {
+    return this.userRepo.manager.transaction(async (manager) => {
+      const userRepo = manager.getRepository(UserEntity);
+      const user = await userRepo.findOne({
+        where: { id: userId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!user) {
+        throw new UnauthorizedException('Account not found');
+      }
+
+      const linkedProviders = user.authProviders?.length ? user.authProviders : [user.authProvider];
+      const authProviders = Array.from(new Set([...linkedProviders, identity.provider]));
+      const changes: Partial<Pick<UserEntity, 'authProviders' | 'avatarUrl'>> = {};
+      if (authProviders.join(',') !== (user.authProviders ?? []).join(',')) {
+        changes.authProviders = authProviders;
+      }
+      if (!user.avatarUrl && identity.avatarUrl) {
+        changes.avatarUrl = identity.avatarUrl;
+      }
+      if (Object.keys(changes).length === 0) {
+        return user;
+      }
+
+      await userRepo.update({ id: userId }, changes);
+      return userRepo.findOneByOrFail({ id: userId });
+    });
   }
 
   createOAuthContextToken(userId: string, provider: ExternalAuthProvider) {

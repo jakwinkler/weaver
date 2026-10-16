@@ -16,7 +16,7 @@ describe('MailService', () => {
   };
 
   let tenantService: { getSettings: jest.Mock };
-  let userRepo: { findOneBy: jest.Mock; save: jest.Mock };
+  let userRepo: { findOneBy: jest.Mock; query: jest.Mock };
   let membershipRepo: { findOneBy: jest.Mock };
   let notificationQueue: { enqueue: jest.Mock };
   let accountMailQueue: { enqueue: jest.Mock };
@@ -34,7 +34,7 @@ describe('MailService', () => {
         displayName: 'Recipient',
         notificationPreferences: { ...DEFAULT_NOTIFICATION_PREFERENCES },
       }),
-      save: jest.fn(async (user) => user),
+      query: jest.fn(async () => [[{ notification_preferences: {} }], 1]),
     };
     membershipRepo = {
       findOneBy: jest.fn().mockResolvedValue({
@@ -175,14 +175,25 @@ describe('MailService', () => {
       preference: 'emailOnComment',
       success: true,
     });
-    expect(userRepo.save).toHaveBeenCalledWith(
-      expect.objectContaining({
-        notificationPreferences: {
-          ...DEFAULT_NOTIFICATION_PREFERENCES,
-          emailOnComment: false,
-        },
-      }),
+    // One merge statement, so a concurrent change to another preference is kept.
+    expect(userRepo.query).toHaveBeenCalledTimes(1);
+    const [sql, params] = userRepo.query.mock.calls[0];
+    expect(sql).toMatch(
+      /SET notification_preferences = \$2::jsonb \|\| COALESCE\(notification_preferences, '\{\}'::jsonb\) \|\| \$3::jsonb/,
     );
+    expect(params).toEqual([
+      'user-1',
+      JSON.stringify(DEFAULT_NOTIFICATION_PREFERENCES),
+      JSON.stringify({ emailOnComment: false }),
+    ]);
+    expect(userRepo.findOneBy).not.toHaveBeenCalled();
+  });
+
+  it('rejects an unsubscribe token for an account that no longer exists', async () => {
+    userRepo.query.mockResolvedValueOnce([[], 0]);
+    const token = service.createUnsubscribeToken('user-1', 'emailOnComment');
+
+    await expect(service.unsubscribe(token)).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('rejects a tampered unsubscribe token', async () => {
