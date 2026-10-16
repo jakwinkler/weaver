@@ -414,6 +414,9 @@ export class IssuesService {
     await this.assertValidAssignee(dto.assigneeId);
     const result = await this.tenantConnections.runInTenantTransaction(async (em) => {
       const repo = em.getRepository(IssueEntity);
+      if (dto.parentId !== undefined || dto.epicId !== undefined) {
+        await this.lockProjectHierarchy(em, issueKey);
+      }
       const issue = await repo.findOne({
         where: { key: issueKey },
         lock: { mode: 'pessimistic_write' },
@@ -1071,6 +1074,23 @@ export class IssuesService {
             : flatParams,
       };
     });
+  }
+
+  /**
+   * Serializes parent and epic changes within one project, so two concurrent updates cannot each
+   * pass the cycle check and together create a cycle. Taken before the issue row lock so a
+   * hierarchy update never holds a row that another one needs while it waits here.
+   */
+  private async lockProjectHierarchy(em: EntityManager, issueKey: string): Promise<void> {
+    const target = await em.getRepository(IssueEntity).findOne({
+      where: { key: issueKey },
+      select: { id: true, projectId: true },
+    });
+    if (!target) return;
+    const { schemaName } = requireTenantContext();
+    await em.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+      `issue-hierarchy:${schemaName}:${target.projectId}`,
+    ]);
   }
 
   private async assertValidHierarchyTarget(
