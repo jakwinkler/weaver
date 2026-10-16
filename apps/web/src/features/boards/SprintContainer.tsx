@@ -7,12 +7,13 @@ import type { Issue, Sprint } from '@weaver/shared';
 import { useSprintStats } from '@/api';
 import { IssueTypeIcon } from '@/components/IconPicker';
 import { Badge } from '@/components/ui/badge';
+import { parseDateOnly } from '@/lib/date-only';
 import { cn } from '@/lib/utils';
 import { committedStoryPoints, planningContainerId } from './backlogPlanning';
 
 function formatDate(date: Date | string | undefined): string {
   if (!date) return 'No date';
-  return new Date(date).toLocaleDateString();
+  return parseDateOnly(date).toLocaleDateString();
 }
 
 function priorityClasses(priority: string): string {
