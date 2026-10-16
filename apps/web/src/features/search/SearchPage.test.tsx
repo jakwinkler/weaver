@@ -1,7 +1,7 @@
 import '@testing-library/jest-dom/vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SearchPage } from './SearchPage';
 
 const searchMutate = vi.fn();
@@ -39,6 +39,8 @@ vi.mock('@/api/hooks-phase3', () => ({
   useDeleteSavedFilter: () => ({ mutateAsync: vi.fn() }),
 }));
 
+afterEach(cleanup);
+
 describe('SearchPage pagination', () => {
   beforeEach(() => {
     searchMutate.mockClear();
@@ -72,5 +74,32 @@ describe('SearchPage pagination', () => {
         perPage: 10,
       });
     });
+  });
+});
+
+describe('SearchPage results', () => {
+  beforeEach(() => {
+    searchMutate.mockClear();
+    localStorage.clear();
+  });
+
+  it('links each result key and summary to the issue', () => {
+    render(
+      <MemoryRouter initialEntries={['/search?q=priority%20%3D%20%22medium%22&page=2&perPage=10']}>
+        <Routes>
+          <Route path="/search" element={<SearchPage />} />
+          <Route path="/issues/:issueKey" element={<p>Issue detail route</p>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('link', { name: 'SRC-11' })).toHaveAttribute('href', '/issues/SRC-11');
+    expect(screen.getByRole('link', { name: 'Search result 11' })).toHaveAttribute(
+      'href',
+      '/issues/SRC-11',
+    );
+
+    fireEvent.click(screen.getByRole('link', { name: 'Search result 12' }));
+    expect(screen.getByText('Issue detail route')).toBeInTheDocument();
   });
 });
