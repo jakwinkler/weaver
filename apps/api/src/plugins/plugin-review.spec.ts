@@ -73,3 +73,20 @@ describe('plugin project access', () => {
     },
   );
 });
+
+describe('time report output', () => {
+  function context(rows: unknown[]) {
+    return {
+      db: { query: jest.fn().mockResolvedValue(rows) },
+      api: { projects: { accessibleIds: jest.fn().mockResolvedValue(null) } },
+    };
+  }
+
+  it('joins public.users for user grouping and labels rows without email', async () => {
+    const ctx = context([]);
+    await getReport({ params: {}, query: { groupBy: 'user' } }, ctx);
+    const [sql] = ctx.db.query.mock.calls[0];
+    expect(sql).toContain('LEFT JOIN public.users u');
+    expect(sql).not.toMatch(/email/i);
+  });
+});
