@@ -4,7 +4,7 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { ImportJobEntity } from '@weaver/db';
+import { ImportJobEntity, ImportedResourceEntity } from '@weaver/db';
 import type { JiraProjectSummary } from '@weaver/shared';
 import type { EntityManager } from 'typeorm';
 import { requireTenantContext, TenantConnectionProvider } from '../../core/tenant';
@@ -33,6 +33,60 @@ export class ImportService {
     }
   }
 
+  async resources(jobId: string, page: number) {
+    if (page < 1 || page > 100000) throw new BadRequestException('Invalid page');
+    const em = await this.tenantConnections.getEntityManager();
+    const [data, total] = await em.getRepository(ImportedResourceEntity).findAndCount({
+      where: { importJobId: jobId },
+      order: { kind: 'ASC', externalId: 'ASC' },
+      skip: (page - 1) * 100,
+      take: 100,
+    });
+    return { data, page, perPage: 100, total };
+  }
+
+  async preview(dto: StartJiraImportDto) {
+    const selected = filterSelectedProjects(
+      await this.discoverProjects(dto.config),
+      dto.projectKeys,
+    );
+    const projects = [];
+    for (const project of selected) {
+      const counts = { issues: 0, comments: 0, attachments: 0, worklogs: 0, securedIssues: 0 };
+      const people = new Set<string>();
+      for await (const page of this.jiraClient.issuePages(
+        dto.config,
+        [project.key],
+        dto.updatedSince,
+      )) {
+        for (const issue of page) {
+          counts.issues++;
+          counts.comments += issue.fields.comment?.total ?? 0;
+          counts.attachments += issue.fields.attachment?.length ?? 0;
+          counts.worklogs += issue.fields.worklog?.total ?? 0;
+          if (issue.fields.security) counts.securedIssues++;
+          for (const user of [issue.fields.assignee, issue.fields.reporter, issue.fields.creator])
+            if (user?.accountId ?? user?.key) people.add(user.accountId ?? user.key);
+        }
+      }
+      projects.push({ key: project.key, name: project.name, ...counts, issuePeople: people.size });
+    }
+    return {
+      projects,
+      notes: [
+        ...(dto.updatedSince
+          ? [
+              `Partial import: issues updated since ${dto.updatedSince}, including their complete comments, history and files. Older issues are excluded.`,
+            ]
+          : []),
+        'Counts cover data visible to the Jira account. Comment and worklog totals come from Jira issue metadata.',
+        'Additional historical people and restricted audiences are discovered during the import. Imported people receive no access or notifications.',
+        'Restricted comments are held for administrators until you map their audience. Secured issues are retained in the administrator source archive.',
+        'Workflow rules and board filters require review. Source records retain unsupported metadata.',
+      ],
+    };
+  }
+
   async start(dto: StartJiraImportDto, requestedByUserId: string): Promise<ImportJobEntity> {
     const projects = await this.discoverProjects(dto.config);
     try {
@@ -44,6 +98,10 @@ export class ImportService {
     const context = requireTenantContext();
     const manager = await this.tenantConnections.getEntityManager();
     await this.ensureStorage(manager, context.schemaName);
+    await manager.query(
+      `UPDATE public.tenants SET settings = jsonb_set(settings, '{importRequiresInvitation}', 'true') WHERE id = $1`,
+      [context.tenantId],
+    );
     const repo = manager.getRepository(ImportJobEntity);
     const job = await repo.save(
       repo.create({
@@ -57,6 +115,7 @@ export class ImportService {
         skippedItems: 0,
         errors: [],
         selectedProjectKeys: dto.projectKeys ?? null,
+        report: { scope: { updatedSince: dto.updatedSince ?? null } },
         startedAt: null,
         completedAt: null,
       }),
@@ -70,6 +129,7 @@ export class ImportService {
         requestedByUserId,
         config: dto.config,
         projectKeys: dto.projectKeys,
+        updatedSince: dto.updatedSince,
       });
     } catch (error) {
       job.status = 'failed';
@@ -99,7 +159,7 @@ export class ImportService {
 
   async cancel(id: string): Promise<ImportJobEntity> {
     const job = await this.getStatus(id);
-    if (job.status === 'completed' || job.status === 'failed') {
+    if (['completed', 'needs_review', 'failed'].includes(job.status)) {
       throw new BadRequestException(`Cannot cancel an import that is ${job.status}`);
     }
     if (job.status !== 'cancelled') {
@@ -128,6 +188,7 @@ export class ImportService {
         total_items INTEGER NOT NULL DEFAULT 0,
         imported_items INTEGER NOT NULL DEFAULT 0,
         skipped_items INTEGER NOT NULL DEFAULT 0,
+        report JSONB NOT NULL DEFAULT '{}'::jsonb,
         errors JSONB NOT NULL DEFAULT '[]'::jsonb,
         selected_project_keys JSONB,
         started_at TIMESTAMPTZ,

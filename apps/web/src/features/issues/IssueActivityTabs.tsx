@@ -1,3 +1,5 @@
+import { JiraDetailsPanel } from './JiraDetailsPanel';
+import { ImportedFileAccess } from './ImportedFileAccess';
 import { useState, useMemo, useCallback, useRef } from 'react';
 import { useComments } from '@/api/hooks-phase2';
 import { useActivity } from '@/api/hooks-phase2';
@@ -31,7 +33,7 @@ interface IssueActivityTabsProps {
   issueKey: string;
 }
 
-type Tab = 'comments' | 'logs' | 'all' | 'attachments';
+type Tab = 'comments' | 'logs' | 'all' | 'attachments' | 'jira';
 
 type TimelineItem =
   | { type: 'comment'; data: any; date: string | Date }
@@ -52,6 +54,7 @@ export function IssueActivityTabs({ issueKey }: IssueActivityTabsProps) {
     count?: number;
     hidden?: boolean;
   }[] = [
+    { key: 'jira', label: 'Jira data', icon: <FileText className="h-4 w-4" /> },
     { key: 'comments', label: 'Comments', icon: <MessageSquare className="h-4 w-4" /> },
     {
       key: 'logs',
@@ -70,9 +73,9 @@ export function IssueActivityTabs({ issueKey }: IssueActivityTabsProps) {
   const tabs = allTabs.filter((t) => !t.hidden);
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-6">
+    <div className="rounded-lg border border-gray-200 bg-white p-4 sm:p-6">
       {/* Tab bar */}
-      <div className="mb-6 flex border-b border-gray-200">
+      <div className="mb-6 flex flex-wrap border-b border-gray-200">
         {tabs.map(({ key, label, icon, count }) => (
           <button
             key={key}
@@ -95,6 +98,7 @@ export function IssueActivityTabs({ issueKey }: IssueActivityTabsProps) {
       </div>
 
       {/* Tab content */}
+      {activeTab === 'jira' && <JiraDetailsPanel issueKey={issueKey} />}
       {activeTab === 'comments' && <CommentsSection issueKey={issueKey} />}
       {activeTab === 'logs' && timeTrackingEnabled && <LogsTab issueKey={issueKey} />}
       {activeTab === 'all' && (
@@ -204,7 +208,11 @@ function AttachmentsTab({ issueKey }: { issueKey: string }) {
 
       {uploadAttachment.isPending && <p className="mb-4 text-sm text-indigo-600">Uploading...</p>}
 
-      {uploadAttachment.isError && <p role="alert" className="mb-4 text-sm text-destructive">Upload failed. Check the file size and try again.</p>}
+      {uploadAttachment.isError && (
+        <p role="alert" className="mb-4 text-sm text-destructive">
+          Upload failed. Check the file size and try again.
+        </p>
+      )}
 
       {/* Attachments list */}
       {(!attachments || attachments.length === 0) && (
@@ -215,9 +223,9 @@ function AttachmentsTab({ issueKey }: { issueKey: string }) {
         {attachments?.map((att) => (
           <div
             key={att.id}
-            className="flex items-center justify-between rounded-lg border border-gray-100 bg-gray-50 px-4 py-3"
+            className="flex flex-col gap-3 rounded-lg border border-gray-100 bg-gray-50 px-4 py-3 sm:flex-row sm:justify-between"
           >
-            <div className="flex items-center gap-3 overflow-hidden">
+            <div className="flex min-w-0 flex-1 items-start gap-3">
               {isImageMime(att.mimeType) ? (
                 <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded border border-gray-200 bg-white">
                   <img
@@ -228,17 +236,18 @@ function AttachmentsTab({ issueKey }: { issueKey: string }) {
                 </div>
               ) : (
                 <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded border border-gray-200 bg-white">
-                  <FileIcon className="h-5 w-5 text-gray-400" />
+                <FileIcon className="h-5 w-5 flex-shrink-0 text-gray-400" />
                 </div>
               )}
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-gray-900">{att.filename}</p>
                 <p className="text-xs text-gray-500">
                   {formatFileSize(att.size)} &middot; {new Date(att.createdAt).toLocaleDateString()}
                 </p>
+                {att.sourceId && <ImportedFileAccess file={att} issueKey={issueKey} />}
               </div>
             </div>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 self-end sm:self-start">
               <a
                 href={getAttachmentUrl(att.id)}
                 target="_blank"
@@ -335,7 +344,7 @@ function AllTab({
                           commented {new Date(item.date).toLocaleString()}
                         </span>
                       </div>
-                      {canDeleteComment && (
+                      {canDeleteComment && !item.data.imported && (
                         <button
                           onClick={() => handleDeleteComment(item.data.id)}
                           className="rounded p-1 text-red-600 hover:bg-red-100"
@@ -346,7 +355,7 @@ function AllTab({
                       )}
                     </div>
                     <div className="mt-1">
-                      <RichTextRenderer content={normalizeCommentBody(item.data.body)} />
+                      <RichTextRenderer issueKey={issueKey} content={normalizeCommentBody(item.data.body)} />
                     </div>
                   </div>
                 </div>

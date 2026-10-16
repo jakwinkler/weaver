@@ -1,3 +1,15 @@
+vi.mock('@/api/client', () => ({
+  apiClient: {
+    post: vi.fn().mockResolvedValue({
+      data: {
+        projects: [
+          { key: 'ONE', issues: 2, comments: 3, attachments: 0, worklogs: 1, securedIssues: 0 },
+        ],
+        notes: [],
+      },
+    }),
+  },
+}));
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -73,12 +85,19 @@ describe('ImportWizard project selection', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Connect to Jira' }));
 
     await screen.findByText('2 accessible Jira projects found.');
-    fireEvent.click(screen.getByRole('checkbox', { name: /Import all accessible projects/ }));
+    expect(
+      (screen.getByRole('checkbox', { name: /Import all accessible projects/ }) as HTMLInputElement)
+        .checked,
+    ).toBe(false);
     fireEvent.click(screen.getByRole('checkbox', { name: /One/ }));
+    fireEvent.change(screen.getByLabelText('Issues updated since (optional)'), {
+      target: { value: '2026-08-15' },
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
 
+    await screen.findByText(/People are imported without access or notifications/);
     expect(screen.getByText(/Every unspecified Jira project will be skipped/)).toBeTruthy();
-    expect(screen.getByText(/recovered sprint assignments are repaired/)).toBeTruthy();
+    expect(screen.getByText(/Local changes are retained and reported for review/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Start Jira import' }));
 
     await waitFor(() => {
@@ -89,6 +108,7 @@ describe('ImportWizard project selection', () => {
           auth: { type: 'api_token', token: 'test-token' },
         },
         projectKeys: ['ONE'],
+        updatedSince: '2026-08-15',
       });
       expect(window.sessionStorage.getItem('weaver:active-jira-import-id')).toBe('job-1');
     });

@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
-import { RoleEntity, UserEntity, TenantMembershipEntity } from '@weaver/db';
+import { ImportedPersonEntity, RoleEntity, UserEntity, TenantMembershipEntity } from '@weaver/db';
 import { UpdateUserDto } from '@weaver/shared';
 import type { NotificationPreferences, UpdateNotificationPreferencesDto } from '@weaver/shared';
 import { AttachmentsService } from '../attachments/attachments.service';
@@ -31,7 +31,26 @@ export class UsersService {
   async findById(id: string): Promise<Omit<UserEntity, 'passwordHash' | 'sessionVersion'>> {
     const user = await this.userRepo.findOneBy({ id });
     if (!user) {
-      throw new NotFoundException('User not found');
+      const em = await this.tenantConnections.getEntityManager();
+      const imported = await em.getRepository(ImportedPersonEntity).findOneBy({ id });
+      if (!imported) throw new NotFoundException('User not found');
+      return {
+        id: imported.id,
+        displayName: imported.displayName,
+        email: '',
+        avatarUrl: null,
+        authProvider: 'imported',
+        authProviders: [],
+        createdAt: imported.createdAt,
+        updatedAt: imported.createdAt,
+        notificationPreferences: {
+          emailOnAssign: false,
+          emailOnMention: false,
+          emailOnComment: false,
+          emailOnStatusChange: false,
+        },
+        memberships: [],
+      };
     }
     const { passwordHash, sessionVersion, ...rest } = user;
     return rest;

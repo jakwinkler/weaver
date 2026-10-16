@@ -18,6 +18,13 @@ export const jiraConnectionSchema = z
       .string()
       .url()
       .max(2000)
+      .refine(
+        (value) => {
+          const url = new URL(value);
+          return !url.username && !url.password && !url.search && !url.hash;
+        },
+        { message: 'Use a Jira base URL without credentials, query parameters, or a fragment' },
+      )
       .refine((value) => new URL(value).protocol === 'https:', {
         message: 'Jira URL must use HTTPS',
       }),
@@ -53,6 +60,14 @@ export const discoverJiraProjectsSchema = z.object({
 export const startJiraImportSchema = z.object({
   config: jiraConnectionSchema,
   projectKeys: projectKeysSchema.optional(),
+  updatedSince: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .refine((value) => {
+      const date = new Date(`${value}T00:00:00Z`);
+      return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+    }, 'Invalid import date')
+    .optional(),
 });
 
 export type DiscoverJiraProjectsDto = z.infer<typeof discoverJiraProjectsSchema>;

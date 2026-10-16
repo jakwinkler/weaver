@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { NotificationEntity } from '@weaver/db';
 import type { PaginatedResponse } from '@weaver/shared';
 import { requireTenantContext, TenantConnectionProvider } from '../../core/tenant';
@@ -18,6 +18,13 @@ export class NotificationsService {
     data: Record<string, unknown> = {},
   ): Promise<NotificationEntity> {
     const em = await this.tenantConnections.getEntityManager();
+    const tenantId = requireTenantContext().tenantId;
+    const members = await em.query(
+      'SELECT 1 FROM public.tenant_memberships WHERE tenant_id = $1 AND user_id = $2',
+      [tenantId, userId],
+    );
+    if (!members.length)
+      throw new ForbiddenException('Notification recipient is not an active member');
     const repo = em.getRepository(NotificationEntity);
 
     const notification = repo.create({

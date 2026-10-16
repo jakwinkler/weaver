@@ -1,4 +1,8 @@
-import { createPostgresDataSource, runReviewReliabilityMigration } from '@weaver/db';
+import {
+  createPostgresDataSource,
+  runJiraImportMigration,
+  runReviewReliabilityMigration,
+} from '@weaver/db';
 import { assertTenantSchemaName } from '@weaver/server-common';
 import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
@@ -18,8 +22,13 @@ export class TenantProvisioningService {
 
   async provisionSchema(schemaName: string): Promise<void> {
     assertTenantSchemaName(schemaName);
-    if (this.config.get('NODE_ENV') === 'production' && this.config.get('ALLOW_TENANT_SCHEMA_BOOTSTRAP') !== 'true') {
-      throw new ServiceUnavailableException('New tenant registration requires operator-enabled schema bootstrap');
+    if (
+      this.config.get('NODE_ENV') === 'production' &&
+      this.config.get('ALLOW_TENANT_SCHEMA_BOOTSTRAP') !== 'true'
+    ) {
+      throw new ServiceUnavailableException(
+        'New tenant registration requires operator-enabled schema bootstrap',
+      );
     }
     this.logger.log(`Provisioning schema: ${schemaName}`);
 
@@ -44,6 +53,7 @@ export class TenantProvisioningService {
       await tempDs.initialize();
       await runAutomaticTimeCoreMigration(tempDs, schemaName);
       await runReviewReliabilityMigration(tempDs, schemaName);
+      await runJiraImportMigration(tempDs, schemaName);
     } finally {
       if (tempDs.isInitialized) await tempDs.destroy();
     }
@@ -108,9 +118,30 @@ export class TenantProvisioningService {
 
     // Seed default statuses
     const statuses = [
-      { name: 'To Do', category: 'todo', color: '#6B7280', isInitial: true, isTerminal: false, position: 0 },
-      { name: 'In Progress', category: 'in_progress', color: '#3B82F6', isInitial: false, isTerminal: false, position: 1 },
-      { name: 'Done', category: 'done', color: '#10B981', isInitial: false, isTerminal: true, position: 2 },
+      {
+        name: 'To Do',
+        category: 'todo',
+        color: '#6B7280',
+        isInitial: true,
+        isTerminal: false,
+        position: 0,
+      },
+      {
+        name: 'In Progress',
+        category: 'in_progress',
+        color: '#3B82F6',
+        isInitial: false,
+        isTerminal: false,
+        position: 1,
+      },
+      {
+        name: 'Done',
+        category: 'done',
+        color: '#10B981',
+        isInitial: false,
+        isTerminal: true,
+        position: 2,
+      },
     ];
 
     const statusIds: string[] = [];
@@ -165,11 +196,19 @@ export class TenantProvisioningService {
         name: 'member',
         permissions: {
           'projects.read': true,
-          'issues.create': true, 'issues.read': true, 'issues.update': true,
-          'issues.transition': true, 'issues.assign': true,
-          'comments.create': true, 'comments.read': true, 'comments.update': true,
-          'pages.create': true, 'pages.read': true, 'pages.update': true,
-          'sprints.read': true, 'custom_fields.read': true,
+          'issues.create': true,
+          'issues.read': true,
+          'issues.update': true,
+          'issues.transition': true,
+          'issues.assign': true,
+          'comments.create': true,
+          'comments.read': true,
+          'comments.update': true,
+          'pages.create': true,
+          'pages.read': true,
+          'pages.update': true,
+          'sprints.read': true,
+          'custom_fields.read': true,
           'timer.allow': true,
         },
         isSystem: true,
@@ -177,8 +216,11 @@ export class TenantProvisioningService {
       {
         name: 'viewer',
         permissions: {
-          'projects.read': true, 'issues.read': true,
-          'comments.read': true, 'pages.read': true, 'sprints.read': true,
+          'projects.read': true,
+          'issues.read': true,
+          'comments.read': true,
+          'pages.read': true,
+          'sprints.read': true,
         },
         isSystem: true,
       },

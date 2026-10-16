@@ -61,6 +61,11 @@ docker compose --env-file "$WEAVER_ENV_FILE" -f deploy/compose/compose.yaml up -
 ## Database preparation and upgrades
 
 There is no universal database bootstrap or upgrade plan in this directory.
+For a fresh database, review the public schema diff as well as tenant schemas.
+Include every public authentication entity supported by the pinned API image.
+Creating only users and memberships leaves invitation creation broken. The schema
+planner includes organization invitations and password reset tokens alongside the
+other public authentication tables.
 Generate and review a plan for the exact database baseline and source revision.
 Back up the database, uploads, protected environment, Compose configuration,
 and image references before applying changes. Rehearse the plan and its inverse

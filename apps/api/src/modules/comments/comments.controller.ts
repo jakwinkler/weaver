@@ -41,8 +41,8 @@ export class CommentsController {
   @Get()
   @RequirePermission('comments', 'read')
   @RequireProjectAccess('issue-key')
-  async findByIssue(@Param('issueKey') issueKey: string) {
-    return this.commentsService.findByIssue(issueKey);
+  async findByIssue(@Param('issueKey') issueKey: string, @CurrentUser() user: RequestUser) {
+    return this.commentsService.findByIssue(issueKey, user);
   }
 
   @Patch(':id')

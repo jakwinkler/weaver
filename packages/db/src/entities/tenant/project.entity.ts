@@ -16,6 +16,9 @@ import { WorkflowEntity } from './workflow.entity';
 
 @Entity({ name: 'projects' })
 export class ProjectEntity {
+  @Column({ name: 'import_quarantined', type: 'boolean', default: false })
+  importQuarantined!: boolean;
+
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 

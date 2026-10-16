@@ -28,16 +28,23 @@ export function useStartJiraImport() {
 }
 
 export function useImportStatus(id: string | null) {
+  const queryClient = useQueryClient();
   return useQuery({
     queryKey: ['import-job', id],
     queryFn: async () => {
       const response = await apiClient.get<ImportJob>(`/import/status/${id}`);
+      if (['completed', 'needs_review', 'failed', 'cancelled'].includes(response.data.status)) {
+        void queryClient.invalidateQueries({ queryKey: ['import-people'] });
+        void queryClient.invalidateQueries({ queryKey: ['import-audiences'] });
+      }
       return response.data;
     },
     enabled: Boolean(id),
     refetchInterval: (query) => {
       const status = query.state.data?.status;
-      return status && ['completed', 'failed', 'cancelled'].includes(status) ? false : 2000;
+      return status && ['completed', 'needs_review', 'failed', 'cancelled'].includes(status)
+        ? false
+        : 2000;
     },
   });
 }

@@ -13,6 +13,8 @@ export interface JiraUser {
   name?: string;
   emailAddress?: string;
   displayName?: string;
+  active?: boolean;
+  accountType?: string;
 }
 
 export interface JiraStatus {
@@ -33,6 +35,7 @@ export interface JiraAttachment {
   mimeType?: string;
   size?: number;
   content: string;
+  author?: JiraUser;
   created?: string;
 }
 
@@ -60,6 +63,9 @@ export interface JiraComment {
   id: string;
   body: unknown;
   author?: JiraUser;
+  updateAuthor?: JiraUser;
+  parentId?: string | number | null;
+  visibility?: { type?: string; value?: string; identifier?: string };
   created?: string;
   updated?: string;
 }
@@ -83,6 +89,7 @@ export interface JiraBoard {
 export interface JiraProjectDetails extends JiraProjectSummary {
   description?: string;
   issueTypes?: JiraIssueType[];
+  lead?: JiraUser;
 }
 
 export interface JiraProjectIssueTypeStatuses extends JiraIssueType {
@@ -95,6 +102,8 @@ export interface MappedJiraIssue {
   priority: 'lowest' | 'low' | 'medium' | 'high' | 'highest';
   status: JiraStatus | null;
   issueType: JiraIssueType | null;
+  assignee: JiraUser | null;
+  reporter: JiraUser | null;
   assigneeEmail: string | null;
   reporterEmail: string | null;
   labels: string[];

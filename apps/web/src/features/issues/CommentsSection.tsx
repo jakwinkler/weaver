@@ -138,11 +138,19 @@ export function CommentsSection({ issueKey }: CommentsSectionProps) {
                     {new Date(comment.createdAt).toLocaleString()}
                   </span>
                 </div>
+                {comment.visibility && (
+                  <span className="text-xs text-amber-700">
+                    Restricted: {comment.visibility.value}
+                  </span>
+                )}
+                {comment.parentCommentId && (
+                  <span className="text-xs text-muted-foreground">Reply to an earlier comment</span>
+                )}
               </div>
-              {canDelete && (
+              {canDelete && !comment.imported && (
                 <button
                   onClick={() => handleDelete(comment.id)}
-                  className="rounded p-1 text-gray-400 hover:bg-red-100 hover:text-red-600"
+                  className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                   title="Delete comment"
                 >
                   <Trash2 className="h-4 w-4" />
@@ -150,7 +158,7 @@ export function CommentsSection({ issueKey }: CommentsSectionProps) {
               )}
             </div>
             <div className="mt-2">
-              <RichTextRenderer content={normalizeCommentBody(comment.body)} />
+              <RichTextRenderer issueKey={issueKey} content={normalizeCommentBody(comment.body)} />
             </div>
           </div>
         ))}

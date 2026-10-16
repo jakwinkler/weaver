@@ -7,9 +7,11 @@ import {
   JoinColumn,
 } from 'typeorm';
 import { IssueEntity } from './issue.entity';
+import type { ImportedVisibility } from './imported-audience.entity';
 
 @Entity({ name: 'attachments' })
 export class AttachmentEntity {
+  sourceMediaId?: string | null;
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
@@ -30,6 +32,12 @@ export class AttachmentEntity {
 
   @Column({ name: 'storage_key', length: 500 })
   storageKey!: string;
+
+  @Column({ name: 'source_id', type: 'varchar', nullable: true })
+  sourceId!: string | null;
+
+  @Column({ type: 'jsonb', nullable: true })
+  visibility!: ImportedVisibility | null;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;

@@ -1,8 +1,5 @@
-import {
-  ForbiddenException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { canReadImportedVisibility } from '@weaver/jira-import';
 import {
   AttachmentEntity,
   BoardEntity,
@@ -40,17 +37,15 @@ export class ProjectAccessService {
         { userId: user.userId },
       )
       .select('project.id', 'id')
-      .where("project.visibility = 'public' OR membership.id IS NOT NULL")
+      .where(
+        "(project.visibility = 'public' OR membership.id IS NOT NULL) AND project.import_quarantined = false",
+      )
       .getRawMany<{ id: string }>();
 
     return rows.map(({ id }) => id);
   }
 
-  async assertProjectKey(
-    key: string,
-    user: RequestUser,
-    mode: ProjectAccessMode,
-  ): Promise<void> {
+  async assertProjectKey(key: string, user: RequestUser, mode: ProjectAccessMode): Promise<void> {
     const em = await this.tenantConnections.getEntityManager();
     const project = await em.getRepository(ProjectEntity).findOneBy({ key });
     if (!project) {
@@ -59,11 +54,7 @@ export class ProjectAccessService {
     await this.assertProject(project, user, mode);
   }
 
-  async assertProjectId(
-    id: string,
-    user: RequestUser,
-    mode: ProjectAccessMode,
-  ): Promise<void> {
+  async assertProjectId(id: string, user: RequestUser, mode: ProjectAccessMode): Promise<void> {
     const em = await this.tenantConnections.getEntityManager();
     const project = await em.getRepository(ProjectEntity).findOneBy({ id });
     if (!project) {
@@ -72,11 +63,7 @@ export class ProjectAccessService {
     await this.assertProject(project, user, mode);
   }
 
-  async assertIssueKey(
-    key: string,
-    user: RequestUser,
-    mode: ProjectAccessMode,
-  ): Promise<void> {
+  async assertIssueKey(key: string, user: RequestUser, mode: ProjectAccessMode): Promise<void> {
     const em = await this.tenantConnections.getEntityManager();
     const issue = await em.getRepository(IssueEntity).findOneBy({ key });
     if (!issue) {
@@ -85,11 +72,7 @@ export class ProjectAccessService {
     await this.assertProjectId(issue.projectId, user, mode);
   }
 
-  async assertIssueIds(
-    ids: string[],
-    user: RequestUser,
-    mode: ProjectAccessMode,
-  ): Promise<void> {
+  async assertIssueIds(ids: string[], user: RequestUser, mode: ProjectAccessMode): Promise<void> {
     const uniqueIds = [...new Set(ids)];
     const em = await this.tenantConnections.getEntityManager();
     const issues = await em.getRepository(IssueEntity).find({
@@ -104,11 +87,7 @@ export class ProjectAccessService {
     }
   }
 
-  async assertBoardId(
-    id: string,
-    user: RequestUser,
-    mode: ProjectAccessMode,
-  ): Promise<void> {
+  async assertBoardId(id: string, user: RequestUser, mode: ProjectAccessMode): Promise<void> {
     const em = await this.tenantConnections.getEntityManager();
     const board = await em.getRepository(BoardEntity).findOneBy({ id });
     if (!board) {
@@ -117,11 +96,7 @@ export class ProjectAccessService {
     await this.assertProjectId(board.projectId, user, mode);
   }
 
-  async assertSprintId(
-    id: string,
-    user: RequestUser,
-    mode: ProjectAccessMode,
-  ): Promise<void> {
+  async assertSprintId(id: string, user: RequestUser, mode: ProjectAccessMode): Promise<void> {
     const em = await this.tenantConnections.getEntityManager();
     const sprint = await em.getRepository(SprintEntity).findOneBy({ id });
     if (!sprint) {
@@ -130,11 +105,7 @@ export class ProjectAccessService {
     await this.assertProjectId(sprint.projectId, user, mode);
   }
 
-  async assertIssueLinkId(
-    id: string,
-    user: RequestUser,
-    mode: ProjectAccessMode,
-  ): Promise<void> {
+  async assertIssueLinkId(id: string, user: RequestUser, mode: ProjectAccessMode): Promise<void> {
     const em = await this.tenantConnections.getEntityManager();
     const link = await em.getRepository(IssueLinkEntity).findOneBy({ id });
     if (!link) {
@@ -143,16 +114,14 @@ export class ProjectAccessService {
     await this.assertIssueIds([link.sourceIssueId, link.targetIssueId], user, mode);
   }
 
-  async assertAttachmentId(
-    id: string,
-    user: RequestUser,
-    mode: ProjectAccessMode,
-  ): Promise<void> {
+  async assertAttachmentId(id: string, user: RequestUser, mode: ProjectAccessMode): Promise<void> {
     const em = await this.tenantConnections.getEntityManager();
     const attachment = await em.getRepository(AttachmentEntity).findOneBy({ id });
     if (!attachment) {
       throw new NotFoundException(`Attachment "${id}" not found`);
     }
+    if (!(await canReadImportedVisibility(em, attachment.visibility, user)))
+      throw new NotFoundException('Attachment not found');
     if (attachment.issueId) {
       await this.assertIssueIds([attachment.issueId], user, mode);
       return;
@@ -161,7 +130,11 @@ export class ProjectAccessService {
       if (mode === 'read') {
         const avatars = await em.query(
           'SELECT 1 FROM public.users u JOIN public.tenant_memberships m ON m.user_id = u.id WHERE u.id = $1 AND u.avatar_url = $2 AND m.tenant_id = $3',
-          [attachment.uploaderId, `/attachments/${attachment.id}/download`, requireTenantContext().tenantId],
+          [
+            attachment.uploaderId,
+            `/attachments/${attachment.id}/download`,
+            requireTenantContext().tenantId,
+          ],
         );
         if (avatars.length) {
           await this.memberVisibility.assertVisibleMember(user, attachment.uploaderId);
@@ -181,6 +154,8 @@ export class ProjectAccessService {
       return;
     }
 
+    if (project.importQuarantined)
+      throw new ForbiddenException('This imported project requires administrator access review');
     const em = await this.tenantConnections.getEntityManager();
     const membership = await em.getRepository(ProjectMemberEntity).findOneBy({
       projectId: project.id,

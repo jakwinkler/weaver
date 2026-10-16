@@ -2,7 +2,9 @@ import { BadRequestException } from '@nestjs/common';
 import { DEFAULT_NOTIFICATION_PREFERENCES } from '@weaver/shared';
 import { MailService } from './mail.service';
 import { resolveSafeOutboundHost } from '../../core/security/outbound-http';
-jest.mock('../../core/security/outbound-http', () => ({ resolveSafeOutboundHost: jest.fn().mockResolvedValue([{ address: '8.8.8.8', family: 4 }]) }));
+jest.mock('../../core/security/outbound-http', () => ({
+  resolveSafeOutboundHost: jest.fn().mockResolvedValue([{ address: '8.8.8.8', family: 4 }]),
+}));
 
 describe('MailService', () => {
   const smtp = {
@@ -248,14 +250,21 @@ describe('MailService', () => {
     it('sends nothing without the installation SMTP server, even if an organization has one', async () => {
       delete configValues.SMTP_HOST;
       await expect(
-        service.enqueueAccountEmail(recipient, 'password-changed', { changedAt: 'now', forgotPasswordUrl: 'x' }),
+        service.enqueueAccountEmail(recipient, 'password-changed', {
+          changedAt: 'now',
+          forgotPasswordUrl: 'x',
+        }),
       ).resolves.toBe(false);
       expect(accountMailQueue.enqueue).not.toHaveBeenCalled();
       expect(tenantService.getSettings).not.toHaveBeenCalled();
     });
 
     it('renders every account template in HTML and text', () => {
-      for (const template of ['password-reset', 'password-changed', 'password-reset-unavailable'] as const) {
+      for (const template of [
+        'password-reset',
+        'password-changed',
+        'password-reset-unavailable',
+      ] as const) {
         const rendered = service.renderAccountTemplate(template, {
           recipientName: 'Owner',
           resetUrl: 'https://weaver.example.com/reset-password/abc',
@@ -300,5 +309,57 @@ describe('MailService', () => {
       await service.sendTestEmail('tenant-1', 'recipient@example.com', smtp);
       expect(resolveSafeOutboundHost).toHaveBeenCalledWith('smtp.example.com');
     });
+  });
+
+  it('delivers only the explicitly addressed invitation without historical notification jobs', async () => {
+    await service.sendInvitation(
+      'tenant-1',
+      'invited@example.test',
+      'https://weaver.example.com/import-invite/test',
+    );
+    expect(transport.sendMail).toHaveBeenCalledTimes(1);
+    expect(transport.sendMail).toHaveBeenCalledWith(
+      expect.objectContaining({ to: 'invited@example.test', subject: 'Your invitation to Weaver' }),
+    );
+    expect(notificationQueue.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('reports rejected invitation recipients as a delivery failure', async () => {
+    transport.sendMail.mockResolvedValue({ accepted: [], rejected: ['invited@example.test'] });
+    await expect(
+      service.sendInvitation(
+        'tenant-1',
+        'invited@example.test',
+        'https://weaver.example.com/import-invite/test',
+      ),
+    ).rejects.toThrow('rejected');
+  });
+
+  it('uses the installation private relay opt-in for imported invitations', async () => {
+    tenantService.getSettings.mockResolvedValue({ smtp: null });
+    configValues.SMTP_HOST = '10.0.0.25';
+    configValues.SMTP_FROM = 'weaver@example.com';
+    configValues.SMTP_ALLOW_PRIVATE_HOST = 'true';
+    (resolveSafeOutboundHost as jest.Mock).mockClear();
+    const factory = jest.fn(() => transport);
+    (service as any).transportFactory = factory;
+    await service.sendInvitation(
+      'tenant-1',
+      'invited@example.test',
+      'https://weaver.example.com/import-invite/test',
+    );
+    expect(resolveSafeOutboundHost).not.toHaveBeenCalled();
+    expect(factory).toHaveBeenCalledWith(expect.objectContaining({ host: '10.0.0.25' }));
+  });
+
+  it('still validates organization invitation SMTP with the installation opt-in', async () => {
+    configValues.SMTP_ALLOW_PRIVATE_HOST = 'true';
+    (resolveSafeOutboundHost as jest.Mock).mockClear();
+    await service.sendInvitation(
+      'tenant-1',
+      'invited@example.test',
+      'https://weaver.example.com/import-invite/test',
+    );
+    expect(resolveSafeOutboundHost).toHaveBeenCalledWith(smtp.host);
   });
 });

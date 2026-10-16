@@ -5,6 +5,7 @@ import { AdminGuard, JwtAuthGuard } from '../src/core/auth';
 import { tenantStorage, TenantConnectionProvider } from '../src/core/tenant';
 import { ImportController } from '../src/modules/import/import.controller';
 import { ImportQueueService } from '../src/modules/import/import-queue.service';
+import { ImportPeopleService } from '../src/modules/import/import-people.service';
 import { ImportService } from '../src/modules/import/import.service';
 import { JiraClientService } from '../src/modules/import/jira-client.service';
 
@@ -33,6 +34,7 @@ describe('Jira import endpoints (e2e)', () => {
       controllers: [ImportController],
       providers: [
         ImportService,
+        { provide: ImportPeopleService, useValue: {} },
         {
           provide: TenantConnectionProvider,
           useValue: { getEntityManager: async () => manager },
@@ -100,6 +102,7 @@ describe('Jira import endpoints (e2e)', () => {
           auth: { type: 'api_token', token: 'test-token' },
         },
         projectKeys: ['ONE'],
+        updatedSince: '2026-08-15',
       })
       .expect(201);
 
@@ -112,8 +115,29 @@ describe('Jira import endpoints (e2e)', () => {
       importJobId: response.body.id,
       schemaName: 'tenant_jira_import_test',
       projectKeys: ['ONE'],
+      updatedSince: '2026-08-15',
     });
   });
+
+  it.each(['2026-02-30', '2026-13-01', 'yesterday', '2026-08-15" OR project=OTHER'])(
+    'rejects an invalid import date before queuing: %s',
+    async (updatedSince) => {
+      const count = queued.length;
+      await request(app.getHttpServer())
+        .post('/api/v1/import/jira/start')
+        .send({
+          config: {
+            source: 'jira_server',
+            baseUrl: 'https://jira.example.com',
+            auth: { type: 'api_token', token: 'test-token' },
+          },
+          projectKeys: ['ONE'],
+          updatedSince,
+        })
+        .expect(400);
+      expect(queued).toHaveLength(count);
+    },
+  );
 
   it('rejects an inaccessible selected Jira project', async () => {
     const response = await request(app.getHttpServer())

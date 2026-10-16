@@ -74,9 +74,46 @@ jobs:
       - run: node --test deploy/compose/oauth-config.test.cjs
       - run: node --test docker/http-boundaries.test.cjs
 
+  jira-import:
+    runs-on: ubuntu-latest
+    needs: lint-and-typecheck
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: weaver_e2e_jira_import
+          POSTGRES_USER: weaver
+          POSTGRES_PASSWORD: weaver_import_test
+        ports:
+          - 55439:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 55440:6379
+    env:
+      WEAVER_IMPORT_TEST_DB: '1'
+      WEAVER_IMPORT_DATABASE: weaver_e2e_jira_import
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm turbo build --filter=@weaver/api --filter=@weaver/worker
+      - run: pnpm --filter @weaver/api exec jest --config test/jest-jira.config.cjs --runInBand --coverage
+
   build:
     runs-on: ubuntu-latest
-    needs: test
+    needs: [test, jira-import]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:

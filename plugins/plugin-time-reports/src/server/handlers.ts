@@ -2,7 +2,10 @@ import type { PluginRequest, PluginResponse, PluginContext } from '@weaver/sdk';
 
 const VALID_GROUP_BY = ['project', 'user', 'issue'] as const;
 
-function buildReportQuery(query: Record<string, string>, projectIds: string[] | null): {
+function buildReportQuery(
+  query: Record<string, string>,
+  projectIds: string[] | null,
+): {
   sql: string;
   params: unknown[];
   groupBy: string;
@@ -44,8 +47,8 @@ function buildReportQuery(query: Record<string, string>, projectIds: string[] | 
   switch (safeGroupBy) {
     case 'user':
       // Reports are visible to anyone with time-reports.view, so label people by display name only.
-      selectFields = `te.user_id, COALESCE(NULLIF(u.display_name, ''), 'Unknown user') AS label`;
-      groupByClause = `GROUP BY te.user_id, u.display_name`;
+      selectFields = `te.user_id, COALESCE(NULLIF(u.display_name, ''), NULLIF(imported_person.display_name, ''), 'Unknown user') AS label`;
+      groupByClause = `GROUP BY te.user_id, u.display_name, imported_person.display_name`;
       orderBy = 'total_minutes DESC';
       break;
     case 'issue':
@@ -61,7 +64,10 @@ function buildReportQuery(query: Record<string, string>, projectIds: string[] | 
   }
 
   // Plugin queries run with only the tenant schema on the search_path; users lives in public.
-  const userJoin = safeGroupBy === 'user' ? `LEFT JOIN public.users u ON u.id = te.user_id` : '';
+  const userJoin =
+    safeGroupBy === 'user'
+      ? `LEFT JOIN public.users u ON u.id = te.user_id LEFT JOIN imported_people imported_person ON imported_person.id = te.user_id`
+      : '';
 
   const sql = `
     SELECT ${selectFields},
@@ -83,7 +89,10 @@ export async function getReport(
   req: PluginRequest,
   context: PluginContext,
 ): Promise<PluginResponse> {
-  const { sql, params, groupBy } = buildReportQuery(req.query, await context.api.projects.accessibleIds());
+  const { sql, params, groupBy } = buildReportQuery(
+    req.query,
+    await context.api.projects.accessibleIds(),
+  );
   const rows = (await context.db.query(sql, params)) as any[];
 
   const totalMinutes = rows.reduce((sum, r) => sum + r.total_minutes, 0);
@@ -103,7 +112,10 @@ export async function exportCsv(
   req: PluginRequest,
   context: PluginContext,
 ): Promise<PluginResponse> {
-  const { sql, params, groupBy } = buildReportQuery(req.query, await context.api.projects.accessibleIds());
+  const { sql, params, groupBy } = buildReportQuery(
+    req.query,
+    await context.api.projects.accessibleIds(),
+  );
   const rows = (await context.db.query(sql, params)) as any[];
 
   const totalMinutes = rows.reduce((sum: number, r: any) => sum + r.total_minutes, 0);

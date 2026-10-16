@@ -21,6 +21,8 @@ import type { RecurrenceRule } from '@weaver/shared';
 @Index(['recurrenceParentId', 'recurrenceOccurrence'], { unique: true })
 @Entity({ name: 'issues' })
 export class IssueEntity {
+  assigneeDisplayName?: string;
+  reporterDisplayName?: string;
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 

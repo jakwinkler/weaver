@@ -232,8 +232,7 @@ export class MailService {
     toEmail: string,
     smtpOverride?: SmtpSettings,
   ): Promise<void> {
-    const organizationSmtp =
-      smtpOverride ?? (await this.tenantService.getSettings(tenantId)).smtp;
+    const organizationSmtp = smtpOverride ?? (await this.tenantService.getSettings(tenantId)).smtp;
     const smtp = organizationSmtp ?? this.getSystemSmtpSettings();
     if (!smtp) {
       throw new BadRequestException('SMTP is not configured');
@@ -279,6 +278,36 @@ export class MailService {
       html: Handlebars.compile(htmlSource)(context),
       text: Handlebars.compile(textSource, { noEscape: true })(context),
     };
+  }
+
+  /** Called only by the explicit administrator invitation action. */
+  async sendInvitation(tenantId: string, email: string, url: string): Promise<void> {
+    const organizationSmtp = (await this.tenantService.getSettings(tenantId)).smtp;
+    const smtp = organizationSmtp ?? this.getSystemSmtpSettings();
+    if (!smtp) throw new BadRequestException('SMTP is not configured');
+    const host =
+      !organizationSmtp && this.config.get<string>('SMTP_ALLOW_PRIVATE_HOST') === 'true'
+        ? smtp.host
+        : (await resolveSafeOutboundHost(smtp.host))[0].address;
+    const transport = this.transportFactory({
+      host,
+      port: smtp.port,
+      secure: smtp.secure,
+      auth: smtp.user ? { user: smtp.user, pass: smtp.pass } : undefined,
+      tls: { servername: smtp.host },
+    });
+    const delivery = await transport.sendMail({
+      from: `"${smtp.fromName}" <${smtp.fromEmail}>`,
+      to: email,
+      subject: 'Your invitation to Weaver',
+      text: `You have been invited to Weaver. Accept within seven days: ${url}`,
+      html: `<p>You have been invited to Weaver.</p><p><a href="${Handlebars.escapeExpression(url)}">Accept invitation</a></p><p>This invitation expires in seven days.</p>`,
+    });
+    if (
+      delivery.rejected?.length ||
+      (Array.isArray(delivery.accepted) && !delivery.accepted.length)
+    )
+      throw new BadRequestException('Invitation recipient was rejected by the mail server');
   }
 
   private verifyUnsubscribeToken(token: string): {

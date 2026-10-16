@@ -1,8 +1,14 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { AttachmentCleanupEntity, AttachmentEntity, IssueEntity } from '@weaver/db';
+import {
+  AttachmentCleanupEntity,
+  AttachmentEntity,
+  IssueEntity,
+  ImportedResourceEntity,
+} from '@weaver/db';
 import { TenantConnectionProvider } from '../../core/tenant';
 import { randomUUID } from 'crypto';
 import { StorageService } from '../../core/storage';
+import { canReadImportedVisibility } from '@weaver/jira-import';
 
 @Injectable()
 export class AttachmentsService {
@@ -60,15 +66,31 @@ export class AttachmentsService {
     }
   }
 
-  async findByIssue(issueKey: string): Promise<AttachmentEntity[]> {
+  async findByIssue(
+    issueKey: string,
+    user?: { userId: string; role: string },
+  ): Promise<AttachmentEntity[]> {
     const issueId = await this.resolveIssueId(issueKey);
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(AttachmentEntity);
 
-    return repo.find({
+    const files = await repo.find({
       where: { issueId },
       order: { createdAt: 'ASC' },
     });
+    const visible: AttachmentEntity[] = [];
+    for (const file of files) {
+      if (!(await canReadImportedVisibility(em, file.visibility, user))) continue;
+      if (file.sourceId) {
+        const source = await em
+          .getRepository(ImportedResourceEntity)
+          .findOneBy({ kind: 'attachment', externalId: file.sourceId, issueId });
+        file.sourceMediaId =
+          typeof source?.payload.mediaId === 'string' ? source.payload.mediaId : null;
+      }
+      visible.push(file);
+    }
+    return visible;
   }
 
   async findById(id: string): Promise<AttachmentEntity> {
@@ -89,10 +111,16 @@ export class AttachmentsService {
     }
   }
 
-  async delete(id: string, issueKey: string): Promise<void> {
+  async delete(
+    id: string,
+    issueKey: string,
+    user?: { userId: string; role: string },
+  ): Promise<void> {
     await this.tenantConnections.runInTenantTransaction(async (manager) => {
       const issueId = await this.resolveIssueId(issueKey);
       const attachment = await this.findById(id);
+      if (!(await canReadImportedVisibility(manager, attachment.visibility, user)))
+        throw new NotFoundException('Attachment not found');
       if (attachment.issueId !== issueId)
         throw new NotFoundException('Attachment not found on this issue');
       await manager.getRepository(AttachmentCleanupEntity).insert({

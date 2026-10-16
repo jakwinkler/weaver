@@ -190,7 +190,13 @@ function IssueDetail({ issueKey }: { issueKey: string | undefined }) {
   const getUserName = (userId: string | null | undefined) => {
     if (!userId) return null;
     const user = users?.find((u) => u.id === userId);
-    return user?.displayName || user?.email || userId.slice(0, 8);
+    const importedName =
+      userId === issue?.assigneeId
+        ? issue?.assigneeDisplayName
+        : userId === issue?.reporterId
+          ? issue?.reporterDisplayName
+          : undefined;
+    return importedName || user?.displayName || user?.email || userId.slice(0, 8);
   };
 
   const getUserInitials = (userId: string | null | undefined) => {
@@ -385,7 +391,7 @@ function IssueDetail({ issueKey }: { issueKey: string | undefined }) {
                         )}
                       </div>
                       {hasDescription ? (
-                        <RichTextRenderer content={normalizedDescription} />
+                        <RichTextRenderer issueKey={issueKey} content={normalizedDescription} />
                       ) : (
                         <p className="text-sm italic text-muted-foreground">
                           {canUpdate

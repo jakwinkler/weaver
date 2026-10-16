@@ -30,3 +30,7 @@ export { FormEntity } from './form.entity';
 export { FormSubmissionEntity } from './form-submission.entity';
 export { AttachmentCleanupEntity } from './attachment-cleanup.entity';
 export { InboundWebhookReceiptEntity } from './inbound-webhook-receipt.entity';
+
+export * from './imported-person.entity';
+export * from './imported-audience.entity';
+export * from './imported-resource.entity';

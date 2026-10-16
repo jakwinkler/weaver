@@ -1,4 +1,6 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { AppErrorBoundary } from '@/components/AppErrorBoundary';
+import { ImportInvitationPage } from '@/features/auth/ImportInvitationPage';
+import { createBrowserRouter, RouterProvider, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from '@/api/query-client';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -51,72 +53,85 @@ export function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <BrowserRouter>
-          <Routes>
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/register" element={<RegisterPage />} />
-            <Route path="/auth/callback" element={<OAuthCallback />} />
-            <Route path="/auth/organizations" element={<OrgPicker />} />
-            <Route path="/invite/:token" element={<InvitationPage />} />
-            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-            <Route path="/reset-password" element={<ResetPasswordPage />} />
-            <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
-            <Route path="/unsubscribe" element={<EmailUnsubscribePage />} />
-            <Route
-              path="/public/:tenantSlug/projects/:projectKey"
-              element={<PublicProjectPage />}
-            />
-            <Route path="/public/:tenantSlug/forms/:formSlug" element={<PublicForm />} />
-
-            <Route element={<ProtectedRoute />}>
-              <Route element={<AppLayout />}>
-                <Route path="/" element={<DashboardPage />} />
-                <Route path="/projects" element={<ProjectsPage />} />
-                <Route path="/projects/:projectKey" element={<ProjectDetailPage />} />
-                <Route path="/projects/:projectKey/settings" element={<ProjectSettingsPage />} />
-                <Route path="/projects/:projectKey/issues" element={<IssueListPage />} />
-                <Route path="/issues/:issueKey" element={<IssueDetailPage />} />
-                <Route path="/projects/:projectKey/board" element={<KanbanBoard />} />
-                <Route path="/projects/:projectKey/sprints" element={<SprintBoard />} />
-                <Route path="/projects/:projectKey/backlog" element={<BacklogView />} />
-                <Route path="/projects/:projectKey/roadmap" element={<RoadmapView />} />
-                <Route
-                  path="/projects/:projectKey/reports/sprint/:sprintId"
-                  element={<SprintReportPage />}
-                />
-                <Route path="/projects/:projectKey/reports/velocity" element={<VelocityPage />} />
-                <Route path="/projects/:projectKey/gantt" element={<GanttChart />} />
-                <Route path="/projects/:projectKey/calendar" element={<CalendarView />} />
-                <Route path="/projects/:projectKey/wiki" element={<WikiPage />} />
-                <Route path="/search" element={<SearchPage />} />
-                <Route path="/profile" element={<ProfilePage />} />
-
-                {/* Plugin app pages */}
-                <Route path="/apps/*" element={<PluginPage />} />
-
-                {/* Admin routes */}
-                <Route element={<AdminRoute />}>
-                  <Route path="/admin/workflows" element={<WorkflowListPage />} />
-                  <Route path="/workflows/:workflowId" element={<WorkflowEditor />} />
-                  <Route path="/admin/issue-types" element={<IssueTypesPage />} />
-                  <Route path="/admin/roles" element={<RolesPage />} />
-                  <Route path="/admin/teams" element={<TeamsPage />} />
-                  <Route path="/admin/users" element={<UsersPage />} />
-                  <Route path="/admin/automations" element={<AutomationsPage />} />
-                  <Route path="/admin/audit-log" element={<AuditLogPage />} />
-                  <Route path="/settings/custom-fields" element={<CustomFieldsPage />} />
-                  <Route path="/settings/plugins" element={<PluginsPage />} />
-                  <Route path="/settings/webhooks" element={<WebhooksPage />} />
-                  <Route path="/settings/import-export" element={<ImportExportPage />} />
-                  <Route path="/settings/general" element={<SystemSettingsPage />} />
-                </Route>
-              </Route>
-            </Route>
-
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </BrowserRouter>
+        <RouterProvider router={appRouter} />
       </TooltipProvider>
     </QueryClientProvider>
+  );
+}
+
+const appRouter = createBrowserRouter([
+  {
+    path: '*',
+    element: (
+      <AppErrorBoundary>
+        <AppRoutes />
+      </AppErrorBoundary>
+    ),
+  },
+]);
+
+function AppRoutes() {
+  return (
+    <Routes>
+      <Route path="/import-invite/:token" element={<ImportInvitationPage />} />
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/register" element={<RegisterPage />} />
+      <Route path="/auth/callback" element={<OAuthCallback />} />
+      <Route path="/auth/organizations" element={<OrgPicker />} />
+      <Route path="/invite/:token" element={<InvitationPage />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
+      <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
+      <Route path="/unsubscribe" element={<EmailUnsubscribePage />} />
+      <Route path="/public/:tenantSlug/projects/:projectKey" element={<PublicProjectPage />} />
+      <Route path="/public/:tenantSlug/forms/:formSlug" element={<PublicForm />} />
+
+      <Route element={<ProtectedRoute />}>
+        <Route element={<AppLayout />}>
+          <Route path="/" element={<DashboardPage />} />
+          <Route path="/projects" element={<ProjectsPage />} />
+          <Route path="/projects/:projectKey" element={<ProjectDetailPage />} />
+          <Route path="/projects/:projectKey/settings" element={<ProjectSettingsPage />} />
+          <Route path="/projects/:projectKey/issues" element={<IssueListPage />} />
+          <Route path="/issues/:issueKey" element={<IssueDetailPage />} />
+          <Route path="/projects/:projectKey/board" element={<KanbanBoard />} />
+          <Route path="/projects/:projectKey/sprints" element={<SprintBoard />} />
+          <Route path="/projects/:projectKey/backlog" element={<BacklogView />} />
+          <Route path="/projects/:projectKey/roadmap" element={<RoadmapView />} />
+          <Route
+            path="/projects/:projectKey/reports/sprint/:sprintId"
+            element={<SprintReportPage />}
+          />
+          <Route path="/projects/:projectKey/reports/velocity" element={<VelocityPage />} />
+          <Route path="/projects/:projectKey/gantt" element={<GanttChart />} />
+          <Route path="/projects/:projectKey/calendar" element={<CalendarView />} />
+          <Route path="/projects/:projectKey/wiki" element={<WikiPage />} />
+          <Route path="/search" element={<SearchPage />} />
+          <Route path="/profile" element={<ProfilePage />} />
+
+          {/* Plugin app pages */}
+          <Route path="/apps/*" element={<PluginPage />} />
+
+          {/* Admin routes */}
+          <Route element={<AdminRoute />}>
+            <Route path="/admin/workflows" element={<WorkflowListPage />} />
+            <Route path="/workflows/:workflowId" element={<WorkflowEditor />} />
+            <Route path="/admin/issue-types" element={<IssueTypesPage />} />
+            <Route path="/admin/roles" element={<RolesPage />} />
+            <Route path="/admin/teams" element={<TeamsPage />} />
+            <Route path="/admin/users" element={<UsersPage />} />
+            <Route path="/admin/automations" element={<AutomationsPage />} />
+            <Route path="/admin/audit-log" element={<AuditLogPage />} />
+            <Route path="/settings/custom-fields" element={<CustomFieldsPage />} />
+            <Route path="/settings/plugins" element={<PluginsPage />} />
+            <Route path="/settings/webhooks" element={<WebhooksPage />} />
+            <Route path="/settings/import-export" element={<ImportExportPage />} />
+            <Route path="/settings/general" element={<SystemSettingsPage />} />
+          </Route>
+        </Route>
+      </Route>
+
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   );
 }
