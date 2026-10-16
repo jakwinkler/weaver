@@ -323,7 +323,7 @@ enabled('Jira HTTP, Redis worker and production migration', () => {
     app.use((req: Request, res: Response, next: NextFunction) =>
       middleware.use(req, res, next).catch(next),
     );
-    await app.init();
+    await app.listen(0, '127.0.0.1');
     observer = new Queue('jira-import', { connection: redis });
     notifications = new Queue('notifications', { connection: redis });
     events = new QueueEvents('jira-import', { connection: redis });

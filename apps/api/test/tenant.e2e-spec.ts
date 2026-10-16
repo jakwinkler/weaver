@@ -25,7 +25,7 @@ describe('Tenant System (e2e)', () => {
     }).compile();
 
     app = moduleFixture.createNestApplication();
-    await app.init();
+    await app.listen(0, '127.0.0.1');
 
     tenantService = app.get(TenantService);
     provisioning = app.get(TenantProvisioningService);

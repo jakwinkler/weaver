@@ -24,8 +24,7 @@ describe('Real-Time WebSocket (e2e)', () => {
 
     app = moduleFixture.createNestApplication();
     app.setGlobalPrefix('api/v1');
-    await app.init();
-    await app.listen(0); // Random port
+    await app.listen(0, '127.0.0.1');
 
     httpServer = app.getHttpServer();
     dataSource = app.get(DataSource);

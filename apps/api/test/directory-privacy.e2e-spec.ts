@@ -43,7 +43,7 @@ describe('Project directory privacy (e2e)', () => {
 
   beforeAll(async () => {
     app = (await Test.createTestingModule({ imports: [AppModule] }).compile()).createNestApplication();
-    app.setGlobalPrefix('api/v1'); await app.init();
+    app.setGlobalPrefix('api/v1'); await app.listen(0, '127.0.0.1');
     db = app.get(DataSource); connections = app.get(TenantConnectionProvider);
     const registered = await request(app.getHttpServer()).post('/api/v1/auth/register').send({ email: 'directory-owner@example.invalid', password: 'password123', displayName: 'Privacy owner', orgName: 'Directory privacy', orgSlug: 'directory-privacy' }).expect(201);
     owner = registered.body.accessToken; tenantId = registered.body.tenantId; ids.owner = registered.body.user.id; emails.push('directory-owner@example.invalid');

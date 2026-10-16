@@ -12,6 +12,7 @@ module.exports = {
     '^@weaver/jira-import$': '<rootDir>/packages/jira-import/src',
     '^@weaver/db$': '<rootDir>/packages/db/src',
     '^@weaver/shared$': '<rootDir>/packages/shared/src',
+    '^supertest$': '<rootDir>/apps/api/test/loopback-supertest.js',
   },
   transform: {
     '^.+\\.ts$': [require.resolve('ts-jest'), { tsconfig: '<rootDir>/apps/api/tsconfig.json' }],

@@ -136,9 +136,7 @@ describe('Password reset (e2e)', () => {
     app = moduleFixture.createNestApplication();
     app.useLogger(logger);
     app.setGlobalPrefix('api/v1');
-    await app.init();
-    // Sockets need a listening server.
-    await app.listen(0);
+    await app.listen(0, '127.0.0.1');
     dataSource = app.get(DataSource);
     connections = app.get(TenantConnectionProvider);
     passwordReset = app.get(PasswordResetService);

@@ -13,6 +13,7 @@ module.exports = {
   maxWorkers: 1,
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/../src/$1',
+    '^supertest$': '<rootDir>/loopback-supertest.js',
   },
   transform: {
     '^.+\\.ts$': [
