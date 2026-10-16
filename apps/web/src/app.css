@@ -1,5 +1,19 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
+
+.ProseMirror .tableWrapper {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.ProseMirror td,
+.ProseMirror th {
+  border: 1px solid var(--color-border);
+  padding: 0.5rem;
+  vertical-align: top;
+}
+.ProseMirror th {
+  background: var(--color-muted);
+}
 @plugin "@tailwindcss/typography";
 @source "../../../plugins/plugin-automatic-time/src/client";
 
@@ -38,9 +52,9 @@
     --color-primary-foreground: oklch(0.13 0.01 250) !important;
     --color-secondary: oklch(0.2 0.01 250) !important;
     --color-secondary-foreground: oklch(0.88 0.005 250) !important;
-    --color-muted: oklch(0.20 0.01 250) !important;
+    --color-muted: oklch(0.2 0.01 250) !important;
     --color-muted-foreground: oklch(0.72 0.008 250) !important;
-    --color-accent: oklch(0.20 0.01 250) !important;
+    --color-accent: oklch(0.2 0.01 250) !important;
     --color-accent-foreground: oklch(0.88 0.005 250) !important;
     --color-destructive: oklch(0.62 0.24 27) !important;
     --color-border: oklch(0.26 0.01 250) !important;

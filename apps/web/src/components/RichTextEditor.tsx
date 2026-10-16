@@ -1,6 +1,8 @@
 import { useEditor, EditorContent, ReactRenderer } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Image from '@tiptap/extension-image';
+import { TableKit } from '@tiptap/extension-table';
+import { JiraMedia, JiraMediaInline, JiraMediaGroup } from './JiraMediaNodes';
 import Placeholder from '@tiptap/extension-placeholder';
 import Link from '@tiptap/extension-link';
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
@@ -76,136 +78,149 @@ export function RichTextEditor({
     [issueKey, issueUpload, genericUpload],
   );
 
-  const editor = useEditor({
-    extensions: [
-      StarterKit.configure({
-        codeBlock: false,
-        link: false,
-      }),
-      Image.configure({ inline: false }),
-      Placeholder.configure({ placeholder }),
-      Link.configure({ openOnClick: !editable, protocols: ['http', 'https', 'mailto', 'tel'] }),
-      CodeBlockLowlight.configure({ lowlight }),
-      MentionWithAvatar.configure({
-        HTMLAttributes: {
-          class: 'mention',
-        },
-        suggestion: {
-          items: () => [],
-          render: () => {
-            let component: ReactRenderer<any> | null = null;
-            let popup: TippyInstance[] | null = null;
-
-            return {
-              onStart: (props: any) => {
-                component = new ReactRenderer(MentionList, {
-                  props,
-                  editor: props.editor,
-                });
-
-                if (!props.clientRect) return;
-
-                popup = tippy('body', {
-                  getReferenceClientRect: props.clientRect,
-                  appendTo: () => document.body,
-                  content: component.element,
-                  showOnCreate: true,
-                  interactive: true,
-                  trigger: 'manual',
-                  placement: 'bottom-start',
-                });
-              },
-              onUpdate: (props: any) => {
-                component?.updateProps(props);
-                if (popup?.[0] && props.clientRect) {
-                  popup[0].setProps({
-                    getReferenceClientRect: props.clientRect,
-                  });
-                }
-              },
-              onKeyDown: (props: any) => {
-                if (props.event.key === 'Escape') {
-                  popup?.[0]?.hide();
-                  return true;
-                }
-                return (component?.ref as any)?.onKeyDown?.(props) ?? false;
-              },
-              onExit: () => {
-                popup?.[0]?.destroy();
-                component?.destroy();
-              },
-            };
+  const editor = useEditor(
+    {
+      extensions: [
+        StarterKit.configure({
+          codeBlock: false,
+          link: false,
+        }),
+        Image.configure({ inline: false }),
+        TableKit.configure({
+          table: {
+            resizable: false,
+            renderWrapper: true,
+            HTMLAttributes: { class: 'border-collapse border border-border' },
           },
-        },
-      }),
-    ],
-    content: normalizeRichTextContent(content),
-    editable,
-    onUpdate: ({ editor: e }) => {
-      onChangeRef.current?.(e.getJSON() as Record<string, unknown>);
-    },
-    editorProps: {
-      attributes: {
-        class: `${
-          editable
-            ? 'prose prose-sm max-w-none focus:outline-none min-h-[80px] px-3 py-2'
-            : 'prose prose-sm max-w-none'
-        } ${editorClassName ?? ''}`,
-        'aria-label': ariaLabel ?? placeholder,
-        ...(id ? { id } : {}),
-        ...(ariaDescribedBy ? { 'aria-describedby': ariaDescribedBy } : {}),
-        ...(editable ? { role: 'textbox', 'aria-multiline': 'true' } : {}),
-      },
-      handlePaste: (_view, event) => {
-        const items = event.clipboardData?.items;
-        if (!items) return false;
+        }),
+        JiraMedia.configure({ issueKey: issueKey ?? '' }),
+        JiraMediaInline.configure({ issueKey: issueKey ?? '' }),
+        JiraMediaGroup,
+        Placeholder.configure({ placeholder }),
+        Link.configure({ openOnClick: !editable, protocols: ['http', 'https', 'mailto', 'tel'] }),
+        CodeBlockLowlight.configure({ lowlight }),
+        MentionWithAvatar.configure({
+          HTMLAttributes: {
+            class: 'mention',
+          },
+          suggestion: {
+            items: () => [],
+            render: () => {
+              let component: ReactRenderer<any> | null = null;
+              let popup: TippyInstance[] | null = null;
 
-        for (const item of items) {
-          if (item.type.startsWith('image/')) {
-            event.preventDefault();
-            if (!allowUploads) {
-              setUploadBlocked(true);
+              return {
+                onStart: (props: any) => {
+                  component = new ReactRenderer(MentionList, {
+                    props,
+                    editor: props.editor,
+                  });
+
+                  if (!props.clientRect) return;
+
+                  popup = tippy('body', {
+                    getReferenceClientRect: props.clientRect,
+                    appendTo: () => document.body,
+                    content: component.element,
+                    showOnCreate: true,
+                    interactive: true,
+                    trigger: 'manual',
+                    placement: 'bottom-start',
+                  });
+                },
+                onUpdate: (props: any) => {
+                  component?.updateProps(props);
+                  if (popup?.[0] && props.clientRect) {
+                    popup[0].setProps({
+                      getReferenceClientRect: props.clientRect,
+                    });
+                  }
+                },
+                onKeyDown: (props: any) => {
+                  if (props.event.key === 'Escape') {
+                    popup?.[0]?.hide();
+                    return true;
+                  }
+                  return (component?.ref as any)?.onKeyDown?.(props) ?? false;
+                },
+                onExit: () => {
+                  popup?.[0]?.destroy();
+                  component?.destroy();
+                },
+              };
+            },
+          },
+        }),
+      ],
+      content: normalizeRichTextContent(content),
+      editable,
+      onUpdate: ({ editor: e }) => {
+        onChangeRef.current?.(e.getJSON() as Record<string, unknown>);
+      },
+      editorProps: {
+        attributes: {
+          class: `${
+            editable
+              ? 'prose prose-sm max-w-none focus:outline-none min-h-[80px] px-3 py-2'
+              : 'prose prose-sm max-w-none'
+          } ${editorClassName ?? ''}`,
+          'aria-label': ariaLabel ?? placeholder,
+          ...(id ? { id } : {}),
+          ...(ariaDescribedBy ? { 'aria-describedby': ariaDescribedBy } : {}),
+          ...(editable ? { role: 'textbox', 'aria-multiline': 'true' } : {}),
+        },
+        handlePaste: (_view, event) => {
+          const items = event.clipboardData?.items;
+          if (!items) return false;
+
+          for (const item of items) {
+            if (item.type.startsWith('image/')) {
+              event.preventDefault();
+              if (!allowUploads) {
+                setUploadBlocked(true);
+                return true;
+              }
+              const file = item.getAsFile();
+              if (file) {
+                handleImageUpload(file)
+                  .then((url) => {
+                    if (url) editor?.chain().focus().setImage({ src: url }).run();
+                  })
+                  .catch(() => setUploadError(true));
+              }
               return true;
             }
-            const file = item.getAsFile();
-            if (file) {
+          }
+          return false;
+        },
+        handleDrop: (_view, event) => {
+          const files = event.dataTransfer?.files;
+          if (!files?.length) return false;
+
+          event.preventDefault();
+          if (!allowUploads) {
+            setUploadBlocked(true);
+            return true;
+          }
+          for (const file of files) {
+            if (file.type.startsWith('image/')) {
               handleImageUpload(file)
                 .then((url) => {
                   if (url) editor?.chain().focus().setImage({ src: url }).run();
                 })
                 .catch(() => setUploadError(true));
+            } else if (issueKey) {
+              issueUpload.mutate(file);
+            } else {
+              genericUpload.mutate(file);
             }
-            return true;
           }
-        }
-        return false;
-      },
-      handleDrop: (_view, event) => {
-        const files = event.dataTransfer?.files;
-        if (!files?.length) return false;
-
-        event.preventDefault();
-        if (!allowUploads) {
-          setUploadBlocked(true);
           return true;
-        }
-        for (const file of files) {
-          if (file.type.startsWith('image/')) {
-            handleImageUpload(file)
-              .then((url) => {
-                if (url) editor?.chain().focus().setImage({ src: url }).run();
-              })
-              .catch(() => setUploadError(true));
-          } else if (issueKey) {
-            issueUpload.mutate(file);
-          } else {
-            genericUpload.mutate(file);
-          }
-        }
-        return true;
+        },
       },
     },
-  });
+    [issueKey],
+  );
 
   // Sync content from outside, including query refreshes in read-only renderers.
   const contentKey = JSON.stringify(content);
@@ -245,8 +260,11 @@ export function RichTextEditor({
   );
 }
 
-export function RichTextRenderer({ content }: Pick<RichTextEditorProps, 'content'>) {
-  return <RichTextEditor content={content} editable={false} />;
+export function RichTextRenderer({
+  content,
+  issueKey,
+}: Pick<RichTextEditorProps, 'content' | 'issueKey'>) {
+  return <RichTextEditor content={content} issueKey={issueKey} editable={false} />;
 }
 
 function Toolbar({

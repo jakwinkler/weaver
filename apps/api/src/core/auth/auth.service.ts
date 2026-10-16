@@ -110,28 +110,35 @@ export class AuthService {
         }
 
         const userRepo = manager.getRepository(UserEntity);
-        const user = await userRepo.save(userRepo.create({
-          email,
-          displayName: dto.displayName,
-          passwordHash,
-          authProvider: 'local',
-          authProviders: ['local'],
-        }));
+        const user = await userRepo.save(
+          userRepo.create({
+            email,
+            displayName: dto.displayName,
+            passwordHash,
+            authProvider: 'local',
+            authProviders: ['local'],
+          }),
+        );
 
-        const tenant = await this.tenantService.create({
-          name: dto.orgName,
-          slug: dto.orgSlug,
-        }, manager);
+        const tenant = await this.tenantService.create(
+          {
+            name: dto.orgName,
+            slug: dto.orgSlug,
+          },
+          manager,
+        );
 
         provisioningAttempted = true;
         await this.tenantProvisioningService.provisionSchema(tenant.schemaName);
 
         const membershipRepo = manager.getRepository(TenantMembershipEntity);
-        await membershipRepo.save(membershipRepo.create({
-          tenantId: tenant.id,
-          userId: user.id,
-          role: 'owner',
-        }));
+        await membershipRepo.save(
+          membershipRepo.create({
+            tenantId: tenant.id,
+            userId: user.id,
+            role: 'owner',
+          }),
+        );
 
         const payload = {
           sub: user.id,
@@ -453,6 +460,9 @@ export class AuthService {
         tenantId: tenant.id,
       });
       if (!membership) {
+        if (tenant.settings?.importRequiresInvitation === true) {
+          throw new ForbiddenException('An invitation is required to join this organization');
+        }
         membership = this.membershipRepo.create({
           userId: user.id,
           tenantId: tenant.id,
@@ -629,7 +639,7 @@ export class AuthService {
   async validateUser(email: string, password: string): Promise<UserEntity> {
     const user = await this.findUserByEmail(email);
     // Use the same work factor for nonexistent and passwordless accounts.
-    const hash = user?.passwordHash || await this.dummyPasswordHash;
+    const hash = user?.passwordHash || (await this.dummyPasswordHash);
     const isMatch = await bcrypt.compare(password, hash);
     if (!user?.passwordHash || !isMatch) throw new UnauthorizedException('Invalid credentials');
 
@@ -675,7 +685,7 @@ export class AuthService {
       sessionVersion: user.sessionVersion,
     };
     return {
-      ...await this.issueTokenPair(payload),
+      ...(await this.issueTokenPair(payload)),
       user: this.sanitizeUser(user),
       tenantId: membership.tenantId,
     };
@@ -757,7 +767,8 @@ export class AuthService {
   }
 
   private refreshTokenSecret(): string {
-    return this.config.get<string>('JWT_REFRESH_SECRET')
-      ?? this.config.getOrThrow<string>('JWT_SECRET');
+    return (
+      this.config.get<string>('JWT_REFRESH_SECRET') ?? this.config.getOrThrow<string>('JWT_SECRET')
+    );
   }
 }

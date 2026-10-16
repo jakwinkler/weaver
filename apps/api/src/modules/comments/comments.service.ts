@@ -1,4 +1,11 @@
-import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { canReadImportedVisibility } from '@weaver/jira-import';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { CommentEntity, IssueEntity, ProjectEntity } from '@weaver/db';
 import { CreateCommentDto } from '@weaver/shared';
 import { getTenantContext, TenantConnectionProvider } from '../../core/tenant';
@@ -86,16 +93,20 @@ export class CommentsService {
     return saved;
   }
 
-  async findByIssue(issueKey: string) {
+  async findByIssue(issueKey: string, user?: { userId: string; role: string }) {
     const issueId = (await this.resolveIssue(issueKey)).id;
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(CommentEntity);
 
-    const comments = await repo.find({
+    const candidates = await repo.find({
       where: { issueId },
       order: { createdAt: 'ASC' },
     });
 
+    const comments: CommentEntity[] = [];
+    for (const comment of candidates) {
+      if (await canReadImportedVisibility(em, comment.visibility, user)) comments.push(comment);
+    }
     if (comments.length === 0) return [];
 
     const authorIds = [...new Set(comments.map((c) => c.authorId))];
@@ -125,6 +136,9 @@ export class CommentsService {
         body: c.body,
         createdAt: c.createdAt,
         updatedAt: c.updatedAt,
+        imported: Boolean(c.sourceId),
+        visibility: c.visibility,
+        parentCommentId: c.parentCommentId,
       };
     });
   }
@@ -136,19 +150,18 @@ export class CommentsService {
     if (!comment) {
       throw new NotFoundException(`Comment "${id}" not found`);
     }
+    if (comment.visibility) throw new NotFoundException('Comment not found');
     return comment;
   }
 
-  private async findByIssueAndId(
-    issueKey: string,
-    id: string,
-  ): Promise<CommentEntity> {
+  private async findByIssueAndId(issueKey: string, id: string): Promise<CommentEntity> {
     const issueId = (await this.resolveIssue(issueKey)).id;
     const em = await this.tenantConnections.getEntityManager();
     const comment = await em.getRepository(CommentEntity).findOneBy({ id, issueId });
     if (!comment) {
       throw new NotFoundException(`Comment "${id}" not found for issue "${issueKey}"`);
     }
+    if (comment.sourceId) throw new BadRequestException('Imported Jira comments are read only');
     return comment;
   }
 

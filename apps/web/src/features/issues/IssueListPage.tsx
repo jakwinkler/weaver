@@ -274,7 +274,7 @@ function SortableIssueRow({
           ariaLabel={`Edit ${issue.key} assignee`}
           renderValue={(val) => (
             <span className="text-sm text-foreground">
-              {getAssigneeName(val === UNASSIGNED_VALUE ? null : val)}
+              {val === issue.assigneeId && issue.assigneeDisplayName ? issue.assigneeDisplayName : getAssigneeName(val === UNASSIGNED_VALUE ? null : val)}
             </span>
           )}
         />

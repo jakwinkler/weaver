@@ -11,7 +11,13 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { JwtAuthGuard, CurrentUser, RequestUser, PermissionGuard, RequirePermission } from '../../core/auth';
+import {
+  JwtAuthGuard,
+  CurrentUser,
+  RequestUser,
+  PermissionGuard,
+  RequirePermission,
+} from '../../core/auth';
 import { AttachmentsService } from './attachments.service';
 import { getMaxAttachmentBytes } from './attachment-storage';
 import { ProjectAccessGuard, RequireProjectAccess } from '../../core/tenant';
@@ -22,9 +28,7 @@ export class AttachmentsController {
   constructor(private readonly attachmentsService: AttachmentsService) {}
 
   @Post()
-  @UseInterceptors(
-    FileInterceptor('file', { limits: { fileSize: getMaxAttachmentBytes() } }),
-  )
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: getMaxAttachmentBytes() } }))
   @RequirePermission('issues', 'update')
   @RequireProjectAccess('issue-key', 'write')
   async create(
@@ -38,15 +42,19 @@ export class AttachmentsController {
   @Get()
   @RequirePermission('issues', 'read')
   @RequireProjectAccess('issue-key')
-  async findByIssue(@Param('issueKey') issueKey: string) {
-    return this.attachmentsService.findByIssue(issueKey);
+  async findByIssue(@Param('issueKey') issueKey: string, @CurrentUser() user: RequestUser) {
+    return this.attachmentsService.findByIssue(issueKey, user);
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   @RequirePermission('issues', 'update')
   @RequireProjectAccess('issue-key', 'write')
-  async delete(@Param('id') id: string, @Param('issueKey') issueKey: string) {
-    await this.attachmentsService.delete(id, issueKey);
+  async delete(
+    @Param('id') id: string,
+    @Param('issueKey') issueKey: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    await this.attachmentsService.delete(id, issueKey, user);
   }
 }

@@ -28,9 +28,12 @@ export interface JiraImportRequest {
   config: JiraConnectionConfig;
   /** Omit to import every accessible project. When present, this is an exact allowlist. */
   projectKeys?: string[];
+  /** Select issues updated on or after this ISO date; retain their complete history. */
+  updatedSince?: string;
 }
 
-export type ImportJobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+export type ImportJobStatus =
+  'queued' | 'running' | 'completed' | 'needs_review' | 'failed' | 'cancelled';
 
 export interface ImportJobError {
   itemType: string;
@@ -49,6 +52,14 @@ export interface ImportJob {
   importedItems: number;
   skippedItems: number;
   errors: ImportJobError[];
+  report?: {
+    counts: Record<string, number>;
+    conflicts: string[];
+    warnings: string[];
+    restrictedComments: number;
+    restrictedWorklogs: number;
+    scope?: { updatedSince: string | null };
+  };
   selectedProjectKeys: string[] | null;
   startedAt: string | null;
   completedAt: string | null;
@@ -63,6 +74,7 @@ export interface JiraImportJobData {
   requestedByUserId: string;
   config: JiraConnectionConfig;
   projectKeys?: string[];
+  updatedSince?: string;
 }
 
 /** Only ciphertext, IDs and format version are persisted to the queue. */

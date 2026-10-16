@@ -1,3 +1,4 @@
+import { attributionNames } from '@weaver/jira-import';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { BoardEntity, IssueEntity, UserEntity } from '@weaver/db';
@@ -63,6 +64,12 @@ export class BoardsService {
       order: { sortOrder: 'ASC', createdAt: 'DESC' },
     });
 
+    const names = await attributionNames(
+      em,
+      issues.map((issue) => issue.assigneeId),
+    );
+    for (const issue of issues)
+      issue.assigneeDisplayName = issue.assigneeId ? names.get(issue.assigneeId) : undefined;
     const columnPointTotals = issues.reduce<Record<string, number>>((totals, issue) => {
       totals[issue.statusId] = (totals[issue.statusId] ?? 0) + (issue.storyPoints ?? 0);
       return totals;

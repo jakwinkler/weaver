@@ -7,6 +7,7 @@ import {
   ManyToOne,
   JoinColumn,
 } from 'typeorm';
+import type { ImportedVisibility } from './imported-audience.entity';
 import { IssueEntity } from './issue.entity';
 
 @Entity({ name: 'comments' })
@@ -22,6 +23,15 @@ export class CommentEntity {
 
   @Column({ type: 'jsonb' })
   body!: Record<string, unknown>;
+
+  @Column({ type: 'jsonb', nullable: true })
+  visibility!: ImportedVisibility | null;
+
+  @Column({ name: 'source_id', type: 'varchar', nullable: true })
+  sourceId!: string | null;
+
+  @Column({ name: 'parent_comment_id', type: 'uuid', nullable: true })
+  parentCommentId!: string | null;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;

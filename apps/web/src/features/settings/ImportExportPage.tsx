@@ -1,3 +1,4 @@
+import { ImportedPeoplePanel } from './ImportedPeoplePanel';
 import { useState, useRef, type ChangeEvent } from 'react';
 import { useProjects } from '@/api';
 import type { Issue } from '@weaver/shared';
@@ -225,6 +226,7 @@ export function ImportExportPage() {
       <h1 className="mb-6 text-2xl font-bold text-foreground">Import / Export</h1>
 
       <ImportWizard />
+      <ImportedPeoplePanel />
 
       <h2 className="mb-4 text-lg font-semibold text-foreground">File import and export</h2>
 

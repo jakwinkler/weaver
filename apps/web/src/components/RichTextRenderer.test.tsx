@@ -28,6 +28,55 @@ function doc(text: string) {
 }
 
 describe('RichTextRenderer', () => {
+  it('renders imported table structure and spanning cells instead of flattening it', async () => {
+    const content = {
+      type: 'doc',
+      content: [
+        {
+          type: 'table',
+          content: [
+            {
+              type: 'tableRow',
+              content: [
+                {
+                  type: 'tableHeader',
+                  attrs: { colspan: 2, rowspan: 1, colwidth: [120, 180] },
+                  content: [
+                    {
+                      type: 'paragraph',
+                      content: [
+                        { type: 'text', text: 'Original header', marks: [{ type: 'bold' }] },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+            {
+              type: 'tableRow',
+              content: [
+                {
+                  type: 'tableCell',
+                  content: [{ type: 'paragraph', content: [{ type: 'text', text: 'First cell' }] }],
+                },
+                {
+                  type: 'tableCell',
+                  content: [
+                    { type: 'paragraph', content: [{ type: 'text', text: 'Second cell' }] },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const { container } = renderRichText(content);
+    expect(await screen.findByRole('table')).toBeTruthy();
+    expect(container.querySelector('th')?.getAttribute('colspan')).toBe('2');
+    expect(container.querySelector('th strong')?.textContent).toBe('Original header');
+    expect(container.querySelectorAll('td')).toHaveLength(2);
+  });
   it('renders formatted TipTap JSON without exposing its JSON representation', async () => {
     const content = {
       type: 'doc',

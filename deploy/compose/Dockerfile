@@ -27,6 +27,8 @@ COPY --from=build /app/deploy /app/deploy
 
 EXPOSE 3000
 USER node
+RUN node -e "require('reflect-metadata'); require('@weaver/db'); require('@weaver/jira-import')"
+RUN ./node_modules/.bin/tsx /app/deploy/compose/verify-plugin-runtime.cjs
 CMD ["./node_modules/.bin/tsx", "dist/main.js"]
 
 FROM node:22-alpine AS worker
@@ -38,6 +40,7 @@ COPY --from=build /app/apps/worker /app/apps/worker
 COPY --from=build /app/packages /app/packages
 
 USER node
+RUN node -e "const r = require('node:module').createRequire('/app/apps/worker/package.json'); r('reflect-metadata'); r('@weaver/db'); r('@weaver/jira-import')"
 CMD ["node", "apps/worker/dist/main.js"]
 
 FROM nginxinc/nginx-unprivileged:alpine AS web

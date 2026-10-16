@@ -1,3 +1,4 @@
+import { apiClient } from '@/api/client';
 import { useMemo, useState } from 'react';
 import { Check, Cloud, Server } from 'lucide-react';
 import type {
@@ -28,9 +29,41 @@ export function ImportWizard() {
   const [email, setEmail] = useState('');
   const [secret, setSecret] = useState('');
   const [projects, setProjects] = useState<JiraProjectSummary[]>([]);
-  const [importAll, setImportAll] = useState(true);
+  const [importAll, setImportAll] = useState(false);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const [updatedSince, setUpdatedSince] = useState('');
   const [importId, setImportId] = useState<string | null>(getStoredImportId);
+  const [preview, setPreview] = useState<{
+    projects: Array<{
+      key: string;
+      name: string;
+      issues: number;
+      comments: number;
+      attachments: number;
+      worklogs: number;
+      securedIssues: number;
+    }>;
+    notes: string[];
+  } | null>(null);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [previewError, setPreviewError] = useState(false);
+  const analyze = async () => {
+    setAnalyzing(true);
+    setPreviewError(false);
+    try {
+      const result = await apiClient.post('/import/jira/preview', {
+        config,
+        ...(importAll ? {} : { projectKeys: [...selectedKeys] }),
+        ...(updatedSince ? { updatedSince } : {}),
+      });
+      setPreview(result.data);
+      setStep(5);
+    } catch {
+      setPreviewError(true);
+    } finally {
+      setAnalyzing(false);
+    }
+  };
   const discover = useDiscoverJiraProjects();
   const startImport = useStartJiraImport();
 
@@ -62,6 +95,7 @@ export function ImportWizard() {
     const job = await startImport.mutateAsync({
       config,
       ...(importAll ? {} : { projectKeys: [...selectedKeys] }),
+      ...(updatedSince ? { updatedSince } : {}),
     });
     setSecret('');
     window.sessionStorage.setItem(ACTIVE_IMPORT_STORAGE_KEY, job.id);
@@ -82,8 +116,10 @@ export function ImportWizard() {
 
   const reset = () => {
     setStep(1);
+    setPreview(null);
     setProjects([]);
-    setImportAll(true);
+    setImportAll(false);
+    setUpdatedSince('');
     setSelectedKeys(new Set());
     setImportId(null);
     window.sessionStorage.removeItem(ACTIVE_IMPORT_STORAGE_KEY);
@@ -301,10 +337,29 @@ export function ImportWizard() {
                 {!importAll && selectedKeys.size === 0 && (
                   <p className="text-sm text-destructive">Select at least one project.</p>
                 )}
+                <div className="max-w-sm">
+                  <Label htmlFor="jira-updated-since">Issues updated since (optional)</Label>
+                  <Input
+                    id="jira-updated-since"
+                    type="date"
+                    value={updatedSince}
+                    onChange={(event) => setUpdatedSince(event.target.value)}
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Leave blank for all issues. Selected issues include their complete comments,
+                    history and files.
+                  </p>
+                </div>
+                {analyzing && <p role="status">Analyzing the selected Jira projects...</p>}
+                {previewError && (
+                  <p role="alert">
+                    Could not analyze the selected projects. Check Jira access and try again.
+                  </p>
+                )}
                 <WizardButtons
                   back={() => setStep(3)}
-                  next={() => setStep(5)}
-                  nextDisabled={!selectionValid}
+                  next={analyze}
+                  nextDisabled={!selectionValid || analyzing}
                 />
               </div>
             )}
@@ -315,9 +370,28 @@ export function ImportWizard() {
                   <h3 className="font-medium text-foreground">Review the import</h3>
                   <p className="text-sm text-muted-foreground">
                     Existing items from this Jira instance are reused when you run the import again.
-                    Missing items are imported, and recovered sprint assignments are repaired.
+                    Source changes are refreshed when the destination still matches the last import.
+                    Local changes are retained and reported for review.
                   </p>
                 </div>
+                {preview && (
+                  <div className="space-y-3 rounded border p-4 text-sm">
+                    {preview.projects.map((project) => (
+                      <p key={project.key}>
+                        <strong>{project.key}</strong>: {project.issues} issues, {project.comments}{' '}
+                        comments, {project.attachments} attachments, {project.worklogs} worklogs,{' '}
+                        {project.securedIssues} secured issues.
+                      </p>
+                    ))}
+                    {preview.notes.map((note) => (
+                      <p key={note}>{note}</p>
+                    ))}
+                    <p className="font-medium">
+                      People are imported without access or notifications. You can invite selected
+                      people after reviewing the import.
+                    </p>
+                  </div>
+                )}
                 <dl className="grid gap-3 border border-border p-4 text-sm sm:grid-cols-2">
                   <div>
                     <dt className="text-muted-foreground">Source</dt>
@@ -357,7 +431,11 @@ export function ImportWizard() {
                   <Button type="button" variant="outline" onClick={() => setStep(4)}>
                     Back
                   </Button>
-                  <Button type="button" onClick={start} disabled={startImport.isPending}>
+                  <Button
+                    type="button"
+                    onClick={start}
+                    disabled={startImport.isPending || !preview}
+                  >
                     {startImport.isPending ? 'Starting import...' : 'Start Jira import'}
                   </Button>
                 </div>

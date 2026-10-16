@@ -281,6 +281,8 @@ export interface TenantSettings {
 }
 
 export interface Issue {
+  assigneeDisplayName?: string;
+  reporterDisplayName?: string;
   id: string;
   projectId: string;
   key: string;
@@ -415,6 +417,7 @@ export interface Board {
 }
 
 export interface BoardConfig {
+  columns?: Array<{ name: string; statusIds: string[] }>;
   swimlaneField?: BoardSwimlaneField;
   wipLimits?: Record<string, number>;
 }
@@ -510,6 +513,9 @@ export interface Comment {
   body: Record<string, unknown>;
   createdAt: Date;
   updatedAt: Date;
+  imported?: boolean;
+  parentCommentId?: string | null;
+  visibility?: { type: string; value: string; identifier: string; sourceInstance: string } | null;
 }
 
 export interface Attachment {
@@ -521,6 +527,8 @@ export interface Attachment {
   size: number;
   storageKey: string;
   createdAt: Date;
+  sourceId?: string | null;
+  visibility?: { sourceInstance: string; type: string; identifier: string; value: string } | null;
 }
 
 export interface ActivityLog {

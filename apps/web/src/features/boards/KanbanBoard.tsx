@@ -43,7 +43,8 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { useHotkeys } from '@/hooks/useHotkeys';
 import { getNextBoardIssueId, type BoardKeyboardDirection } from './boardKeyboardNavigation';
-import { buildReorderPayload, moveIssueBetweenGroups } from '@/features/issues/dragAndDrop';
+import { buildReorderPayload } from '@/features/issues/dragAndDrop';
+import { moveIssueInBoardColumns } from './kanban-order';
 import { BoardSettings } from './BoardSettings';
 import {
   applySwimlaneValue,
@@ -75,7 +76,11 @@ interface WorkflowStatus {
   category: string;
 }
 
-function buildStatusColumns(issues: Issue[], statuses: WorkflowStatus[]): StatusColumn[] {
+function buildStatusColumns(
+  issues: Issue[],
+  statuses: WorkflowStatus[],
+  config?: BoardConfig,
+): StatusColumn[] {
   const issuesByStatus = new Map<string, Issue[]>();
   for (const issue of issues) {
     const existing = issuesByStatus.get(issue.statusId) || [];
@@ -87,6 +92,26 @@ function buildStatusColumns(issues: Issue[], statuses: WorkflowStatus[]): Status
     columnIssues.sort((left, right) => left.sortOrder - right.sortOrder);
   }
 
+  if (config?.columns?.length) {
+    const mapped = new Set(config.columns.flatMap((column) => column.statusIds));
+    const columns = [
+      ...config.columns,
+      ...statuses
+        .filter((status) => !mapped.has(status.id))
+        .map((status) => ({ name: status.name, statusIds: [status.id] })),
+    ];
+    return columns
+      .filter((column) => column.statusIds.length)
+      .map((column, position) => ({
+        statusId: column.statusIds[0],
+        name: column.name,
+        color: statuses.find((status) => status.id === column.statusIds[0])?.color || '#6b7280',
+        issues: issues
+          .filter((issue) => column.statusIds.includes(issue.statusId))
+          .sort((a, b) => a.sortOrder - b.sortOrder),
+        position,
+      }));
+  }
   const categoryOrder: Record<string, number> = { to_do: 0, in_progress: 1, done: 2 };
   if (statuses.length > 0) {
     return statuses
@@ -166,7 +191,9 @@ function IssueCardContent({ issue }: { issue: Issue }) {
           <div className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary">
             {issue.assigneeId.slice(0, 1).toUpperCase()}
           </div>
-          <span className="text-xs text-muted-foreground">{issue.assigneeId.slice(0, 8)}</span>
+          <span className="text-xs text-muted-foreground">
+            {issue.assigneeDisplayName || issue.assigneeId.slice(0, 8)}
+          </span>
         </div>
       )}
     </>
@@ -400,7 +427,11 @@ export function KanbanBoard() {
   const boardEnabled = boardFeature.enabled;
   const keyboardIssues = localIssues ?? boardData?.issues ?? [];
   const keyboardStatuses = (workflow?.statuses || []) as WorkflowStatus[];
-  const keyboardColumns = buildStatusColumns(keyboardIssues, keyboardStatuses).map((column) => ({
+  const keyboardColumns = buildStatusColumns(
+    keyboardIssues,
+    keyboardStatuses,
+    boardData?.board.config,
+  ).map((column) => ({
     statusId: column.statusId,
     issueIds: column.issues.map((issue) => issue.id),
   }));
@@ -497,44 +528,8 @@ export function KanbanBoard() {
   const swimlaneField = board.config.swimlaneField ?? 'none';
   const wipLimits = board.config.wipLimits ?? {};
 
-  const categoryOrder: Record<string, number> = { to_do: 0, in_progress: 1, done: 2 };
-  const buildColumns = (columnIssues: Issue[]): StatusColumn[] => {
-    const issuesByStatus = new Map<string, Issue[]>();
-    for (const issue of columnIssues) {
-      const existing = issuesByStatus.get(issue.statusId) || [];
-      existing.push(issue);
-      issuesByStatus.set(issue.statusId, existing);
-    }
-    for (const groupedIssues of issuesByStatus.values()) {
-      groupedIssues.sort((left, right) => left.sortOrder - right.sortOrder);
-    }
-
-    if (statuses.length > 0) {
-      return statuses
-        .map((status) => ({
-          statusId: status.id,
-          name: status.name,
-          color: status.color || '#6b7280',
-          issues: issuesByStatus.get(status.id) || [],
-          position: categoryOrder[status.category] ?? 1,
-        }))
-        .sort((left, right) => left.position - right.position);
-    }
-    if (columnIssues.length > 0) {
-      return Array.from(issuesByStatus.entries()).map(([statusId, groupedIssues]) => ({
-        statusId,
-        name: statusId.slice(0, 8),
-        color: '#6b7280',
-        issues: groupedIssues,
-        position: 0,
-      }));
-    }
-    return [
-      { statusId: 'todo', name: 'To Do', color: '#6b7280', issues: [], position: 0 },
-      { statusId: 'in_progress', name: 'In Progress', color: '#3b82f6', issues: [], position: 1 },
-      { statusId: 'done', name: 'Done', color: '#22c55e', issues: [], position: 2 },
-    ];
-  };
+  const buildColumns = (columnIssues: Issue[]) =>
+    buildStatusColumns(columnIssues, statuses, board.config);
 
   const allColumns = buildColumns(issues);
   const totalIssuesByStatus = new Map(
@@ -608,12 +603,7 @@ export function KanbanBoard() {
       return;
     }
 
-    const result = moveIssueBetweenGroups(issues, {
-      activeId,
-      overId: over.id as string,
-      targetGroupId: target.statusId,
-      groupField: 'statusId',
-    });
+    const result = moveIssueInBoardColumns(issues, activeId, over.id as string, target.statusId, board.config.columns);
     if (!result.changed || !result.activeIssue) {
       setLocalIssues(null);
       return;
@@ -635,7 +625,7 @@ export function KanbanBoard() {
       if (result.sourceGroupId !== result.targetGroupId || swimlaneChanged) {
         const update: UpdateIssueDto & { issueKey: string } = {
           issueKey: draggedIssue.key,
-          statusId: target.statusId,
+          statusId: movedIssue.statusId,
           sortOrder: movedIssue.sortOrder,
         };
         if (swimlaneChanged && swimlaneField === 'assignee') {

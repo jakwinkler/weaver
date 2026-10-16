@@ -14,15 +14,128 @@ const cloudConfig: JiraConnectionConfig = {
 };
 
 describe('JiraClient', () => {
+  it('reads an attachment media identity without following or storing its signed redirect', async () => {
+    const mediaId = '1f0d2140-cc1c-41b4-8020-033f52106178';
+    const transport = jest.fn().mockResolvedValue(
+      new Response(null, {
+        status: 302,
+        headers: {
+          Location: `https://api.media.atlassian.com/file/${mediaId}/binary?token=private-token`,
+        },
+      }),
+    );
+    const client = new JiraClient(transport);
+    expect(
+      await (client as any).getAttachmentMediaId(cloudConfig, {
+        id: '123',
+        content: 'https://untrusted.example/file',
+      }),
+    ).toBe(mediaId);
+    expect(transport).toHaveBeenCalledTimes(1);
+    expect(String(transport.mock.calls[0][0])).toBe(
+      'https://example.atlassian.net/rest/api/3/attachment/content/123',
+    );
+    expect(transport.mock.calls[0][1].redirect).toBe('manual');
+  });
+  it('keeps the selected date window on every search page without filtering issue children', async () => {
+    const transport = jest
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({ issues: [{ id: '1', fields: {} }], isLast: false, nextPageToken: 'next' }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ issues: [{ id: '2', fields: {} }], isLast: true }))
+      .mockResolvedValueOnce(
+        jsonResponse({ comments: [{ id: 'old-comment', created: '2020-01-01' }], total: 1 }),
+      );
+    const client = new JiraClient(transport);
+    const issues = await (client.getIssues as any)(cloudConfig, ['EPD'], '2026-08-15');
+    expect(issues).toHaveLength(2);
+    for (const [, init] of transport.mock.calls.slice(0, 2)) {
+      expect(JSON.parse(init.body).jql).toBe(
+        'project in ("EPD") AND updated >= "2026-08-15" ORDER BY key ASC',
+      );
+    }
+    expect((await client.getComments(cloudConfig, '1')).map((c) => c.id)).toEqual(['old-comment']);
+  });
+
+  it.each(['2026-02-30', '2026-13-01', '2026-08-15" OR project=OTHER', 'yesterday'])(
+    'rejects an invalid date window: %s',
+    (date) => {
+      expect(() => (new JiraClient().buildProjectJql as any)(['EPD'], date)).toThrow(
+        'Invalid import date',
+      );
+    },
+  );
+
+  it.each([
+    ['worklog', 'worklogs', 'getWorklogs'],
+    ['changelog', 'values', 'getChangelogs'],
+  ] as const)('loads every %s page', async (_path, property, method) => {
+    const transport = jest
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ total: 2, [property]: [{ id: 'first' }] }))
+      .mockResolvedValueOnce(jsonResponse({ total: 2, [property]: [{ id: 'second' }] }));
+    const values = await new JiraClient(transport)[method](cloudConfig, '42');
+    expect(values.map((value) => value.id)).toEqual(['first', 'second']);
+    expect(String(transport.mock.calls[1][0])).toContain('startAt=1');
+  });
+
+  it('rejects a truncated Jira Server result instead of silently ending the import', async () => {
+    const client = new JiraClient(
+      jest.fn().mockResolvedValue(jsonResponse({ issues: [], total: 5 })),
+    );
+    await expect(client.getIssues(serverConfig, ['GS'])).rejects.toThrow(
+      'Incomplete Jira issue pagination',
+    );
+  });
+
+  it('rejects repeated issues across search pages', async () => {
+    const transport = jest
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          issues: [{ id: 'same', fields: {} }],
+          isLast: false,
+          nextPageToken: 'next',
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ issues: [{ id: 'same', fields: {} }], isLast: true }));
+    await expect(new JiraClient(transport).getIssues(cloudConfig)).rejects.toThrow(
+      'repeated issue',
+    );
+  });
+
+  it('retries a throttled request without exposing its response body', async () => {
+    const transport = jest
+      .fn()
+      .mockResolvedValueOnce(
+        new Response('private rate limit response', {
+          status: 429,
+          headers: { 'Retry-After': '0' },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({}));
+    await new JiraClient(transport).testConnection(cloudConfig);
+    expect(transport).toHaveBeenCalledTimes(2);
+  });
+
   it('blocks private destinations through its default transport', async () => {
-    await expect(new JiraClient().testConnection({ ...serverConfig, baseUrl: 'https://127.0.0.1:6379' })).rejects.toThrow('private or reserved');
+    await expect(
+      new JiraClient().testConnection({ ...serverConfig, baseUrl: 'https://127.0.0.1:6379' }),
+    ).rejects.toThrow('private or reserved');
   });
   it('does not reflect remote error response bodies', async () => {
-    const client = new JiraClient(jest.fn().mockResolvedValue(new Response('private upstream secret', { status: 403 })));
-    await expect(client.testConnection(serverConfig)).rejects.toThrow(/^Jira request failed \(403\)$/);
+    const client = new JiraClient(
+      jest.fn().mockResolvedValue(new Response('private upstream secret', { status: 403 })),
+    );
+    await expect(client.testConnection(serverConfig)).rejects.toThrow(
+      /^Jira request failed \(403\)$/,
+    );
   });
   it('bounds JSON response size even without a Content-Length header', async () => {
-    const client = new JiraClient(jest.fn().mockResolvedValue(new Response('x'.repeat(10 * 1024 * 1024 + 1))));
+    const client = new JiraClient(
+      jest.fn().mockResolvedValue(new Response('x'.repeat(10 * 1024 * 1024 + 1))),
+    );
     await expect(client.testConnection(serverConfig)).rejects.toThrow('size limit');
   });
 

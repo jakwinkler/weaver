@@ -1,3 +1,4 @@
+import { attributionNames } from '@weaver/jira-import';
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
@@ -190,6 +191,9 @@ export class IssuesService {
     if (!issue) {
       throw new NotFoundException(`Issue "${issueKey}" not found`);
     }
+    const names = await attributionNames(em, [issue.assigneeId, issue.reporterId]);
+    issue.assigneeDisplayName = issue.assigneeId ? names.get(issue.assigneeId) : undefined;
+    issue.reporterDisplayName = names.get(issue.reporterId);
     return issue;
   }
 
@@ -241,7 +245,7 @@ export class IssuesService {
       qb.orderBy('issue.sortOrder', 'ASC').addOrderBy('issue.createdAt', 'ASC');
     }
 
-    return paginate(qb, params, [
+    const result = await paginate(qb, params, [
       'summary',
       'priority',
       'createdAt',
@@ -253,6 +257,12 @@ export class IssuesService {
       'percentDone',
       'storyPoints',
     ]);
+    const names = await attributionNames(em, result.data.flatMap((issue) => [issue.assigneeId, issue.reporterId]));
+    for (const issue of result.data) {
+      issue.assigneeDisplayName = issue.assigneeId ? names.get(issue.assigneeId) : undefined;
+      issue.reporterDisplayName = names.get(issue.reporterId);
+    }
+    return result;
   }
 
   async findEpicsByProject(projectKey: string): Promise<RoadmapEpic[]> {

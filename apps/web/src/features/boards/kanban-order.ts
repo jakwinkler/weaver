@@ -1,4 +1,35 @@
-import type { Issue } from '@weaver/shared';
+import type { BoardConfig, Issue } from '@weaver/shared';
+import { moveIssueBetweenGroups, type MoveIssueResult } from '@/features/issues/dragAndDrop';
+
+/** A Jira column may contain several statuses. Reordering it preserves each status. */
+export function moveIssueInBoardColumns(
+  issues: Issue[],
+  activeId: string,
+  overId: string,
+  targetStatusId: string,
+  columns: BoardConfig['columns'],
+): MoveIssueResult {
+  const originalStatuses = new Map(issues.map((issue) => [issue.id, issue.statusId]));
+  const columnFor = (statusId: string) =>
+    columns?.find((column) => column.statusIds.includes(statusId))?.statusIds[0] ?? statusId;
+  const originalStatus = originalStatuses.get(activeId);
+  const sameColumn = originalStatus && columnFor(originalStatus) === columnFor(targetStatusId);
+  const result = moveIssueBetweenGroups(
+    issues.map((issue) => ({ ...issue, statusId: columnFor(issue.statusId) })),
+    { activeId, overId, targetGroupId: columnFor(targetStatusId), groupField: 'statusId' },
+  );
+  const restore = (issue: Issue) => ({
+    ...issue,
+    statusId:
+      issue.id === activeId && !sameColumn ? targetStatusId : originalStatuses.get(issue.id)!,
+  });
+  return {
+    ...result,
+    issues: result.issues.map(restore),
+    affectedIssues: result.affectedIssues.map(restore),
+    activeIssue: result.activeIssue ? restore(result.activeIssue) : null,
+  };
+}
 
 export function moveIssueForBoard(
   issues: Issue[],

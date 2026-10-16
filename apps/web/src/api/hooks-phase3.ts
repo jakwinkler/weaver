@@ -167,6 +167,9 @@ interface Attachment {
   mimeType: string;
   size: string;
   createdAt: string;
+  sourceId?: string | null;
+  sourceMediaId?: string | null;
+  visibility?: { sourceInstance: string; type: string; identifier: string; value: string } | null;
 }
 
 export function useAttachments(issueKey: string) {

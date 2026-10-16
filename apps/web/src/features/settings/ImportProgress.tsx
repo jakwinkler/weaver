@@ -1,6 +1,7 @@
 import { AlertCircle, CheckCircle2, Loader2, XCircle } from 'lucide-react';
 import { useCancelImport, useImportStatus } from '@/api';
 import { Button } from '@/components/ui/button';
+import { API_BASE_URL } from '@/api/client';
 
 interface ImportProgressProps {
   importId: string;
@@ -38,6 +39,7 @@ export function ImportProgress({ importId, onStartAnother }: ImportProgressProps
   }
 
   const isActive = job.status === 'queued' || job.status === 'running';
+  const needsReview = job.status === 'needs_review';
   const isCompleted = job.status === 'completed';
 
   return (
@@ -45,14 +47,18 @@ export function ImportProgress({ importId, onStartAnother }: ImportProgressProps
       <div className="flex items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            {isCompleted ? (
+            {needsReview ? (
+              <AlertCircle className="h-5 w-5 text-amber-600" />
+            ) : isCompleted ? (
               <CheckCircle2 className="h-5 w-5 text-green-600" />
             ) : isActive ? (
               <Loader2 className="h-5 w-5 animate-spin text-primary" />
             ) : (
               <XCircle className="h-5 w-5 text-destructive" />
             )}
-            <h3 className="font-semibold capitalize text-foreground">Import {job.status}</h3>
+            <h3 className="font-semibold capitalize text-foreground">
+              Import {needsReview ? 'needs review' : job.status}
+            </h3>
           </div>
           <p className="mt-1 text-sm text-muted-foreground">{job.currentStep}</p>
         </div>
@@ -90,6 +96,37 @@ export function ImportProgress({ importId, onStartAnother }: ImportProgressProps
               </li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {job.report && (
+        <div className="space-y-3 rounded border p-4 text-sm">
+          <p>Imported people remain uninvited. No history notifications are sent.</p>
+          <p>
+            {job.report.restrictedComments ?? 0} restricted comments retained;{' '}
+            {job.report.restrictedWorklogs ?? 0} restricted worklogs retained in source data.
+          </p>
+          <dl className="grid grid-cols-2 gap-2">
+            {Object.entries(job.report.counts ?? {}).map(([kind, count]) => (
+              <div key={kind}>
+                <dt>{kind.replaceAll('_', ' ')}</dt>
+                <dd>{count}</dd>
+              </div>
+            ))}
+          </dl>
+          {[...(job.report.warnings ?? []), ...(job.report.conflicts ?? [])].map(
+            (message, index) => (
+              <p key={index}>{message}</p>
+            ),
+          )}
+          <a
+            className="underline"
+            href={`${API_BASE_URL}/import/resources?jobId=${encodeURIComponent(job.id)}`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Review source records
+          </a>
         </div>
       )}
 

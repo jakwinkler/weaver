@@ -48,3 +48,61 @@ describe('attachment deletion route binding', () => {
     },
   );
 });
+
+describe('imported attachment metadata visibility', () => {
+  it('does not load or expose source media identities for hidden files', async () => {
+    const archive = {
+      findOneBy: jest.fn().mockResolvedValue({ payload: { mediaId: 'private-media-id' } }),
+    };
+    const files = {
+      find: jest
+        .fn()
+        .mockResolvedValue([{ sourceId: 'source-file', visibility: { type: 'admin' } }]),
+    };
+    const manager = {
+      getRepository: (entity: any) =>
+        entity.name === 'IssueEntity'
+          ? { findOneBy: async () => ({ id: 'issue' }) }
+          : entity.name === 'AttachmentEntity'
+            ? files
+            : archive,
+    };
+    const service = new AttachmentsService(
+      { getEntityManager: async () => manager } as any,
+      {} as any,
+    );
+    expect(await service.findByIssue('EPD-251', { userId: 'reader', role: 'viewer' })).toEqual([]);
+    expect(archive.findOneBy).not.toHaveBeenCalled();
+  });
+  it('returns the media identity for an authorized file using its issue and source ID', async () => {
+    const archive = {
+      findOneBy: jest.fn().mockResolvedValue({ payload: { mediaId: 'allowed-media-id' } }),
+    };
+    const files = {
+      find: jest
+        .fn()
+        .mockResolvedValue([
+          { id: 'file', sourceId: 'source-file', visibility: { type: 'admin' } },
+        ]),
+    };
+    const manager = {
+      getRepository: (entity: any) =>
+        entity.name === 'IssueEntity'
+          ? { findOneBy: async () => ({ id: 'issue' }) }
+          : entity.name === 'AttachmentEntity'
+            ? files
+            : archive,
+    };
+    const service = new AttachmentsService(
+      { getEntityManager: async () => manager } as any,
+      {} as any,
+    );
+    const result = await service.findByIssue('EPD-251', { userId: 'operator', role: 'owner' });
+    expect(result[0].sourceMediaId).toBe('allowed-media-id');
+    expect(archive.findOneBy).toHaveBeenCalledWith({
+      kind: 'attachment',
+      externalId: 'source-file',
+      issueId: 'issue',
+    });
+  });
+});

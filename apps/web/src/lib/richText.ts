@@ -1,6 +1,15 @@
 export type RichTextDocument = Record<string, unknown>;
 
-const BLOCK_NODE_TYPES = new Set(['paragraph', 'heading', 'listItem', 'blockquote', 'codeBlock']);
+const BLOCK_NODE_TYPES = new Set([
+  'paragraph',
+  'heading',
+  'listItem',
+  'blockquote',
+  'codeBlock',
+  'tableRow',
+  'tableCell',
+  'tableHeader',
+]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -66,7 +75,8 @@ export function isRichTextEmpty(content: unknown): boolean {
       return typeof node.text === 'string' && node.text.trim().length > 0;
     }
 
-    if (node.type === 'image' || node.type === 'mention') return true;
+    if (['image', 'mention', 'jiraMedia', 'jiraMediaInline'].includes(String(node.type)))
+      return true;
 
     return Array.isArray(node.content) && node.content.some(hasContent);
   }
@@ -100,6 +110,11 @@ export function extractPlainText(content: unknown): string {
 
     if (node.type === 'hardBreak') {
       appendLineBreak();
+      return;
+    }
+
+    if (node.type === 'jiraMedia' || node.type === 'jiraMediaInline') {
+      output.push('[Attachment]');
       return;
     }
 

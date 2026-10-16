@@ -1,4 +1,8 @@
-import { createPostgresDataSource, runReviewReliabilityMigration } from '@weaver/db';
+import {
+  createPostgresDataSource,
+  runJiraImportMigration,
+  runReviewReliabilityMigration,
+} from '@weaver/db';
 import { Injectable } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
@@ -63,6 +67,7 @@ export class TenantConnectionProvider {
       await ds.initialize();
       await runAutomaticTimeCoreMigration(ds, schemaName);
       await runReviewReliabilityMigration(ds, schemaName);
+      await runJiraImportMigration(ds, schemaName);
       this.connections.set(schemaName, ds);
       return ds;
     } catch (error) {
@@ -79,16 +84,18 @@ export class TenantConnectionProvider {
     return ds.manager;
   }
 
-  async runInTenantTransaction<T>(
-    callback: (manager: EntityManager) => Promise<T>,
-  ): Promise<T> {
+  async runInTenantTransaction<T>(callback: (manager: EntityManager) => Promise<T>): Promise<T> {
     const { schemaName } = requireTenantContext();
     const current = this.transactions.getStore();
     if (current?.schemaName === schemaName) return callback(current.manager);
     const ds = await this.getConnection(schemaName);
     const queryRunner = ds.createQueryRunner();
     let transactionStarted = false;
-    const context = { schemaName, manager: queryRunner.manager, afterCommit: [] as Array<() => Promise<void>> };
+    const context = {
+      schemaName,
+      manager: queryRunner.manager,
+      afterCommit: [] as Array<() => Promise<void>>,
+    };
     let result: T;
 
     await queryRunner.connect();

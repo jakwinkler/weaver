@@ -24,7 +24,7 @@ export class ImportJobEntity {
   sourceUrl!: string;
 
   @Column({ length: 20, default: 'queued' })
-  status!: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+  status!: 'queued' | 'running' | 'completed' | 'needs_review' | 'failed' | 'cancelled';
 
   @Column({ type: 'int', default: 0 })
   progress!: number;
@@ -52,6 +52,9 @@ export class ImportJobEntity {
 
   @Column({ name: 'completed_at', type: 'timestamptz', nullable: true })
   completedAt!: Date | null;
+
+  @Column({ type: 'jsonb', default: {} })
+  report!: Record<string, unknown>;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;
