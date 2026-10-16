@@ -120,6 +120,8 @@ Classification is descriptive. Entrypoints and contributions determine actual be
 
 Plugin storage and lifecycle context remain tenant-isolated in both cases.
 
+A `project` plugin is also switched on per project (Project settings, or `POST /api/v1/projects/:key/plugins/enable`). On protected routes, when an `:issueKey` or `:projectKey` parameter names an existing project, the API answers `503 Plugin is disabled` unless that project has the plugin enabled, the same answer as a plugin disabled for the whole tenant. This check runs after the project access check. Routes that name no project, and `public` routes, depend only on tenant enablement.
+
 ### `icon`
 
 A [Lucide](https://lucide.dev/icons/) icon name in kebab case, such as `file-text`. Unknown names fall back to `puzzle`. Navigation items and project views use the same names.
@@ -410,6 +412,7 @@ Rules:
 - The handler receives `PluginRequest` and `PluginContext` and returns `PluginResponse`.
 - Required permissions are checked before invocation.
 - On protected routes, an `:issueKey` or `:projectKey` parameter is checked against the caller's project access: read for `GET`, write for other methods.
+- For a `project` scoped plugin, the project those parameters name must also have the plugin enabled; see [`scope`](#scope).
 
 ### Route modes
 

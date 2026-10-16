@@ -180,7 +180,7 @@ GET /api/v1/plugin-routes/@weaver~plugin-release-notes/issues/WEB-42/summary
 
 Protected plugin routes require the same authentication as the Weaver API. Routes declared `public: true` must authenticate their provider request before accessing protected data or performing writes; a tenant UUID is only a locator. Plugins are trusted in-process code, not isolated extensions. `requiredPermissions` is enforced before the handler runs.
 
-For a protected route, Weaver also checks the caller's project access when the path has an `:issueKey` or `:projectKey` parameter: read access for `GET`, write access for other methods.
+For a protected route, Weaver also checks the caller's project access when the path has an `:issueKey` or `:projectKey` parameter: read access for `GET`, write access for other methods. If the manifest sets `"scope": "project"`, that project must also have the plugin enabled, or the route answers `503 Plugin is disabled`.
 
 Run `pnpm validate` after changing routes. Validation reports routes that reference missing handler exports and handler exports that no route references.
 
