@@ -24,18 +24,31 @@ import {
 import {
   JwtAuthGuard,
   PermissionGuard,
+  PermissionService,
   RequirePermission,
   CurrentUser,
   RequestUser,
 } from '../../core/auth';
 import { ZodValidationPipe, parsePagination } from '../../common';
-import { IssuesService } from './issues.service';
+import { IssueChangeAuthorizer, IssuesService } from './issues.service';
 import { MemberVisibilityService, ProjectAccessGuard, RequireProjectAccess } from '../../core/tenant';
 
 @Controller()
 @UseGuards(JwtAuthGuard, PermissionGuard, ProjectAccessGuard)
 export class IssuesController {
-  constructor(private readonly issuesService: IssuesService, private readonly memberVisibility: MemberVisibilityService) {}
+  constructor(
+    private readonly issuesService: IssuesService,
+    private readonly memberVisibility: MemberVisibilityService,
+    private readonly permissions: PermissionService,
+  ) {}
+
+  /** Status changes need issues.transition and assignee changes need issues.assign, on top of issues.update. */
+  private authorizeIssueChanges(user: RequestUser): IssueChangeAuthorizer {
+    return ({ status, assignee }) => this.permissions.assertPermissions(user, [
+      ...(status ? [{ category: 'issues', action: 'transition' }] : []),
+      ...(assignee ? [{ category: 'issues', action: 'assign' }] : []),
+    ]);
+  }
 
   @Post('projects/:projectKey/issues')
   @RequirePermission('issues', 'create')
@@ -45,6 +58,7 @@ export class IssuesController {
     @Body(new ZodValidationPipe(createIssueSchema)) dto: any,
     @CurrentUser() user: RequestUser,
   ) {
+    await this.authorizeIssueChanges(user)({ status: false, assignee: !!dto.assigneeId });
     await this.memberVisibility.assertVisibleMember(user, dto.assigneeId);
     return this.issuesService.create(projectKey, dto, user.userId);
   }
@@ -106,7 +120,7 @@ export class IssuesController {
     @CurrentUser() user: RequestUser,
   ) {
     await this.memberVisibility.assertVisibleMember(user, dto.updates.assigneeId);
-    return this.issuesService.bulkUpdate(dto.issueIds, dto.updates, user.userId);
+    return this.issuesService.bulkUpdate(dto.issueIds, dto.updates, user.userId, this.authorizeIssueChanges(user));
   }
 
   @Delete('issues/bulk')
@@ -143,7 +157,9 @@ export class IssuesController {
     @CurrentUser() user: RequestUser,
   ) {
     await this.memberVisibility.assertVisibleMember(user, dto.assigneeId);
-    return this.issuesService.update(issueKey, dto, user.userId);
+    return this.issuesService.update(issueKey, dto, user.userId, {
+      authorizeChanges: this.authorizeIssueChanges(user),
+    });
   }
 
   @Patch('issues/:issueKey/sprint')

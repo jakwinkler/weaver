@@ -7,6 +7,7 @@ export { ApiKeyRateLimitGuard } from './api-key-rate-limit.guard';
 export { AdminGuard } from './admin.guard';
 export { OptionalAuthGuard } from './optional-auth.guard';
 export { PermissionGuard } from './permission.guard';
+export { PermissionService } from './permission.service';
 export { RequirePermission } from './require-permission.decorator';
 export { JwtStrategy } from './jwt.strategy';
 export { CurrentUser } from './current-user.decorator';

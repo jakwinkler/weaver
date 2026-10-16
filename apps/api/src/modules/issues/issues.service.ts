@@ -42,6 +42,20 @@ interface RecurrenceInstanceOptions {
   occurrence: number;
 }
 
+/** Which permission-gated fields a request would actually change on the locked issue rows. */
+export interface IssueChangeSet {
+  status: boolean;
+  assignee: boolean;
+}
+
+/** Called inside the update transaction, after the rows are locked and before anything changes. */
+export type IssueChangeAuthorizer = (changes: IssueChangeSet) => Promise<void>;
+
+export interface IssueUpdateOptions {
+  appendToSprint?: boolean;
+  authorizeChanges?: IssueChangeAuthorizer;
+}
+
 @Injectable()
 export class IssuesService {
   private readonly logger = new Logger(IssuesService.name);
@@ -381,7 +395,12 @@ export class IssuesService {
     return paginate(qb, params, ['sortOrder', 'priority', 'createdAt', 'updatedAt']);
   }
 
-  async update(issueKey: string, dto: UpdateIssueDto, userId?: string, appendToSprint = false): Promise<IssueEntity> {
+  async update(
+    issueKey: string,
+    dto: UpdateIssueDto,
+    userId?: string,
+    { appendToSprint = false, authorizeChanges }: IssueUpdateOptions = {},
+  ): Promise<IssueEntity> {
     if (dto.customFields !== undefined) {
       await this.customFieldsService.validateCustomFields(dto.customFields);
     }
@@ -414,6 +433,11 @@ export class IssuesService {
         percentDone: issue.percentDone,
         storyPoints: issue.storyPoints,
       };
+
+      await authorizeChanges?.({
+        status: dto.statusId !== undefined && dto.statusId !== issue.statusId,
+        assignee: dto.assigneeId !== undefined && (dto.assigneeId ?? null) !== issue.assigneeId,
+      });
 
       if (dto.parentId !== undefined) {
         await this.assertValidHierarchyTarget(
@@ -550,6 +574,7 @@ export class IssuesService {
     issueIds: string[],
     updates: BulkIssueUpdatesDto,
     userId: string,
+    authorizeChanges?: IssueChangeAuthorizer,
   ): Promise<IssueEntity[]> {
     this.validateBulkRequest(issueIds, updates);
     await this.assertValidAssignee(updates.assigneeId);
@@ -562,6 +587,12 @@ export class IssuesService {
       if (issues.length !== uniqueIssueIds.length) {
         throw new NotFoundException('One or more issues were not found');
       }
+      await authorizeChanges?.({
+        status: updates.statusId !== undefined
+          && issues.some((issue) => issue.statusId !== updates.statusId),
+        assignee: updates.assigneeId !== undefined
+          && issues.some((issue) => issue.assigneeId !== (updates.assigneeId ?? null)),
+      });
 
       const previousValues = new Map(
         issues.map((issue) => [
@@ -802,7 +833,7 @@ export class IssuesService {
   }
 
   async moveToSprint(issueKey: string, dto: MoveIssueSprintDto, userId: string): Promise<IssueEntity> {
-    return this.update(issueKey, dto, userId, true);
+    return this.update(issueKey, dto, userId, { appendToSprint: true });
   }
 
   private async assertValidSprint(em: EntityManager, projectId: string, sprintId: string | null): Promise<void> {
