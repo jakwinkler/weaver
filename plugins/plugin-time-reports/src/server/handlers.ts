@@ -219,6 +219,6 @@ export async function deleteSavedReport(
 
 function csvEscape(value: string): string {
   if (!value) return '';
-  const safe = /^[\s]*[=+@-]/.test(value) ? `'${value}` : value;
+  const safe = /^(?:[\t\r]|\s*[=+@-])/.test(value) ? `'${value}` : value;
   return safe.replace(/"/g, '""');
 }
