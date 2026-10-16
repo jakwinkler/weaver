@@ -56,6 +56,7 @@ plugins/release-notes/
 ├── README.md
 ├── package.json
 ├── tsconfig.json
+├── tsconfig.server.json
 ├── vite.config.ts
 ├── weaver-plugin.json
 └── src/
@@ -68,7 +69,7 @@ plugins/release-notes/
         └── index.ts
 ```
 
-Server-only scaffolds omit `src/client` and `vite.config.ts`, and have no client bundle to build or serve. Client-only scaffolds omit `src/server` and the example route.
+Server-only scaffolds omit `src/client` and `vite.config.ts`, and have no client bundle to build or serve. Client-only scaffolds omit `src/server`, `tsconfig.server.json`, and the example route.
 
 `package.json` depends on `@weaver/cli` and `@weaver/sdk` as `workspace:*`. `vite.config.ts` names the Module Federation remote with `getPluginRemoteName` from the SDK, which is the name the web app registers when it loads the plugin.
 
@@ -81,7 +82,7 @@ pnpm validate
 pnpm build
 ```
 
-`pnpm validate` prints `Manifest is valid: <path>` or a list of errors and warnings. `pnpm build` validates again, then writes the federation entry to `dist/client/remoteEntry.js`. Run `pnpm typecheck` to check the TypeScript as well.
+`pnpm validate` prints `Manifest is valid: <path>` or a list of errors and warnings. `pnpm build` validates again, then builds what the manifest's `entrypoints` declare: the client federation entry in `dist/client/remoteEntry.js`, and the server code compiled to `dist/server`. A server-only plugin skips the client step. A TypeScript error in the server code fails the build. Vite does not type-check, so run `pnpm typecheck` to check the client code as well.
 
 ## Install in Weaver
 
@@ -127,7 +128,18 @@ The plugin page runs inside the web app, so its API calls use the web app's prox
 
 ## Production
 
-`pnpm build` compiles only the client bundle. With `NODE_ENV=production`, the API loads only plugins listed in `WEAVER_TRUSTED_PLUGINS`, and it loads server code from `dist/server` as JavaScript instead of `src/server`. Generated plugins do not compile their server code yet. The bundled plugins do it with `tsc -p tsconfig.server.json`; see `plugins/plugin-template` for that configuration.
+With `NODE_ENV=production`, the API loads only plugins listed in `WEAVER_TRUSTED_PLUGINS`, and it loads server code from `dist/server` as JavaScript instead of `src/server`. It does not compile plugins or watch them, so run `pnpm build` before you start or restart it:
+
+```text
+NODE_ENV=production
+WEAVER_TRUSTED_PLUGINS=@weaver/plugin-release-notes
+```
+
+For server code, `pnpm build` deletes `dist/server`, compiles `src/server` with `tsconfig.server.json`, and stops with an error if the output lacks the file the API loads for `entrypoints.server`, which is `dist/server/index.js` for a generated plugin. The output is CommonJS because the API loads it with `require()`. Keep server code in `src/server`: `rootDir` makes TypeScript reject imports from elsewhere in the plugin.
+
+The [Compose deployment](../deploy/compose/README.md) image runs the repository's `pnpm build`, which includes every package in `plugins/`, then checks that each server plugin has its `dist/server` entrypoint and route handlers. Commit the `pnpm-lock.yaml` change from `pnpm install` with the plugin, because the image installs with `--frozen-lockfile`.
+
+A plugin created before `weaver build` compiled server code has no `tsconfig.server.json`, and `pnpm build` stops until you copy one from `packages/cli/templates/plugin/tsconfig.server.json`.
 
 ## Add a server route
 
@@ -168,7 +180,7 @@ GET /api/v1/plugin-routes/@weaver~plugin-release-notes/issues/WEB-42/summary
 
 Protected plugin routes require the same authentication as the Weaver API. Routes declared `public: true` must authenticate their provider request before accessing protected data or performing writes; a tenant UUID is only a locator. Plugins are trusted in-process code, not isolated extensions. `requiredPermissions` is enforced before the handler runs.
 
-For a protected route, Weaver also checks the caller's project access when the path has an `:issueKey` or `:projectKey` parameter: read access for `GET`, write access for other methods.
+For a protected route, Weaver also checks the caller's project access when the path has an `:issueKey` or `:projectKey` parameter: read access for `GET`, write access for other methods. If the manifest sets `"scope": "project"`, that project must also have the plugin enabled, or the route answers `503 Plugin is disabled`.
 
 Run `pnpm validate` after changing routes. Validation reports routes that reference missing handler exports and handler exports that no route references.
 
@@ -326,7 +338,7 @@ export async function onEvent(event: string, data: unknown, context: PluginConte
 }
 ```
 
-Only installed and enabled plugins receive events. A subscription of `"*"` receives every tenant event. Common core events include `issue.created`, `issue.updated`, `issue.assigned`, `issue.moved`, `issue.status_changed`, `issue.deleted`, `project.created`, `project.updated`, `comment.created`, `comment.deleted`, and `time.logged`.
+Only installed and enabled plugins receive events. A subscription of `"*"` receives every tenant event. Common core events include `issue.created`, `issue.updated`, `issue.assigned`, `issue.moved`, `issue.status_changed`, `issue.deleted`, `project.created`, `project.updated`, `comment.created`, `comment.deleted`, `sprint.created`, `sprint.started`, `sprint.completed`, and `time.logged`.
 
 ## Register custom fields
 
@@ -411,6 +423,6 @@ Generated plugins run the CLI through their package scripts: `pnpm validate`, `p
 | `weaver validate --json`                 | Print validation results for tooling                          |
 | `weaver dev [directory] --port <port>`   | Start Vite with HMR on a fixed port                           |
 | `weaver dev --weaver-url <url>`          | Proxy dev server `/api` requests to another Weaver API        |
-| `weaver build [directory]`               | Validate and build the client federation bundle               |
+| `weaver build [directory]`               | Validate, build the client bundle, and compile server code    |
 
 See [Plugin manifest reference](./plugin-manifest-reference.md) and [Plugin API reference](./plugin-api-reference.md) for the complete contracts.

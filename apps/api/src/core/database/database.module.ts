@@ -2,6 +2,7 @@ import { Module, Global } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import {
+  createPostgresDataSource,
   TenantEntity,
   UserEntity,
   TenantMembershipEntity,
@@ -9,6 +10,7 @@ import {
   InstalledPluginEntity,
   RefreshSessionEntity,
   OrganizationInvitationEntity,
+  PasswordResetTokenEntity,
 } from '@weaver/db';
 
 const publicEntities = [
@@ -19,6 +21,7 @@ const publicEntities = [
   InstalledPluginEntity,
   RefreshSessionEntity,
   OrganizationInvitationEntity,
+  PasswordResetTokenEntity,
 ];
 
 @Global()
@@ -39,6 +42,10 @@ const publicEntities = [
         synchronize: config.get('NODE_ENV') === 'development',
         logging: config.get('DATABASE_LOGGING') === 'true',
       }),
+      dataSourceFactory: async (options) => {
+        if (options?.type !== 'postgres') throw new Error('Weaver requires a postgres data source');
+        return createPostgresDataSource(options);
+      },
     }),
     TypeOrmModule.forFeature(publicEntities),
   ],

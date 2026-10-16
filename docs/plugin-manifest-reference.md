@@ -120,6 +120,8 @@ Classification is descriptive. Entrypoints and contributions determine actual be
 
 Plugin storage and lifecycle context remain tenant-isolated in both cases.
 
+A `project` plugin is also switched on per project (Project settings, or `POST /api/v1/projects/:key/plugins/enable`). On protected routes, when an `:issueKey` or `:projectKey` parameter names an existing project, the API answers `503 Plugin is disabled` unless that project has the plugin enabled, the same answer as a plugin disabled for the whole tenant. This check runs after the project access check. Routes that name no project, and `public` routes, depend only on tenant enablement.
+
 ### `icon`
 
 A [Lucide](https://lucide.dev/icons/) icon name in kebab case, such as `file-text`. Unknown names fall back to `puzzle`. Navigation items and project views use the same names.
@@ -185,6 +187,7 @@ Describes a native app that talks to the plugin. `authenticator` names a handler
 - Paths are relative to the plugin root and must not leave it.
 - A plugin may provide only one entrypoint.
 - Routes require a server entrypoint. Handlers are exported from a `handlers.ts` file next to it, or from `*.handler.ts` files in the same directory.
+- With `NODE_ENV=production`, the API loads the compiled JavaScript instead: `src/server/index.ts` becomes `dist/server/index.js`. `weaver build` writes it.
 - UI components require a client entrypoint.
 
 ## Permissions
@@ -225,7 +228,8 @@ Use the same key in `permissions`, route requirements, and UI requirements. Keep
 
 ```typescript
 interface PluginSettingDefinition {
-  type: 'string' | 'number' | 'boolean' | 'select';
+  type: 'string' | 'number' | 'boolean' | 'select' | 'textarea';
+  label?: string;
   required?: boolean;
   default?: unknown;
   description?: string;
@@ -262,7 +266,8 @@ Example:
 
 Rules:
 
-- A default must match the setting type.
+- A default must match the setting type. A `textarea` is a multi-line string.
+- `label` is the field title in the settings form. Without it, Weaver shows the setting key as words.
 - A `select` must have at least one option.
 - A `select` default must be one of its options.
 - Settings are available as `context.settings`.
@@ -407,6 +412,7 @@ Rules:
 - The handler receives `PluginRequest` and `PluginContext` and returns `PluginResponse`.
 - Required permissions are checked before invocation.
 - On protected routes, an `:issueKey` or `:projectKey` parameter is checked against the caller's project access: read for `GET`, write for other methods.
+- For a `project` scoped plugin, the project those parameters name must also have the plugin enabled; see [`scope`](#scope).
 
 ### Route modes
 

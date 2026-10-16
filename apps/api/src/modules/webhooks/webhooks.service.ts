@@ -151,6 +151,7 @@ export class WebhooksService {
           'X-Webhook-Signature': signature,
           'X-Webhook-Timestamp': timestamp,
           'X-Webhook-Event': event,
+          'X-Webhook-Delivery': crypto.randomUUID(),
         },
         body,
         signal: AbortSignal.timeout(10000),

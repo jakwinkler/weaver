@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   useSearch,
   useSavedFilters,
@@ -280,10 +280,20 @@ export function SearchPage() {
                     {search.data.data.map((issue) => (
                       <TableRow key={issue.key}>
                         <TableCell className="whitespace-nowrap text-sm font-medium text-primary">
-                          {issue.key}
+                          <Link
+                            to={`/issues/${encodeURIComponent(issue.key)}`}
+                            className="hover:underline"
+                          >
+                            {issue.key}
+                          </Link>
                         </TableCell>
                         <TableCell className="text-sm text-foreground">
-                          {issue.summary}
+                          <Link
+                            to={`/issues/${encodeURIComponent(issue.key)}`}
+                            className="hover:text-primary"
+                          >
+                            {issue.summary}
+                          </Link>
                         </TableCell>
                         <TableCell className="whitespace-nowrap">
                           <PriorityBadge priority={issue.priority} />

@@ -6,7 +6,7 @@ Open **Administration → Audit Log** to review recorded administrative changes.
 
 Start with the narrowest fact you know: the resource, the person, or the approximate time. Combine filters to reduce the result set. Entries show the timestamp, actor, action, resource, and captured details.
 
-The audit log is different from an issue's **Logs** tab. Issue activity explains changes to that piece of work. The administrative audit covers instrumented operations such as projects, roles, users, workflows, plugins, webhooks, settings, and the start or cancellation of a Jira import.
+The audit log is different from an issue's **Logs** tab. Issue activity explains changes to that piece of work. The administrative audit covers instrumented operations such as projects, roles, users, workflows, plugins, webhooks, settings, and the start or cancellation of a Jira import. When a member resets a forgotten password, each of their organizations records a **User Password Reset** entry.
 
 ![Administrative audit entries from the fictional workspace](https://raw.githubusercontent.com/wiki/jakwinkler/weaver/images/audit-log.png)
 

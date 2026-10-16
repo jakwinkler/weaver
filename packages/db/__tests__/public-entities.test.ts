@@ -62,6 +62,17 @@ describe('Public Schema Entities', () => {
       expect(columnNames).toContain('notificationPreferences');
     });
 
+    it('keeps password_hash and session_version out of save() and update()', () => {
+      // A user loaded before a password reset would otherwise write the old values back.
+      const columns = storage.columns.filter((c) => c.target === UserEntity);
+      for (const name of ['passwordHash', 'sessionVersion']) {
+        const column = columns.find((c) => c.propertyName === name);
+        expect(column?.options.update).toBe(false);
+        // Registration and invitations still insert the hash.
+        expect(column?.options.insert).not.toBe(false);
+      }
+    });
+
     it('should have unique index on email', () => {
       const indices = storage.indices.filter((i) => i.target === UserEntity);
       const emailIndex = indices.find((i) => i.columns?.includes('email'));

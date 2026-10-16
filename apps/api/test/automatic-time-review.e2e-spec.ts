@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import request from 'supertest';
+import * as bcrypt from 'bcrypt';
 import { AppModule } from '../src/app.module';
 import { TenantConnectionProvider } from '../src/core/tenant';
 
@@ -11,6 +12,7 @@ describe('Automatic Time Phase 6 review workflow (e2e)', () => {
   const pluginId = '@weaver/plugin-automatic-time';
   const pluginRouteId = '@weaver~plugin-automatic-time';
   const email = 'automatic-time-review-e2e@example.com';
+  const memberEmail = 'automatic-time-review-member-e2e@example.com';
   const tenantSlug = 'automatic-time-review-e2e';
   const schemaName = 'tenant_automatic_time_review_e2e';
   const localDate = '2026-08-30';
@@ -71,7 +73,9 @@ describe('Automatic Time Phase 6 review workflow (e2e)', () => {
       [tenantSlug],
     );
     await dataSource.query('DELETE FROM public.tenants WHERE slug = $1', [tenantSlug]);
-    await dataSource.query('DELETE FROM public.users WHERE email = $1', [email]);
+    await dataSource.query('DELETE FROM public.users WHERE email = ANY($1::text[])', [
+      [email, memberEmail],
+    ]);
   }
 
   const authedRequest = () => ({
@@ -308,5 +312,96 @@ describe('Automatic Time Phase 6 review workflow (e2e)', () => {
     expect(
       await dataSource.query(`SELECT id FROM "${schemaName}".time_entries ORDER BY id`),
     ).toHaveLength(3);
+  });
+
+  it('rejects a private issue key in drafts without revealing that it exists', async () => {
+    await authedRequest()
+      .post('/api/v1/plugins/install')
+      .send({ pluginId })
+      .expect((response) => expect([201, 409]).toContain(response.status));
+    await authedRequest().post('/api/v1/plugins/enable').send({ pluginId }).expect(201);
+    await authedRequest()
+      .post('/api/v1/projects')
+      .send({ name: 'Automatic Time Hidden', key: 'ATH' })
+      .expect(201);
+    const hiddenIssue = await authedRequest()
+      .post('/api/v1/projects/ATH/issues')
+      .send({ summary: 'Private work the member cannot see' })
+      .expect(201);
+
+    const [member] = await dataSource.query(
+      `INSERT INTO public.users
+         (id, email, display_name, password_hash, auth_provider, created_at, updated_at)
+       VALUES (gen_random_uuid(), $1, 'Automatic Time Member', $2, 'local', NOW(), NOW())
+       RETURNING id`,
+      [memberEmail, await bcrypt.hash('password123', 10)],
+    );
+    await dataSource.query(
+      `INSERT INTO public.tenant_memberships (tenant_id, user_id, role, created_at)
+       VALUES ($1, $2, 'member', NOW())`,
+      [tenantId, member.id],
+    );
+    await dataSource.query(
+      `UPDATE "${schemaName}".roles SET permissions = permissions || $1::jsonb WHERE name = 'member'`,
+      [JSON.stringify({ 'automatic-time.view': true, 'automatic-time.manage-drafts': true })],
+    );
+    const memberToken = (
+      await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({ email: memberEmail, password: 'password123' })
+        .expect(201)
+    ).body.accessToken;
+    const memberPost = (path: string) =>
+      request(app.getHttpServer())
+        .post(`/api/v1/plugin-routes/${pluginRouteId}${path}`)
+        .set('Authorization', `Bearer ${memberToken}`)
+        .set('X-Tenant-ID', tenantId);
+
+    const offlineDraft = (issueKey: string) =>
+      memberPost('/drafts/offline').send({
+        localDate,
+        startedAt: '2026-08-30T16:00:00.000Z',
+        endedAt: '2026-08-30T16:15:00.000Z',
+        proposedMinutes: 15,
+        description: 'Synthetic member offline work',
+        issueKey,
+      });
+    const hiddenOffline = await offlineDraft(hiddenIssue.body.key).expect(404);
+    const missingOffline = await offlineDraft('ATH-9999').expect(404);
+    expect(hiddenOffline.body).toEqual(missingOffline.body);
+
+    const [draft] = (
+      await memberPost('/test/fixtures/drafts')
+        .send({
+          drafts: [
+            {
+              sourceReference: 'phase-6-member-captured',
+              localDate,
+              startedAt: '2026-08-30T16:30:00.000Z',
+              endedAt: '2026-08-30T17:00:00.000Z',
+              proposedMinutes: 30,
+              description: 'Synthetic member captured block',
+              confidence: 0.5,
+              assignmentMethod: 'synthetic-fixture',
+              assignmentReasons: ['Synthetic member fixture'],
+              evidenceDigest: 'sha256:phase-6-member-captured',
+            },
+          ],
+        })
+        .expect(201)
+    ).body;
+    const hiddenAssign = await memberPost(`/drafts/${draft.id}/assign`)
+      .send({ issueKey: hiddenIssue.body.key })
+      .expect(404);
+    const missingAssign = await memberPost(`/drafts/${draft.id}/assign`)
+      .send({ issueKey: 'ATH-9999' })
+      .expect(404);
+    expect(hiddenAssign.body).toEqual(missingAssign.body);
+
+    const memberDrafts = await dataSource.query(
+      `SELECT issue_key FROM "${schemaName}".automatic_time_drafts WHERE user_id = $1::uuid`,
+      [member.id],
+    );
+    expect(memberDrafts).toEqual([{ issue_key: null }]);
   });
 });

@@ -1,39 +1,42 @@
 import '@testing-library/jest-dom/vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { Link, MemoryRouter, Route, Routes } from 'react-router-dom';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HotkeysContext } from '@/hooks/useHotkeys';
 import { IssueDetailPage } from './IssueDetailPage';
 
-const apiMocks = vi.hoisted(() => ({
-  update: vi.fn(),
-  transition: vi.fn(),
-}));
+const apiMocks = vi.hoisted(() => {
+  const baseIssue = {
+    id: 'issue-1',
+    key: 'TEST-1',
+    summary: 'Keyboard shortcuts',
+    description: null,
+    statusId: 'todo',
+    priority: 'medium',
+    assigneeId: null as string | null,
+    reporterId: 'user-1',
+    labels: [] as string[],
+    startDate: null,
+    dueDate: null,
+    percentDone: 0,
+    recurrenceRule: null,
+    recurrenceParentId: null,
+    recurrenceOccurrence: 0,
+    createdAt: '2026-08-27T12:00:00.000Z',
+    updatedAt: '2026-08-27T12:00:00.000Z',
+  };
+  return {
+    baseIssue,
+    // Replacing this object stands in for a refetch after a live update.
+    issue: baseIssue,
+    update: vi.fn(),
+    transition: vi.fn(),
+  };
+});
 
 vi.mock('@/api', () => ({
   useHasPermission: () => true,
-  useIssue: () => ({
-    data: {
-      id: 'issue-1',
-      key: 'TEST-1',
-      summary: 'Keyboard shortcuts',
-      description: null,
-      statusId: 'todo',
-      priority: 'medium',
-      assigneeId: null,
-      reporterId: 'user-1',
-      labels: [],
-      startDate: null,
-      dueDate: null,
-      percentDone: 0,
-      recurrenceRule: null,
-      recurrenceParentId: null,
-      recurrenceOccurrence: 0,
-      createdAt: '2026-08-27T12:00:00.000Z',
-      updatedAt: '2026-08-27T12:00:00.000Z',
-    },
-    isLoading: false,
-  }),
+  useIssue: () => ({ data: apiMocks.issue, isLoading: false }),
   useIssueRecurrence: () => ({ data: [] }),
   useProject: () => ({ data: { workflowId: 'workflow-1' } }),
   useTransitionIssue: () => ({ mutateAsync: apiMocks.transition, isPending: false }),
@@ -85,17 +88,25 @@ Object.defineProperty(Element.prototype, 'scrollIntoView', {
   value: () => undefined,
 });
 
-function renderPage() {
-  return render(
+function page() {
+  return (
     <MemoryRouter initialEntries={['/issues/TEST-1']}>
       <HotkeysContext.Provider value="detail">
         <Routes>
           <Route path="/issues/:issueKey" element={<IssueDetailPage />} />
         </Routes>
       </HotkeysContext.Provider>
-    </MemoryRouter>,
+    </MemoryRouter>
   );
 }
+
+function renderPage() {
+  return render(page());
+}
+
+beforeEach(() => {
+  apiMocks.issue = apiMocks.baseIssue;
+});
 
 afterEach(() => {
   cleanup();
@@ -129,5 +140,84 @@ describe('IssueDetailPage keyboard shortcuts', () => {
 
     fireEvent.keyDown(document, { key: 's' });
     expect(screen.getByRole('menuitem', { name: 'Done' })).toBeInTheDocument();
+  });
+});
+
+describe('IssueDetailPage live updates', () => {
+  it('keeps the edit draft and flags a server update made while editing', () => {
+    const { rerender } = renderPage();
+
+    fireEvent.keyDown(document, { key: 'e' });
+    fireEvent.change(screen.getByLabelText('Summary'), { target: { value: 'My draft summary' } });
+    expect(screen.queryByText(/updated while you were editing/)).not.toBeInTheDocument();
+
+    apiMocks.issue = {
+      ...apiMocks.baseIssue,
+      summary: 'Teammate summary',
+      updatedAt: '2026-08-27T12:05:00.000Z',
+    };
+    rerender(page());
+
+    expect(screen.getByLabelText('Summary')).toHaveValue('My draft summary');
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'This issue was updated while you were editing.',
+    );
+  });
+
+  it('does not flag server changes to fields outside the edit form', () => {
+    const { rerender } = renderPage();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.change(screen.getByLabelText('Summary'), { target: { value: 'My draft summary' } });
+    apiMocks.issue = { ...apiMocks.baseIssue, assigneeId: 'user-1' };
+    rerender(page());
+
+    expect(screen.getByLabelText('Summary')).toHaveValue('My draft summary');
+    expect(screen.queryByText(/updated while you were editing/)).not.toBeInTheDocument();
+  });
+
+  it('starts each edit from the latest server values', () => {
+    const { rerender } = renderPage();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.change(screen.getByLabelText('Summary'), { target: { value: 'Abandoned draft' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    apiMocks.issue = { ...apiMocks.baseIssue, summary: 'Teammate summary' };
+    rerender(page());
+    fireEvent.keyDown(document, { key: 'e' });
+
+    expect(screen.getByLabelText('Summary')).toHaveValue('Teammate summary');
+    expect(screen.queryByText(/updated while you were editing/)).not.toBeInTheDocument();
+  });
+
+  it('drops the edit draft when another issue opens', () => {
+    render(
+      <MemoryRouter initialEntries={['/issues/TEST-1']}>
+        <HotkeysContext.Provider value="detail">
+          <Link to="/issues/TEST-2">Open TEST-2</Link>
+          <Routes>
+            <Route path="/issues/:issueKey" element={<IssueDetailPage />} />
+          </Routes>
+        </HotkeysContext.Provider>
+      </MemoryRouter>,
+    );
+
+    fireEvent.keyDown(document, { key: 'e' });
+    fireEvent.change(screen.getByLabelText('Summary'), { target: { value: 'Draft for TEST-1' } });
+    fireEvent.click(screen.getByRole('link', { name: 'Open TEST-2' }));
+
+    expect(screen.queryByLabelText('Summary')).not.toBeInTheDocument();
+  });
+
+  it('keeps an unsaved recurrence change when the issue refetches', () => {
+    const { rerender } = renderPage();
+
+    fireEvent.change(screen.getByLabelText('Repeat'), { target: { value: 'daily' } });
+    apiMocks.issue = { ...apiMocks.baseIssue, summary: 'Teammate summary' };
+    rerender(page());
+
+    expect(screen.getByLabelText('Repeat')).toHaveValue('daily');
+    expect(screen.getByRole('button', { name: 'Save recurrence' })).toBeInTheDocument();
   });
 });

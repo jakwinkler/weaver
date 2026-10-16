@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { richTextDocumentSchema } from './rich-text';
 export * from './rich-text';
+export * from './plugin-manifest';
 import {
   ISSUE_PRIORITIES,
   TENANT_PLANS,
@@ -21,9 +22,12 @@ import {
 
 // ── Auth Schemas ──
 
+// One rule for every place a user chooses a password.
+export const passwordSchema = z.string().min(8).max(128);
+
 export const registerSchema = z.object({
   email: z.string().trim().toLowerCase().email(),
-  password: z.string().min(8).max(128),
+  password: passwordSchema,
   displayName: z.string().min(1).max(255),
   orgName: z.string().min(1).max(255),
   orgSlug: z
@@ -43,9 +47,20 @@ export type CreateInvitationDto = z.infer<typeof createInvitationSchema>;
 export const acceptInvitationSchema = z.object({
   email: z.string().trim().toLowerCase().email(),
   displayName: z.string().trim().min(1).max(255),
-  password: z.string().min(8).max(128),
+  password: passwordSchema,
 });
 export type AcceptInvitationDto = z.infer<typeof acceptInvitationSchema>;
+
+export const requestPasswordResetSchema = z.object({
+  email: z.string().trim().toLowerCase().email().max(255),
+});
+export type RequestPasswordResetDto = z.infer<typeof requestPasswordResetSchema>;
+
+export const confirmPasswordResetSchema = z.object({
+  token: z.string().min(1).max(256),
+  password: passwordSchema,
+});
+export type ConfirmPasswordResetDto = z.infer<typeof confirmPasswordResetSchema>;
 
 export const loginSchema = z.object({
   email: z.string().trim().toLowerCase().email(),

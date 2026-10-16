@@ -90,11 +90,45 @@ export function useUsers() {
   });
 }
 
+export interface PendingInvitation {
+  id: string;
+  email: string;
+  role: 'member' | 'viewer';
+  expiresAt: string;
+  createdAt: string;
+}
+
+export function usePendingInvitations() {
+  return useQuery({
+    queryKey: ['invitations'],
+    queryFn: async () => {
+      const res = await apiClient.get<PendingInvitation[]>('/users/invitations');
+      return res.data;
+    },
+  });
+}
+
 export function useCreateInvitation() {
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: { email: string; role: 'member' | 'viewer' }) => {
-      const res = await apiClient.post<{ token: string; email: string; expiresAt: string }>('/users/invitations', data);
+      const res = await apiClient.post<{ id: string; token: string; email: string; expiresAt: string }>('/users/invitations', data);
       return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invitations'] });
+    },
+  });
+}
+
+export function useRevokeInvitation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (invitationId: string) => {
+      await apiClient.delete(`/users/invitations/${invitationId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invitations'] });
     },
   });
 }

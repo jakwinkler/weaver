@@ -2,6 +2,9 @@ export { apiClient, API_BASE_URL } from './client';
 export {
   useLogin,
   useRegister,
+  useSignInProviders,
+  useRequestPasswordReset,
+  useConfirmPasswordReset,
   useInvitation,
   useAcceptInvitation,
   useCurrentUser,
@@ -98,6 +101,8 @@ export {
   downloadAuditLog,
   useUsers,
   useCreateInvitation,
+  usePendingInvitations,
+  useRevokeInvitation,
   useUpdateUserRole,
   useCreateIssueType,
   useUpdateIssueType,
@@ -118,6 +123,7 @@ export {
 export type {
   AuditLogEntry,
   AuditLogFilters,
+  PendingInvitation,
   TenantUser,
   TeamMember,
 } from './hooks-admin';

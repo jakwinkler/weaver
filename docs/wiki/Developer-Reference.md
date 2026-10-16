@@ -32,9 +32,10 @@ Routes below are relative to `/api/v1`. This is an orientation map, not an exhau
 
 | Area | Main routes | Guide |
 | --- | --- | --- |
-| Identity | `/auth/register`, `/auth/login`, `/auth/me`, `/auth/refresh`, `/auth/logout`, `/auth/invitations/:token`, `/auth/organizations`, `/auth/switch-organization` | [Getting Started](https://github.com/jakwinkler/weaver/wiki/Getting-Started), [OAuth Sign In](https://github.com/jakwinkler/weaver/wiki/OAuth-Sign-In) |
+| Identity | `/auth/register`, `/auth/login`, `/auth/me`, `/auth/refresh`, `/auth/logout`, `/auth/invitations/:token`, `/auth/organizations`, `/auth/switch-organization`, `/auth/providers` | [Getting Started](https://github.com/jakwinkler/weaver/wiki/Getting-Started), [OAuth Sign In](https://github.com/jakwinkler/weaver/wiki/OAuth-Sign-In) |
+| Password reset | `/auth/password-reset/request` (always 202), `/auth/password-reset/confirm` | [Getting Started](https://github.com/jakwinkler/weaver/wiki/Getting-Started) |
 | Projects | `/projects`, `/projects/:key`, `/projects/:key/workflow`, member/type/plugin subroutes | [Projects and Access](https://github.com/jakwinkler/weaver/wiki/Projects-and-Access) |
-| Invitations | `/users/invitations` (administrator creation) | [Projects and Access](https://github.com/jakwinkler/weaver/wiki/Projects-and-Access) |
+| Invitations | `/users/invitations` (administrator create, list pending, and `DELETE /users/invitations/:id` to revoke) | [Projects and Access](https://github.com/jakwinkler/weaver/wiki/Projects-and-Access) |
 | Issues | `/projects/:projectKey/issues`, `/issues/:issueKey`, `/issues/bulk`, `/issues/reorder` | [Working with Issues](https://github.com/jakwinkler/weaver/wiki/Working-with-Issues) |
 | Planning | `/projects/:projectKey/backlog`, `/projects/:projectKey/epics` | [Roadmaps and Epics](https://github.com/jakwinkler/weaver/wiki/Roadmaps-and-Epics) |
 | Boards | `/boards?projectId=...`, `/boards/:id`, `/boards/:id/issues` | [Boards and Views](https://github.com/jakwinkler/weaver/wiki/Boards-and-Views) |
@@ -73,7 +74,10 @@ Routes below are relative to `/api/v1`. This is an orientation map, not an exhau
 - `storyPoints: null` and `storyPoints: 0` have different meanings.
 - A date-only string parsed as a UTC timestamp and then formatted locally can shift the displayed day.
 - Do not assume an update field is supported because a service type accepts it; controller validation can strip it.
-- Worker environment must match the API's database, Redis, and queue configuration.
+- Worker environment must match the API's database, Redis, queue, and `SMTP_*` configuration.
+- Account email, such as a password reset link, must use only the installation's `SMTP_*` server and the `account-mail` queue, never an organization's mail server. Never log a reset token or put it in a URL the API receives.
+- `UserEntity.passwordHash` and `sessionVersion` are `update: false`. TypeORM's `save()` and `update()` leave both columns alone, so a user loaded before a password reset cannot write the old values back, and an `update()` that sets either one silently does nothing. Change them with explicit SQL, as `PasswordResetService.confirmReset` does. Inserts still set them.
+- Do not change an existing user by loading it, setting a field, and calling `save()`. `save()` writes back every column that differs from the row, so it undoes a change another request made in between. Write only the changed columns with `update({ id }, { ... })`, merge notification preferences in SQL with `mergeNotificationPreferences`, and lock the row when the new value depends on the stored one, as `AuthService.linkOAuthIdentity` does for `auth_providers`.
 - A queue's accepted response does not establish completed work.
 - Roadmap proposed thresholds, npm examples, and deployment claims need verification at their actual runtime surface.
 

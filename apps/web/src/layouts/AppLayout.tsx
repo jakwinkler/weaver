@@ -42,9 +42,10 @@ import {
   Building2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { getNavigationEntries } from '@/plugins/plugin-slot-registry';
+import { getNavigationEntries, matchesPagePath } from '@/plugins/plugin-slot-registry';
 import { getPluginIcon } from '@/plugins/plugin-icons';
 import { useWebSocket } from '@/hooks/useWebSocket';
+import { getProjectKeyForPath } from '@/hooks/projectRoom';
 import { HotkeysContext, getHotkeyContext, useHotkeys } from '@/hooks/useHotkeys';
 import { ShortcutsDialog } from '@/components/ShortcutsDialog';
 import { endSession } from '@/auth/logout-session';
@@ -92,8 +93,8 @@ export function AppLayout() {
   const pendingSearchFocus = useRef(false);
   useEffect(() => { if (currentUser) setUser(currentUser); }, [currentUser, setUser]);
 
-  // Initialize WebSocket connection for real-time updates
-  useWebSocket();
+  // Real-time updates for the project the current route shows
+  useWebSocket(getProjectKeyForPath(location.pathname));
 
   useHotkeys(
     [
@@ -237,7 +238,7 @@ export function AppLayout() {
                 <ul className="mt-1 space-y-1">
                   {navEntries.map((entry) => {
                     const Icon = getPluginIcon(entry.icon);
-                    const isActive = location.pathname.startsWith(entry.path);
+                    const isActive = matchesPagePath(location.pathname, entry.path);
                     return (
                       <li key={entry.path}>
                         <Link
@@ -496,7 +497,7 @@ export function AppLayout() {
                     <ul className="mt-1 space-y-1">
                       {navEntries.map((entry) => {
                         const Icon = getPluginIcon(entry.icon);
-                        const isActive = location.pathname.startsWith(entry.path);
+                        const isActive = matchesPagePath(location.pathname, entry.path);
                         return (
                           <li key={entry.path}>
                             <Link

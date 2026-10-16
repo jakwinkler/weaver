@@ -1,4 +1,4 @@
-import { runReviewReliabilityMigration } from '@weaver/db';
+import { createPostgresDataSource, runReviewReliabilityMigration } from '@weaver/db';
 import { assertTenantSchemaName } from '@weaver/server-common';
 import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
@@ -27,7 +27,7 @@ export class TenantProvisioningService {
     await this.dataSource.query(`CREATE SCHEMA "${schemaName}"`);
 
     // Create tenant tables using synchronize on a temporary connection
-    const tempDs = new DataSource({
+    const tempDs = createPostgresDataSource({
       type: 'postgres',
       host: this.config.get('DATABASE_HOST', 'localhost'),
       port: this.config.get<number>('DATABASE_PORT', 5432),

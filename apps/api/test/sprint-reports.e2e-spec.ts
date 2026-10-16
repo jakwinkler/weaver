@@ -92,9 +92,9 @@ describe('Sprint Reports (e2e)', () => {
         .set('X-Tenant-ID', tenantId),
   });
 
-  const createIssue = async (summary: string, storyPoints: number) => {
+  const createIssue = async (summary: string, storyPoints: number, projectKey = 'REP') => {
     const response = await authedRequest()
-      .post('/api/v1/projects/REP/issues')
+      .post(`/api/v1/projects/${projectKey}/issues`)
       .send({ summary, storyPoints })
       .expect(201);
     return response.body as { id: string; key: string };
@@ -213,6 +213,69 @@ describe('Sprint Reports (e2e)', () => {
         completedPoints: 2,
         dates: { startDate: today, endDate: today },
       },
+    ]);
+  });
+
+  it('buckets status changes by UTC day on both sides of midnight at any time of day', async () => {
+    // Pins the report clock: activity rows are re-stamped to fixed UTC wall-clock times, the way
+    // the activity_logs.created_at default now() stores them in a UTC session. Strings, not Dates:
+    // pg would serialize a Date in the process time zone and hide a misread of the column.
+    const tenantSchema = 'tenant_sprint_reports_test_org';
+    const restampStatusChanges = async (issueId: string, utcWallClocks: string[]) => {
+      const changes: { id: string }[] = await dataSource.query(
+        `SELECT id FROM "${tenantSchema}".activity_logs
+         WHERE issue_id = $1 AND field_name = 'status'
+         ORDER BY created_at`,
+        [issueId],
+      );
+      expect(changes).toHaveLength(utcWallClocks.length);
+      for (const [index, change] of changes.entries()) {
+        await dataSource.query(
+          `UPDATE "${tenantSchema}".activity_logs SET created_at = $1 WHERE id = $2`,
+          [utcWallClocks[index], change.id],
+        );
+      }
+    };
+
+    const project = await authedRequest()
+      .post('/api/v1/projects')
+      .send({ name: 'Pinned Clock Project', key: 'PIN' })
+      .expect(201);
+    const lateIssue = await createIssue('Done late on the first day', 3, 'PIN');
+    const earlyIssue = await createIssue('Done early on the second day', 5, 'PIN');
+    const sprint = await authedRequest()
+      .post(`/api/v1/sprints?projectId=${project.body.id}`)
+      .send({ name: 'Pinned Clock Sprint', startDate: '2026-10-15', endDate: '2026-10-16' })
+      .expect(201);
+    await authedRequest()
+      .post(`/api/v1/sprints/${sprint.body.id}/issues`)
+      .send({ issueIds: [lateIssue.id, earlyIssue.id] })
+      .expect(201);
+    await authedRequest().post(`/api/v1/sprints/${sprint.body.id}/start`).expect(201);
+    await dataSource.query(
+      `UPDATE "${tenantSchema}".sprints
+       SET initial_scope = jsonb_set(initial_scope, '{capturedAt}', to_jsonb($1::text))
+       WHERE id = $2`,
+      ['2026-10-15T00:00:00.000Z', sprint.body.id],
+    );
+
+    for (const issue of [lateIssue, earlyIssue]) {
+      for (const statusId of [inProgressStatusId, terminalStatusId]) {
+        await authedRequest().patch(`/api/v1/issues/${issue.key}`).send({ statusId }).expect(200);
+      }
+    }
+    // A process outside UTC reads these values as local time: New York moves 23:30 to 03:30 UTC
+    // the next day, and Berlin moves 00:30 to 22:30 UTC the day before.
+    await restampStatusChanges(lateIssue.id, ['2026-10-15 23:00:00', '2026-10-15 23:30:00']);
+    await restampStatusChanges(earlyIssue.id, ['2026-10-16 00:15:00', '2026-10-16 00:30:00']);
+
+    const response = await authedRequest()
+      .get(`/api/v1/sprints/${sprint.body.id}/burndown`)
+      .expect(200);
+
+    expect(response.body).toEqual([
+      { date: '2026-10-15', totalPoints: 8, remainingPoints: 5, idealRemaining: 8 },
+      { date: '2026-10-16', totalPoints: 8, remainingPoints: 0, idealRemaining: 0 },
     ]);
   });
 });

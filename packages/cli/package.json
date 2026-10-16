@@ -20,6 +20,7 @@
     "prepack": "pnpm run build"
   },
   "dependencies": {
+    "@weaver/shared": "workspace:*",
     "commander": "^11.1.0"
   },
   "devDependencies": {

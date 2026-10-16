@@ -3,13 +3,17 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
   Body,
   Param,
+  ParseUUIDPipe,
   Query,
   UseGuards,
   UseInterceptors,
   UploadedFile,
   BadRequestException,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { updateNotificationPreferencesSchema, updateUserSchema, createInvitationSchema } from '@weaver/shared';
@@ -32,6 +36,22 @@ export class UsersController {
       throw new BadRequestException(result.error.flatten());
     }
     return this.authService.createInvitation(user.tenantId, result.data);
+  }
+
+  @Get('invitations')
+  @UseGuards(AdminGuard)
+  async listInvitations(@CurrentUser() user: RequestUser) {
+    return this.authService.listInvitations(user.tenantId);
+  }
+
+  @Delete('invitations/:invitationId')
+  @UseGuards(AdminGuard)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async revokeInvitation(
+    @CurrentUser() user: RequestUser,
+    @Param('invitationId', new ParseUUIDPipe()) invitationId: string,
+  ) {
+    await this.authService.revokeInvitation(user.tenantId, invitationId);
   }
 
   @Get('me')

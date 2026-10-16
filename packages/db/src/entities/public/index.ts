@@ -5,3 +5,4 @@ export { ApiKeyEntity } from './api-key.entity';
 export { InstalledPluginEntity } from './installed-plugin.entity';
 export { RefreshSessionEntity } from './refresh-session.entity';
 export { OrganizationInvitationEntity } from './organization-invitation.entity';
+export { PasswordResetTokenEntity } from './password-reset-token.entity';

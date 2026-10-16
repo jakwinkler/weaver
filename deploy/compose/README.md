@@ -28,6 +28,11 @@ The examples below run from the repository root.
   image tags or digests. Preserve those pins when changing configuration.
 - Choose `WEB_PORT` for the host's loopback listener and configure an HTTPS
   reverse proxy to forward to it.
+- Set `SMTP_HOST`, `SMTP_FROM`, and the other `SMTP_*` values for the
+  installation's mail server. The API and worker both receive them. Password
+  reset email uses only this server, so without it "Forgot password?" sends
+  nothing. Set `SMTP_ALLOW_PRIVATE_HOST=true` only when the server is a relay on
+  a private network.
 
 The optional Google and GitHub credentials reach only the API at runtime. See
 [OAuth sign-in](../../docs/wiki/OAuth-Sign-In.md) for callback registration and
@@ -83,6 +88,32 @@ The `down` direction applies the recorded inverse. Review its data effects befor
 using it; a SQL inverse is not a substitute for a restorable database backup.
 The scripts read exported database environment variables, not the Compose env
 file automatically. Keep connection values out of shell history and logs.
+
+### SQL migrations for the public schema
+
+`packages/db/migrations` holds SQL files for public tables. Apply them in file
+name order, after backup and before generating the schema plan. Each file is
+safe to run again.
+
+- `20261014_organization_invitations.sql` creates `public.organization_invitations`.
+- `20261015_organization_invitations_alignment.sql` renames that table's indexes
+  and constraints to TypeORM's names and converts `created_at` to `timestamptz`
+  in place, in one transaction. Apply it on every installation that has the
+  table, whether the table came from the 20261014 file or from an earlier schema
+  plan. Without it, the plan drops and re-adds `created_at`, which replaces every
+  invitation's creation time. It reads stored times in the session's `TimeZone`,
+  so run it with the API's database time zone (the server default, UTC in this
+  template). It prints the zone it used when it converts rows.
+
+For example, with this template's database:
+
+```sh
+docker compose --env-file "$WEAVER_ENV_FILE" -f deploy/compose/compose.yaml exec -T postgres \
+  psql -X -v ON_ERROR_STOP=1 -U weaver -d weaver < packages/db/migrations/20261015_organization_invitations_alignment.sql
+```
+
+A schema plan generated afterwards should contain no statements for
+`organization_invitations`.
 
 ## Existing installations
 

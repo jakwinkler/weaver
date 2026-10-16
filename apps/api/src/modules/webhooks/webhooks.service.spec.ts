@@ -41,6 +41,7 @@ describe('WebhooksService delivery signing', () => {
     const timestamp = headers['X-Webhook-Timestamp'];
     const body = options?.body as string;
     expect(timestamp).toMatch(/^\d{10}$/);
+    expect(headers['X-Webhook-Delivery']).toMatch(/^[0-9a-f-]{36}$/);
     expect(headers['X-Webhook-Signature']).toBe(
       crypto
         .createHmac('sha256', webhook.secret)

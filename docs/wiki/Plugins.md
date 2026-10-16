@@ -2,7 +2,7 @@
 
 Plugins add optional views, issue panels, applications, and integrations. An administrator installs a plugin for the organization; project-scoped features may also need to be enabled in the project's settings.
 
-**Last observed UI limit:** the plugin management page rendered blank in the September local walkthrough after the example plugins were installed. API installation and plugin panels worked. The page's source was unchanged in the pilot release, but the management screen was not rerun for this documentation update. Verify it in your installation before relying on its controls.
+**Fixed page problem:** the September local walkthrough found this page blank after the example plugins were installed, because the page expected settings that the installed-plugin list leaves out. Commit [`5d20a39`](https://github.com/jakwinkler/weaver/commit/5d20a39c472c0885ba5658d59ef26e7543857ba5), merged with PR #21, handles the missing settings and adds a component test. The management screen was not rerun in a browser for this documentation update, so check it on your installation before relying on its controls.
 
 ## Understand the controls
 
@@ -52,7 +52,7 @@ Client assets are served under `/plugin-assets/<scoped-plugin-id>/remoteEntry.js
 
 Production loading checks trusted plugin IDs. Versioned migrations run in version order and stay within the plugin directory. `onUpgrade(fromVersion, toVersion, context)` runs before the installed version advances. Inspect logs and data after a failure; transaction boundaries cannot reverse arbitrary network effects from plugin code.
 
-The local blank Plugins screen is recorded as a failed UI check. Source inspection identifies a likely contract mismatch: the page passes `plugin.settings` to `formatSettingsSummary`, which calls `Object.entries` for a nonempty settings schema, while the installed-plugin list deliberately omits settings. Confirm this path when repairing the page. Keep private settings out of the general list response.
+The September blank Plugins screen came from a contract mismatch: the page passed `plugin.settings` to `formatSettingsSummary`, which called `Object.entries` for a nonempty settings schema, while the installed-plugin list deliberately omits settings. Since [`5d20a39`](https://github.com/jakwinkler/weaver/commit/5d20a39c472c0885ba5658d59ef26e7543857ba5), `formatSettingsSummary` accepts a missing value and shows "Open Settings to view configuration.", covered by `PluginsPage.test.tsx`. Keep private settings out of the general list response.
 
 ### Source reference
 

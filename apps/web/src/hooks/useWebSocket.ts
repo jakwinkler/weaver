@@ -1,14 +1,17 @@
 import { useEffect, useRef, useCallback } from 'react';
-import { io, Socket } from 'socket.io-client';
+import { io } from 'socket.io-client';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/stores';
 import { API_BASE_URL } from '@/api/client';
 import {
+  createInvalidationBatch,
   DOMAIN_EVENTS,
   getInvalidationKeys,
   getToastMessageForEvent,
+  type InvalidationBatch,
   type WsEventPayload,
 } from './websocketEvents';
+import { ProjectRoomSubscription } from './projectRoom';
 
 /** Minimal toast display without requiring a toast library */
 function showToast(message: string) {
@@ -37,21 +40,22 @@ function createToastContainer(): HTMLElement {
   return container;
 }
 
-export function useWebSocket() {
-  const socketRef = useRef<Socket | null>(null);
+/**
+ * Connects to the realtime gateway and keeps the socket in the room of
+ * `projectKey`, the project the current route shows (null outside projects).
+ */
+export function useWebSocket(projectKey: string | null = null) {
+  const projectRoomRef = useRef<ProjectRoomSubscription | null>(null);
   const queryClient = useQueryClient();
   const tenantId = useAuthStore((s) => s.tenantId);
   const currentUserId = useAuthStore((s) => s.user?.id);
 
   const handleEvent = useCallback(
-    (event: string, payload: WsEventPayload) => {
+    (event: string, payload: WsEventPayload, invalidations: InvalidationBatch) => {
       const data = payload.data ?? {};
 
-      // Invalidate relevant queries
-      const keys = getInvalidationKeys(event, data);
-      for (const key of keys) {
-        queryClient.invalidateQueries({ queryKey: key });
-      }
+      // Invalidate relevant queries once per burst of events
+      invalidations.add(getInvalidationKeys(event, data));
 
       // Show toast for events from other users
       const message = getToastMessageForEvent(event, data, currentUserId);
@@ -59,7 +63,7 @@ export function useWebSocket() {
         showToast(message);
       }
     },
-    [queryClient, currentUserId],
+    [currentUserId],
   );
 
   useEffect(() => {
@@ -79,12 +83,16 @@ export function useWebSocket() {
       reconnectionAttempts: Infinity,
     });
 
-    socketRef.current = socket;
+    const projectRoom = new ProjectRoomSubscription(socket);
+    projectRoomRef.current = projectRoom;
+    const invalidations = createInvalidationBatch((queryKey) => {
+      queryClient.invalidateQueries({ queryKey });
+    });
 
     // Listen for all domain events the server emits
     for (const event of DOMAIN_EVENTS) {
       socket.on(event, (payload: WsEventPayload) => {
-        handleEvent(event, payload);
+        handleEvent(event, payload, invalidations);
       });
     }
 
@@ -99,21 +107,17 @@ export function useWebSocket() {
     });
 
     return () => {
+      projectRoom.dispose();
+      projectRoomRef.current = null;
       socket.removeAllListeners();
       socket.disconnect();
-      socketRef.current = null;
+      // Events already received still refresh their queries.
+      invalidations.flush();
     };
-  }, [tenantId, handleEvent]);
+  }, [tenantId, handleEvent, queryClient]);
 
-  /** Join a project room for project-scoped events */
-  const joinProject = useCallback((projectKey: string) => {
-    socketRef.current?.emit('join:project', { projectKey });
-  }, []);
-
-  /** Leave a project room */
-  const leaveProject = useCallback((projectKey: string) => {
-    socketRef.current?.emit('leave:project', { projectKey });
-  }, []);
-
-  return { joinProject, leaveProject };
+  // Runs after the socket effect, so a replacement socket gets the current project too.
+  useEffect(() => {
+    projectRoomRef.current?.setProject(projectKey);
+  }, [projectKey, tenantId, handleEvent, queryClient]);
 }

@@ -6,6 +6,7 @@ import { apiClient } from '@/api/client';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { csvCell } from '@/lib/csv';
 import { extractPlainText, normalizeRichTextContent } from '@/lib/richText';
 import {
   Table,
@@ -84,9 +85,7 @@ export function ImportExportPage() {
           const val = h === 'description' ? extractPlainText(issue.description) : issue[h as keyof Issue];
           if (val === null || val === undefined) return '';
           const raw = Array.isArray(val) ? val.join(';') : String(val);
-          const safe = /^\s*[=+@-]/.test(raw) ? `'${raw}` : raw;
-          const str = safe.replace(/"/g, '""');
-          return str.includes(',') || str.includes('"') || str.includes('\n') ? `"${str}"` : str;
+          return csvCell(raw);
         });
         csvRows.push(row.join(','));
       }

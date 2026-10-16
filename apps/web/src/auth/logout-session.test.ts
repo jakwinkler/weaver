@@ -24,4 +24,28 @@ describe('endSession', () => {
       window.localStorage.getItem('weaver:comment-draft:tenant-1:user-1:ISSUE-1'),
     ).toBeNull();
   });
+
+  it('removes saved workflow editor layouts but keeps device preferences', async () => {
+    vi.spyOn(apiClient, 'post').mockResolvedValueOnce({});
+    window.localStorage.setItem('weaver:workflow-positions:workflow-1', '{}');
+    window.localStorage.setItem('weaver:workflow-edge-waypoints:workflow-1', '{}');
+    window.localStorage.setItem('weaver:workflow-edge-handles:workflow-1', '{}');
+    window.localStorage.setItem('weaver:perPage', '50');
+
+    await endSession({ clear: vi.fn() } as never);
+
+    expect(window.localStorage.getItem('weaver:workflow-positions:workflow-1')).toBeNull();
+    expect(window.localStorage.getItem('weaver:workflow-edge-waypoints:workflow-1')).toBeNull();
+    expect(window.localStorage.getItem('weaver:workflow-edge-handles:workflow-1')).toBeNull();
+    expect(window.localStorage.getItem('weaver:perPage')).toBe('50');
+  });
+
+  it('forgets the Jira import this tab was following', async () => {
+    vi.spyOn(apiClient, 'post').mockResolvedValueOnce({});
+    window.sessionStorage.setItem('weaver:active-jira-import-id', 'job-1');
+
+    await endSession({ clear: vi.fn() } as never);
+
+    expect(window.sessionStorage.getItem('weaver:active-jira-import-id')).toBeNull();
+  });
 });

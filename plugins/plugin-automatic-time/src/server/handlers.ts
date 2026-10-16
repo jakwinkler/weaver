@@ -109,6 +109,22 @@ function requireUser(context: PluginContext): string | null {
   return context.user?.id ?? null;
 }
 
+/**
+ * Resolves a caller-supplied issue key only when the user may read its project. A missing issue
+ * and an issue in a project the user cannot see both return undefined, so callers answer the same
+ * way and the response does not reveal which keys exist.
+ */
+async function findReadableIssue(context: PluginContext, key: string): Promise<Row | undefined> {
+  try {
+    await context.api.issues.assertAccess(key, 'read');
+  } catch (error) {
+    const status = (error as { status?: unknown }).status;
+    if (status === 403 || status === 404) return undefined;
+    throw error;
+  }
+  return (await context.api.issues.get(key)) as Row | undefined;
+}
+
 function isLocalDate(value: unknown): value is string {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const parsed = new Date(`${value}T00:00:00.000Z`);
@@ -1259,7 +1275,7 @@ export async function addOfflineDraft(
     if (typeof body.issueKey !== 'string' || !body.issueKey.trim()) {
       return { status: 400, body: { message: 'issueKey must be a non-empty string' } };
     }
-    issue = (await context.api.issues.get(body.issueKey.trim())) as Row | undefined;
+    issue = await findReadableIssue(context, body.issueKey.trim());
     if (!issue?.id) return { status: 404, body: { message: 'Issue not found' } };
   }
 
@@ -1484,7 +1500,7 @@ export async function assignDraft(
   if (typeof issueKey !== 'string' || !issueKey.trim()) {
     return { status: 400, body: { message: 'issueKey is required' } };
   }
-  const issue = (await context.api.issues.get(issueKey.trim())) as Row | undefined;
+  const issue = await findReadableIssue(context, issueKey.trim());
   if (!issue?.id) return { status: 404, body: { message: 'Issue not found' } };
 
   const rows = rowsFromQuery(

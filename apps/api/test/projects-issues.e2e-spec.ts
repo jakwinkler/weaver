@@ -300,6 +300,25 @@ describe('Projects & Issues (e2e)', () => {
     it('should require authentication', async () => {
       await request(app.getHttpServer()).get('/api/v1/projects').expect(401);
     });
+
+    it('PATCH /issues/:key - concurrent parent changes cannot form a cycle', async () => {
+      const create = (summary: string) => authedRequest()
+        .post('/api/v1/projects/WEB/issues')
+        .send({ summary })
+        .expect(201)
+        .then((res) => res.body as { id: string; key: string });
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        const first = await create(`Hierarchy race A${attempt}`);
+        const second = await create(`Hierarchy race B${attempt}`);
+        const responses = await Promise.all([
+          authedRequest().patch(`/api/v1/issues/${first.key}`).send({ parentId: second.id }),
+          authedRequest().patch(`/api/v1/issues/${second.key}`).send({ epicId: first.id }),
+        ]);
+        expect(responses.map((res) => res.status).sort()).toEqual([200, 400]);
+        await authedRequest().delete(`/api/v1/issues/${first.key}`).expect(204);
+        await authedRequest().delete(`/api/v1/issues/${second.key}`).expect(204);
+      }
+    });
   });
 
   describe('Pagination & Sorting', () => {

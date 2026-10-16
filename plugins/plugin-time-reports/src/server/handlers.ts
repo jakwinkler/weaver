@@ -43,8 +43,9 @@ function buildReportQuery(query: Record<string, string>, projectIds: string[] | 
 
   switch (safeGroupBy) {
     case 'user':
-      selectFields = `te.user_id, COALESCE(u.display_name, u.email, te.user_id::text) AS label`;
-      groupByClause = `GROUP BY te.user_id, u.display_name, u.email`;
+      // Reports are visible to anyone with time-reports.view, so label people by display name only.
+      selectFields = `te.user_id, COALESCE(NULLIF(u.display_name, ''), 'Unknown user') AS label`;
+      groupByClause = `GROUP BY te.user_id, u.display_name`;
       orderBy = 'total_minutes DESC';
       break;
     case 'issue':
@@ -59,7 +60,8 @@ function buildReportQuery(query: Record<string, string>, projectIds: string[] | 
       break;
   }
 
-  const userJoin = safeGroupBy === 'user' ? `LEFT JOIN users u ON u.id = te.user_id` : '';
+  // Plugin queries run with only the tenant schema on the search_path; users lives in public.
+  const userJoin = safeGroupBy === 'user' ? `LEFT JOIN public.users u ON u.id = te.user_id` : '';
 
   const sql = `
     SELECT ${selectFields},
@@ -217,6 +219,6 @@ export async function deleteSavedReport(
 
 function csvEscape(value: string): string {
   if (!value) return '';
-  const safe = /^[\s]*[=+@-]/.test(value) ? `'${value}` : value;
+  const safe = /^(?:[\t\r]|\s*[=+@-])/.test(value) ? `'${value}` : value;
   return safe.replace(/"/g, '""');
 }

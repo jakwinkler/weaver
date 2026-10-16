@@ -6,6 +6,7 @@ import { processEvent } from './processors/events.processor';
 import { processWebhook } from './processors/webhooks.processor';
 import {
   closeNotificationProcessor,
+  processAccountMail,
   processNotification,
 } from './processors/notifications.processor';
 import { createScheduledAutomationProcessor } from './processors/automation.processor';
@@ -40,6 +41,12 @@ function createWorkers(): void {
     concurrency: config.queues.notifications.concurrency,
   });
   workers.push(notificationsWorker);
+
+  const accountMailWorker = new Worker(config.queues.accountMail.name, processAccountMail, {
+    connection,
+    concurrency: config.queues.accountMail.concurrency,
+  });
+  workers.push(accountMailWorker);
 
   const automationsQueue = new Queue(config.queues.automations.name, { connection });
   queues.push(automationsQueue);

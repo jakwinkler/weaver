@@ -298,6 +298,18 @@ describe('Automatic Time Phase 2 plugin (e2e)', () => {
     expect(report.body.rows).toEqual([
       expect.objectContaining({ issue_key: issue.body.key, total_minutes: 50, entry_count: 1 }),
     ]);
+    const userReport = await authedRequest()
+      .get(`/api/v1/plugin-routes/${timeReportsRouteId}/report?groupBy=user`)
+      .expect(200);
+    expect(userReport.body.rows).toEqual([
+      expect.objectContaining({ user_id: userId, label: 'Automatic Time Plugin Tester', total_minutes: 50 }),
+    ]);
+    expect(JSON.stringify(userReport.body)).not.toContain(email);
+    const userCsv = await authedRequest()
+      .get(`/api/v1/plugin-routes/${timeReportsRouteId}/report/export?groupBy=user`)
+      .expect(200);
+    expect(userCsv.text).toContain('"Automatic Time Plugin Tester",0.83,1');
+    expect(userCsv.text).not.toContain(email);
 
     await authedRequest().post('/api/v1/plugins/disable').send({ pluginId }).expect(201);
     await authedRequest()

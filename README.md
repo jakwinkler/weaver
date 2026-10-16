@@ -35,13 +35,14 @@ Everything in Weaver starts with an issue: one piece of work, such as a task, a 
 
 ### Work with clients and the public
 
-- Invite people with a private link. An administrator enters the person's email address and a role (member or viewer), then sends them the link Weaver creates. It works once, only for that address, and expires after seven days.
+- Invite people with a private link. An administrator enters the person's email address and a role (member or viewer), then sends them the link Weaver creates. It works once, only for that address, and expires after seven days. The Users page lists pending invitations and can revoke one, and inviting the same address again replaces the old link.
 - Clients with the member or viewer role see a private project only after you add them to it, and they see only the people who share a project with them.
 - Collect requests with intake forms. Share a link, embed the form on your website, or print its QR code. Each submission becomes an issue, and a hidden spam trap, optional reCAPTCHA, and a rate limit keep junk out.
 - Make a project public to share a read-only view of its issues and board.
 
 ### Keep people informed
 
+- While a project or one of its issues is open, Weaver refreshes it as teammates work. The issue list, board, backlog, sprint views, roadmap, and open issue update when someone changes an issue, comments, changes a sprint, or logs time.
 - A notification bell collects mentions, new form submissions, and alerts from automation rules.
 - Once an administrator connects a mail server, Weaver emails people about assignments, status changes, comments, and mentions. Everyone chooses which emails they get, and each email has an unsubscribe link.
 
@@ -65,14 +66,15 @@ Everything in Weaver starts with an issue: one piece of work, such as a task, a 
 - Import projects from Jira Cloud or Jira Server/Data Center, including issues, comments, attachments, sprints, statuses, and issue types.
 - Import and export a project's issues as CSV or JSON.
 - Create personal API keys with read, write, or admin scope for scripts and other systems.
-- Send webhooks to other systems when issues, comments, or sprints change.
+- Send webhooks to other systems when issues, comments, or sprints change. Each webhook keeps a delivery log, and every delivery carries an id that stays the same across retries so the receiver can ignore duplicates.
 
 ### Stay in control
 
-- Organization roles (owner, admin, member, viewer, and custom roles you define) decide what people can do. Project roles (lead, member, viewer) decide what each person can do inside a project.
+- Organization roles (owner, admin, member, viewer, and custom roles you define) decide what people can do. Project roles (lead, member, viewer) decide what each person can do inside a project. Changing an issue's status and changing its assignee are separate permissions, so a custom role can allow editing without either.
 - Administrators draw the workflow on a visual canvas: the statuses, and which moves between them are allowed.
 - An audit log records changes to projects, workflows, roles, plugins, settings, and more, with before and after values, filters, and CSV export.
-- Sign in with email and password, Google, or GitHub. An organization can also set up SAML or OIDC single sign-on.
+- Sign in with email and password, Google, or GitHub. The first time you continue with Google or GitHub, Weaver creates your account and asks you to name your organization. An organization can also set up SAML or OIDC single sign-on.
+- Forgot your password? The sign-in page emails a reset link that works once and expires after 30 minutes. Changing the password signs you out on every device at once.
 - Press `?` to see keyboard shortcuts. Switch between light and dark themes from the header.
 
 ## If a team invited you
@@ -85,8 +87,6 @@ If you normally sign in with Google or GitHub and have no Weaver password, ask y
 
 - **Someone has to run it.** Weaver needs a server or cloud account with Docker, PostgreSQL, and Redis, and a person comfortable maintaining them. There is no hosted version to sign up for.
 - **It is young.** Its packages are still at version 0.0.x, and its first release was readied for a client pilot in October 2026. Read the [current limits](#current-limits) before you move a team over.
-- **Pages don't update live yet.** When a teammate changes something, reload to see it.
-- **There is no "forgot password" email yet.**
 - **It is built for desktop browsers.** Joining, creating an issue, and replying are tested on a phone-sized screen; other screens are less polished there.
 - **It is in English only.**
 - **Some integrations are partial.** The GitHub, GitLab, and Bitbucket plugins record which commits and pull requests mention an issue, but no screen shows those links yet. Jira import leaves out issue links, epic links, and worklogs.
@@ -199,7 +199,7 @@ The root [`.env.example`](.env.example) covers local development. Production sta
 | `JWT_SECRET`, `JWT_REFRESH_SECRET` | Session signing. Required; use two different random values. |
 | `API_PUBLIC_URL`, `API_PREFIX`, `WEB_URL`, `WEB_APP_URL`, `CORS_ORIGINS`, `TRUST_PROXY` | Public URLs and reverse-proxy behavior |
 | `STORAGE_DRIVER` (`local` or `s3`), `STORAGE_LOCAL_PATH`, `S3_*`, `ATTACHMENT_MAX_BYTES` | Attachment storage. The default size limit is 10 MiB. |
-| `SMTP_*` | Fallback mail server. Each organization can also set its own under System Settings. |
+| `SMTP_*` | The installation's mail server, read by the API and the worker. Password reset email uses only this server. Organization notifications use it when the organization hasn't set its own under System Settings. Set `SMTP_ALLOW_PRIVATE_HOST=true` only for a relay on a private network. |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | Google and GitHub sign-in |
 | `IMPORT_CREDENTIAL_KEY` | Encrypts Jira credentials inside import jobs: 32 random bytes, base64-encoded. The API and worker need the same value. |
 | `WEAVER_TRUSTED_PLUGINS` | Comma-separated plugin IDs, such as `@weaver/plugin-board`, allowed to load in production |
@@ -209,6 +209,8 @@ The root [`.env.example`](.env.example) covers local development. Production sta
 
 In production the API refuses to start without explicit JWT secrets, or with the development database and Redis passwords.
 
+Every database connection pins its session time zone to UTC and reads and writes timestamps as UTC, so the API and worker record times correctly whatever time zone their host uses.
+
 ### Tests and CI
 
 ```sh
@@ -217,18 +219,20 @@ pnpm turbo typecheck
 pnpm test
 ```
 
-The API integration tests and the Playwright browser suite need disposable PostgreSQL and Redis services and a database whose name starts with `weaver_e2e`. [`apps/web/e2e/README.md`](apps/web/e2e/README.md) has the exact commands. The [October 14 readiness record](apps/web/e2e/READINESS-2026-10-14.md) lists the runs behind the pilot release.
+The API integration tests and the Playwright browser suite need disposable PostgreSQL and Redis services and a database whose name starts with `weaver_e2e`. [`apps/web/e2e/README.md`](apps/web/e2e/README.md) has the exact commands. The [October 14 readiness record](apps/web/e2e/READINESS-2026-10-14.md) lists the runs behind the pilot release. The API integration tests run in UTC; `pnpm --filter @weaver/api test:e2e:zones` runs them again in New York and Tokyo time to catch time-zone bugs.
 
-CI runs on every push and pull request to `main`: lint and typecheck, unit tests, API integration tests against PostgreSQL and Redis, a full build, and Docker image builds. Separate workflows run Gitleaks secret scanning across the full history and a weekly `pnpm audit` of production dependencies. The Playwright suite runs locally, not in CI.
+`node deploy/compose/verify-sql-migrations.cjs` checks the SQL files in [`packages/db/migrations`](packages/db/migrations). It creates the public tables that no SQL file creates from the TypeORM entities, applies every SQL file twice in file name order, and fails if `schema-plan.cjs` still plans a change. So a new SQL file must be safe to run twice and must leave its table exactly as the entity describes it, including TypeORM's index and foreign key names. The check needs `psql` and the `DATABASE_*` variables for a disposable PostgreSQL server, where it recreates the `weaver_e2e_sql_migrations` database.
+
+CI runs on every push and pull request to `main`: lint and typecheck, unit tests, API integration tests against PostgreSQL and Redis, the SQL migration check, a full build, and Docker image builds. Separate workflows run Gitleaks secret scanning across the full history and a weekly `pnpm audit` of production dependencies. The Playwright suite runs locally, not in CI.
 
 ### Deploy
 
 [`deploy/compose`](deploy/compose/README.md) is the maintained deployment template. It runs the API, worker, web server, PostgreSQL, and Redis, and publishes only the web server, on a loopback port behind your HTTPS reverse proxy. It is a building block, not a one-command installer. Before the first start:
 
-- **Plan the database.** Production turns off automatic schema changes. `schema-plan.cjs` writes a read-only plan for you to review, and `apply-schema-plan.cjs` applies only that reviewed plan. Installations without schema synchronization also need [`packages/db/migrations/20261014_organization_invitations.sql`](packages/db/migrations/20261014_organization_invitations.sql) before invitations work.
+- **Plan the database.** Production turns off automatic schema changes. `schema-plan.cjs` writes a read-only plan for you to review, and `apply-schema-plan.cjs` applies only that reviewed plan. Installations without schema synchronization also need these SQL files, in order: [`20261014_organization_invitations.sql`](packages/db/migrations/20261014_organization_invitations.sql) before invitations work, then [`20261015_organization_invitations_alignment.sql`](packages/db/migrations/20261015_organization_invitations_alignment.sql); [`20261015_password_reset_tokens.sql`](packages/db/migrations/20261015_password_reset_tokens.sql) before password reset works; and [`20261015_session_version.sql`](packages/db/migrations/20261015_session_version.sql) before deploying this API version, because every signed-in request reads the column it adds. Apply the invitations alignment file before you generate a schema plan on every installation that has the invitations table. Without it, the plan drops and re-adds `created_at` and loses every invitation's creation time.
 - **List the plugins you trust** in `WEAVER_TRUSTED_PLUGINS`. Production loads none by default, which also hides the board, backlog, sprint, Gantt, and calendar views.
 - **Decide how organizations get created.** Production refuses to create new organizations unless `ALLOW_TENANT_SCHEMA_BOOTSTRAP=true`. Read the [September rollout notes](docs/security/review-2026-09-23-rollout.md) before turning it on.
-- **Configure mail.** The template doesn't pass `SMTP_*` to the worker, so set the mail server for each organization under **System Settings → Email**.
+- **Configure mail.** Set the `SMTP_*` values in your env file; the template passes them to the API and the worker. Without them, "Forgot password?" sends nothing. Reset email never uses an organization's own server from **System Settings → Email**, because that organization's owner could read a member's reset link. If a proxy in front of Weaver logs request paths, keep `/reset-password/`, `/invite/`, and `/api/v1/auth/invitations/` out of its logs; the bundled nginx already does.
 - **Keep `IMPORT_CREDENTIAL_KEY` identical** for the API and worker if you use Jira import.
 - **Back up together:** PostgreSQL, the uploads volume, your protected env file, and the image references. Rehearse a restore.
 
@@ -236,7 +240,7 @@ After a deploy, check more than the health endpoint. `GET /api/v1/health` return
 
 Other deployment material gets less attention:
 
-- `docker/docker-compose.yml` and `docker/Dockerfile.*` are an older all-in-one stack. CI builds these images, but no guide covers the Compose file.
+- `docker/docker-compose.yml` and `docker/Dockerfile.*` are an older all-in-one stack. CI builds these images, but no guide covers the Compose file. It passes `WEAVER_TRUSTED_PLUGINS` through, so set it there too. `docker/Dockerfile.api` builds the plugin CLI first, so plugins generated with it in `plugins/` build into the image.
 - `k8s/base`, `k8s/overlays`, and `k8s/helm/weaver` are Kustomize and Helm starting points with placeholder hosts. The Helm chart needs external PostgreSQL and Redis and a ReadWriteMany volume. socket.io has no Redis adapter yet, so multiple API replicas don't share live events.
 
 ### Plugins
@@ -267,7 +271,7 @@ To build your own, use the `weaver` CLI. It isn't published to npm yet, so run i
 node packages/cli/bin/weaver.js create-plugin release-notes --directory plugins
 ```
 
-That scaffolds a manifest, server handlers, and a client entry. `weaver validate`, `weaver dev`, and `weaver build` check it, serve it with hot reload, and build its bundle. The [plugin development guide](docs/plugin-development.md), [plugin API reference](docs/plugin-api-reference.md), and [manifest reference](docs/plugin-manifest-reference.md) cover the details. `PLUGIN.md` predates the CLI and describes registries that no longer exist.
+That scaffolds a manifest, server handlers, and a client entry. `weaver validate` checks it against the same manifest schema the API loads, `weaver dev` serves it with hot reload, and `weaver build` builds its client bundle and compiles its server code to `dist/server`, which is what the API loads in production. The [plugin development guide](docs/plugin-development.md), [plugin API reference](docs/plugin-api-reference.md), and [manifest reference](docs/plugin-manifest-reference.md) cover the details. `PLUGIN.md` predates the CLI and describes registries that no longer exist.
 
 ### Repository layout
 
@@ -299,9 +303,13 @@ spikes/                        Early feasibility experiments
 
 These are known gaps in this release:
 
-- No password reset or email verification.
-- The sign-in page shows only Google and GitHub buttons. SAML and OIDC sign-in start from `/api/v1/auth/saml/<organization-slug>` and `/api/v1/auth/oidc/<organization-slug>`.
-- The API publishes live issue and comment events, but the web app never joins a project room, so browsers don't receive them yet.
+- Invitation links are bearer links: whoever has one can accept it until it is used, revoked, replaced, or expires. Send them privately.
+- No email verification, and registration says when an email address already has an account. Password reset doesn't reveal that.
+- No change-password screen for a signed-in user. Use "Forgot password?" on the sign-in page.
+- A password reset doesn't revoke API keys. Revoke any key you don't recognize in the API Keys list.
+- Accounts that only use Google, GitHub, SAML, or OIDC can't set a Weaver password. A reset request emails them how to sign in instead.
+- The sign-in page shows Google and GitHub buttons only when the installation configured them. SAML and OIDC sign-in start from `/api/v1/auth/saml/<organization-slug>` and `/api/v1/auth/oidc/<organization-slug>`.
+- Live updates reach project pages and issue pages, but not the dashboard or search.
 - Administrators can define custom fields, and forms or the API can fill them, but the issue page doesn't show or edit their values.
 - Board cards and the backlog's assignee filter show a short user ID instead of a name.
 - The workflow editor saves its diagram layout in each administrator's browser, not on the server.
@@ -314,13 +322,16 @@ These are known gaps in this release:
 
 - [`docs/roadmap`](docs/roadmap/README.md) holds planning history. Its checkboxes and "current state" notes are not release status.
 - [Feature coverage](docs/wiki/Feature-Coverage.md) maps each of the 29 roadmap items to a guide and records what was checked.
-- `PROGRESS.md`, `plan.md`, `SCAN.md`, and the `REVIEW-*-RESOLUTION.md` files are historical records.
+- `PROGRESS.md`, `plan.md`, and `SCAN.md` are historical records. The `REVIEW-*-RESOLUTION.md` files record what each security review found and how it was resolved or deferred, most recently [October 15](REVIEW-2026-10-15-RESOLUTION.md).
 
 ### Security
 
 - Each organization's data lives in its own PostgreSQL schema, and every request checks organization membership and project access.
 - API keys and refresh tokens are stored as hashes. Jira credentials are encrypted inside import jobs.
+- Password reset links are single use, stored only as hashes, and expire after 30 minutes. The request form answers the same way whether or not an account exists. A reset signs the account out everywhere at once, including access tokens already issued and open live connections.
+- Profile, notification preference, unsubscribe, and sign-in saves write only the columns they change, so a request that started earlier can't undo a newer change such as a password reset.
 - Outbound requests from webhooks, mail settings, OIDC discovery, and plugins block private and reserved addresses.
+- The bundled nginx keeps password reset and invitation links out of its access log and Referer headers, and invitation endpoints use the same per-IP limits as sign-in.
 - Requests are rate limited through Redis, and the API sends a strict Content Security Policy.
 - CI scans the full Git history for secrets. See [repository hygiene](docs/security/repository-hygiene.md), the [project directory privacy policy](docs/security/project-directory-privacy.md), and the [Automatic Time threat model](docs/security/automatic-time-threat-model.md).
 

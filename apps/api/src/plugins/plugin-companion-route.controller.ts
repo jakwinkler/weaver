@@ -41,7 +41,7 @@ export class PluginCompanionRouteController {
     }
     const tenant = await this.tenants.findById(tenantId);
     if (!tenant) return res.status(HttpStatus.NOT_FOUND).json({ message: 'Tenant not found' });
-    return tenantStorage.run({ tenantId, schemaName: tenant.schemaName }, () => this.dispatchCompanionRoute(req, res, tenantId));
+    return tenantStorage.run({ tenantId, schemaName: tenant.schemaName, slug: tenant.slug }, () => this.dispatchCompanionRoute(req, res, tenantId));
   }
 
   private async dispatchCompanionRoute(req: Request, res: Response, tenantId: string) {

@@ -24,6 +24,22 @@ NODE_ENV=development DATABASE_HOST=127.0.0.1 DATABASE_PORT=15432 REDIS_HOST=127.
 
 Complete builds and source edits before starting the browser run, since the API watcher restarts on either change. Run the API integration and browser suites separately, or give each its own Postgres and Redis services; queue workers share Redis job names even when their databases differ.
 
+The password reset scenario reads email from a local Mailpit and needs the worker to send it. Without `PLAYWRIGHT_MAILPIT_URL` it is skipped. To include it, start Mailpit, add these mail settings to the API command above, and start the built worker with the same database, Redis, and mail settings:
+
+```sh
+docker run --rm -d --name weaver-e2e-mailpit -p 127.0.0.1:11025:1025 -p 127.0.0.1:18025:8025 axllent/mailpit:v1.21
+```
+
+```sh
+SMTP_HOST=127.0.0.1 SMTP_PORT=11025 SMTP_FROM=weaver@example.invalid SMTP_ALLOW_PRIVATE_HOST=true WEB_APP_URL=http://127.0.0.1:5173
+```
+
+```sh
+NODE_ENV=development DATABASE_HOST=127.0.0.1 DATABASE_PORT=15432 REDIS_HOST=127.0.0.1 REDIS_PORT=16380 SMTP_HOST=127.0.0.1 SMTP_PORT=11025 SMTP_FROM=weaver@example.invalid SMTP_ALLOW_PRIVATE_HOST=true node apps/worker/dist/main.js
+```
+
+Then set `PLAYWRIGHT_MAILPIT_URL=http://127.0.0.1:18025` for the browser run. A client address may request 5 reset links per 15 minutes, so a second full run within that window needs fresh Redis.
+
 The Playwright config starts Vite when needed. In another terminal:
 
 ```sh
@@ -41,11 +57,11 @@ The browser fixture honors the API's `429` retry interval during account setup. 
 Stop the disposable services after testing:
 
 ```sh
-docker stop weaver-e2e-pg weaver-e2e-redis
+docker stop weaver-e2e-pg weaver-e2e-redis weaver-e2e-mailpit
 ```
 
 ## Coverage
 
-Browser scenarios cover account registration, login and logout, invitations for new and existing users, organization switching and role isolation, private project membership, client directory and people-picker privacy with full agency access, project and issue creation and edits, comments, time entries, WQL search and saved filters, workflow editing, board drag persistence, sprint lifecycle, plugin gates, administration forms, route rendering, and a phone-sized core journey. API integration tests provide deeper authorization, tenant isolation, realtime, import, plugin, and webhook checks.
+Browser scenarios cover account registration, login and logout, password reset from an emailed link (single use, no token in Referer headers, no email for an unknown address), invitations for new and existing users, organization switching and role isolation, private project membership, client directory and people-picker privacy with full agency access, project and issue creation and edits, comments, time entries, WQL search and saved filters, workflow editing, board drag persistence, sprint lifecycle, live updates between two sessions (including a board, sprint changes, logged time, and a dropped connection), plugin gates, administration forms, route rendering, and a phone-sized core journey. API integration tests provide deeper authorization, tenant isolation, realtime, import, plugin, and webhook checks.
 
 For the October 14 readiness findings and remaining pilot limits, see [READINESS-2026-10-14.md](./READINESS-2026-10-14.md).

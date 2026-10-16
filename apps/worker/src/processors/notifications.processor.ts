@@ -1,33 +1,47 @@
 import {
   ApiKeyEntity,
+  createPostgresDataSource,
   InstalledPluginEntity,
   TenantEntity,
   TenantMembershipEntity,
   UserEntity,
 } from '@weaver/db';
-import { smtpSettingsSchema, type NotificationJobData, type TenantSettings } from '@weaver/shared';
+import {
+  smtpSettingsSchema,
+  type AccountEmailJobData,
+  type NotificationJobData,
+  type TenantSettings,
+} from '@weaver/shared';
 import { Job } from 'bullmq';
 import { createTransport } from 'nodemailer';
 import type SMTPTransport from 'nodemailer/lib/smtp-transport';
 import { DataSource } from 'typeorm';
 import { resolveSafeOutboundHost } from '../security/outbound-http';
 
-export type { NotificationJobData } from '@weaver/shared';
+export type { AccountEmailJobData, NotificationJobData } from '@weaver/shared';
 
 type SmtpSettings = NonNullable<TenantSettings['smtp']>;
+
+type TransportFactory = (
+  options: SMTPTransport.Options,
+) => Pick<ReturnType<typeof createTransport>, 'sendMail'>;
 
 interface NotificationProcessorDependencies {
   getTenantSmtpSettings: (tenantId: string) => Promise<SmtpSettings | null>;
   getSystemSmtpSettings: () => SmtpSettings | null;
-  transportFactory: (
-    options: SMTPTransport.Options,
-  ) => Pick<ReturnType<typeof createTransport>, 'sendMail'>;
+  /** SMTP_ALLOW_PRIVATE_HOST: the operator's own SMTP_HOST may be a private relay. */
+  allowPrivateSystemHost?: boolean;
+  transportFactory: TransportFactory;
   rateLimiter: Pick<TenantEmailRateLimiter, 'wait'>;
   logger: {
     info: (message: string) => void;
     warn: (message: string) => void;
   };
 }
+
+type AccountMailProcessorDependencies = Omit<NotificationProcessorDependencies, 'getTenantSmtpSettings'>;
+
+const SYSTEM_RATE_LIMIT_KEY = 'system';
 
 interface RateLimitBucket {
   count: number;
@@ -90,7 +104,7 @@ class TenantSmtpSettingsProvider {
   private async connection(): Promise<DataSource> {
     if (this.dataSource?.isInitialized) return this.dataSource;
 
-    this.dataSource = new DataSource({
+    this.dataSource = createPostgresDataSource({
       type: 'postgres',
       host: process.env.DATABASE_HOST || 'localhost',
       port: Number.parseInt(process.env.DATABASE_PORT || '5432', 10),
@@ -124,9 +138,8 @@ export function createNotificationProcessor(
       return;
     }
 
-    const smtp =
-      (await dependencies.getTenantSmtpSettings(job.data.tenantId)) ??
-      dependencies.getSystemSmtpSettings();
+    const tenantSmtp = await dependencies.getTenantSmtpSettings(job.data.tenantId);
+    const smtp = tenantSmtp ?? dependencies.getSystemSmtpSettings();
     if (!smtp) {
       dependencies.logger.warn(
         `[notifications] SMTP not configured for tenant ${job.data.tenantId}, skipping email`,
@@ -136,14 +149,9 @@ export function createNotificationProcessor(
 
     await dependencies.rateLimiter.wait(job.data.tenantId);
 
-    const addresses = await resolveSafeOutboundHost(smtp.host);
-    const transport = dependencies.transportFactory({
-      host: addresses[0].address,
-      port: smtp.port,
-      secure: smtp.secure,
-      tls: { servername: smtp.host },
-      auth: smtp.user ? { user: smtp.user, pass: smtp.pass } : undefined,
-    });
+    const transport = dependencies.transportFactory(
+      await transportOptions(smtp, !tenantSmtp && !!dependencies.allowPrivateSystemHost),
+    );
     await transport.sendMail({
       from: `"${smtp.fromName}" <${smtp.fromEmail}>`,
       to: job.data.to,
@@ -154,6 +162,57 @@ export function createNotificationProcessor(
     });
 
     dependencies.logger.info(`[notifications] Sent email to user ${job.data.userId}`);
+  };
+}
+
+/**
+ * Account emails, such as password reset links, go only through the installation's SMTP_*
+ * server. An organization's SMTP server is never used: its owner could read the link.
+ */
+export function createAccountMailProcessor(
+  dependencies: AccountMailProcessorDependencies,
+): (job: Job<AccountEmailJobData>) => Promise<void> {
+  return async (job: Job<AccountEmailJobData>): Promise<void> => {
+    const smtp = dependencies.getSystemSmtpSettings();
+    if (!smtp) {
+      dependencies.logger.warn(
+        `[account-mail] SMTP_HOST and SMTP_FROM are not set; the ${job.data.template} email for user ${job.data.userId} was not sent`,
+      );
+      return;
+    }
+
+    await dependencies.rateLimiter.wait(SYSTEM_RATE_LIMIT_KEY);
+
+    const transport = dependencies.transportFactory(
+      await transportOptions(smtp, !!dependencies.allowPrivateSystemHost),
+    );
+    await transport.sendMail({
+      from: `"${smtp.fromName}" <${smtp.fromEmail}>`,
+      to: job.data.to,
+      subject: job.data.title,
+      text: job.data.body,
+      html: job.data.html,
+    });
+
+    dependencies.logger.info(
+      `[account-mail] Sent ${job.data.template} email to user ${job.data.userId}`,
+    );
+  };
+}
+
+async function transportOptions(
+  smtp: SmtpSettings,
+  allowPrivateHost: boolean,
+): Promise<SMTPTransport.Options> {
+  const host = allowPrivateHost
+    ? smtp.host
+    : (await resolveSafeOutboundHost(smtp.host))[0].address;
+  return {
+    host,
+    port: smtp.port,
+    secure: smtp.secure,
+    tls: { servername: smtp.host },
+    auth: smtp.user ? { user: smtp.user, pass: smtp.pass } : undefined,
   };
 }
 
@@ -174,15 +233,27 @@ function getSystemSmtpSettings(): SmtpSettings | null {
 const smtpSettingsProvider = new TenantSmtpSettingsProvider();
 const rateLimiter = new TenantEmailRateLimiter();
 
+const allowPrivateSystemHost = process.env.SMTP_ALLOW_PRIVATE_HOST === 'true';
+const logger = {
+  info: (message: string) => console.log(message),
+  warn: (message: string) => console.warn(message),
+};
+
 export const processNotification = createNotificationProcessor({
   getTenantSmtpSettings: (tenantId) => smtpSettingsProvider.get(tenantId),
   getSystemSmtpSettings,
+  allowPrivateSystemHost,
   transportFactory: createTransport,
   rateLimiter,
-  logger: {
-    info: (message) => console.log(message),
-    warn: (message) => console.warn(message),
-  },
+  logger,
+});
+
+export const processAccountMail = createAccountMailProcessor({
+  getSystemSmtpSettings,
+  allowPrivateSystemHost,
+  transportFactory: createTransport,
+  rateLimiter,
+  logger,
 });
 
 export async function closeNotificationProcessor(): Promise<void> {

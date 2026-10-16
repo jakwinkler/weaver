@@ -15,7 +15,7 @@ async function main() {
       type: 'postgres', host: process.env.DATABASE_HOST || 'localhost', port: Number(process.env.DATABASE_PORT || 5432),
       username: process.env.DATABASE_USER, password: process.env.DATABASE_PASSWORD, database: process.env.DATABASE_NAME,
       schema, synchronize: false, logging: false, installExtensions: false,
-      entities: schema === 'public' ? [entities.TenantEntity, entities.UserEntity, entities.TenantMembershipEntity, entities.ApiKeyEntity, entities.InstalledPluginEntity, entities.RefreshSessionEntity, entities.OrganizationInvitationEntity] : [...entities.TENANT_ENTITIES],
+      entities: schema === 'public' ? [entities.TenantEntity, entities.UserEntity, entities.TenantMembershipEntity, entities.ApiKeyEntity, entities.InstalledPluginEntity, entities.RefreshSessionEntity, entities.OrganizationInvitationEntity, entities.PasswordResetTokenEntity] : [...entities.TENANT_ENTITIES],
     });
     await ds.initialize();
     try {

@@ -70,6 +70,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm turbo test --concurrency=2
       - run: pnpm --filter @weaver/api test:e2e
+      - run: node deploy/compose/verify-sql-migrations.cjs
       - run: node --test deploy/compose/oauth-config.test.cjs
       - run: node --test docker/http-boundaries.test.cjs
 

@@ -15,7 +15,7 @@ describe('September session and settings regressions', () => {
         .mockResolvedValue({ accessToken: 'new-access', refreshToken: 'new-refresh' }),
     };
     const response = { cookie: jest.fn(), json: jest.fn((value) => value) };
-    const controller = new AuthController(service as never, {} as never);
+    const controller = new AuthController(service as never, {} as never, {} as never);
     const result = await controller.session(
       { userId: 'user', tenantId: 'tenant' } as never,
       response as never,

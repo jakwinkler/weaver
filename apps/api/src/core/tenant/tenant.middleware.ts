@@ -10,10 +10,15 @@ import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Request, Response, NextFunction } from 'express';
-import { ApiKeyEntity, TenantEntity, TenantMembershipEntity } from '@weaver/db';
+import { ApiKeyEntity, TenantMembershipEntity } from '@weaver/db';
 import { API_KEY_PREFIX } from '@weaver/shared';
 import { createHash } from 'crypto';
 import type { JwtPayload } from '../auth/auth.service';
+import {
+  findMembershipSession,
+  rememberSessionVersion,
+  tokenSessionVersion,
+} from '../auth/session-version';
 import { tenantStorage } from './tenant.context';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -31,8 +36,6 @@ function extractToken(req: Request): string | undefined {
 @Injectable()
 export class TenantMiddleware implements NestMiddleware {
   constructor(
-    @InjectRepository(TenantEntity)
-    private readonly tenantRepo: Repository<TenantEntity>,
     @InjectRepository(TenantMembershipEntity)
     private readonly membershipRepo: Repository<TenantMembershipEntity>,
     private readonly jwtService: JwtService,
@@ -57,37 +60,49 @@ export class TenantMiddleware implements NestMiddleware {
       return;
     }
 
-    const membership = await this.membershipRepo.findOneBy({
-      tenantId: identity.tenantId,
-      userId: identity.userId,
-    });
+    const membership = await findMembershipSession(
+      this.membershipRepo,
+      identity.tenantId,
+      identity.userId,
+    );
     if (!membership) {
       throw new ForbiddenException('Tenant membership required');
+    }
+
+    if (identity.sessionVersion !== undefined) {
+      rememberSessionVersion(req, identity.userId, membership.user.sessionVersion);
+      // A token from before a password reset is treated like an expired one: no tenant
+      // context here, and the route's auth guard answers 401.
+      if (membership.user.sessionVersion !== identity.sessionVersion) {
+        next();
+        return;
+      }
     }
 
     (req as Request & { tenantMembershipRole?: string }).tenantMembershipRole =
       membership.role;
 
-    const tenant = await this.tenantRepo.findOneBy({ id: identity.tenantId });
+    const tenant = membership.tenant;
     if (!tenant) {
       throw new BadRequestException(`Tenant not found: ${identity.tenantId}`);
     }
 
     tenantStorage.run(
-      { tenantId: tenant.id, schemaName: tenant.schemaName },
+      { tenantId: tenant.id, schemaName: tenant.schemaName, slug: tenant.slug },
       () => next(),
     );
   }
 
   private async resolveIdentity(
     req: Request,
-  ): Promise<{ tenantId: string; userId: string } | undefined> {
+  ): Promise<{ tenantId: string; userId: string; sessionVersion?: number } | undefined> {
     const token = extractToken(req);
     if (!token) {
       return undefined;
     }
 
-    let payload: Pick<JwtPayload, 'sub' | 'tenantId' | 'tokenType'>;
+    let payload: Pick<JwtPayload, 'sub' | 'tenantId' | 'tokenType' | 'sessionVersion'>;
+    let sessionVersion: number | undefined;
     if (token.startsWith(API_KEY_PREFIX)) {
       const key = await this.apiKeyRepo.findOneBy({ keyHash: createHash('sha256').update(token).digest('hex') });
       if (!key) throw new UnauthorizedException('Invalid API key');
@@ -98,6 +113,7 @@ export class TenantMiddleware implements NestMiddleware {
     } else {
       try {
         payload = await this.jwtService.verifyAsync<JwtPayload>(token);
+        sessionVersion = tokenSessionVersion(payload);
       } catch {
         return undefined;
       }
@@ -123,6 +139,7 @@ export class TenantMiddleware implements NestMiddleware {
       throw new ForbiddenException('X-Tenant-ID does not match authenticated tenant');
     }
 
-    return { tenantId: payload.tenantId, userId: payload.sub };
+    // API keys carry no session version; a password reset does not revoke them.
+    return { tenantId: payload.tenantId, userId: payload.sub, sessionVersion };
   }
 }

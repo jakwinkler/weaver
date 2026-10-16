@@ -12,9 +12,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ImportProgress } from './ImportProgress';
+import { ACTIVE_IMPORT_STORAGE_KEY } from './activeImportStorage';
 
 const STEPS = ['Source', 'Credentials', 'Connect', 'Projects', 'Review'];
-const ACTIVE_IMPORT_STORAGE_KEY = 'weaver:active-jira-import-id';
 
 function getStoredImportId(): string | null {
   return window.sessionStorage.getItem(ACTIVE_IMPORT_STORAGE_KEY);

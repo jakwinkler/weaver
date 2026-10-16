@@ -3,7 +3,16 @@ import { PassportModule } from '@nestjs/passport';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { ApiKeyEntity, UserEntity, TenantMembershipEntity, RefreshSessionEntity, OrganizationInvitationEntity } from '@weaver/db';
+import {
+  ApiKeyEntity,
+  UserEntity,
+  TenantMembershipEntity,
+  RefreshSessionEntity,
+  OrganizationInvitationEntity,
+  PasswordResetTokenEntity,
+} from '@weaver/db';
+import { MailModule } from '../../modules/mail/mail.module';
+import { WebSocketModule } from '../websocket/websocket.module';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './jwt.strategy';
@@ -17,6 +26,8 @@ import { SamlRequestCache } from './saml-request-cache';
 import { SamlStrategy } from './saml.strategy';
 import { SamlAuthGuard } from './saml.guard';
 import { OidcStrategy } from './oidc.strategy';
+import { PasswordResetService } from './password-reset.service';
+import { PermissionService } from './permission.service';
 
 @Global()
 @Module({
@@ -30,11 +41,22 @@ import { OidcStrategy } from './oidc.strategy';
         signOptions: { expiresIn: '15m' },
       }),
     }),
-    TypeOrmModule.forFeature([ApiKeyEntity, UserEntity, TenantMembershipEntity, RefreshSessionEntity, OrganizationInvitationEntity]),
+    TypeOrmModule.forFeature([
+      ApiKeyEntity,
+      UserEntity,
+      TenantMembershipEntity,
+      RefreshSessionEntity,
+      OrganizationInvitationEntity,
+      PasswordResetTokenEntity,
+    ]),
+    MailModule,
+    WebSocketModule,
   ],
   controllers: [AuthController],
   providers: [
     AuthService,
+    PasswordResetService,
+    PermissionService,
     JwtStrategy,
     ApiKeyRateLimitGuard,
     ApiKeyGuard,
@@ -57,6 +79,7 @@ import { OidcStrategy } from './oidc.strategy';
     JwtOnlyAuthGuard,
     JwtAuthGuard,
     JwtStrategy,
+    PermissionService,
   ],
 })
 export class AuthModule {}

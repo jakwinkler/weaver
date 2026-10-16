@@ -157,7 +157,7 @@ describe('Permissions (e2e)', () => {
       `DELETE FROM public.tenants WHERE slug = 'perm-test-org'`,
     );
     await dataSource.query(
-      `DELETE FROM public.users WHERE email IN ('perm-owner@test.com', 'perm-viewer@test.com', 'perm-member@test.com')`,
+      `DELETE FROM public.users WHERE email IN ('perm-owner@test.com', 'perm-viewer@test.com', 'perm-member@test.com', 'perm-editor@test.com')`,
     );
     await connections.closeAll();
     await app.close();
@@ -505,6 +505,135 @@ describe('Permissions (e2e)', () => {
       await asOwner()
         .delete(`/api/v1/issue-types/${issueTypeId}`)
         .expect(204);
+    });
+  });
+  // =========================================
+  // ISSUE TRANSITION AND ASSIGNMENT
+  // =========================================
+  describe('Issue transition and assignment permissions', () => {
+    let editorToken: string;
+    let todoStatusId: string;
+    let inProgressStatusId: string;
+    let editorIssueKey: string;
+    let editorIssueId: string;
+
+    const asEditor = () => authedRequestWith(editorToken, tenantId);
+
+    beforeAll(async () => {
+      // A custom role that may edit issues but neither move them through the workflow nor assign them.
+      await asOwner()
+        .post('/api/v1/roles')
+        .send({
+          name: 'issue-editor',
+          permissions: { 'projects.read': true, 'issues.read': true, 'issues.create': true, 'issues.update': true },
+        })
+        .expect(201);
+      const passwordHash = await bcrypt.hash('password123', 10);
+      const [editor] = await dataSource.query(
+        `INSERT INTO public.users (id, email, display_name, password_hash, auth_provider, created_at, updated_at)
+         VALUES (gen_random_uuid(), $1, $2, $3, 'local', NOW(), NOW()) RETURNING id`,
+        ['perm-editor@test.com', 'Perm Editor', passwordHash],
+      );
+      await dataSource.query(
+        `INSERT INTO public.tenant_memberships (tenant_id, user_id, role, created_at)
+         VALUES ($1, $2, 'issue-editor', NOW())`,
+        [tenantId, editor.id],
+      );
+      await asOwner()
+        .post('/api/v1/projects/PERM/members')
+        .send({ userId: editor.id, role: 'member' })
+        .expect(201);
+      const login = await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({ email: 'perm-editor@test.com', password: 'password123' })
+        .expect(201);
+      editorToken = login.body.accessToken;
+
+      const workflow = await asOwner().get('/api/v1/projects/PERM/workflow').expect(200);
+      const statusId = (name: string) =>
+        workflow.body.statuses.find((status: { name: string }) => status.name === name).id;
+      todoStatusId = statusId('To Do');
+      inProgressStatusId = statusId('In Progress');
+
+      const issue = await asOwner()
+        .post('/api/v1/projects/PERM/issues')
+        .send({ summary: 'Editor issue' })
+        .expect(201);
+      editorIssueKey = issue.body.key;
+      editorIssueId = issue.body.id;
+    });
+
+    async function currentIssue() {
+      const res = await asOwner().get(`/api/v1/issues/${editorIssueKey}`).expect(200);
+      return res.body as { statusId: string; assigneeId: string | null; summary: string; priority: string };
+    }
+
+    it('lets issues.update change other fields', async () => {
+      await asEditor()
+        .patch(`/api/v1/issues/${editorIssueKey}`)
+        .send({ summary: 'Edited by editor', priority: 'high' })
+        .expect(200);
+      expect(await currentIssue()).toMatchObject({ summary: 'Edited by editor', priority: 'high' });
+    });
+
+    it('accepts the current status and assignee unchanged without extra permissions', async () => {
+      await asEditor()
+        .patch(`/api/v1/issues/${editorIssueKey}`)
+        .send({ statusId: todoStatusId, assigneeId: null, summary: 'Resent unchanged fields' })
+        .expect(200);
+    });
+
+    it('requires issues.transition to change the status', async () => {
+      const res = await asEditor()
+        .patch(`/api/v1/issues/${editorIssueKey}`)
+        .send({ statusId: inProgressStatusId })
+        .expect(403);
+      expect(res.body.message).toBe('Missing permission: issues.transition');
+      expect((await currentIssue()).statusId).toBe(todoStatusId);
+    });
+
+    it('requires issues.assign to set the assignee', async () => {
+      const res = await asEditor()
+        .patch(`/api/v1/issues/${editorIssueKey}`)
+        .send({ assigneeId: memberUserId, summary: 'Should not save' })
+        .expect(403);
+      expect(res.body.message).toBe('Missing permission: issues.assign');
+      expect(await currentIssue()).toMatchObject({ assigneeId: null, summary: 'Resent unchanged fields' });
+    });
+
+    it('requires issues.assign to create an assigned issue', async () => {
+      const res = await asEditor()
+        .post('/api/v1/projects/PERM/issues')
+        .send({ summary: 'Assigned by editor', assigneeId: memberUserId })
+        .expect(403);
+      expect(res.body.message).toBe('Missing permission: issues.assign');
+      await asEditor()
+        .post('/api/v1/projects/PERM/issues')
+        .send({ summary: 'Unassigned by editor' })
+        .expect(201);
+    });
+
+    it('applies the same checks to bulk updates', async () => {
+      const bulk = (updates: Record<string, unknown>) =>
+        asEditor().patch('/api/v1/issues/bulk').send({ issueIds: [editorIssueId], updates });
+      expect((await bulk({ statusId: inProgressStatusId }).expect(403)).body.message)
+        .toBe('Missing permission: issues.transition');
+      expect((await bulk({ assigneeId: memberUserId }).expect(403)).body.message)
+        .toBe('Missing permission: issues.assign');
+      await bulk({ statusId: todoStatusId, assigneeId: null, priority: 'low' }).expect(200);
+      expect(await currentIssue()).toMatchObject({ statusId: todoStatusId, assigneeId: null, priority: 'low' });
+    });
+
+    it('keeps status and assignee changes available to the default member role', async () => {
+      await asMember()
+        .patch(`/api/v1/issues/${editorIssueKey}`)
+        .send({ statusId: inProgressStatusId, assigneeId: memberUserId })
+        .expect(200);
+      expect(await currentIssue()).toMatchObject({ statusId: inProgressStatusId, assigneeId: memberUserId });
+      await asMember()
+        .patch('/api/v1/issues/bulk')
+        .send({ issueIds: [editorIssueId], updates: { assigneeId: null } })
+        .expect(200);
     });
   });
 });

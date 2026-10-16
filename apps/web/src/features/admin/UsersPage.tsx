@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { useUsers, useUpdateUserRole, useCreateInvitation } from '@/api';
+import { useUsers, useUpdateUserRole, useCreateInvitation, usePendingInvitations, useRevokeInvitation } from '@/api';
 import { useAuthStore } from '@/stores';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -17,17 +17,35 @@ export function UsersPage() {
   const updateRole = useUpdateUserRole();
   const currentUserId = useAuthStore((s) => s.user?.id);
   const createInvitation = useCreateInvitation();
+  const { data: pendingInvitations, isLoading: invitationsLoading } = usePendingInvitations();
+  const revokeInvitation = useRevokeInvitation();
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<'member' | 'viewer'>('member');
   const [invitationLink, setInvitationLink] = useState('');
+  const [invitationId, setInvitationId] = useState('');
 
   const invite = async (event: FormEvent) => {
     event.preventDefault();
     try {
       const invitation = await createInvitation.mutateAsync({ email: inviteEmail, role: inviteRole });
       setInvitationLink(`${window.location.origin}/invite/${invitation.token}`);
+      setInvitationId(invitation.id);
     } catch {
       setInvitationLink('');
+      setInvitationId('');
+    }
+  };
+
+  const handleRevoke = async (id: string, email: string) => {
+    if (!confirm(`Revoke the invitation for ${email}? Its link will stop working.`)) return;
+    try {
+      await revokeInvitation.mutateAsync(id);
+      if (id === invitationId) {
+        setInvitationLink('');
+        setInvitationId('');
+      }
+    } catch {
+      // The mutation error state shows the failure below the list.
     }
   };
 
@@ -70,10 +88,56 @@ export function UsersPage() {
           <div className="space-y-2">
             <Label htmlFor="invitationLink">Invitation link</Label>
             <Input id="invitationLink" readOnly value={invitationLink} onFocus={(event) => event.target.select()} />
-            <p className="text-xs text-muted-foreground">Share this link privately with {inviteEmail}. It expires in seven days and can be used once.</p>
+            <p className="text-xs text-muted-foreground">Anyone who has this link can join as that person until it is used, revoked, or expires in 7 days, so send it privately.</p>
           </div>
         )}
       </form>
+
+      <section aria-labelledby="pendingInvitationsHeading" className="mb-6 space-y-3 rounded-lg border border-border bg-card p-4">
+        <h2 id="pendingInvitationsHeading" className="text-lg font-semibold text-foreground">Pending invitations</h2>
+        {invitationsLoading ? (
+          <p className="text-sm text-muted-foreground">Loading invitations...</p>
+        ) : !pendingInvitations || pendingInvitations.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No pending invitations.</p>
+        ) : (
+          <Table aria-labelledby="pendingInvitationsHeading">
+            <TableHeader className="bg-muted/50">
+              <TableRow className="hover:bg-muted/50">
+                <TableHead className="text-xs font-medium uppercase tracking-wider">Email</TableHead>
+                <TableHead className="text-xs font-medium uppercase tracking-wider">Role</TableHead>
+                <TableHead className="text-xs font-medium uppercase tracking-wider">Expires</TableHead>
+                <TableHead className="text-right text-xs font-medium uppercase tracking-wider">
+                  <span className="sr-only">Actions</span>
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {pendingInvitations.map((invitation) => (
+                <TableRow key={invitation.id}>
+                  <TableCell className="text-sm text-foreground">{invitation.email}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{invitation.role}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {new Date(invitation.expiresAt).toLocaleString()}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={revokeInvitation.isPending}
+                      aria-label={`Revoke invitation for ${invitation.email}`}
+                      onClick={() => handleRevoke(invitation.id, invitation.email)}
+                    >
+                      Revoke
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+        {revokeInvitation.isError && <p role="alert" className="text-sm text-destructive">Could not revoke invitation.</p>}
+      </section>
 
       {!users || users.length === 0 ? (
         <div className="rounded-lg border border-border bg-card py-12 text-center">

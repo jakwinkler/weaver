@@ -3,6 +3,8 @@ import { AsyncLocalStorage } from 'async_hooks';
 export interface TenantInfo {
   tenantId: string;
   schemaName: string;
+  /** Set where the tenant record is already loaded; consumers fall back to a lookup when absent. */
+  slug?: string;
 }
 
 export const tenantStorage = new AsyncLocalStorage<TenantInfo>();

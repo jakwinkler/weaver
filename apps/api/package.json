@@ -11,6 +11,7 @@
     "test": "jest --passWithNoTests",
     "test:watch": "jest --watch",
     "test:e2e": "jest --config ./test/jest-e2e.config.js --passWithNoTests",
+    "test:e2e:zones": "WEAVER_E2E_TZ=America/New_York pnpm test:e2e && WEAVER_E2E_TZ=Asia/Tokyo pnpm test:e2e",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

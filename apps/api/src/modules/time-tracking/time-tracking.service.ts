@@ -19,6 +19,11 @@ import { In, type EntityManager } from 'typeorm';
 import { TenantConnectionProvider } from '../../core/tenant';
 import { EventDispatcherService } from '../events';
 
+/** Issue and project keys that route a time event to the issue's project room. */
+function timeEventScope(issueKey: string | undefined): { issueKey?: string; projectKey?: string } {
+  return issueKey ? { issueKey, projectKey: issueKey.split('-')[0] } : {};
+}
+
 @Injectable()
 export class TimeTrackingService {
   constructor(
@@ -61,7 +66,7 @@ export class TimeTrackingService {
 
     this.eventDispatcher
       .emit('time.logged', {
-        issueKey,
+        ...timeEventScope(issueKey),
         minutes: dto.minutes,
         description: dto.description,
         userId,
@@ -130,6 +135,7 @@ export class TimeTrackingService {
     this.eventDispatcher
       .emit('time.updated', {
         entryId: saved.id,
+        ...timeEventScope(issueKey),
         userId: saved.userId,
       })
       .catch(() => {});
@@ -147,7 +153,8 @@ export class TimeTrackingService {
     await repo.remove(entry);
     this.eventDispatcher
       .emit('time.deleted', {
-        entryId: entry.id,
+        entryId: id,
+        ...timeEventScope(issueKey),
         userId: entry.userId,
       })
       .catch(() => {});
@@ -217,7 +224,7 @@ export class TimeTrackingService {
       this.eventDispatcher
         .emit('time.logged', {
           entryId: entry.id,
-          issueKey,
+          ...timeEventScope(issueKey),
           minutes: entry.minutes,
           description: entry.description ?? undefined,
           userId,
@@ -264,9 +271,11 @@ export class TimeTrackingService {
 
     const em = await this.tenantConnections.getEntityManager();
     const saved = await em.getRepository(TimeEntryEntity).save(entry);
+    const issueKeys = await this.issueKeysById([saved.issueId], em);
     this.eventDispatcher
       .emit('time.updated', {
         entryId: saved.id,
+        ...timeEventScope(issueKeys.get(saved.issueId)),
         userId,
         sourcePluginId: pluginId,
       })
@@ -279,9 +288,11 @@ export class TimeTrackingService {
     this.assertUnlocked(entry);
     const em = await this.tenantConnections.getEntityManager();
     await em.getRepository(TimeEntryEntity).remove(entry);
+    const issueKeys = await this.issueKeysById([entry.issueId], em);
     this.eventDispatcher
       .emit('time.deleted', {
-        entryId: entry.id,
+        entryId: id,
+        ...timeEventScope(issueKeys.get(entry.issueId)),
         userId,
         sourcePluginId: pluginId,
       })
@@ -307,14 +318,17 @@ export class TimeTrackingService {
         throw new NotFoundException('One or more plugin time entries were not found');
       }
       for (const entry of entries) this.assertUnlocked(entry);
+      const deleted = entries.map((entry) => ({ id: entry.id, issueId: entry.issueId }));
       await repo.remove(entries);
-      return entries;
+      return deleted;
     });
 
+    const issueKeys = await this.issueKeysById(deletedEntries.map((entry) => entry.issueId), em);
     for (const entry of deletedEntries) {
       this.eventDispatcher
         .emit('time.deleted', {
           entryId: entry.id,
+          ...timeEventScope(issueKeys.get(entry.issueId)),
           userId,
           sourcePluginId: pluginId,
         })
@@ -398,6 +412,21 @@ export class TimeTrackingService {
         lockReason: entry.lockReason,
       };
     });
+  }
+
+  /** Runs after the write has committed, so a failed lookup only drops the event's room. */
+  private async issueKeysById(
+    issueIds: string[],
+    manager: EntityManager,
+  ): Promise<Map<string, string>> {
+    const ids = [...new Set(issueIds.filter(Boolean))];
+    if (ids.length === 0) return new Map();
+    try {
+      const issues = await manager.getRepository(IssueEntity).find({ where: { id: In(ids) } });
+      return new Map(issues.map((issue) => [issue.id, issue.key]));
+    } catch {
+      return new Map();
+    }
   }
 
   private async findPluginEntry(
