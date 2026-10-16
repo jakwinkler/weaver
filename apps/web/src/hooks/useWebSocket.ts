@@ -4,9 +4,11 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/stores';
 import { API_BASE_URL } from '@/api/client';
 import {
+  createInvalidationBatch,
   DOMAIN_EVENTS,
   getInvalidationKeys,
   getToastMessageForEvent,
+  type InvalidationBatch,
   type WsEventPayload,
 } from './websocketEvents';
 import { ProjectRoomSubscription } from './projectRoom';
@@ -49,14 +51,11 @@ export function useWebSocket(projectKey: string | null = null) {
   const currentUserId = useAuthStore((s) => s.user?.id);
 
   const handleEvent = useCallback(
-    (event: string, payload: WsEventPayload) => {
+    (event: string, payload: WsEventPayload, invalidations: InvalidationBatch) => {
       const data = payload.data ?? {};
 
-      // Invalidate relevant queries
-      const keys = getInvalidationKeys(event, data);
-      for (const key of keys) {
-        queryClient.invalidateQueries({ queryKey: key });
-      }
+      // Invalidate relevant queries once per burst of events
+      invalidations.add(getInvalidationKeys(event, data));
 
       // Show toast for events from other users
       const message = getToastMessageForEvent(event, data, currentUserId);
@@ -64,7 +63,7 @@ export function useWebSocket(projectKey: string | null = null) {
         showToast(message);
       }
     },
-    [queryClient, currentUserId],
+    [currentUserId],
   );
 
   useEffect(() => {
@@ -86,11 +85,14 @@ export function useWebSocket(projectKey: string | null = null) {
 
     const projectRoom = new ProjectRoomSubscription(socket);
     projectRoomRef.current = projectRoom;
+    const invalidations = createInvalidationBatch((queryKey) => {
+      queryClient.invalidateQueries({ queryKey });
+    });
 
     // Listen for all domain events the server emits
     for (const event of DOMAIN_EVENTS) {
       socket.on(event, (payload: WsEventPayload) => {
-        handleEvent(event, payload);
+        handleEvent(event, payload, invalidations);
       });
     }
 
@@ -109,11 +111,13 @@ export function useWebSocket(projectKey: string | null = null) {
       projectRoomRef.current = null;
       socket.removeAllListeners();
       socket.disconnect();
+      // Events already received still refresh their queries.
+      invalidations.flush();
     };
-  }, [tenantId, handleEvent]);
+  }, [tenantId, handleEvent, queryClient]);
 
   // Runs after the socket effect, so a replacement socket gets the current project too.
   useEffect(() => {
     projectRoomRef.current?.setProject(projectKey);
-  }, [projectKey, tenantId, handleEvent]);
+  }, [projectKey, tenantId, handleEvent, queryClient]);
 }

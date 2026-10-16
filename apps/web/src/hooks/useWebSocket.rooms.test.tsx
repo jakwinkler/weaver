@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAuthStore } from '@/stores';
 import { PROJECT_JOIN_DELAY_MS } from './projectRoom';
+import { INVALIDATION_BATCH_MS } from './websocketEvents';
 import { useWebSocket } from './useWebSocket';
 
 const fake = vi.hoisted(() => {
@@ -62,6 +63,10 @@ const fake = vi.hoisted(() => {
 
     answer() {
       this.pendingJoins.shift()?.(null, { joined: true });
+    }
+
+    receive(event: string, payload: unknown) {
+      this.listeners.get(event)?.forEach((listener) => listener(payload));
     }
   }
 
@@ -133,5 +138,77 @@ describe('useWebSocket project rooms', () => {
     act(() => vi.advanceTimersByTime(PROJECT_JOIN_DELAY_MS));
 
     expect(fake.sockets[0].sent).toEqual([]);
+  });
+});
+
+describe('useWebSocket live updates', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.spyOn(console, 'debug').mockImplementation(() => undefined);
+    fake.sockets.length = 0;
+    queryClient = new QueryClient();
+    useAuthStore.setState({ tenantId: 'tenant-1', user: { id: 'current-user' } as never });
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+    useAuthStore.setState({ tenantId: null, user: null });
+    document.getElementById('ws-toast-container')?.remove();
+  });
+
+  it('refreshes each query once for a burst of events and shows toasts at once', () => {
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+    renderHook(() => useWebSocket('WS'), { wrapper });
+    const socket = fake.sockets[0];
+    act(() => socket.connect());
+
+    act(() => {
+      for (let index = 0; index < 5; index += 1) {
+        socket.receive('issue.updated', {
+          event: 'issue.updated',
+          data: { issueKey: 'WS-1', projectKey: 'WS', userId: 'other-user' },
+          timestamp: '2026-10-15T12:00:00.000Z',
+        });
+      }
+    });
+
+    expect(document.getElementById('ws-toast-container')?.children).toHaveLength(5);
+    expect(invalidate).not.toHaveBeenCalled();
+
+    act(() => vi.advanceTimersByTime(INVALIDATION_BATCH_MS));
+
+    expect(invalidate.mock.calls.map(([filters]) => filters?.queryKey)).toEqual([
+      ['issue', 'WS-1'],
+      ['activity', 'WS-1'],
+      ['issues'],
+      ['boards'],
+      ['boardIssues'],
+      ['backlog'],
+      ['sprintStats'],
+      ['dashboard'],
+    ]);
+  });
+
+  it('refreshes events still waiting in a batch when the socket closes', () => {
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+    const { unmount } = renderHook(() => useWebSocket('WS'), { wrapper });
+    const socket = fake.sockets[0];
+    act(() => socket.connect());
+
+    act(() =>
+      socket.receive('comment.created', {
+        event: 'comment.created',
+        data: { issueKey: 'WS-1' },
+        timestamp: '2026-10-15T12:00:00.000Z',
+      }),
+    );
+    unmount();
+
+    expect(invalidate.mock.calls.map(([filters]) => filters?.queryKey)).toEqual([
+      ['comments', 'WS-1'],
+      ['activity', 'WS-1'],
+    ]);
   });
 });
