@@ -74,6 +74,12 @@ export interface PageEntry {
   requiredPermissions: string[];
 }
 
+/** A page owns its own path and the routes nested under it, not paths that merely share a prefix. */
+export function matchesPagePath(path: string, pagePath: string): boolean {
+  const base = pagePath.endsWith('/') ? pagePath.slice(0, -1) : pagePath;
+  return path === base || path.startsWith(`${base}/`);
+}
+
 export function getPageEntry(
   path: string,
   manifests: PluginManifest[],
@@ -82,7 +88,7 @@ export function getPageEntry(
   for (const manifest of manifests) {
     if (!enabledPluginIds.includes(manifest.id)) continue;
     for (const page of manifest.ui?.pages ?? []) {
-      if (path.startsWith(page.path)) {
+      if (matchesPagePath(path, page.path)) {
         return {
           pluginId: manifest.id,
           path: page.path,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PluginManifest } from '@/api';
-import { getSlotEntries } from './plugin-slot-registry';
+import { getPageEntry, getSlotEntries, matchesPagePath } from './plugin-slot-registry';
 
 const manifest: PluginManifest = {
   id: '@example/plugin',
@@ -16,5 +16,35 @@ const manifest: PluginManifest = {
 describe('plugin slot registry', () => {
   it('does not resolve components for disabled plugins', () => {
     expect(getSlotEntries('issue-detail-content', [manifest], [])).toEqual([]);
+  });
+});
+
+describe('plugin page entries', () => {
+  const pageManifest = (id: string, path: string): PluginManifest => ({
+    id,
+    name: id,
+    version: '1.0.0',
+    permissions: [],
+    ui: { pages: [{ path, component: 'AppPage' }] },
+  });
+  const manifests = [pageManifest('foo', '/apps/foo'), pageManifest('foobar', '/apps/foobar')];
+
+  it('matches the page path and its nested routes', () => {
+    expect(getPageEntry('/apps/foo', manifests, ['foo', 'foobar'])?.pluginId).toBe('foo');
+    expect(getPageEntry('/apps/foo/settings', manifests, ['foo', 'foobar'])?.pluginId).toBe('foo');
+  });
+
+  it('does not match another page that shares a path prefix', () => {
+    expect(getPageEntry('/apps/foobar', manifests, ['foo', 'foobar'])?.pluginId).toBe('foobar');
+    expect(getPageEntry('/apps/foobar', manifests, ['foo'])).toBeUndefined();
+  });
+});
+
+describe('matchesPagePath', () => {
+  it('matches at a path segment boundary', () => {
+    expect(matchesPagePath('/apps/foo', '/apps/foo')).toBe(true);
+    expect(matchesPagePath('/apps/foo/', '/apps/foo')).toBe(true);
+    expect(matchesPagePath('/apps/foo/edit', '/apps/foo/')).toBe(true);
+    expect(matchesPagePath('/apps/foobar', '/apps/foo')).toBe(false);
   });
 });
