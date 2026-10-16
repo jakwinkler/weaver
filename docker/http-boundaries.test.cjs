@@ -32,6 +32,11 @@ test('both Compose deployments give the API and worker the installation mail ser
   assert.equal(compose.match(/SMTP_HOST: \$\{SMTP_HOST:-\}/g)?.length, 2);
   assert.match(compose, /WEB_APP_URL: \$\{WEB_APP_URL:-\$\{WEB_URL:-http:\/\/localhost\}\}/);
 });
+test('production Compose passes the trusted plugin allowlist to the API', () => {
+  for (const file of ['docker/docker-compose.yml', 'deploy/compose/compose.yaml']) {
+    assert.match(read(file), /WEAVER_TRUSTED_PLUGINS: \$\{WEAVER_TRUSTED_PLUGINS:-\}/, file);
+  }
+});
 test('development data services bind only to loopback', () => {
   const compose = read('docker/docker-compose.dev.yml');
   assert.match(compose, /127\.0\.0\.1:\$\{DATABASE_PORT/);
