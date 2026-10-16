@@ -73,3 +73,33 @@ describe('plugin project access', () => {
     },
   );
 });
+
+describe('time report output', () => {
+  function context(rows: unknown[]) {
+    return {
+      db: { query: jest.fn().mockResolvedValue(rows) },
+      api: { projects: { accessibleIds: jest.fn().mockResolvedValue(null) } },
+    };
+  }
+
+  it('joins public.users for user grouping and labels rows without email', async () => {
+    const ctx = context([]);
+    await getReport({ params: {}, query: { groupBy: 'user' } }, ctx);
+    const [sql] = ctx.db.query.mock.calls[0];
+    expect(sql).toContain('LEFT JOIN public.users u');
+    expect(sql).not.toMatch(/email/i);
+  });
+
+  it('prefixes CSV cells that a spreadsheet would read as formulas', async () => {
+    const ctx = context([
+      { project_key: '=HYPERLINK("http://evil")', project_name: '+1+1', total_minutes: 60, entry_count: 1 },
+      { project_key: '  @SUM(A1)', project_name: '-2', total_minutes: 30, entry_count: 1 },
+      { project_key: 'SAFE', project_name: 'Plain "quoted" name', total_minutes: 30, entry_count: 1 },
+    ]);
+    const response = await exportCsv({ params: {}, query: {} }, ctx);
+    const lines = (response.body as string).split('\n');
+    expect(lines[1]).toBe(`"'=HYPERLINK(""http://evil"")","'+1+1",1.00,1`);
+    expect(lines[2]).toBe(`"'  @SUM(A1)","'-2",0.50,1`);
+    expect(lines[3]).toBe(`"SAFE","Plain ""quoted"" name",0.50,1`);
+  });
+});

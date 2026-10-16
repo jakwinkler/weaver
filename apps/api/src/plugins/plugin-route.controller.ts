@@ -9,7 +9,7 @@ import {
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import type { PluginResponse, PluginRouteDefinition } from '@weaver/sdk';
-import { RoleEntity } from '@weaver/db';
+import { IssueEntity, ProjectEntity, ProjectPluginEntity, RoleEntity } from '@weaver/db';
 import { tenantStorage } from '../core/tenant/tenant.context';
 import { TenantConnectionProvider } from '../core/tenant/tenant-connection.provider';
 import { TenantService } from '../core/tenant/tenant.service';
@@ -110,6 +110,9 @@ export class PluginRouteController {
         if (match.params.projectKey) {
           await this.projectAccess.assertProjectKey(match.params.projectKey, reqUser, mode);
         }
+        if (!(await this.isEnabledForRouteProjects(match))) {
+          return res.status(HttpStatus.SERVICE_UNAVAILABLE).json({ message: 'Plugin is disabled' });
+        }
       }
 
       const handler = await this.loader.getHandler(
@@ -162,6 +165,37 @@ export class PluginRouteController {
       }
       return res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({ message: 'Plugin route error' });
     }
+  }
+
+  /**
+   * A project-scoped plugin must also be enabled in project_plugins for every project the route
+   * names through :projectKey or :issueKey. Routes that name no existing project are left to the
+   * tenant-level enablement check above.
+   */
+  private async isEnabledForRouteProjects(match: MatchedPluginRoute): Promise<boolean> {
+    if (this.loader.getManifest(match.pluginId)?.scope !== 'project') return true;
+    const { projectKey, issueKey } = match.params;
+    if (!projectKey && !issueKey) return true;
+
+    const em = await this.tenantConnections.getEntityManager();
+    const projectIds = new Set<string>();
+    if (projectKey) {
+      const project = await em.getRepository(ProjectEntity).findOneBy({ key: projectKey });
+      if (project) projectIds.add(project.id);
+    }
+    if (issueKey) {
+      const issue = await em.getRepository(IssueEntity).findOneBy({ key: issueKey });
+      if (issue) projectIds.add(issue.projectId);
+    }
+    for (const projectId of projectIds) {
+      const enabled = await em.getRepository(ProjectPluginEntity).findOneBy({
+        projectId,
+        pluginId: match.pluginId,
+        enabled: true,
+      });
+      if (!enabled) return false;
+    }
+    return true;
   }
 
   private async checkPermissions(

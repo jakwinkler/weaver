@@ -12,6 +12,7 @@ interface ProcessorDependencies {
   createDataSource?: (schemaName: string) => DataSource;
   fetcher?: typeof fetch;
   now?: () => number;
+  logger?: { error: (message: string, details: Record<string, unknown>) => void };
 }
 
 function createTenantDataSource(schemaName: string): DataSource {
@@ -67,6 +68,8 @@ export async function processWebhookWithDependencies(
             'X-Webhook-Signature': signature,
             'X-Webhook-Timestamp': timestamp,
             'X-Webhook-Event': eventType,
+            // BullMQ keeps the job id across retries, so receivers can de-duplicate redeliveries.
+            ...(job.id ? { 'X-Webhook-Delivery': job.id } : {}),
           },
           body,
           signal: AbortSignal.timeout(10000),
@@ -82,12 +85,25 @@ export async function processWebhookWithDependencies(
       responseBody = error instanceof Error ? error.message : String(error);
     }
 
-    await dataSource.query(
-      `INSERT INTO webhook_deliveries
-       (webhook_id, event, payload, response_status, response_body, success, delivered_at)
-       VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
-      [webhookId, eventType, JSON.stringify(payload), status, responseBody, success],
-    );
+    // The worker connection has no tenant search_path, so the table must be schema-qualified.
+    // schemaName is validated against the tenant schema pattern above.
+    try {
+      await dataSource.query(
+        `INSERT INTO "${schemaName}"."webhook_deliveries"
+         (webhook_id, event, payload, response_status, response_body, success, delivered_at)
+         VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+        [webhookId, eventType, JSON.stringify(payload), status, responseBody, success],
+      );
+    } catch (error) {
+      // The POST outcome decides retries. Rethrowing here after a 2xx would redeliver the event.
+      (dependencies.logger ?? console).error('Webhook delivery could not be recorded', {
+        jobId: job.id,
+        webhookId,
+        schemaName,
+        success,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
 
     if (!success) {
       const attempts = typeof job.opts.attempts === 'number' ? job.opts.attempts : 1;

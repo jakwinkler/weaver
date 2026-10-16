@@ -17,11 +17,15 @@ test('SPA framing protection preserves public form embedding and staged CSP', ()
   assert.match(nginx, /Content-Security-Policy-Report-Only/);
   assert.match(nginx, /Strict-Transport-Security/);
 });
-test('password reset links stay out of access logs and Referer headers', () => {
+test('password reset and invitation links stay out of access logs and Referer headers', () => {
   const nginx = read('docker/nginx.conf');
-  assert.match(nginx, /map \$request_uri \$weaver_access_log \{[^}]*~\^\/reset-password\/ 0;/);
+  const accessLog = nginx.match(/map \$request_uri \$weaver_access_log \{[^}]*\}/)?.[0] ?? '';
+  const referrerPolicy = nginx.match(/map \$request_uri \$weaver_referrer_policy \{[^}]*\}/)?.[0] ?? '';
+  for (const path of ['\\/reset-password\\/', '\\/invite\\/', '\\/api\\/v1\\/auth\\/invitations\\/']) {
+    assert.match(accessLog, new RegExp(`~\\^${path} 0;`), path);
+    assert.match(referrerPolicy, new RegExp(`~\\^${path} "no-referrer";`), path);
+  }
   assert.match(nginx, /access_log \S+ main if=\$weaver_access_log;/);
-  assert.match(nginx, /map \$request_uri \$weaver_referrer_policy \{[^}]*~\^\/reset-password\/ "no-referrer";/);
   assert.match(nginx, /add_header Referrer-Policy \$weaver_referrer_policy always;/);
 });
 test('both Compose deployments give the API and worker the installation mail server', () => {
@@ -31,6 +35,11 @@ test('both Compose deployments give the API and worker the installation mail ser
   const compose = read('docker/docker-compose.yml');
   assert.equal(compose.match(/SMTP_HOST: \$\{SMTP_HOST:-\}/g)?.length, 2);
   assert.match(compose, /WEB_APP_URL: \$\{WEB_APP_URL:-\$\{WEB_URL:-http:\/\/localhost\}\}/);
+});
+test('production Compose passes the trusted plugin allowlist to the API', () => {
+  for (const file of ['docker/docker-compose.yml', 'deploy/compose/compose.yaml']) {
+    assert.match(read(file), /WEAVER_TRUSTED_PLUGINS: \$\{WEAVER_TRUSTED_PLUGINS:-\}/, file);
+  }
 });
 test('development data services bind only to loopback', () => {
   const compose = read('docker/docker-compose.dev.yml');
@@ -63,6 +72,7 @@ test(
     for (const [path, policy] of [
       ['/login', 'strict-origin-when-cross-origin'],
       [`/reset-password/${'a'.repeat(96)}`, 'no-referrer'],
+      [`/invite/${'a'.repeat(64)}`, 'no-referrer'],
     ]) {
       const response = await fetch(new URL(path, process.env.WEAVER_HTTP_TEST_URL));
       assert.equal(response.headers.get('referrer-policy'), policy, path);
