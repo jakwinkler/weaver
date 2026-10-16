@@ -110,9 +110,11 @@ export function TeamsPage() {
                   <CardContent className="flex items-center justify-between p-3">
                     <div>
                       <h3 className="text-sm font-medium text-foreground">{team.name}</h3>
-                      <p className="text-xs text-muted-foreground">
-                        Created {new Date(team.createdAt ?? team.created_at).toLocaleDateString()}
-                      </p>
+                      {(team.createdAt ?? team.created_at) && (
+                        <p className="text-xs text-muted-foreground">
+                          Created {new Date(team.createdAt ?? team.created_at).toLocaleDateString()}
+                        </p>
+                      )}
                     </div>
                     <Button
                       variant="ghost"
