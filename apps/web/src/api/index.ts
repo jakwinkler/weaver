@@ -101,6 +101,8 @@ export {
   downloadAuditLog,
   useUsers,
   useCreateInvitation,
+  usePendingInvitations,
+  useRevokeInvitation,
   useUpdateUserRole,
   useCreateIssueType,
   useUpdateIssueType,
@@ -121,6 +123,7 @@ export {
 export type {
   AuditLogEntry,
   AuditLogFilters,
+  PendingInvitation,
   TenantUser,
   TeamMember,
 } from './hooks-admin';
