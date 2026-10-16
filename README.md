@@ -42,6 +42,7 @@ Everything in Weaver starts with an issue: one piece of work, such as a task, a 
 
 ### Keep people informed
 
+- While a project or one of its issues is open, Weaver refreshes it as teammates work. The issue list, board, backlog, sprint views, roadmap, and open issue update when someone changes an issue, comments, changes a sprint, or logs time.
 - A notification bell collects mentions, new form submissions, and alerts from automation rules.
 - Once an administrator connects a mail server, Weaver emails people about assignments, status changes, comments, and mentions. Everyone chooses which emails they get, and each email has an unsubscribe link.
 
@@ -208,6 +209,8 @@ The root [`.env.example`](.env.example) covers local development. Production sta
 
 In production the API refuses to start without explicit JWT secrets, or with the development database and Redis passwords.
 
+Every database connection pins its session time zone to UTC and reads and writes timestamps as UTC, so the API and worker record times correctly whatever time zone their host uses.
+
 ### Tests and CI
 
 ```sh
@@ -216,7 +219,7 @@ pnpm turbo typecheck
 pnpm test
 ```
 
-The API integration tests and the Playwright browser suite need disposable PostgreSQL and Redis services and a database whose name starts with `weaver_e2e`. [`apps/web/e2e/README.md`](apps/web/e2e/README.md) has the exact commands. The [October 14 readiness record](apps/web/e2e/READINESS-2026-10-14.md) lists the runs behind the pilot release.
+The API integration tests and the Playwright browser suite need disposable PostgreSQL and Redis services and a database whose name starts with `weaver_e2e`. [`apps/web/e2e/README.md`](apps/web/e2e/README.md) has the exact commands. The [October 14 readiness record](apps/web/e2e/READINESS-2026-10-14.md) lists the runs behind the pilot release. The API integration tests run in UTC; `pnpm --filter @weaver/api test:e2e:zones` runs them again in New York and Tokyo time to catch time-zone bugs.
 
 `node deploy/compose/verify-sql-migrations.cjs` checks the SQL files in [`packages/db/migrations`](packages/db/migrations). It creates the public tables that no SQL file creates from the TypeORM entities, applies every SQL file twice in file name order, and fails if `schema-plan.cjs` still plans a change. So a new SQL file must be safe to run twice and must leave its table exactly as the entity describes it, including TypeORM's index and foreign key names. The check needs `psql` and the `DATABASE_*` variables for a disposable PostgreSQL server, where it recreates the `weaver_e2e_sql_migrations` database.
 
@@ -237,7 +240,7 @@ After a deploy, check more than the health endpoint. `GET /api/v1/health` return
 
 Other deployment material gets less attention:
 
-- `docker/docker-compose.yml` and `docker/Dockerfile.*` are an older all-in-one stack. CI builds these images, but no guide covers the Compose file.
+- `docker/docker-compose.yml` and `docker/Dockerfile.*` are an older all-in-one stack. CI builds these images, but no guide covers the Compose file. `docker/Dockerfile.api` builds the plugin CLI first, so plugins generated with it in `plugins/` build into the image.
 - `k8s/base`, `k8s/overlays`, and `k8s/helm/weaver` are Kustomize and Helm starting points with placeholder hosts. The Helm chart needs external PostgreSQL and Redis and a ReadWriteMany volume. socket.io has no Redis adapter yet, so multiple API replicas don't share live events.
 
 ### Plugins
@@ -268,7 +271,7 @@ To build your own, use the `weaver` CLI. It isn't published to npm yet, so run i
 node packages/cli/bin/weaver.js create-plugin release-notes --directory plugins
 ```
 
-That scaffolds a manifest, server handlers, and a client entry. `weaver validate`, `weaver dev`, and `weaver build` check it, serve it with hot reload, and build its bundle. The [plugin development guide](docs/plugin-development.md), [plugin API reference](docs/plugin-api-reference.md), and [manifest reference](docs/plugin-manifest-reference.md) cover the details. `PLUGIN.md` predates the CLI and describes registries that no longer exist.
+That scaffolds a manifest, server handlers, and a client entry. `weaver validate` checks it against the same manifest schema the API loads, `weaver dev` serves it with hot reload, and `weaver build` builds its client bundle and compiles its server code to `dist/server`, which is what the API loads in production. The [plugin development guide](docs/plugin-development.md), [plugin API reference](docs/plugin-api-reference.md), and [manifest reference](docs/plugin-manifest-reference.md) cover the details. `PLUGIN.md` predates the CLI and describes registries that no longer exist.
 
 ### Repository layout
 
@@ -324,6 +327,8 @@ These are known gaps in this release:
 
 - Each organization's data lives in its own PostgreSQL schema, and every request checks organization membership and project access.
 - API keys and refresh tokens are stored as hashes. Jira credentials are encrypted inside import jobs.
+- Password reset links are single use, stored only as hashes, and expire after 30 minutes. The request form answers the same way whether or not an account exists. A reset signs the account out everywhere at once, including access tokens already issued and open live connections.
+- Profile, notification preference, unsubscribe, and sign-in saves write only the columns they change, so a request that started earlier can't undo a newer change such as a password reset.
 - Outbound requests from webhooks, mail settings, OIDC discovery, and plugins block private and reserved addresses.
 - Requests are rate limited through Redis, and the API sends a strict Content Security Policy.
 - CI scans the full Git history for secrets. See [repository hygiene](docs/security/repository-hygiene.md), the [project directory privacy policy](docs/security/project-directory-privacy.md), and the [Automatic Time threat model](docs/security/automatic-time-threat-model.md).

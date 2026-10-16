@@ -21,6 +21,7 @@ If someone invited you to an existing project, start with [Weaver for invited cl
 | Bring work over from Jira | [Jira Import](https://github.com/jakwinkler/weaver/wiki/Jira-Import) |
 | Enable extra features | [Plugins](https://github.com/jakwinkler/weaver/wiki/Plugins) |
 | Review private activity drafts and release time | [Automatic Time](https://github.com/jakwinkler/weaver/wiki/Automatic-Time) |
+| Reset a forgotten password | [Getting Started](https://github.com/jakwinkler/weaver/wiki/Getting-Started#forgot-your-password) |
 | Set up Google, GitHub, or organization sign-in | [OAuth Sign In](https://github.com/jakwinkler/weaver/wiki/OAuth-Sign-In) |
 | Review administrative changes | [Audit Log](https://github.com/jakwinkler/weaver/wiki/Audit-Log) |
 | Run Weaver locally or operate a deployment | [Self Hosting](https://github.com/jakwinkler/weaver/wiki/Self-Hosting) |
