@@ -35,6 +35,8 @@ local ttl = redis.call('PTTL', KEYS[1])
 return { count, ttl }
 `;
 
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 @Injectable()
 export class RateLimitingGuard implements CanActivate, OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(RateLimitingGuard.name);
@@ -44,6 +46,10 @@ export class RateLimitingGuard implements CanActivate, OnModuleInit, OnModuleDes
   private readonly DEFAULT_UNAUTHENTICATED_LIMIT = 30;
   private readonly DEFAULT_WINDOW_MS = 60_000;
   private readonly keyPrefix: string;
+  // Invitation lookup and acceptance are reachable without signing in, like the other auth routes.
+  private readonly invitationRoute = new RegExp(
+    `^${escapeRegExp(apiPath('auth/invitations'))}/[^/]+(?:/accept)?$`,
+  );
   private lastStoreWarningAt = 0;
 
   constructor(
@@ -256,7 +262,7 @@ export class RateLimitingGuard implements CanActivate, OnModuleInit, OnModuleDes
       '/auth/refresh',
       '/auth/password-reset/request',
       '/auth/password-reset/confirm',
-    ].some((suffix) => path.endsWith(suffix));
+    ].some((suffix) => path.endsWith(suffix)) || this.invitationRoute.test(path);
   }
 
   private isHealthEndpoint(request: any): boolean {
@@ -264,7 +270,7 @@ export class RateLimitingGuard implements CanActivate, OnModuleInit, OnModuleDes
       .split('?')[0]
       .replace(/\/+$/, '');
     // Sign-in providers is static configuration that every sign-in page view reads.
-    return path.endsWith('/health') || path === 'health' || path === apiPath('auth/providers');
+    return path === apiPath('health') || path === apiPath('auth/providers');
   }
 
   private warnStoreUnavailable(reason: string): void {
