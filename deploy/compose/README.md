@@ -84,6 +84,32 @@ using it; a SQL inverse is not a substitute for a restorable database backup.
 The scripts read exported database environment variables, not the Compose env
 file automatically. Keep connection values out of shell history and logs.
 
+### SQL migrations for the public schema
+
+`packages/db/migrations` holds SQL files for public tables. Apply them in file
+name order, after backup and before generating the schema plan. Each file is
+safe to run again.
+
+- `20261014_organization_invitations.sql` creates `public.organization_invitations`.
+- `20261015_organization_invitations_alignment.sql` renames that table's indexes
+  and constraints to TypeORM's names and converts `created_at` to `timestamptz`
+  in place, in one transaction. Apply it on every installation that has the
+  table, whether the table came from the 20261014 file or from an earlier schema
+  plan. Without it, the plan drops and re-adds `created_at`, which replaces every
+  invitation's creation time. It reads stored times in the session's `TimeZone`,
+  so run it with the API's database time zone (the server default, UTC in this
+  template). It prints the zone it used when it converts rows.
+
+For example, with this template's database:
+
+```sh
+docker compose --env-file "$WEAVER_ENV_FILE" -f deploy/compose/compose.yaml exec -T postgres \
+  psql -X -v ON_ERROR_STOP=1 -U weaver -d weaver < packages/db/migrations/20261015_organization_invitations_alignment.sql
+```
+
+A schema plan generated afterwards should contain no statements for
+`organization_invitations`.
+
 ## Existing installations
 
 When adopting this template path, update deployment automation to reference
