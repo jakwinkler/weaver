@@ -39,4 +39,13 @@ describe('endSession', () => {
     expect(window.localStorage.getItem('weaver:workflow-edge-handles:workflow-1')).toBeNull();
     expect(window.localStorage.getItem('weaver:perPage')).toBe('50');
   });
+
+  it('forgets the Jira import this tab was following', async () => {
+    vi.spyOn(apiClient, 'post').mockResolvedValueOnce({});
+    window.sessionStorage.setItem('weaver:active-jira-import-id', 'job-1');
+
+    await endSession({ clear: vi.fn() } as never);
+
+    expect(window.sessionStorage.getItem('weaver:active-jira-import-id')).toBeNull();
+  });
 });
