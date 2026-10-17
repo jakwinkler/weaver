@@ -41,7 +41,8 @@ export class ImportJobEntity {
   @Column({ name: 'skipped_items', type: 'int', default: 0 })
   skippedItems!: number;
 
-  @Column({ type: 'jsonb', default: () => "'[]'::jsonb" })
+  // A raw "'[]'::jsonb" default never matches: TypeORM strips the cast when it reads the database.
+  @Column({ type: 'jsonb', default: [] })
   errors!: StoredImportError[];
 
   @Column({ name: 'selected_project_keys', type: 'jsonb', nullable: true })

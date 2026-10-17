@@ -3,8 +3,12 @@ import type { ImportedVisibility } from './imported-audience.entity';
 
 /** Original source payloads are available only through administrator import endpoints. */
 @Entity({ name: 'imported_resources' })
-@Unique(['sourceInstance', 'kind', 'externalId'])
-@Index(['importJobId'])
+@Unique('imported_resources_source_instance_kind_external_id_key', [
+  'sourceInstance',
+  'kind',
+  'externalId',
+])
+@Index('IDX_imported_resources_job', ['importJobId'])
 export class ImportedResourceEntity {
   @PrimaryGeneratedColumn('uuid') id!: string;
   @Column({ name: 'source_instance', type: 'text' }) sourceInstance!: string;
