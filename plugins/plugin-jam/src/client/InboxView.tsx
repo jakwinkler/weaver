@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { ArchiveRestore, FilePlus2, Link2, RefreshCw, X } from 'lucide-react';
 import { JamCard } from './JamCard';
+import { flagLabel } from './format';
 import { buttonClass, errorMessage, inputClass, primaryButtonClass } from './format';
 import type { JamView, PluginComponentContext } from './types';
 
@@ -177,6 +178,18 @@ export function InboxView({ pluginContext }: InboxViewProps) {
                 )
               }
             >
+              {(jam.flag || jam.suggestedProjectKey) && (
+                <p className="mt-1 text-xs text-amber-700">
+                  {[
+                    flagLabel(jam.flag),
+                    jam.suggestedProjectKey
+                      ? `Suggested project: ${jam.suggestedProjectKey}`
+                      : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </p>
+              )}
               {expanded?.jamId === jam.jamId &&
                 (expanded.mode === 'create' ? (
                   <CreateIssueForm
@@ -225,7 +238,7 @@ function CreateIssueForm({
 }: FormProps & { onCreated: (key: string) => void }) {
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [issueTypes, setIssueTypes] = useState<IssueTypeOption[]>([]);
-  const [projectKey, setProjectKey] = useState('');
+  const [projectKey, setProjectKey] = useState(jam.suggestedProjectKey ?? '');
   const [summary, setSummary] = useState(jam.title ?? '');
   const [issueTypeId, setIssueTypeId] = useState('');
   const [priority, setPriority] = useState('');

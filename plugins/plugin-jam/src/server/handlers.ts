@@ -1,4 +1,4 @@
-import { createHash, createHmac, randomUUID, timingSafeEqual } from 'crypto';
+import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from 'crypto';
 import type {
   PluginContext,
   PluginCreatedIssue,
@@ -8,8 +8,9 @@ import type {
   PluginRichTextDocument,
 } from '@weaver/sdk';
 
-// Server code stays in this one file because the API loads plugin TypeScript with Node's type
-// stripping in development, where an extensionless relative import does not resolve.
+// This file is the plugin's whole server: lifecycle hooks, onEvent, and route handlers. The API
+// loads plugin TypeScript with Node's type stripping in development, where an extensionless
+// relative import does not resolve, so the code is not split across modules.
 // context.db.query returns [rows, rowCount] for a top-level UPDATE or DELETE (TypeORM's Postgres
 // driver), so statements that need their RETURNING rows run inside a CTE and SELECT them.
 // Design and spike evidence: docs/roadmap/30-jam-plugin.md.
@@ -20,6 +21,9 @@ const MCP_PROTOCOL_VERSION = '2025-06-18';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const JAM_URL =
   /^https:\/\/jam\.dev\/c\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:[/?#].*)?$/i;
+// The request token Weaver puts in a recording link's jam-reference: jr=<request id>.<signature>
+const REQUEST_TOKEN =
+  /[?&]jr=([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.([A-Za-z0-9_-]{22})(?=$|[&#])/i;
 const SIGNATURE_TOLERANCE_SECONDS = 300;
 // Minutes to wait after each failed backlink attempt; the attempt after the last wait is final.
 const BACKLINK_RETRY_MINUTES = [1, 10, 60, 360];
@@ -28,9 +32,30 @@ const PRIORITIES = ['lowest', 'low', 'medium', 'high', 'highest'] as const;
 const INBOX_LIMIT = 100;
 const SYNC_PAGE_SIZE = 50;
 const SYNC_DETAIL_LIMIT = 20;
+const SUMMARY_TTL_MINUTES = 60;
 const DAY_MS = 86_400_000;
+const WEBHOOK_JAM_TIMEOUT_MS = 4_000;
 
 type Priority = (typeof PRIORITIES)[number];
+
+// ---------------------------------------------------------------------------------------------
+// Lifecycle. The host runs the versioned migrations on install and upgrade.
+
+export async function onUninstall(context: PluginContext): Promise<void> {
+  await context.db.runMigration(
+    `DROP TABLE IF EXISTS jam_summaries, jam_issue_links, jam_recording_requests,
+       jam_routing_rules, jam_items, jam_plugin_state CASCADE`,
+  );
+  context.logger.info('Jam plugin uninstalled');
+}
+
+export async function onEnable(context: PluginContext): Promise<void> {
+  context.logger.info('Jam plugin enabled');
+}
+
+export async function onDisable(context: PluginContext): Promise<void> {
+  context.logger.info('Jam plugin disabled');
+}
 
 // ---------------------------------------------------------------------------------------------
 // Settings and plugin state
@@ -40,18 +65,29 @@ interface JamSettings {
   apiToken: string;
   accessExpiresOn: string;
   webhookSecret: string;
+  recordingLinkUrl: string;
   postBacklinkComments: boolean;
+  showDebugSummary: boolean;
+  embedPlayer: boolean;
+  notifyJamOnResolve: boolean;
+  autoCreateHourlyLimit: number;
 }
 
 function readSettings(context: PluginContext): JamSettings {
   const text = (key: string) =>
     typeof context.settings[key] === 'string' ? (context.settings[key] as string).trim() : '';
+  const limit = Number(context.settings.autoCreateHourlyLimit);
   return {
     workspaceId: text('jamWorkspaceId').toLowerCase(),
     apiToken: text('jamApiToken'),
     accessExpiresOn: text('jamAccessExpiresOn'),
     webhookSecret: text('jamWebhookSecret'),
+    recordingLinkUrl: webUrl(text('recordingLinkUrl'), ['https:']) ?? '',
     postBacklinkComments: context.settings.postBacklinkComments !== false,
+    showDebugSummary: context.settings.showDebugSummary !== false,
+    embedPlayer: context.settings.embedPlayer === true,
+    notifyJamOnResolve: context.settings.notifyJamOnResolve === true,
+    autoCreateHourlyLimit: Number.isInteger(limit) && limit > 0 ? Math.min(limit, 500) : 20,
   };
 }
 
@@ -71,12 +107,8 @@ async function readState(
   context: PluginContext,
 ): Promise<Record<string, { value: string; updatedAt: string }>> {
   const rows = (await context.db.query(
-    'SELECT key, value, updated_at FROM jam_plugin_state',
-  )) as Array<{
-    key: string;
-    value: string;
-    updated_at: string | Date;
-  }>;
+    `SELECT key, value, updated_at FROM jam_plugin_state WHERE key <> 'reference_secret'`,
+  )) as Array<{ key: string; value: string; updated_at: string | Date }>;
   return Object.fromEntries(
     rows.map((row) => [
       row.key,
@@ -168,6 +200,10 @@ function withinBounds(value: unknown, maxNodes = 5000, maxDepth = 12): boolean {
   return true;
 }
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 // ---------------------------------------------------------------------------------------------
 // Webhook signature (Standard Webhooks, as sent by Jam's Svix portal)
 
@@ -199,6 +235,51 @@ export function verifyJamSignature(input: {
       return provided.length === expected.length && timingSafeEqual(provided, expected);
     });
   return matches ? { ok: true } : { ok: false, reason: 'Invalid webhook signature' };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Recording request references. A request's link carries jam-reference=<issue URL>?jr=<id>.<sig>.
+// The signature binds the request to this tenant, so a recipient cannot point a recording at
+// another issue. The request row, not the issue key in the URL, decides where the Jam goes.
+
+async function referenceSecret(context: PluginContext): Promise<Buffer> {
+  await context.db.query(
+    `INSERT INTO jam_plugin_state (key, value) VALUES ('reference_secret', $1) ON CONFLICT (key) DO NOTHING`,
+    [randomBytes(32).toString('base64')],
+  );
+  const [row] = (await context.db.query(
+    `SELECT value FROM jam_plugin_state WHERE key = 'reference_secret'`,
+  )) as Array<{ value: string }>;
+  return Buffer.from(row.value, 'base64');
+}
+
+function signRequest(secret: Buffer, tenantId: string, requestId: string): string {
+  return createHmac('sha256', secret)
+    .update(`${tenantId}|${requestId}`)
+    .digest()
+    .subarray(0, 16)
+    .toString('base64url');
+}
+
+export function parseRequestToken(
+  reference: string | null,
+): { requestId: string; signature: string } | null {
+  if (!reference) return null;
+  const match = REQUEST_TOKEN.exec(reference);
+  return match ? { requestId: match[1].toLowerCase(), signature: match[2] } : null;
+}
+
+function requestReference(issueKey: string, requestId: string, signature: string): string {
+  const base = webBaseUrl();
+  const token = `jr=${requestId}.${signature}`;
+  return base ? `${base}/issues/${issueKey}?${token}` : `weaver:${issueKey}?${token}`;
+}
+
+function recordingUrl(linkUrl: string, reference: string, title: string | null): string {
+  const url = new URL(linkUrl);
+  url.searchParams.set('jam-reference', reference);
+  if (title) url.searchParams.set('jam-title', title);
+  return url.toString();
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -370,18 +451,23 @@ interface JamRow {
   author_name: string | null;
   thumbnail_url: string | null;
   system_info: Record<string, unknown> | null;
+  recording_link_public_id: string | null;
   recording_link_name: string | null;
+  recording_reference: string | null;
   submitter_comment: string | null;
   jam_created_at: string | Date;
   received_via: string;
   state: string;
   flag: string | null;
+  suggested_project_key: string | null;
   received_at: string | Date;
 }
 
 const JAM_COLUMNS = `j.jam_id, j.team_id, j.jam_url, j.jam_type, j.title, j.description, j.original_url,
-  j.origin, j.author_email, j.author_name, j.thumbnail_url, j.system_info, j.recording_link_name,
-  j.submitter_comment, j.jam_created_at, j.received_via, j.state, j.flag, j.received_at`;
+  j.origin, j.author_email, j.author_name, j.thumbnail_url, j.system_info, j.recording_link_public_id,
+  j.recording_link_name, j.recording_reference, j.submitter_comment, j.jam_created_at, j.received_via,
+  j.state, j.flag, sp.key AS suggested_project_key, j.received_at`;
+const JAM_FROM = 'jam_items j LEFT JOIN projects sp ON sp.id = j.suggested_project_id';
 
 function toJamView(row: JamRow) {
   return {
@@ -402,13 +488,14 @@ function toJamView(row: JamRow) {
     receivedVia: row.received_via,
     state: row.state,
     flag: row.flag,
+    suggestedProjectKey: row.suggested_project_key,
     receivedAt: new Date(row.received_at).toISOString(),
   };
 }
 
 async function findJam(context: PluginContext, jamId: string): Promise<JamRow | null> {
   const rows = (await context.db.query(
-    `SELECT ${JAM_COLUMNS} FROM jam_items j WHERE j.jam_id = $1`,
+    `SELECT ${JAM_COLUMNS} FROM ${JAM_FROM} WHERE j.jam_id = $1`,
     [jamId],
   )) as JamRow[];
   return rows[0] ?? null;
@@ -419,8 +506,52 @@ async function issueIdFor(context: PluginContext, issueKey: string): Promise<str
   return isRecord(issue) && typeof issue.id === 'string' ? issue.id : null;
 }
 
+/** Moves a new Jam to 'creating' so two routes never act on it at once. */
+async function claimJam(
+  context: PluginContext,
+  jamId: string,
+  fromState = 'new',
+): Promise<boolean> {
+  const rows = await context.db.query(
+    `WITH claimed AS (
+       UPDATE jam_items SET state = 'creating' WHERE jam_id = $1 AND state = $2 RETURNING jam_id
+     ) SELECT jam_id FROM claimed`,
+    [jamId, fromState],
+  );
+  return rows.length > 0;
+}
+
+/** Returns a claimed Jam to the inbox, recording why it is there. */
+async function releaseJam(
+  context: PluginContext,
+  jamId: string,
+  state: string,
+  flag: string | null,
+  suggestedProjectId: string | null = null,
+): Promise<void> {
+  await context.db.query(
+    `UPDATE jam_items SET state = $2, flag = COALESCE($3, flag),
+            suggested_project_id = COALESCE($4, suggested_project_id)
+      WHERE jam_id = $1 AND state = 'creating'`,
+    [jamId, state, flag, suggestedProjectId],
+  );
+}
+
+async function flagInboxJam(
+  context: PluginContext,
+  jamId: string,
+  flag: string | null,
+  suggestedProjectId: string | null,
+): Promise<void> {
+  await context.db.query(
+    `UPDATE jam_items SET flag = COALESCE($2, flag), suggested_project_id = COALESCE($3, suggested_project_id)
+      WHERE jam_id = $1 AND state = 'new'`,
+    [jamId, flag, suggestedProjectId],
+  );
+}
+
 // ---------------------------------------------------------------------------------------------
-// Issue description (Weaver rich text: paragraph, heading, bulletList, hardBreak, link marks)
+// Rich text (Weaver accepts paragraph, heading, bulletList, hardBreak, link marks, mentions)
 
 const textNode = (value: string) => ({ type: 'text', text: value });
 const linkNode = (label: string, href: string) => ({
@@ -583,7 +714,7 @@ async function callJamTool(
       },
     );
   } catch (error) {
-    throw jamError('unavailable', `Jam could not be reached (${(error as Error).message})`);
+    throw jamError('unavailable', `Jam could not be reached (${errorMessage(error)})`);
   }
   if (response.status === 401 || response.status === 403) {
     throw jamError('unauthorized', 'Jam rejected the access token');
@@ -642,9 +773,9 @@ function jamFailureResponse(error: unknown): PluginResponse {
         'Jam rejected the access token. Create a new token and update the plugin settings.',
       );
     case 'tool':
-      return fail(404, `Jam could not complete the request: ${(error as Error).message}`);
+      return fail(404, `Jam could not complete the request: ${errorMessage(error)}`);
     case 'unavailable':
-      return fail(502, (error as Error).message);
+      return fail(502, errorMessage(error));
     default:
       throw error;
   }
@@ -659,7 +790,7 @@ async function noteJamFailure(context: PluginContext, error: unknown): Promise<v
       'Jam rejected the access token. Create a new token and update the plugin settings.',
     );
   }
-  if (kind) context.logger.warn('Jam call failed', { kind, message: (error as Error).message });
+  if (kind) context.logger.warn('Jam call failed', { kind, message: errorMessage(error) });
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -677,20 +808,31 @@ function backlinkBody(issueKey: string): string {
     : `Tracked in Weaver as ${issueKey}.`;
 }
 
+type LinkSource = 'inbox' | 'attached' | 'recording_request' | 'rule';
+
 async function linkJam(
   context: PluginContext,
   settings: JamSettings,
   jamId: string,
   issueId: string,
-  source: 'inbox' | 'attached',
-  userId: string,
+  source: LinkSource,
+  userId: string | null,
+  via: { requestId?: string; ruleId?: string } = {},
 ): Promise<string | null> {
   const rows = (await context.db.query(
-    `INSERT INTO jam_issue_links (jam_id, issue_id, link_source, linked_by, backlink_state)
-     VALUES ($1, $2, $3, $4, $5)
+    `INSERT INTO jam_issue_links (jam_id, issue_id, link_source, linked_by, backlink_state, request_id, rule_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
      ON CONFLICT (jam_id, issue_id) DO NOTHING
      RETURNING id`,
-    [jamId, issueId, source, userId, settings.postBacklinkComments ? 'pending' : 'disabled'],
+    [
+      jamId,
+      issueId,
+      source,
+      userId,
+      settings.postBacklinkComments ? 'pending' : 'disabled',
+      via.requestId ?? null,
+      via.ruleId ?? null,
+    ],
   )) as Array<{ id: string }>;
   await context.db.query(
     `UPDATE jam_items
@@ -709,6 +851,7 @@ async function attemptBacklink(
   context: PluginContext,
   settings: JamSettings,
   link: { id: string; jamId: string; issueKey: string; attempts: number },
+  timeout = 8_000,
 ): Promise<BacklinkOutcome> {
   try {
     await callJamTool(
@@ -716,14 +859,14 @@ async function attemptBacklink(
       settings,
       'createComment',
       { jamId: link.jamId, body: backlinkBody(link.issueKey) },
-      8_000,
+      timeout,
     );
   } catch (error) {
     await noteJamFailure(context, error);
     const kind = jamKindOf(error);
     if (kind === 'unauthorized' || kind === 'not_configured') return 'blocked';
     if (!kind)
-      context.logger.error('Unexpected backlink failure', { message: (error as Error).message });
+      context.logger.error('Unexpected backlink failure', { message: errorMessage(error) });
     const attempts = link.attempts + 1;
     if (attempts >= BACKLINK_MAX_ATTEMPTS) {
       await context.db.query(
@@ -786,11 +929,330 @@ async function backlinkNewLink(
   linkId: string | null,
   jamId: string,
   issueKey: string,
+  timeout?: number,
 ): Promise<BacklinkOutcome | 'disabled' | 'existing'> {
   if (!linkId) return 'existing';
   if (!settings.postBacklinkComments) return 'disabled';
   if (!settings.apiToken) return 'pending';
-  return attemptBacklink(context, settings, { id: linkId, jamId, issueKey, attempts: 0 });
+  return attemptBacklink(context, settings, { id: linkId, jamId, issueKey, attempts: 0 }, timeout);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Issue creation
+
+/**
+ * The Jam author becomes the reporter when they are a Weaver member who may report in the
+ * project. Otherwise the fallback is the reporter: the person triaging, or a rule's creator.
+ */
+async function createIssueAsReporter(
+  context: PluginContext,
+  projectKey: string,
+  input: PluginIssueCreateInput,
+  authorEmail: string | null,
+  fallbackReporterId: string,
+): Promise<PluginCreatedIssue> {
+  const author = authorEmail ? await context.api.users.findMemberByEmail(authorEmail) : null;
+  if (author && author.id !== fallbackReporterId) {
+    try {
+      return await context.api.issues.create(projectKey, input, { reporterId: author.id });
+    } catch (error) {
+      if (statusOf(error) !== 403) throw error;
+    }
+  }
+  return context.api.issues.create(projectKey, input, { reporterId: fallbackReporterId });
+}
+
+function issueInput(
+  row: JamRow,
+  fields: {
+    summary?: string;
+    priority?: Priority;
+    issueTypeId?: string | null;
+    assigneeId?: string | null;
+    labels?: string[];
+  },
+): PluginIssueCreateInput {
+  const input: PluginIssueCreateInput = {
+    summary: fields.summary ?? defaultSummary(row),
+    description: buildDescription(row),
+  };
+  if (fields.priority) input.priority = fields.priority;
+  if (fields.issueTypeId) input.issueTypeId = fields.issueTypeId;
+  if (fields.assigneeId) input.assigneeId = fields.assigneeId;
+  if (fields.labels?.length) input.labels = fields.labels;
+  return input;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Routing a newly received Jam: a recording request first, then the first matching rule.
+// Runs after the webhook transaction commits, so no Jam call happens while a lock is held.
+
+interface RequestRow {
+  id: string;
+  issue_id: string;
+  issue_key: string;
+  requested_by: string;
+  expires_at: string | Date;
+  revoked_at: string | Date | null;
+}
+
+async function routeToRequest(
+  context: PluginContext,
+  settings: JamSettings,
+  snapshot: JamSnapshot,
+): Promise<'attached' | 'flagged' | 'none'> {
+  const parsed = parseRequestToken(snapshot.recordingReference);
+  if (!parsed) return 'none';
+  const expected = signRequest(await referenceSecret(context), context.tenant.id, parsed.requestId);
+  const provided = Buffer.from(parsed.signature);
+  const valid =
+    provided.length === expected.length && timingSafeEqual(provided, Buffer.from(expected));
+  const [request] = valid
+    ? ((await context.db.query(
+        `SELECT r.id, r.issue_id, i.key AS issue_key, r.requested_by, r.expires_at, r.revoked_at
+           FROM jam_recording_requests r JOIN issues i ON i.id = r.issue_id
+          WHERE r.id = $1`,
+        [parsed.requestId],
+      )) as RequestRow[])
+    : [];
+  const problem = !request
+    ? 'invalid_reference'
+    : request.revoked_at
+      ? 'request_revoked'
+      : new Date(request.expires_at).getTime() < Date.now()
+        ? 'request_expired'
+        : null;
+  if (!request || problem) {
+    await flagInboxJam(context, snapshot.jamId, problem ?? 'invalid_reference', null);
+    return 'flagged';
+  }
+  if (!(await claimJam(context, snapshot.jamId))) return 'none';
+  try {
+    const linkId = await linkJam(
+      context,
+      settings,
+      snapshot.jamId,
+      request.issue_id,
+      'recording_request',
+      request.requested_by,
+      {
+        requestId: request.id,
+      },
+    );
+    await context.db.query(
+      'UPDATE jam_recording_requests SET jams_received = jams_received + 1 WHERE id = $1',
+      [request.id],
+    );
+    try {
+      await context.api.issues.addComment(request.issue_key, recordingArrivedComment(snapshot), {
+        authorId: request.requested_by,
+      });
+    } catch (error) {
+      // The Jam stays linked; only the notifying comment is lost (for example, the requester
+      // has since lost access to the project).
+      context.logger.warn('Could not comment on the requesting issue', {
+        message: errorMessage(error),
+      });
+    }
+    await context.events.emit('jam.linked', {
+      jamId: snapshot.jamId,
+      issueKey: request.issue_key,
+      source: 'recording_request',
+    });
+    await backlinkNewLink(
+      context,
+      settings,
+      linkId,
+      snapshot.jamId,
+      request.issue_key,
+      WEBHOOK_JAM_TIMEOUT_MS,
+    );
+    return 'attached';
+  } catch (error) {
+    await releaseJam(context, snapshot.jamId, 'new', 'routing_failed');
+    context.logger.error('Could not attach a requested recording', {
+      message: errorMessage(error),
+    });
+    return 'flagged';
+  }
+}
+
+function recordingArrivedComment(snapshot: JamSnapshot): PluginRichTextDocument {
+  const content: unknown[] = [
+    {
+      type: 'paragraph',
+      content: [
+        textNode('A Jam was recorded for this request: '),
+        linkNode(snapshot.title ?? 'Open in Jam', snapshot.jamUrl),
+      ],
+    },
+  ];
+  if (snapshot.submitterComment)
+    content.push(paragraphOf(`Comment from the recorder: ${snapshot.submitterComment}`));
+  return { type: 'doc', content };
+}
+
+interface RuleMatch {
+  urlHost?: string;
+  authorEmailDomain?: string;
+  recordingLinkPublicId?: string;
+  origin?: string;
+  titlePrefix?: string;
+  folder?: string;
+}
+
+interface RuleRow {
+  id: string;
+  position: number;
+  name: string;
+  enabled: boolean;
+  match: RuleMatch;
+  action: 'create' | 'inbox';
+  project_id: string;
+  project_key: string;
+  project_name: string;
+  issue_type_id: string | null;
+  priority: Priority | null;
+  labels: string[] | null;
+  assignee_id: string | null;
+  hourly_limit: number | null;
+  created_by: string;
+  created_at: string | Date;
+}
+
+const RULE_COLUMNS = `r.id, r.position, r.name, r.enabled, r.match, r.action, r.project_id, p.key AS project_key,
+  p.name AS project_name, r.issue_type_id, r.priority, r.labels, r.assignee_id, r.hourly_limit, r.created_by,
+  r.created_at`;
+
+export function hostMatches(pattern: string, url: string | null): boolean {
+  if (!url) return false;
+  let host: string;
+  try {
+    host = new URL(url).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  const wanted = pattern.toLowerCase();
+  if (wanted.startsWith('*.')) {
+    const suffix = wanted.slice(2);
+    return host === suffix || host.endsWith(`.${suffix}`);
+  }
+  return host === wanted;
+}
+
+function folderNames(folder: unknown): string[] {
+  if (typeof folder === 'string') return [folder.toLowerCase()];
+  if (!isRecord(folder)) return [];
+  return ['name', 'shortId', 'id']
+    .map((key) => folder[key])
+    .filter((value): value is string => typeof value === 'string')
+    .map((value) => value.toLowerCase());
+}
+
+/** True when every matcher the rule sets matches. A folder matcher needs Jam's getDetails. */
+function ruleMatches(match: RuleMatch, snapshot: JamSnapshot, folders: string[] | null): boolean {
+  if (match.urlHost && !hostMatches(match.urlHost, snapshot.originalUrl)) return false;
+  if (match.authorEmailDomain) {
+    const domain = snapshot.authorEmail?.split('@')[1];
+    if (domain !== match.authorEmailDomain.toLowerCase()) return false;
+  }
+  if (match.recordingLinkPublicId && snapshot.recordingLinkPublicId !== match.recordingLinkPublicId)
+    return false;
+  if (match.origin && snapshot.origin !== match.origin) return false;
+  if (
+    match.titlePrefix &&
+    !(snapshot.title ?? '').toLowerCase().startsWith(match.titlePrefix.toLowerCase())
+  ) {
+    return false;
+  }
+  if (match.folder && !(folders ?? []).includes(match.folder.toLowerCase())) return false;
+  return true;
+}
+
+async function routeByRules(
+  context: PluginContext,
+  settings: JamSettings,
+  snapshot: JamSnapshot,
+): Promise<void> {
+  const rules = (await context.db.query(
+    `SELECT ${RULE_COLUMNS} FROM jam_routing_rules r JOIN projects p ON p.id = r.project_id
+      WHERE r.enabled ORDER BY r.position, r.created_at`,
+  )) as RuleRow[];
+  if (!rules.length) return;
+
+  let folders: string[] | null = null;
+  if (rules.some((rule) => rule.match.folder)) {
+    try {
+      const details = await callJamJson(
+        context,
+        settings,
+        'getDetails',
+        { jamId: snapshot.jamId },
+        WEBHOOK_JAM_TIMEOUT_MS,
+      );
+      folders = folderNames(details.folder);
+    } catch (error) {
+      await noteJamFailure(context, error);
+      await flagInboxJam(context, snapshot.jamId, 'routing_lookup_failed', null);
+      // Rules without a folder matcher still apply.
+    }
+  }
+
+  const rule = rules.find((candidate) => ruleMatches(candidate.match, snapshot, folders));
+  if (!rule) return;
+  if (rule.action === 'inbox') {
+    await flagInboxJam(context, snapshot.jamId, null, rule.project_id);
+    return;
+  }
+
+  const limit = rule.hourly_limit ?? settings.autoCreateHourlyLimit;
+  const [{ recent }] = (await context.db.query(
+    `SELECT count(*)::int AS recent FROM jam_issue_links WHERE rule_id = $1 AND created_at > now() - interval '1 hour'`,
+    [rule.id],
+  )) as Array<{ recent: number }>;
+  if (recent >= limit) {
+    await flagInboxJam(context, snapshot.jamId, 'rate_limited', rule.project_id);
+    return;
+  }
+
+  if (!(await claimJam(context, snapshot.jamId))) return;
+  try {
+    const row = (await findJam(context, snapshot.jamId))!;
+    const issue = await createIssueAsReporter(
+      context,
+      rule.project_key,
+      issueInput(row, {
+        priority: rule.priority ?? undefined,
+        issueTypeId: rule.issue_type_id,
+        assigneeId: rule.assignee_id,
+        labels: rule.labels ?? [],
+      }),
+      row.author_email,
+      rule.created_by,
+    );
+    const linkId = await linkJam(context, settings, snapshot.jamId, issue.id, 'rule', null, {
+      ruleId: rule.id,
+    });
+    await context.events.emit('jam.linked', {
+      jamId: snapshot.jamId,
+      issueKey: issue.key,
+      source: 'rule',
+    });
+    await backlinkNewLink(
+      context,
+      settings,
+      linkId,
+      snapshot.jamId,
+      issue.key,
+      WEBHOOK_JAM_TIMEOUT_MS,
+    );
+  } catch (error) {
+    await releaseJam(context, snapshot.jamId, 'new', 'rule_failed', rule.project_id);
+    context.logger.warn('A Jam routing rule could not create an issue', {
+      rule: rule.name,
+      message: errorMessage(error),
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -838,12 +1300,19 @@ export async function receiveJamWebhook(
   }
 
   const digest = createHash('sha256').update(`svix:${req.headers['svix-id']}`).digest('hex');
+  const outcome = { inserted: false };
   await context.webhooks.processOnce(digest, async () => {
-    if (await insertSnapshot(context, snapshot, 'webhook', 'new')) {
+    outcome.inserted = await insertSnapshot(context, snapshot, 'webhook', 'new');
+    if (outcome.inserted) {
       await context.events.emit('jam.received', { jamId: snapshot.jamId, origin: snapshot.origin });
     }
   });
   await setState(context, 'last_webhook_at', new Date().toISOString());
+  // Routing runs once, for the delivery that stored the Jam. If it fails part way, the Jam
+  // stays in the inbox with a flag rather than being retried into a duplicate issue.
+  if (outcome.inserted && (await routeToRequest(context, settings, snapshot)) === 'none') {
+    await routeByRules(context, settings, snapshot);
+  }
   return json(200, { message: 'OK' });
 }
 
@@ -887,6 +1356,7 @@ export async function getConnection(
     workspaceId: settings.workspaceId || null,
     tokenConfigured: Boolean(settings.apiToken),
     webhookSecretConfigured: Boolean(settings.webhookSecret),
+    recordingLinkConfigured: Boolean(settings.recordingLinkUrl),
     accessExpiresOn: settings.accessExpiresOn || null,
     daysUntilExpiry: daysUntil(settings.accessExpiresOn),
     postBacklinkComments: settings.postBacklinkComments,
@@ -962,7 +1432,7 @@ export async function listInbox(
 ): Promise<PluginResponse> {
   const state = req.query.state === 'dismissed' ? 'dismissed' : 'new';
   const rows = (await context.db.query(
-    `SELECT ${JAM_COLUMNS} FROM jam_items j WHERE j.state = $1 ORDER BY j.jam_created_at DESC LIMIT ${INBOX_LIMIT}`,
+    `SELECT ${JAM_COLUMNS} FROM ${JAM_FROM} WHERE j.state = $1 ORDER BY j.jam_created_at DESC LIMIT ${INBOX_LIMIT}`,
     [state],
   )) as JamRow[];
   const counts = (await context.db.query(
@@ -975,8 +1445,7 @@ export async function listInbox(
   });
 }
 
-interface CreateIssueBody {
-  projectKey: string;
+interface IssueFields {
   summary?: string;
   priority?: Priority;
   issueTypeId?: string;
@@ -984,26 +1453,23 @@ interface CreateIssueBody {
   labels?: string[];
 }
 
-function parseCreateIssueBody(value: unknown): CreateIssueBody | { error: string } {
-  if (!isRecord(value)) return { error: 'A JSON body is required' };
-  const projectKey = typeof value.projectKey === 'string' ? value.projectKey.trim() : '';
-  if (!/^[A-Za-z][A-Za-z0-9_]{0,31}$/.test(projectKey)) return { error: 'Choose a project' };
-  const body: CreateIssueBody = { projectKey };
+function parseIssueFields(value: Record<string, unknown>): IssueFields | { error: string } {
+  const fields: IssueFields = {};
   if (value.summary !== undefined && value.summary !== null && value.summary !== '') {
     const summary = text(value.summary, 501);
     if (!summary || summary.length > 500)
       return { error: 'The summary must be 1 to 500 characters' };
-    body.summary = summary;
+    fields.summary = summary;
   }
   if (value.priority !== undefined && value.priority !== null && value.priority !== '') {
     if (!PRIORITIES.includes(value.priority as Priority)) return { error: 'Unknown priority' };
-    body.priority = value.priority as Priority;
+    fields.priority = value.priority as Priority;
   }
   for (const field of ['issueTypeId', 'assigneeId'] as const) {
     if (value[field] === undefined || value[field] === null || value[field] === '') continue;
     const id = uuid(value[field]);
     if (!id) return { error: `Invalid ${field}` };
-    body[field] = id;
+    fields[field] = id;
   }
   if (value.labels !== undefined && value.labels !== null) {
     if (!Array.isArray(value.labels) || value.labels.length > 20)
@@ -1011,31 +1477,14 @@ function parseCreateIssueBody(value: unknown): CreateIssueBody | { error: string
     const labels = value.labels.map((label) => text(label, 51));
     if (labels.some((label) => !label || label.length > 50))
       return { error: 'Labels must be 1 to 50 characters' };
-    body.labels = [...new Set(labels as string[])];
+    fields.labels = [...new Set(labels as string[])];
   }
-  return body;
+  return fields;
 }
 
-/**
- * The Jam author becomes the reporter when they are a Weaver member who may report in the
- * project. Otherwise the person triaging is the reporter.
- */
-async function createIssueAsReporter(
-  context: PluginContext,
-  projectKey: string,
-  input: PluginIssueCreateInput,
-  authorEmail: string | null,
-  triagerId: string,
-): Promise<PluginCreatedIssue> {
-  const author = authorEmail ? await context.api.users.findMemberByEmail(authorEmail) : null;
-  if (author && author.id !== triagerId) {
-    try {
-      return await context.api.issues.create(projectKey, input, { reporterId: author.id });
-    } catch (error) {
-      if (statusOf(error) !== 403) throw error;
-    }
-  }
-  return context.api.issues.create(projectKey, input);
+function parseProjectKey(value: unknown): string | null {
+  const key = typeof value === 'string' ? value.trim() : '';
+  return /^[A-Za-z][A-Za-z0-9_]{0,31}$/.test(key) ? key : null;
 }
 
 export async function createIssueFromJam(
@@ -1046,10 +1495,13 @@ export async function createIssueFromJam(
   if (!user) return fail(401, 'Sign in to create issues from Jams');
   const jamId = uuid(req.params.jamId);
   if (!jamId) return fail(400, 'Invalid Jam ID');
-  const body = parseCreateIssueBody(req.body);
-  if ('error' in body) return fail(400, body.error);
+  if (!isRecord(req.body)) return fail(400, 'A JSON body is required');
+  const projectKey = parseProjectKey(req.body.projectKey);
+  if (!projectKey) return fail(400, 'Choose a project');
+  const fields = parseIssueFields(req.body);
+  if ('error' in fields) return fail(400, fields.error);
   // The person triaging must be able to create work in the project, whoever ends up as reporter.
-  await context.api.projects.assertAccess(body.projectKey, 'write');
+  await context.api.projects.assertAccess(projectKey, 'write');
 
   const row = await findJam(context, jamId);
   if (!row) return fail(404, 'Jam not found');
@@ -1061,31 +1513,21 @@ export async function createIssueFromJam(
         : 'An issue is already being created for this Jam',
     );
   }
-  const claimed = await context.db.query(
-    `WITH claimed AS (
-       UPDATE jam_items SET state = 'creating' WHERE jam_id = $1 AND state = $2 RETURNING jam_id
-     ) SELECT jam_id FROM claimed`,
-    [jamId, row.state],
-  );
-  if (!claimed.length) return fail(409, 'An issue is already being created for this Jam');
+  if (!(await claimJam(context, jamId, row.state)))
+    return fail(409, 'An issue is already being created for this Jam');
 
   const settings = readSettings(context);
   let issue: PluginCreatedIssue;
   try {
-    const input: PluginIssueCreateInput = {
-      summary: body.summary ?? defaultSummary(row),
-      description: buildDescription(row),
-    };
-    if (body.priority) input.priority = body.priority;
-    if (body.issueTypeId) input.issueTypeId = body.issueTypeId;
-    if (body.assigneeId) input.assigneeId = body.assigneeId;
-    if (body.labels) input.labels = body.labels;
-    issue = await createIssueAsReporter(context, body.projectKey, input, row.author_email, user.id);
-  } catch (error) {
-    await context.db.query(
-      `UPDATE jam_items SET state = $2 WHERE jam_id = $1 AND state = 'creating'`,
-      [jamId, row.state],
+    issue = await createIssueAsReporter(
+      context,
+      projectKey,
+      issueInput(row, fields),
+      row.author_email,
+      user.id,
     );
+  } catch (error) {
+    await releaseJam(context, jamId, row.state, null);
     throw error;
   }
 
@@ -1185,6 +1627,10 @@ export async function syncFromJam(
           (await insertSnapshot(context, snapshot, 'sync', 'new'))
         ) {
           imported += 1;
+          // Synced Jams carry no recording reference, so a shared request link cannot be matched.
+          if (snapshot.origin === 'recording_link') {
+            await flagInboxJam(context, id, 'recording_request_unmatched', null);
+          }
           await context.events.emit('jam.received', { jamId: id, origin: snapshot.origin });
         }
       }
@@ -1208,9 +1654,10 @@ export async function listIssueJams(
 ): Promise<PluginResponse> {
   const issueId = await issueIdFor(context, req.params.issueKey);
   if (!issueId) return fail(404, 'Issue not found');
+  const settings = readSettings(context);
   const rows = (await context.db.query(
     `SELECT ${JAM_COLUMNS}, l.link_source, l.backlink_state, l.created_at AS linked_at
-       FROM jam_issue_links l JOIN jam_items j ON j.jam_id = l.jam_id
+       FROM jam_issue_links l JOIN ${JAM_FROM} ON j.jam_id = l.jam_id
       WHERE l.issue_id = $1
       ORDER BY l.created_at`,
     [issueId],
@@ -1224,6 +1671,11 @@ export async function listIssueJams(
         linkedAt: new Date(row.linked_at).toISOString(),
       },
     })),
+    display: {
+      showDebugSummary: settings.showDebugSummary && Boolean(settings.apiToken),
+      embedPlayer: settings.embedPlayer,
+      recordingRequests: Boolean(settings.recordingLinkUrl),
+    },
   });
 }
 
@@ -1288,4 +1740,609 @@ export async function detachJam(
   );
   await context.events.emit('jam.unlinked', { jamId, issueKey: req.params.issueKey });
   return json(200, { jamId, unlinked: true });
+}
+
+// ---------------------------------------------------------------------------------------------
+// Routes: debug summary. Fetched with the plugin's token and shown to anyone who can read the
+// issue, so it keeps only counts, trimmed console errors, and method, host, path, status, and
+// duration of failed requests. Bodies, headers, cookies, and query strings never leave Jam.
+
+function redactSecrets(value: string): string {
+  return value
+    .replace(/(bearer\s+)[A-Za-z0-9._~+/-]+=*/gi, '$1[redacted]')
+    .replace(
+      /([?&](?:token|access_token|api_key|apikey|key|secret|password|auth|code|session)=)[^&\s"']+/gi,
+      '$1[redacted]',
+    )
+    .replace(/\bjam_pat_[A-Za-z0-9_-]+/g, '[redacted]');
+}
+
+function consoleText(event: Record<string, unknown>): string | null {
+  // Jam's console event fields were not observed during the spikes; these cover the
+  // network event naming (console_*) and common logger shapes.
+  for (const key of ['console_message', 'message', 'console_text', 'text']) {
+    if (typeof event[key] === 'string' && (event[key] as string).trim())
+      return event[key] as string;
+  }
+  const args = Array.isArray(event.console_args)
+    ? event.console_args
+    : Array.isArray(event.args)
+      ? event.args
+      : null;
+  if (args) {
+    const joined = args
+      .filter((arg) => typeof arg === 'string')
+      .join(' ')
+      .trim();
+    if (joined) return joined;
+  }
+  return null;
+}
+
+export function summarizeConsole(
+  events: unknown[],
+): Array<{ level: string; message: string; at: string | null }> {
+  return events
+    .filter(isRecord)
+    .map((event) => {
+      const message = consoleText(event);
+      if (!message) return null;
+      const level = token(event.console_level ?? event.level, 20) ?? 'error';
+      return {
+        level,
+        message: redactSecrets(message.replace(/\s+/g, ' ').trim()).slice(0, 300),
+        at: typeof event.ts === 'string' ? event.ts : null,
+      };
+    })
+    .filter((entry): entry is { level: string; message: string; at: string | null } =>
+      Boolean(entry),
+    )
+    .slice(0, 5);
+}
+
+export function summarizeNetwork(events: unknown[]): Array<{
+  method: string;
+  host: string;
+  path: string;
+  status: number | null;
+  durationMs: number | null;
+}> {
+  return events
+    .filter(isRecord)
+    .map((event) => {
+      let host = text(event.network_host, 255);
+      let path = text(event.network_path, 500);
+      if ((!host || !path) && typeof event.network_url === 'string') {
+        try {
+          const url = new URL(event.network_url);
+          host = host ?? url.host;
+          path = path ?? url.pathname;
+        } catch {
+          // Leave host and path as they are.
+        }
+      }
+      return {
+        method: token(event.network_method, 10) ?? 'GET',
+        host: host ?? 'unknown host',
+        // Paths can carry identifiers but never query strings or fragments.
+        path: redactSecrets((path ?? '/').split(/[?#]/)[0]).slice(0, 200),
+        status: typeof event.network_status === 'number' ? event.network_status : null,
+        durationMs:
+          typeof event.network_duration_ms === 'number'
+            ? Math.round(event.network_duration_ms)
+            : null,
+      };
+    })
+    .slice(0, 5);
+}
+
+function countsFrom(value: unknown): Record<string, number> {
+  if (!isRecord(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value).filter(
+      (entry): entry is [string, number] => typeof entry[1] === 'number',
+    ),
+  );
+}
+
+export async function getJamSummary(
+  req: PluginRequest,
+  context: PluginContext,
+): Promise<PluginResponse> {
+  const settings = readSettings(context);
+  if (!settings.showDebugSummary)
+    return fail(404, 'Debug summaries are turned off in the plugin settings');
+  const issueId = await issueIdFor(context, req.params.issueKey);
+  const jamId = uuid(req.params.jamId);
+  if (!issueId || !jamId) return fail(404, 'Not found');
+  const linked = await context.db.query(
+    'SELECT 1 FROM jam_issue_links WHERE jam_id = $1 AND issue_id = $2',
+    [jamId, issueId],
+  );
+  if (!linked.length) return fail(404, 'That Jam is not linked to this issue');
+
+  const [cached] = (await context.db.query(
+    `SELECT summary FROM jam_summaries
+      WHERE jam_id = $1 AND fetched_at > now() - make_interval(mins => $2)`,
+    [jamId, SUMMARY_TTL_MINUTES],
+  )) as Array<{ summary: unknown }>;
+  if (cached && req.query.refresh !== 'true') return json(200, cached.summary);
+
+  try {
+    const details = await callJamJson(context, settings, 'getDetails', { jamId });
+    const events = isRecord(details.eventsSummary) ? details.eventsSummary : {};
+    const consoleSummary = isRecord(events.console) ? events.console : {};
+    const network = isRecord(events.network) ? events.network : {};
+    const httpStatus = countsFrom(network.httpStatus);
+    const failedRequests = Object.entries(httpStatus)
+      .filter(([status]) => Number(status) >= 400)
+      .reduce((sum, [, count]) => sum + count, 0);
+    const consoleLevels = countsFrom(consoleSummary.level);
+    const consoleErrors =
+      (consoleLevels.error ?? 0) > 0
+        ? await callJamJson(context, settings, 'getConsoleLogs', {
+            jamId,
+            logLevel: ['error'],
+            limit: 5,
+          })
+        : { events: [] };
+    const failed =
+      failedRequests > 0
+        ? await callJamJson(context, settings, 'getNetworkRequests', {
+            jamId,
+            statusCode: ['4xx', '5xx'],
+            limit: 5,
+          })
+        : { events: [] };
+    const summary = {
+      fetchedAt: new Date().toISOString(),
+      console: {
+        total: typeof consoleSummary.total === 'number' ? consoleSummary.total : 0,
+        levels: consoleLevels,
+        errors: summarizeConsole(Array.isArray(consoleErrors.events) ? consoleErrors.events : []),
+      },
+      network: {
+        total: typeof network.total === 'number' ? network.total : 0,
+        failed: failedRequests,
+        failures: summarizeNetwork(Array.isArray(failed.events) ? failed.events : []),
+      },
+    };
+    await context.db.query(
+      `INSERT INTO jam_summaries (jam_id, summary, fetched_at) VALUES ($1, $2::jsonb, now())
+       ON CONFLICT (jam_id) DO UPDATE SET summary = EXCLUDED.summary, fetched_at = now()`,
+      [jamId, JSON.stringify(summary)],
+    );
+    return json(200, summary);
+  } catch (error) {
+    await noteJamFailure(context, error);
+    return jamFailureResponse(error);
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Routes: recording requests
+
+interface RecordingRequestRow {
+  id: string;
+  title: string | null;
+  requested_by: string;
+  expires_at: string | Date;
+  revoked_at: string | Date | null;
+  jams_received: number;
+  created_at: string | Date;
+}
+
+function requestView(row: RecordingRequestRow, url: string | null): Record<string, unknown> {
+  const expired = new Date(row.expires_at).getTime() < Date.now();
+  return {
+    id: row.id,
+    title: row.title,
+    url,
+    requestedBy: row.requested_by,
+    expiresAt: new Date(row.expires_at).toISOString(),
+    revokedAt: row.revoked_at ? new Date(row.revoked_at).toISOString() : null,
+    status: row.revoked_at ? 'revoked' : expired ? 'expired' : 'active',
+    jamsReceived: row.jams_received,
+    createdAt: new Date(row.created_at).toISOString(),
+  };
+}
+
+export async function listRecordingRequests(
+  req: PluginRequest,
+  context: PluginContext,
+): Promise<PluginResponse> {
+  const issueKey = req.params.issueKey;
+  const issueId = await issueIdFor(context, issueKey);
+  if (!issueId) return fail(404, 'Issue not found');
+  const settings = readSettings(context);
+  const rows = (await context.db.query(
+    `SELECT id, title, requested_by, expires_at, revoked_at, jams_received, created_at
+       FROM jam_recording_requests WHERE issue_id = $1 ORDER BY created_at DESC LIMIT 20`,
+    [issueId],
+  )) as RecordingRequestRow[];
+  const secret = rows.length && settings.recordingLinkUrl ? await referenceSecret(context) : null;
+  return json(200, {
+    enabled: Boolean(settings.recordingLinkUrl),
+    items: rows.map((row) => {
+      const active = !row.revoked_at && new Date(row.expires_at).getTime() >= Date.now();
+      const url =
+        active && secret
+          ? recordingUrl(
+              settings.recordingLinkUrl,
+              requestReference(issueKey, row.id, signRequest(secret, context.tenant.id, row.id)),
+              row.title,
+            )
+          : null;
+      return requestView(row, url);
+    }),
+  });
+}
+
+export async function createRecordingRequest(
+  req: PluginRequest,
+  context: PluginContext,
+): Promise<PluginResponse> {
+  const user = context.user;
+  if (!user) return fail(401, 'Sign in to request recordings');
+  const settings = readSettings(context);
+  if (!settings.recordingLinkUrl) {
+    return fail(
+      400,
+      'An administrator needs to add a reusable Jam recording link in the plugin settings',
+    );
+  }
+  const issueKey = req.params.issueKey;
+  const issueId = await issueIdFor(context, issueKey);
+  if (!issueId) return fail(404, 'Issue not found');
+  const body = isRecord(req.body) ? req.body : {};
+  const title =
+    body.title === undefined || body.title === ''
+      ? `Recording for ${issueKey}`
+      : text(body.title, 201);
+  if (!title || title.length > 200) return fail(400, 'The title must be 1 to 200 characters');
+  const days = body.expiresInDays === undefined ? 30 : Number(body.expiresInDays);
+  if (!Number.isInteger(days) || days < 1 || days > 90)
+    return fail(400, 'Expiry must be 1 to 90 days');
+
+  const [row] = (await context.db.query(
+    `INSERT INTO jam_recording_requests (issue_id, requested_by, mode, title, expires_at)
+     VALUES ($1, $2, 'url_parameter', $3, now() + make_interval(days => $4))
+     RETURNING id, title, requested_by, expires_at, revoked_at, jams_received, created_at`,
+    [issueId, user.id, title, days],
+  )) as RecordingRequestRow[];
+  const signature = signRequest(await referenceSecret(context), context.tenant.id, row.id);
+  const url = recordingUrl(
+    settings.recordingLinkUrl,
+    requestReference(issueKey, row.id, signature),
+    title,
+  );
+  return json(201, requestView(row, url));
+}
+
+export async function revokeRecordingRequest(
+  req: PluginRequest,
+  context: PluginContext,
+): Promise<PluginResponse> {
+  const issueId = await issueIdFor(context, req.params.issueKey);
+  const requestId = uuid(req.params.requestId);
+  if (!issueId || !requestId) return fail(404, 'Not found');
+  const rows = await context.db.query(
+    `WITH revoked AS (
+       UPDATE jam_recording_requests SET revoked_at = now()
+        WHERE id = $1 AND issue_id = $2 AND revoked_at IS NULL
+        RETURNING id
+     ) SELECT id FROM revoked`,
+    [requestId, issueId],
+  );
+  return rows.length
+    ? json(200, { id: requestId, status: 'revoked' })
+    : fail(404, 'No active request with that ID on this issue');
+}
+
+// ---------------------------------------------------------------------------------------------
+// Routes: routing rules (jam.admin)
+
+const RULE_MATCHERS: Array<{ key: keyof RuleMatch; max: number; pattern?: RegExp }> = [
+  {
+    key: 'urlHost',
+    max: 253,
+    pattern: /^(\*\.)?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/i,
+  },
+  {
+    key: 'authorEmailDomain',
+    max: 253,
+    pattern: /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i,
+  },
+  { key: 'recordingLinkPublicId', max: 64, pattern: /^[A-Za-z0-9_-]+$/ },
+  { key: 'origin', max: 40, pattern: /^[a-z_]+$/ },
+  { key: 'titlePrefix', max: 100 },
+  { key: 'folder', max: 120 },
+];
+
+interface RuleInput {
+  name?: string;
+  enabled?: boolean;
+  match?: RuleMatch;
+  action?: 'create' | 'inbox';
+  projectKey?: string;
+  issueTypeId?: string | null;
+  priority?: Priority | null;
+  labels?: string[];
+  assigneeId?: string | null;
+  hourlyLimit?: number | null;
+}
+
+function parseRuleInput(value: unknown, partial: boolean): RuleInput | { error: string } {
+  if (!isRecord(value)) return { error: 'A JSON body is required' };
+  const input: RuleInput = {};
+  if (value.name !== undefined || !partial) {
+    const name = text(value.name, 121);
+    if (!name || name.length > 120) return { error: 'The rule name must be 1 to 120 characters' };
+    input.name = name;
+  }
+  if (value.enabled !== undefined) {
+    if (typeof value.enabled !== 'boolean') return { error: 'enabled must be true or false' };
+    input.enabled = value.enabled;
+  }
+  if (value.match !== undefined || !partial) {
+    if (!isRecord(value.match)) return { error: 'Add at least one matcher' };
+    const match: RuleMatch = {};
+    for (const { key, max, pattern } of RULE_MATCHERS) {
+      const raw = value.match[key];
+      if (raw === undefined || raw === null || raw === '') continue;
+      const matcher = text(raw, max + 1);
+      if (!matcher || matcher.length > max || (pattern && !pattern.test(matcher)))
+        return { error: `Invalid ${key}` };
+      match[key] =
+        key === 'urlHost' || key === 'authorEmailDomain' ? matcher.toLowerCase() : matcher;
+    }
+    if (!Object.keys(match).length) return { error: 'Add at least one matcher' };
+    input.match = match;
+  }
+  if (value.action !== undefined || !partial) {
+    if (value.action !== 'create' && value.action !== 'inbox')
+      return { error: 'The action must be create or inbox' };
+    input.action = value.action;
+  }
+  if (value.projectKey !== undefined || !partial) {
+    const projectKey = parseProjectKey(value.projectKey);
+    if (!projectKey) return { error: 'Choose a project' };
+    input.projectKey = projectKey;
+  }
+  const fields = parseIssueFields({
+    priority: value.priority,
+    issueTypeId: value.issueTypeId,
+    assigneeId: value.assigneeId,
+    labels: value.labels,
+  });
+  if ('error' in fields) return fields;
+  if (value.priority !== undefined) input.priority = fields.priority ?? null;
+  if (value.issueTypeId !== undefined) input.issueTypeId = fields.issueTypeId ?? null;
+  if (value.assigneeId !== undefined) input.assigneeId = fields.assigneeId ?? null;
+  if (value.labels !== undefined) input.labels = fields.labels ?? [];
+  if (value.hourlyLimit !== undefined) {
+    if (value.hourlyLimit === null || value.hourlyLimit === '') input.hourlyLimit = null;
+    else {
+      const limit = Number(value.hourlyLimit);
+      if (!Number.isInteger(limit) || limit < 1 || limit > 500)
+        return { error: 'The hourly limit must be 1 to 500' };
+      input.hourlyLimit = limit;
+    }
+  }
+  return input;
+}
+
+function toRuleView(row: RuleRow) {
+  return {
+    id: row.id,
+    position: row.position,
+    name: row.name,
+    enabled: row.enabled,
+    match: row.match,
+    action: row.action,
+    projectKey: row.project_key,
+    projectName: row.project_name,
+    issueTypeId: row.issue_type_id,
+    priority: row.priority,
+    labels: row.labels ?? [],
+    assigneeId: row.assignee_id,
+    hourlyLimit: row.hourly_limit,
+    createdBy: row.created_by,
+    createdAt: new Date(row.created_at).toISOString(),
+  };
+}
+
+async function findRule(context: PluginContext, ruleId: string): Promise<RuleRow | null> {
+  const rows = (await context.db.query(
+    `SELECT ${RULE_COLUMNS} FROM jam_routing_rules r JOIN projects p ON p.id = r.project_id WHERE r.id = $1`,
+    [ruleId],
+  )) as RuleRow[];
+  return rows[0] ?? null;
+}
+
+/** A rule creates issues as its author when the Jam author cannot, so the author needs write access. */
+async function projectIdForRule(context: PluginContext, projectKey: string): Promise<string> {
+  await context.api.projects.assertAccess(projectKey, 'write');
+  const project = await context.api.projects.get(projectKey);
+  return (project as { id: string }).id;
+}
+
+export async function listRules(
+  _req: PluginRequest,
+  context: PluginContext,
+): Promise<PluginResponse> {
+  const rows = (await context.db.query(
+    `SELECT ${RULE_COLUMNS} FROM jam_routing_rules r JOIN projects p ON p.id = r.project_id
+      ORDER BY r.position, r.created_at`,
+  )) as RuleRow[];
+  return json(200, { items: rows.map(toRuleView) });
+}
+
+export async function createRule(
+  req: PluginRequest,
+  context: PluginContext,
+): Promise<PluginResponse> {
+  const user = context.user;
+  if (!user) return fail(401, 'Sign in to manage rules');
+  const input = parseRuleInput(req.body, false);
+  if ('error' in input) return fail(400, input.error);
+  const projectId = await projectIdForRule(context, input.projectKey!);
+  const [row] = (await context.db.query(
+    `INSERT INTO jam_routing_rules
+       (position, name, enabled, match, action, project_id, issue_type_id, priority, labels, assignee_id, hourly_limit, created_by)
+     VALUES ((SELECT COALESCE(max(position), 0) + 1 FROM jam_routing_rules), $1, $2, $3::jsonb, $4, $5, $6, $7, $8, $9, $10, $11)
+     RETURNING id`,
+    [
+      input.name,
+      input.enabled ?? true,
+      JSON.stringify(input.match),
+      input.action,
+      projectId,
+      input.issueTypeId ?? null,
+      input.priority ?? null,
+      input.labels ?? [],
+      input.assigneeId ?? null,
+      input.hourlyLimit ?? null,
+      user.id,
+    ],
+  )) as Array<{ id: string }>;
+  return json(201, toRuleView((await findRule(context, row.id))!));
+}
+
+export async function updateRule(
+  req: PluginRequest,
+  context: PluginContext,
+): Promise<PluginResponse> {
+  const user = context.user;
+  if (!user) return fail(401, 'Sign in to manage rules');
+  const ruleId = uuid(req.params.ruleId);
+  const existing = ruleId ? await findRule(context, ruleId) : null;
+  if (!ruleId || !existing) return fail(404, 'Rule not found');
+  const input = parseRuleInput(req.body, true);
+  if ('error' in input) return fail(400, input.error);
+  if (input.projectKey === undefined)
+    await context.api.projects.assertAccess(existing.project_key, 'write');
+  const sets: string[] = [];
+  const params: unknown[] = [ruleId];
+  const set = (column: string, value: unknown, cast = '') => {
+    params.push(value);
+    sets.push(`${column} = $${params.length}${cast}`);
+  };
+  if (input.name !== undefined) set('name', input.name);
+  if (input.enabled !== undefined) set('enabled', input.enabled);
+  if (input.match !== undefined) set('match', JSON.stringify(input.match), '::jsonb');
+  if (input.action !== undefined) set('action', input.action);
+  if (input.projectKey !== undefined)
+    set('project_id', await projectIdForRule(context, input.projectKey));
+  if (input.issueTypeId !== undefined) set('issue_type_id', input.issueTypeId);
+  if (input.priority !== undefined) set('priority', input.priority);
+  if (input.labels !== undefined) set('labels', input.labels);
+  if (input.assigneeId !== undefined) set('assignee_id', input.assigneeId);
+  if (input.hourlyLimit !== undefined) set('hourly_limit', input.hourlyLimit);
+  // Whoever last changes a rule is who it creates issues as, so their access is what counts.
+  set('created_by', user.id);
+  await context.db.query(
+    `UPDATE jam_routing_rules SET ${sets.join(', ')}, updated_at = now() WHERE id = $1`,
+    params,
+  );
+  return json(200, toRuleView((await findRule(context, ruleId))!));
+}
+
+export async function deleteRule(
+  req: PluginRequest,
+  context: PluginContext,
+): Promise<PluginResponse> {
+  const ruleId = uuid(req.params.ruleId);
+  if (!ruleId) return fail(404, 'Rule not found');
+  const rows = await context.db.query(
+    `WITH removed AS (DELETE FROM jam_routing_rules WHERE id = $1 RETURNING id) SELECT id FROM removed`,
+    [ruleId],
+  );
+  return rows.length ? json(200, { id: ruleId, deleted: true }) : fail(404, 'Rule not found');
+}
+
+export async function reorderRules(
+  req: PluginRequest,
+  context: PluginContext,
+): Promise<PluginResponse> {
+  const ids = isRecord(req.body) && Array.isArray(req.body.ids) ? req.body.ids.map(uuid) : null;
+  if (!ids || ids.some((id) => !id) || new Set(ids).size !== ids.length)
+    return fail(400, 'Send the rule IDs in order');
+  const existing = (await context.db.query('SELECT id FROM jam_routing_rules')) as Array<{
+    id: string;
+  }>;
+  if (existing.length !== ids.length || existing.some((row) => !ids.includes(row.id))) {
+    return fail(400, 'Send every rule ID exactly once');
+  }
+  await context.db.query(
+    `UPDATE jam_routing_rules r SET position = ordered.position
+       FROM unnest($1::uuid[]) WITH ORDINALITY AS ordered(id, position)
+      WHERE r.id = ordered.id`,
+    [ids],
+  );
+  return listRules(req, context);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Events: tell the Jam when its issue is resolved (setting notifyJamOnResolve)
+
+export async function onEvent(event: string, data: unknown, context: PluginContext): Promise<void> {
+  if (event !== 'issue.status_changed' || !isRecord(data)) return;
+  const settings = readSettings(context);
+  if (!settings.notifyJamOnResolve || !settings.apiToken) return;
+  const issueKey = text(data.issueKey, 64);
+  const toStatus = uuid(data.toStatus);
+  if (!issueKey || !toStatus) return;
+  const [status] = (await context.db.query(
+    'SELECT name, category FROM workflow_statuses WHERE id = $1',
+    [toStatus],
+  )) as Array<{ name: string; category: string }>;
+  if (status?.category !== 'done') return;
+  const links = (await context.db.query(
+    `SELECT l.jam_id FROM jam_issue_links l JOIN issues i ON i.id = l.issue_id WHERE i.key = $1`,
+    [issueKey],
+  )) as Array<{ jam_id: string }>;
+  if (!links.length) return;
+  // Events run inside the request that changed the status, so the Jam calls happen afterwards
+  // instead of holding up the person who resolved the issue.
+  void notifyResolved(
+    context,
+    settings,
+    issueKey,
+    status.name,
+    links.map((link) => link.jam_id),
+  ).catch((error) =>
+    context.logger.warn('Could not tell Jam about a resolved issue', {
+      message: errorMessage(error),
+    }),
+  );
+}
+
+async function notifyResolved(
+  context: PluginContext,
+  settings: JamSettings,
+  issueKey: string,
+  statusName: string,
+  jamIds: string[],
+): Promise<void> {
+  const base = webBaseUrl();
+  for (const jamId of jamIds) {
+    let mention = '';
+    try {
+      const details = await callJamJson(context, settings, 'getDetails', { jamId });
+      const author = isRecord(details.author) ? details.author : null;
+      const authorId = author ? uuid(author.id) : null;
+      const name = author ? (text(author.name, 100) ?? 'the reporter') : null;
+      // Jam's mention syntax; it notifies the person who captured the Jam.
+      if (authorId && name) mention = ` @[${name.replace(/[[\]]/g, '')}](user:${authorId})`;
+    } catch (error) {
+      await noteJamFailure(context, error);
+      if (jamKindOf(error) === 'unauthorized') return;
+    }
+    const link = base ? `: ${base}/issues/${issueKey}` : '.';
+    await callJamTool(context, settings, 'createComment', {
+      jamId,
+      body: `${issueKey} was resolved in Weaver (${statusName})${link}${mention}`,
+    });
+  }
 }

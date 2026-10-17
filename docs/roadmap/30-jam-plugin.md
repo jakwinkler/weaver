@@ -4,10 +4,11 @@
 
 ## Status
 
-**Status: specification; Phase 0 spikes run October 16, 2026 ([results](#phase-0-results)); Phases 1 and 2 implemented on `feature/plugin-sdk-integration-prereqs`, not merged ([Phase 2 notes](#phase-2-implementation-notes)).** Written October 16, 2026 against main `5db1948`. Phases 3 to 5 are not implemented. Statements about Jam are sourced in [Sources](#sources) and were checked on October 16, 2026; Jam ships often, so recheck them before each phase.
+**Status: specification; Phase 0 spikes run October 16, 2026 ([results](#phase-0-results)); Phases 1 to 4 and the Phase 5 resolve comment implemented on `feature/plugin-sdk-integration-prereqs`, not merged ([Phase 2 notes](#phase-2-implementation-notes), [Phases 3 to 5 notes](#phases-3-to-5-implementation-notes)).** Written October 16, 2026 against main `5db1948`. The rest of Phase 5 is not implemented. Statements about Jam are sourced in [Sources](#sources) and were checked on October 16, 2026; Jam ships often, so recheck them before each phase.
 
 - First tenant: Rocket Web's Weaver, connected to the `rocketweb.com` Jam workspace (labeled **Team** in the Jam workspace menu).
 - Distribution: bundled first-party plugin, `@weaver/plugin-jam`, disabled on installation.
+- Human testing: [test guide](30-jam-plugin-testing.md).
 - Prerequisites: three small core SDK changes ([Weaver prerequisites](#weaver-prerequisites)). Phase 0 is done except the S4 seven-day recheck and the S6 Team-only case.
 
 ## Outcome
@@ -338,7 +339,7 @@ All routes are mounted under `/api/v1/plugin-routes/@weaver~plugin-jam`. On ever
 
 ## Data model
 
-The full model across phases, in the tenant schema. Version 0.1.0 (`migrations/001_create_jam_tables.sql`) creates `jam_items`, `jam_issue_links`, and `jam_plugin_state`; each later phase adds its own tables in a new versioned migration:
+The full model across phases, in the tenant schema. Version 0.1.0 (`migrations/001_create_jam_tables.sql`) creates `jam_items`, `jam_issue_links`, and `jam_plugin_state`; version 0.2.0 (`migrations/002_requests_rules_summaries.sql`) adds the other three tables, `request_id` and `rule_id` on links, and `suggested_project_id` on Jams:
 
 ```sql
 CREATE TABLE IF NOT EXISTS jam_items (
@@ -553,29 +554,54 @@ Differences from the design above:
 - Server code is one `handlers.ts`. In development the API loads plugin TypeScript with Node's type stripping, where extensionless relative imports do not resolve.
 - `context.db.query` returns `[rows, rowCount]` for a top-level `UPDATE` or `DELETE`, so statements that need `RETURNING` rows run inside a CTE.
 - The manifest `type` is `app`, because the sidebar lists navigation only for `app` plugins.
-- The settings schema has only the Phase 2 keys. The create form has no assignee picker, because the project members endpoint returns no names; the route accepts `assigneeId`.
+- The create form has no assignee picker, because the project members endpoint returns no names; the route accepts `assigneeId`.
 - Thumbnails load with `referrerPolicy="no-referrer"`, so Jam's media host never sees Weaver page URLs.
 
 ### Phase 3: Request a recording
 
-- [ ] Recording requests: signed reference, copy link, list, and revoke.
-- [ ] Webhook attach path for valid references, with inbox flags for invalid ones.
-- [ ] Requester comment and activity entry on arrival.
+- [x] Recording requests: signed reference, copy link, list, and revoke.
+- [x] Webhook attach path for valid references, with inbox flags for invalid ones.
+- [x] Requester comment on arrival. There is no activity entry: the activity log shows unknown actions by their raw name, and the comment already notifies watchers.
 - [ ] Optional: per-request recording links for tenants that want requests searchable in Jam (costs link quota).
 
 ### Phase 4: Rules and debug summary
 
-- [ ] Routing rules UI and engine, including hourly caps and the optional folder lookup.
-- [ ] Debug summary with redaction and one-hour cache.
-- [ ] Optional embedded player. S6: it renders only for Jams shared with anyone who has the link, and then for anyone holding the URL. Requires a `frame-src https://jam.dev` allowance in the web CSP.
+- [x] Routing rules UI and engine, including hourly caps and the optional folder lookup.
+- [x] Debug summary with redaction and one-hour cache.
+- [x] Optional embedded player, behind the `embedPlayer` setting, off by default. The enforced web CSP sets no `frame-src`; the report-only policy now allows `https://jam.dev`. S6: it renders only for Jams shared with anyone who has the link, and then for anyone holding the URL. Requires a `frame-src https://jam.dev` allowance in the web CSP.
 
 ### Phase 5: Optional extensions
 
-- [ ] Resolve comment on the Jam when a linked issue reaches a done-category status, mentioning the Jam author when the author is a Jam member.
-- [ ] Jira relink: for tenants that imported from Jira, find Jams whose linked issue keys match imported issues (`import_records`), show a dry-run list, then link them on approval.
-- [ ] Intake forms: an optional **Record your screen** step that opens a recording request for the issue the form creates.
-- [ ] Per-user Jam connection through Jam's OAuth with dynamic client registration, so each user's Jam access governs what they see.
-- [ ] More than one Jam workspace per tenant.
+- [x] Resolve comment on the Jam when a linked issue reaches a done-category status, mentioning the Jam author when the author is a Jam member.
+- [ ] Jira relink: for tenants that imported from Jira, find Jams whose linked issue keys match imported issues (`import_records`), show a dry-run list, then link them on approval. Not started: it needs a Jam linked to Jira to learn the shape of `integrations` in Jam's replies, and the `rocketweb.com` workspace has none.
+- [ ] Intake forms: an optional **Record your screen** step that opens a recording request for the issue the form creates. Not started: it needs an extension point on the core public form's confirmation page, because core forms should not depend on this plugin.
+- [ ] Per-user Jam connection through Jam's OAuth with dynamic client registration, so each user's Jam access governs what they see. Not started: an OAuth client, per-user token storage, and refresh are more work than the rest of the plugin.
+- [ ] More than one Jam workspace per tenant. Not started: every table and setting assumes one workspace.
+
+#### Phases 3 to 5 implementation notes
+
+Implemented October 17, 2026 as plugin version 0.2.0 on `feature/plugin-sdk-integration-prereqs`, not merged.
+
+Evidence:
+
+- `apps/api/test/jam-plugin.e2e-spec.ts` now has 24 tests. The new ones cover:
+  - **Recording requests:** the signed link; the issue key shown in the link is ignored; the arrival comment is posted as the requester; tampered, revoked, and expired requests land in the inbox with the reason; the link setting and write access are required.
+  - **Routing rules:** issue creation up to the hourly limit, then a suggestion; first match by order; inbox rules only suggest; disabled rules are skipped; folder matching through Jam; validation and permissions.
+  - **Debug summary:** counts; query strings, bodies, headers, and tokens removed; caching; refusal for an unlinked Jam or with the setting off.
+  - **Resolve comments:** the comment with the author mention.
+- In the running app on a throwaway database, I checked the inbox's suggested-project label, the Rules tab and its form, and a recording request on an issue with the requester's comment. A rule-created issue had the rule's priority and label. The summary showed the error path with Jam's real `401` for a dummy token.
+- The API unit suite (420 tests) and the plugin end-to-end suites (80 tests) pass. Migration 002 applied cleanly over 001 with existing data, and again a second time.
+
+Differences from the design above:
+
+- The lifecycle hooks and `onEvent` live in `handlers.ts`, which is now the server entrypoint, and `index.ts` is gone. Development's type stripping cannot import between plugin files, and `onEvent` needs the Jam client.
+- Routing runs after the webhook transaction commits. It first claims the Jam (`new` to `creating`), so a failure leaves the Jam in the inbox with a flag instead of a retry creating a duplicate issue.
+- A rule creates issues as the Jam author when they may report, otherwise as whoever last saved the rule. Saving a rule therefore requires write access to its project.
+- Rules use per-rule routes (`POST /rules`, `PATCH` and `DELETE /rules/:ruleId`, `POST /rules/reorder`) instead of `PUT /rules`, so rule IDs stay stable for the hourly caps.
+- Resolve comments are posted after the status change's request finishes, because plugin events run inside that request.
+- **Sync** flags Jams that came through a recording link as `recording_request_unmatched`, since synced Jams carry no reference.
+- The fields of Jam's console events were never observed, because no Jam in the workspace had console output. The summary reads `console_message`, `message`, `text`, and `args`; check it against a real Jam with console errors. Network event fields were observed.
+- The two new end-to-end specs listen on a fixed port (`app.listen(0, '127.0.0.1')`). Supertest's per-request servers failed twice in ten runs; the unmerged `fix/flaky-api-integration-tests` branch applies the same fix to every spec.
 
 ## Acceptance criteria
 

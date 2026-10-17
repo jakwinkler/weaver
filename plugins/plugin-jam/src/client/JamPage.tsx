@@ -2,14 +2,23 @@ import { useState } from 'react';
 import { Bug } from 'lucide-react';
 import { ConnectionView } from './ConnectionView';
 import { InboxView } from './InboxView';
+import { RulesView } from './RulesView';
 import type { PluginComponentContext } from './types';
 
 interface JamPageProps {
   pluginContext: PluginComponentContext;
 }
 
+const TABS = [
+  { key: 'inbox', label: 'Inbox' },
+  { key: 'rules', label: 'Rules' },
+  { key: 'connection', label: 'Connection' },
+] as const;
+
+type Tab = (typeof TABS)[number]['key'];
+
 export function JamPage({ pluginContext }: JamPageProps) {
-  const [tab, setTab] = useState<'inbox' | 'connection'>('inbox');
+  const [tab, setTab] = useState<Tab>('inbox');
   return (
     <div className="mx-auto max-w-4xl">
       <div className="mb-1 flex items-center gap-3">
@@ -20,26 +29,24 @@ export function JamPage({ pluginContext }: JamPageProps) {
         Bug reports captured with Jam, ready to become Weaver issues.
       </p>
       <div className="mb-5 flex gap-4 border-b border-border">
-        {(['inbox', 'connection'] as const).map((name) => (
+        {TABS.map(({ key, label }) => (
           <button
-            key={name}
+            key={key}
             type="button"
-            onClick={() => setTab(name)}
+            onClick={() => setTab(key)}
             className={`-mb-px border-b-2 px-1 pb-2 text-sm font-medium ${
-              tab === name
+              tab === key
                 ? 'border-primary text-foreground'
                 : 'border-transparent text-muted-foreground hover:text-foreground'
             }`}
           >
-            {name === 'inbox' ? 'Inbox' : 'Connection'}
+            {label}
           </button>
         ))}
       </div>
-      {tab === 'inbox' ? (
-        <InboxView pluginContext={pluginContext} />
-      ) : (
-        <ConnectionView pluginContext={pluginContext} />
-      )}
+      {tab === 'inbox' && <InboxView pluginContext={pluginContext} />}
+      {tab === 'rules' && <RulesView pluginContext={pluginContext} />}
+      {tab === 'connection' && <ConnectionView pluginContext={pluginContext} />}
     </div>
   );
 }

@@ -45,6 +45,7 @@ describe('Jam plugin (e2e)', () => {
   let jamMode: 'ok' | 'down' | 'unauthorized' = 'ok';
   const jamCalls: Array<{ tool: string; args: Record<string, any>; authorization?: string }> = [];
   const jamDirectory = new Map<string, Record<string, unknown>>();
+  const jamEvents = new Map<string, { console: unknown[]; network: unknown[] }>();
   let makeRequestSpy: jest.SpyInstance;
 
   beforeAll(async () => {
@@ -53,7 +54,7 @@ describe('Jam plugin (e2e)', () => {
     }).compile();
     app = moduleFixture.createNestApplication({ rawBody: true });
     app.setGlobalPrefix('api/v1');
-    await app.init();
+    await app.listen(0, '127.0.0.1');
     dataSource = app.get(DataSource);
     connections = app.get(TenantConnectionProvider);
     await cleanupTestData();
@@ -111,19 +112,7 @@ describe('Jam plugin (e2e)', () => {
 
     await as().post('/api/v1/plugins/install').send({ pluginId }).expect(201);
     await as().post('/api/v1/plugins/enable').send({ pluginId }).expect(201);
-    await as()
-      .patch('/api/v1/plugins/settings')
-      .send({
-        pluginId,
-        settings: {
-          jamWorkspaceId: teamId,
-          jamApiToken: 'jam_pat_e2e',
-          jamAccessExpiresOn: '2099-01-01',
-          jamWebhookSecret: webhookSecret,
-          postBacklinkComments: true,
-        },
-      })
-      .expect(200);
+    await configure();
 
     const originalMakeRequest = (PluginContextFactory.prototype as any).makeRequest;
     makeRequestSpy = jest
@@ -177,6 +166,28 @@ describe('Jam plugin (e2e)', () => {
     };
   }
 
+  async function configure(overrides: Record<string, unknown> = {}) {
+    await as()
+      .patch('/api/v1/plugins/settings')
+      .send({
+        pluginId,
+        settings: {
+          jamWorkspaceId: teamId,
+          jamApiToken: 'jam_pat_e2e',
+          jamAccessExpiresOn: '2099-01-01',
+          jamWebhookSecret: webhookSecret,
+          recordingLinkUrl: 'https://recorder.jam.dev/Tst1234',
+          postBacklinkComments: true,
+          showDebugSummary: true,
+          embedPlayer: false,
+          notifyJamOnResolve: false,
+          autoCreateHourlyLimit: 20,
+          ...overrides,
+        },
+      })
+      .expect(200);
+  }
+
   function fakeJam(body: any, options: any) {
     const tool = body?.params?.name as string;
     const args = (body?.params?.arguments ?? {}) as Record<string, any>;
@@ -212,6 +223,19 @@ describe('Jam plugin (e2e)', () => {
       case 'createComment':
         result = text({ id: randomUUID(), jamId: args.jamId, body: args.body });
         break;
+      case 'getConsoleLogs':
+      case 'getNetworkRequests': {
+        const events =
+          jamEvents.get(args.jamId)?.[tool === 'getConsoleLogs' ? 'console' : 'network'] ?? [];
+        result = text({
+          total: events.length,
+          returned: events.length,
+          hasMore: false,
+          nextCursor: null,
+          events,
+        });
+        break;
+      }
       case 'searchJams': {
         const from = args.window?.from as string | undefined;
         const jams = [...jamDirectory.values()]
@@ -610,6 +634,421 @@ describe('Jam plugin (e2e)', () => {
     });
   });
 
+  describe('recording requests', () => {
+    function requestedJam(reference: string, overrides: Record<string, unknown> = {}) {
+      return jamCreated({
+        origin: 'recording_link',
+        originalUrl: undefined,
+        title: 'Show me',
+        recordingLink: {
+          publicId: 'Tst1234',
+          type: 'reusable',
+          description: 'Weaver requests',
+          reference,
+          submitterComment: 'It breaks right after I press pay.',
+        },
+        ...overrides,
+      });
+    }
+
+    async function newRequest(issueKey: string, token = tokens.reporter) {
+      const created = await as(token)
+        .post(`${route}/issues/${issueKey}/recording-requests`)
+        .send({ title: 'Show me', expiresInDays: 7 })
+        .expect(201);
+      const reference = new URL(created.body.url).searchParams.get('jam-reference')!;
+      return { id: created.body.id as string, url: created.body.url as string, reference };
+    }
+
+    it('attaches a Jam recorded through a request to the requesting issue, whatever key the link shows', async () => {
+      const key = await createIssue('JAM', 'Payment fails');
+      const request = await newRequest(key);
+      expect(request.url.startsWith('https://recorder.jam.dev/Tst1234?')).toBe(true);
+      expect(new URL(request.url).searchParams.get('jam-title')).toBe('Show me');
+      expect(request.reference).toMatch(
+        new RegExp(`^http://localhost:5173/issues/${key}\\?jr=${request.id}\\.[A-Za-z0-9_-]{22}$`),
+      );
+
+      const listed = await as(tokens.viewer)
+        .get(`${route}/issues/${key}/recording-requests`)
+        .expect(200);
+      expect(listed.body.items).toEqual([
+        expect.objectContaining({ id: request.id, status: 'active', url: request.url }),
+      ]);
+
+      // The issue key in the reference is cosmetic; the signed request decides.
+      const payload = requestedJam(
+        request.reference.replace(`/issues/${key}?`, '/issues/WRONG-1?'),
+      );
+      await sendWebhook(payload).expect(200);
+
+      expect((await jamRow(payload.jamId)).state).toBe('linked');
+      const panel = await as().get(`${route}/issues/${key}/jams`).expect(200);
+      expect(panel.body.items[0]).toMatchObject({
+        jamId: payload.jamId,
+        link: { source: 'recording_request', backlinkState: 'posted' },
+      });
+      expect(panel.body.display.recordingRequests).toBe(true);
+      const [counted] = await dataSource.query(
+        `SELECT jams_received FROM "${schemaName}".jam_recording_requests WHERE id = $1`,
+        [request.id],
+      );
+      expect(counted.jams_received).toBe(1);
+      const [comment] = await dataSource.query(
+        `SELECT c.author_id, c.body::text AS body FROM "${schemaName}".comments c
+           JOIN "${schemaName}".issues i ON i.id = c.issue_id WHERE i.key = $1`,
+        [key],
+      );
+      expect(comment.author_id).toBe(ids.reporter);
+      expect(comment.body).toContain('A Jam was recorded for this request');
+      expect(comment.body).toContain('It breaks right after I press pay.');
+    });
+
+    it('sends a tampered, revoked, or expired request to the inbox with the reason', async () => {
+      const key = await createIssue('JAM', 'Reference refusals');
+      const tampered = await newRequest(key);
+      const forged = requestedJam(
+        tampered.reference.replace(/.$/, (last) => (last === 'A' ? 'B' : 'A')),
+      );
+      await sendWebhook(forged).expect(200);
+      expect(await jamRow(forged.jamId)).toMatchObject({ state: 'new', flag: 'invalid_reference' });
+
+      const revoked = await newRequest(key);
+      await as(tokens.viewer)
+        .delete(`${route}/issues/${key}/recording-requests/${revoked.id}`)
+        .expect(403);
+      await as(tokens.reporter)
+        .delete(`${route}/issues/${key}/recording-requests/${revoked.id}`)
+        .expect(200);
+      const afterRevoke = requestedJam(revoked.reference);
+      await sendWebhook(afterRevoke).expect(200);
+      expect(await jamRow(afterRevoke.jamId)).toMatchObject({
+        state: 'new',
+        flag: 'request_revoked',
+      });
+
+      const expired = await newRequest(key);
+      await dataSource.query(
+        `UPDATE "${schemaName}".jam_recording_requests SET expires_at = now() - interval '1 day' WHERE id = $1`,
+        [expired.id],
+      );
+      const late = requestedJam(expired.reference);
+      await sendWebhook(late).expect(200);
+      expect(await jamRow(late.jamId)).toMatchObject({ state: 'new', flag: 'request_expired' });
+    });
+
+    it('needs a reusable recording link and write access', async () => {
+      const key = await createIssue('JAM', 'Request permissions');
+      await as(tokens.viewer)
+        .post(`${route}/issues/${key}/recording-requests`)
+        .send({})
+        .expect(403);
+      await configure({ recordingLinkUrl: '' });
+      await as(tokens.reporter)
+        .post(`${route}/issues/${key}/recording-requests`)
+        .send({})
+        .expect(400);
+      await configure();
+    });
+  });
+
+  describe('routing rules', () => {
+    afterEach(async () => {
+      await dataSource.query(`DELETE FROM "${schemaName}".jam_routing_rules`);
+    });
+
+    it('creates issues for matching Jams up to the hourly limit, then suggests the project', async () => {
+      const rule = await as()
+        .post(`${route}/rules`)
+        .send({
+          name: 'Shop bugs',
+          match: { urlHost: '*.example.test' },
+          action: 'create',
+          projectKey: 'JAM',
+          priority: 'high',
+          labels: ['jam', 'shop'],
+          hourlyLimit: 2,
+        })
+        .expect(201);
+      expect(rule.body).toMatchObject({
+        name: 'Shop bugs',
+        projectKey: 'JAM',
+        action: 'create',
+        position: 1,
+      });
+
+      const jams = [jamCreated(), jamCreated(), jamCreated()];
+      for (const payload of jams) await sendWebhook(payload).expect(200);
+
+      for (const payload of jams.slice(0, 2)) {
+        const [link] = await dataSource.query(
+          `SELECT l.link_source, i.priority, i.labels, i.reporter_id FROM "${schemaName}".jam_issue_links l
+             JOIN "${schemaName}".issues i ON i.id = l.issue_id WHERE l.jam_id = $1`,
+          [payload.jamId],
+        );
+        expect(link).toMatchObject({
+          link_source: 'rule',
+          priority: 'high',
+          reporter_id: ids.reporter,
+        });
+      }
+      const over = await as().get(`${route}/inbox`).expect(200);
+      expect(
+        over.body.items.find((jam: { jamId: string }) => jam.jamId === jams[2].jamId),
+      ).toMatchObject({
+        flag: 'rate_limited',
+        suggestedProjectKey: 'JAM',
+      });
+    });
+
+    it('applies the first matching rule in order, and an inbox rule only suggests', async () => {
+      const create = await as()
+        .post(`${route}/rules`)
+        .send({
+          name: 'Create shop',
+          match: { urlHost: 'shop.example.test' },
+          action: 'create',
+          projectKey: 'JAM',
+        })
+        .expect(201);
+      const suggest = await as()
+        .post(`${route}/rules`)
+        .send({
+          name: 'Suggest extension',
+          match: { origin: 'extension_chrome' },
+          action: 'inbox',
+          projectKey: 'PRIV',
+        })
+        .expect(201);
+
+      const first = jamCreated();
+      await sendWebhook(first).expect(200);
+      expect((await jamRow(first.jamId)).state).toBe('linked');
+
+      const reordered = await as()
+        .post(`${route}/rules/reorder`)
+        .send({ ids: [suggest.body.id, create.body.id] })
+        .expect(200);
+      expect(reordered.body.items.map((rule: { id: string }) => rule.id)).toEqual([
+        suggest.body.id,
+        create.body.id,
+      ]);
+      const second = jamCreated();
+      await sendWebhook(second).expect(200);
+      const row = await jamRow(second.jamId);
+      expect(row.state).toBe('new');
+      const inbox = await as().get(`${route}/inbox`).expect(200);
+      expect(
+        inbox.body.items.find((jam: { jamId: string }) => jam.jamId === second.jamId)
+          .suggestedProjectKey,
+      ).toBe('PRIV');
+
+      await as().patch(`${route}/rules/${suggest.body.id}`).send({ enabled: false }).expect(200);
+      const third = jamCreated({ originalUrl: 'https://elsewhere.test/page' });
+      await sendWebhook(third).expect(200);
+      expect(await jamRow(third.jamId)).toMatchObject({ state: 'new', suggested_project_id: null });
+    });
+
+    it('matches a Jam folder through Jam', async () => {
+      await as()
+        .post(`${route}/rules`)
+        .send({
+          name: 'Folder',
+          match: { folder: 'Client bugs' },
+          action: 'create',
+          projectKey: 'JAM',
+        })
+        .expect(201);
+      const payload = jamCreated({ originalUrl: 'https://elsewhere.test/a' });
+      jamDirectory.set(
+        payload.jamId,
+        directoryEntry(payload, {
+          folder: { id: randomUUID(), shortId: 'ab12', name: 'Client Bugs' },
+        }),
+      );
+      await sendWebhook(payload).expect(200);
+      expect((await jamRow(payload.jamId)).state).toBe('linked');
+      expect(
+        jamCalls.some((call) => call.tool === 'getDetails' && call.args.jamId === payload.jamId),
+      ).toBe(true);
+      jamDirectory.delete(payload.jamId);
+    });
+
+    it('validates rules and needs jam.admin and project write access', async () => {
+      const rule = {
+        name: 'R',
+        match: { urlHost: 'shop.example.test' },
+        action: 'create',
+        projectKey: 'JAM',
+      };
+      await as(tokens.reporter).post(`${route}/rules`).send(rule).expect(403);
+      await as()
+        .post(`${route}/rules`)
+        .send({ ...rule, match: {} })
+        .expect(400);
+      await as()
+        .post(`${route}/rules`)
+        .send({ ...rule, match: { urlHost: 'not a host' } })
+        .expect(400);
+      await as()
+        .post(`${route}/rules`)
+        .send({ ...rule, action: 'delete' })
+        .expect(400);
+      await as()
+        .post(`${route}/rules`)
+        .send({ ...rule, projectKey: 'NOPE' })
+        .expect(404);
+    });
+  });
+
+  describe('debug summary', () => {
+    it('shows counts, console errors, and failed requests without bodies, headers, or query strings', async () => {
+      const payload = jamCreated();
+      await sendWebhook(payload).expect(200);
+      const created = await as()
+        .post(`${route}/inbox/${payload.jamId}/create-issue`)
+        .send({ projectKey: 'JAM' })
+        .expect(201);
+      const key = created.body.issue.key;
+      jamDirectory.set(
+        payload.jamId,
+        directoryEntry(payload, {
+          eventsSummary: {
+            total: 13,
+            console: { total: 3, level: { error: 2, warn: 1 } },
+            network: { total: 10, httpStatus: { '200': 8, '404': 1, '500': 1 } },
+          },
+        }),
+      );
+      jamEvents.set(payload.jamId, {
+        console: [
+          {
+            event_type: 'console',
+            console_level: 'error',
+            console_message:
+              'TypeError: total is undefined at https://shop.example.test/checkout?token=abc123',
+            ts: '2026-10-16 19:48:58.000',
+          },
+        ],
+        network: [
+          {
+            event_type: 'network',
+            network_method: 'POST',
+            network_host: 'api.example.test',
+            network_path: '/orders',
+            network_url: 'https://api.example.test/orders?session=s3cr3t',
+            network_status: 500,
+            network_duration_ms: 123.4,
+            network_request_body: '{"card":"4111111111111111"}',
+            network_response_body: 'internal secret body',
+            network_request_headers: { Authorization: 'Bearer live-abc' },
+          },
+        ],
+      });
+
+      const summary = await as(tokens.viewer)
+        .get(`${route}/issues/${key}/jams/${payload.jamId}/summary`)
+        .expect(200);
+      expect(summary.body.console).toMatchObject({ total: 3, levels: { error: 2, warn: 1 } });
+      expect(summary.body.console.errors[0].message).toBe(
+        'TypeError: total is undefined at https://shop.example.test/checkout?token=[redacted]',
+      );
+      expect(summary.body.network).toMatchObject({ total: 10, failed: 2 });
+      expect(summary.body.network.failures[0]).toEqual({
+        method: 'POST',
+        host: 'api.example.test',
+        path: '/orders',
+        status: 500,
+        durationMs: 123,
+      });
+      const text = JSON.stringify(summary.body);
+      for (const secret of ['s3cr3t', 'abc123', '4111', 'internal secret body', 'live-abc']) {
+        expect(text).not.toContain(secret);
+      }
+
+      const callsBefore = jamCalls.length;
+      await as().get(`${route}/issues/${key}/jams/${payload.jamId}/summary`).expect(200);
+      expect(jamCalls.length).toBe(callsBefore);
+
+      const other = await createIssue('JAM', 'Not linked');
+      await as().get(`${route}/issues/${other}/jams/${payload.jamId}/summary`).expect(404);
+      await configure({ showDebugSummary: false });
+      await as().get(`${route}/issues/${key}/jams/${payload.jamId}/summary`).expect(404);
+      await configure();
+      jamDirectory.delete(payload.jamId);
+    });
+  });
+
+  describe('resolve comments', () => {
+    it('comments on linked Jams, mentioning the author, when the issue reaches a done status', async () => {
+      await configure({ notifyJamOnResolve: true });
+      const payload = jamCreated();
+      await sendWebhook(payload).expect(200);
+      const created = await as()
+        .post(`${route}/inbox/${payload.jamId}/create-issue`)
+        .send({ projectKey: 'JAM' })
+        .expect(201);
+      const key = created.body.issue.key;
+      const authorId = randomUUID();
+      jamDirectory.set(
+        payload.jamId,
+        directoryEntry(payload, {
+          author: { id: authorId, name: 'Riley Reporter', email: people.reporter.email },
+        }),
+      );
+      // Follow the project's workflow transitions from the current status to a done status.
+      const workflow = (await as().get('/api/v1/projects/JAM/workflow').expect(200)).body as {
+        transitions: Array<{
+          fromStatusId: string | null;
+          toStatusId: string;
+          toStatus: { name: string; category: string };
+        }>;
+      };
+      let statusId = (await as().get(`/api/v1/issues/${key}`).expect(200)).body.statusId as string;
+      const path: Array<{ id: string; name: string; category: string }> = [];
+      const seen = new Set([statusId]);
+      while (!path.length || path[path.length - 1].category !== 'done') {
+        const next =
+          workflow.transitions.find(
+            (t) =>
+              (t.fromStatusId === statusId || t.fromStatusId === null) &&
+              t.toStatus.category === 'done',
+          ) ??
+          workflow.transitions.find(
+            (t) =>
+              (t.fromStatusId === statusId || t.fromStatusId === null) && !seen.has(t.toStatusId),
+          );
+        if (!next) throw new Error('No workflow path to a done status');
+        path.push({
+          id: next.toStatusId,
+          name: next.toStatus.name,
+          category: next.toStatus.category,
+        });
+        seen.add(next.toStatusId);
+        statusId = next.toStatusId;
+      }
+      jamCalls.length = 0;
+      for (const step of path)
+        await as().patch(`/api/v1/issues/${key}`).send({ statusId: step.id }).expect(200);
+      const done = path[path.length - 1];
+
+      let comment: (typeof jamCalls)[number] | undefined;
+      for (let attempt = 0; attempt < 40 && !comment; attempt += 1) {
+        comment = jamCalls.find(
+          (call) =>
+            call.tool === 'createComment' && String(call.args.body).includes('was resolved'),
+        );
+        if (!comment) await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      expect(comment?.args).toEqual({
+        jamId: payload.jamId,
+        body: `${key} was resolved in Weaver (${done.name}): http://localhost:5173/issues/${key} @[Riley Reporter](user:${authorId})`,
+      });
+      await configure();
+      jamDirectory.delete(payload.jamId);
+    });
+  });
+
   it('removes its tables on confirmed uninstall', async () => {
     await as().post('/api/v1/plugins/uninstall').send({ pluginId }).expect(400);
     await as()
@@ -617,9 +1056,9 @@ describe('Jam plugin (e2e)', () => {
       .send({ pluginId, confirmDataDeletion: true })
       .expect(204);
     const [table] = await dataSource.query(
-      `SELECT to_regclass('"${schemaName}".jam_items') AS name`,
+      `SELECT to_regclass('"${schemaName}".jam_items') AS items, to_regclass('"${schemaName}".jam_routing_rules') AS rules`,
     );
-    expect(table.name).toBeNull();
+    expect(table).toEqual({ items: null, rules: null });
     expect(ownerId).toBeTruthy();
   });
 });

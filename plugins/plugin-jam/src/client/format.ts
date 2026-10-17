@@ -79,6 +79,22 @@ export function jamMeta(jam: JamView): string {
     .join(' · ');
 }
 
+const FLAGS: Record<string, string> = {
+  invalid_reference: 'Recording request link was not valid',
+  request_revoked: 'Recorded through a revoked request',
+  request_expired: 'Recorded through an expired request',
+  recording_request_unmatched: 'From a recording link; Sync cannot tell which request',
+  rate_limited: "Over a rule's hourly limit",
+  rule_failed: 'A rule could not create the issue',
+  routing_failed: 'Could not attach to the requesting issue',
+  routing_lookup_failed: 'Could not check the Jam folder',
+  possible_duplicate: 'May already have an issue',
+};
+
+export function flagLabel(flag: string | null): string | null {
+  return flag ? (FLAGS[flag] ?? flag) : null;
+}
+
 export const buttonClass =
   'inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-2.5 text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-50';
 export const primaryButtonClass =

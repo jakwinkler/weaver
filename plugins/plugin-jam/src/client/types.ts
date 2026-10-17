@@ -27,11 +27,76 @@ export interface JamView {
   receivedVia: string;
   state: string;
   flag: string | null;
+  suggestedProjectKey: string | null;
   receivedAt: string;
 }
 
 export interface LinkedJam extends JamView {
   link: { source: string; backlinkState: string; linkedAt: string };
+}
+
+export interface IssueJamsResponse {
+  items: LinkedJam[];
+  display: { showDebugSummary: boolean; embedPlayer: boolean; recordingRequests: boolean };
+}
+
+export interface JamSummary {
+  fetchedAt: string;
+  console: {
+    total: number;
+    levels: Record<string, number>;
+    errors: Array<{ level: string; message: string; at: string | null }>;
+  };
+  network: {
+    total: number;
+    failed: number;
+    failures: Array<{
+      method: string;
+      host: string;
+      path: string;
+      status: number | null;
+      durationMs: number | null;
+    }>;
+  };
+}
+
+export interface RecordingRequest {
+  id: string;
+  title: string | null;
+  url: string | null;
+  requestedBy: string;
+  expiresAt: string;
+  revokedAt: string | null;
+  status: 'active' | 'expired' | 'revoked';
+  jamsReceived: number;
+  createdAt: string;
+}
+
+export interface RuleMatch {
+  urlHost?: string;
+  authorEmailDomain?: string;
+  recordingLinkPublicId?: string;
+  origin?: string;
+  titlePrefix?: string;
+  folder?: string;
+}
+
+export interface RoutingRule {
+  id: string;
+  position: number;
+  name: string;
+  enabled: boolean;
+  match: RuleMatch;
+  action: 'create' | 'inbox';
+  projectKey: string;
+  projectName: string;
+  issueTypeId: string | null;
+  priority: string | null;
+  labels: string[];
+  assigneeId: string | null;
+  hourlyLimit: number | null;
+  createdBy: string;
+  createdAt: string;
 }
 
 export interface ConnectionStatus {
@@ -40,6 +105,7 @@ export interface ConnectionStatus {
   workspaceId: string | null;
   tokenConfigured: boolean;
   webhookSecretConfigured: boolean;
+  recordingLinkConfigured: boolean;
   accessExpiresOn: string | null;
   daysUntilExpiry: number | null;
   postBacklinkComments: boolean;

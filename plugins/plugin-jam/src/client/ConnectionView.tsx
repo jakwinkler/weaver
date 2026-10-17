@@ -111,6 +111,11 @@ export function ConnectionView({ pluginContext }: ConnectionViewProps) {
           <StatusRow ok={status.webhookSecretConfigured} label="Webhook signing secret">
             {status.webhookSecretConfigured ? 'Set' : 'Not set'}
           </StatusRow>
+          <StatusRow ok={status.recordingLinkConfigured} label="Reusable recording link">
+            {status.recordingLinkConfigured
+              ? 'Set; issues can request recordings'
+              : 'Not set; recording requests are off'}
+          </StatusRow>
           <StatusRow ok={Boolean(status.lastWebhookAt)} label="Last webhook">
             {relativeTime(status.lastWebhookAt)}
           </StatusRow>
