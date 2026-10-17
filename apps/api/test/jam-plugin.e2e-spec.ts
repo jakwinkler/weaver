@@ -541,8 +541,23 @@ describe('Jam plugin (e2e)', () => {
         .send({ jamId: payload.jamId })
         .expect(200);
 
+      jamCalls.length = 0;
       await as(tokens.reporter).delete(`${route}/issues/${key}/jams/${payload.jamId}`).expect(200);
+      // The "Tracked in Weaver" comment stays on the Jam, so unlinking says the link is gone.
+      let unlinked: (typeof jamCalls)[number] | undefined;
+      for (let attempt = 0; attempt < 40 && !unlinked; attempt += 1) {
+        unlinked = jamCalls.find(
+          (call) =>
+            call.tool === 'createComment' && String(call.args.body).startsWith('No longer tracked'),
+        );
+        if (!unlinked) await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      expect(unlinked?.args).toEqual({
+        jamId: payload.jamId,
+        body: `No longer tracked in Weaver as ${key}: http://localhost:5173/issues/${key}`,
+      });
       await as(tokens.reporter).delete(`${route}/issues/${key}/jams/${payload.jamId}`).expect(404);
+      expect(jamCalls.filter((call) => call.tool === 'createComment')).toHaveLength(1);
       expect((await jamRow(payload.jamId)).state).toBe('new');
       const panel = await as().get(`${route}/issues/${key}/jams`).expect(200);
       expect(panel.body.items).toEqual([]);
@@ -997,10 +1012,21 @@ describe('Jam plugin (e2e)', () => {
         .post(`${route}/rules`)
         .send({ ...rule, match: {} })
         .expect(400);
-      await as()
+      const badHost = await as()
         .post(`${route}/rules`)
-        .send({ ...rule, match: { urlHost: 'not a host' } })
+        .send({ ...rule, match: { urlHosts: 'shop.example.test, not a host' } })
         .expect(400);
+      expect(badHost.body.message).toBe(
+        '"not a host" is not a host name. Use names such as shop.example.com or *.example.com',
+      );
+      const tooMany = await as()
+        .post(`${route}/rules`)
+        .send({
+          ...rule,
+          match: { urlHosts: Array.from({ length: 21 }, (_, i) => `h${i}.example.test`) },
+        })
+        .expect(400);
+      expect(tooMany.body.message).toBe('A rule can match at most 20 page hosts');
       await as()
         .post(`${route}/rules`)
         .send({ ...rule, action: 'delete' })
