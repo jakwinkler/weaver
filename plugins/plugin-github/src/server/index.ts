@@ -1,42 +1,23 @@
-import type { WeaverPlugin, PluginContext, PluginRouter } from '@weaver/sdk';
-import { handleGitHubWebhook, getGitHubLinks } from './webhook.handler';
+import type { PluginContext } from '@weaver/sdk';
 
-const manifest = require('../../weaver-plugin.json');
+// No onInstall: the registry runs the manifest's migrations (github_links) only for plugins
+// without one. Routes come from the manifest and webhook.handler.ts, so nothing is registered here.
 
-export const plugin: WeaverPlugin = {
-  manifest,
+export async function onEnable(context: PluginContext): Promise<void> {
+  context.logger.info('GitHub plugin enabled');
+}
 
-  async onInstall(context: PluginContext) {
-    context.logger.info('GitHub plugin installed');
-    // Run migrations to create github_links table
-    const migrationSql = require('fs').readFileSync(
-      require('path').join(__dirname, '../../migrations/001_create_github_links.sql'),
-      'utf-8',
-    );
-    await context.db.runMigration(migrationSql);
-  },
+export async function onDisable(context: PluginContext): Promise<void> {
+  context.logger.info('GitHub plugin disabled');
+}
 
-  async onEnable(context: PluginContext) {
-    context.logger.info('GitHub plugin enabled');
-  },
+export async function onUninstall(context: PluginContext): Promise<void> {
+  context.logger.info('GitHub plugin uninstalled');
+  await context.db.query('DROP TABLE IF EXISTS github_links');
+}
 
-  async onDisable(context: PluginContext) {
-    context.logger.info('GitHub plugin disabled');
-  },
-
-  async onUninstall(context: PluginContext) {
-    context.logger.info('GitHub plugin uninstalled');
-    await context.db.query('DROP TABLE IF EXISTS github_links');
-  },
-
-  async onEvent(event: string, _data: unknown, context: PluginContext) {
-    if (event === 'issue.created') {
-      context.logger.info('New issue created, checking for GitHub references');
-    }
-  },
-
-  registerRoutes(router: PluginRouter) {
-    router.post('/webhook', handleGitHubWebhook);
-    router.get('/links/:issueKey', getGitHubLinks);
-  },
-};
+export async function onEvent(event: string, _data: unknown, context: PluginContext): Promise<void> {
+  if (event === 'issue.created') {
+    context.logger.info('New issue created, checking for GitHub references');
+  }
+}
