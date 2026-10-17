@@ -136,9 +136,7 @@ describe('Password reset (e2e)', () => {
     app = moduleFixture.createNestApplication();
     app.useLogger(logger);
     app.setGlobalPrefix('api/v1');
-    await app.init();
-    // Sockets need a listening server.
-    await app.listen(0);
+    await app.listen(0, '127.0.0.1');
     dataSource = app.get(DataSource);
     connections = app.get(TenantConnectionProvider);
     passwordReset = app.get(PasswordResetService);
@@ -208,12 +206,18 @@ describe('Password reset (e2e)', () => {
       // The reply never waits for the 750 ms account lookup.
       expect(reply.elapsed).toBeLessThan(500);
     }
-    expect(jobs.map((job) => [job.to, job.template])).toEqual([
-      [ownerEmail, 'password-reset'],
-      [ssoEmail, 'password-reset-unavailable'],
-    ]);
-    expect(jobs[1].body).toContain('signs in with Google');
-    expect(jobs[1].body).not.toMatch(/reset-password\//);
+    // The owner's link is saved in a transaction before its email is queued, so the SSO
+    // notice can be queued first.
+    expect(jobs).toHaveLength(2);
+    expect(jobs.map((job) => [job.to, job.template])).toEqual(
+      expect.arrayContaining([
+        [ownerEmail, 'password-reset'],
+        [ssoEmail, 'password-reset-unavailable'],
+      ]),
+    );
+    const unavailable = jobs.find((job) => job.to === ssoEmail);
+    expect(unavailable?.body).toContain('signs in with Google');
+    expect(unavailable?.body).not.toMatch(/reset-password\//);
     latestToken(ownerEmail);
   });
 

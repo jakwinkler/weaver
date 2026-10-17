@@ -29,7 +29,7 @@ describe('Automatic Time Phase 7 learning and local metrics (e2e)', () => {
     }).compile();
     app = moduleFixture.createNestApplication();
     app.setGlobalPrefix('api/v1');
-    await app.init();
+    await app.listen(0, '127.0.0.1');
     dataSource = app.get(DataSource);
     connections = app.get(TenantConnectionProvider);
     await cleanupTestData();
