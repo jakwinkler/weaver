@@ -4,7 +4,7 @@
 
 ## Status
 
-**Status: specification; Phase 0 spikes run October 16, 2026 ([results](#phase-0-results)); Phases 1 to 4 and the Phase 5 resolve comment implemented on `feature/plugin-sdk-integration-prereqs`, not merged ([Phase 2 notes](#phase-2-implementation-notes), [Phases 3 to 5 notes](#phases-3-to-5-implementation-notes)).** Written October 16, 2026 against main `5db1948`. The rest of Phase 5 is not implemented. Statements about Jam are sourced in [Sources](#sources) and were checked on October 16, 2026; Jam ships often, so recheck them before each phase.
+**Status: specification; Phase 0 spikes run October 16, 2026 ([results](#phase-0-results)); Phases 1 to 4 and the Phase 5 resolve comment implemented ([Phase 2 notes](#phase-2-implementation-notes), [Phases 3 to 5 notes](#phases-3-to-5-implementation-notes)).** Written October 16, 2026 against main `5db1948`. The rest of Phase 5 is not implemented. Statements about Jam are sourced in [Sources](#sources) and were checked on October 16, 2026; Jam ships often, so recheck them before each phase.
 
 - First tenant: an agency pilot installation of Weaver, connected to the agency's own Jam workspace.
 - Distribution: bundled first-party plugin, `@weaver/plugin-jam`, disabled on installation.

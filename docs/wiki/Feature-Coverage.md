@@ -1,6 +1,6 @@
 # Feature coverage and verification
 
-All 29 items in the source roadmap have a home in this documentation. The guides describe the implementation, including its current limits, rather than turning planned acceptance criteria into claims that everything is complete.
+All 30 items in the source roadmap have a home in this documentation. The guides describe the implementation, including its current limits, rather than turning planned acceptance criteria into claims that everything is complete.
 
 **Use the feature guides for instructions. Use this page to understand the evidence behind them.** Checks were made on September 23, 2026 against the exact source tree of main `1b1b370`, using a fresh local fictional organization. These results do not establish the deployed state of any public installation.
 
@@ -58,6 +58,7 @@ The later October 15 frontend update adds Description during issue creation, too
 | 27 | Recurring tasks | [Recurring Tasks](https://github.com/jakwinkler/weaver/wiki/Recurring-Tasks) | Local recurrence configured; schedule, copy, and deduplication paths reviewed. Overnight creation not exercised. |
 | 28 | Audit log | [Audit Log](https://github.com/jakwinkler/weaver/wiki/Audit-Log) | Local project/plugin entries rendered in browser and read through API. CSV and retention paths source-reviewed. |
 | 29 | Automatic Time | [Automatic Time](https://github.com/jakwinkler/weaver/wiki/Automatic-Time), [Plugin Development](https://github.com/jakwinkler/weaver/wiki/Plugin-Development) | Installed disabled locally; draft/release/device contracts reviewed. Native capture, pairing, and official-time release not exercised. |
+| 30 | Jam plugin | [Jam](https://github.com/jakwinkler/weaver/wiki/Jam) | Automated API coverage in `jam-plugin.e2e-spec.ts` and `plugin-integration-prerequisites.e2e-spec.ts`. The roadmap records one real end-to-end run against a pilot Jam workspace on October 17, 2026. Relinking after a Jira import is not implemented. |
 
 ## About the screenshots
 
