@@ -4,6 +4,7 @@ import { INestApplication } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import request from 'supertest';
 import * as bcrypt from 'bcrypt';
+import Redis from 'ioredis';
 import { AppModule } from '../src/app.module';
 import { TenantConnectionProvider } from '../src/core/tenant';
 import { PluginContextFactory } from '../src/plugins/plugin-context.factory';
@@ -137,9 +138,19 @@ describe('Jam plugin (e2e)', () => {
     if (app) await app.close();
   });
 
-  beforeEach(() => {
+  beforeEach(async () => {
     jamMode = 'ok';
     jamCalls.length = 0;
+    // Unauthenticated requests, webhooks included, share 30 per minute per address. This suite
+    // sends more than that from one address, so each test starts with a fresh window.
+    const limiter = new Redis({
+      host: process.env.REDIS_HOST,
+      port: Number(process.env.REDIS_PORT),
+      maxRetriesPerRequest: 1,
+    });
+    const keys = await limiter.keys(`${process.env.RATE_LIMIT_PREFIX}:*`);
+    if (keys.length) await limiter.del(...keys);
+    await limiter.quit();
   });
 
   async function cleanupTestData(): Promise<void> {
@@ -405,6 +416,12 @@ describe('Jam plugin (e2e)', () => {
 
       const connection = await as().get(`${route}/connection`).expect(200);
       expect(connection.body.connectionError.message).toContain(otherTeamId);
+    });
+
+    it("ignores Jam's description placeholder", async () => {
+      const payload = jamCreated({ title: '', description: 'Write a description or @ to mention' });
+      await sendWebhook(payload).expect(200);
+      expect(await jamRow(payload.jamId)).toMatchObject({ title: null, description: null });
     });
 
     it('acknowledges events it does not handle', async () => {
@@ -872,6 +889,100 @@ describe('Jam plugin (e2e)', () => {
         jamCalls.some((call) => call.tool === 'getDetails' && call.args.jamId === payload.jamId),
       ).toBe(true);
       jamDirectory.delete(payload.jamId);
+    });
+
+    it('matches any of several hosts and a path prefix at a segment boundary', async () => {
+      await as()
+        .post(`${route}/rules`)
+        .send({
+          name: 'Client carts',
+          match: { urlHosts: ['shop.example.test', 'staging.example.test'], pathPrefix: '/cart' },
+          action: 'create',
+          projectKey: 'JAM',
+        })
+        .expect(201);
+      const cases: Array<[string, string]> = [
+        ['https://staging.example.test/cart/step-2?coupon=x', 'linked'],
+        ['https://shop.example.test/cart', 'linked'],
+        ['https://shop.example.test/cartoon', 'new'],
+        ['https://shop.example.test/about', 'new'],
+        ['https://other.example.test/cart', 'new'],
+      ];
+      for (const [originalUrl, state] of cases) {
+        const payload = jamCreated({ originalUrl });
+        await sendWebhook(payload).expect(200);
+        expect([originalUrl, (await jamRow(payload.jamId)).state]).toEqual([originalUrl, state]);
+      }
+    });
+
+    it('routes a host to one project, unless paths split it', async () => {
+      await as()
+        .post(`${route}/rules`)
+        .send({
+          name: 'Client site',
+          match: { urlHosts: ['client.example.test', 'www.client.example.test'] },
+          action: 'inbox',
+          projectKey: 'JAM',
+        })
+        .expect(201);
+      const clash = await as()
+        .post(`${route}/rules`)
+        .send({
+          name: 'Elsewhere',
+          match: { urlHosts: ['www.client.example.test'] },
+          action: 'inbox',
+          projectKey: 'PRIV',
+        })
+        .expect(409);
+      expect(clash.body.message).toContain(
+        'www.client.example.test already routes to JAM in the rule "Client site"',
+      );
+      const admin = await as()
+        .post(`${route}/rules`)
+        .send({
+          name: 'Client admin',
+          match: { urlHosts: ['client.example.test'], pathPrefix: '/admin' },
+          action: 'inbox',
+          projectKey: 'PRIV',
+        })
+        .expect(201);
+      await as()
+        .post(`${route}/rules`)
+        .send({
+          name: 'Same project',
+          match: { urlHosts: ['client.example.test'] },
+          action: 'create',
+          projectKey: 'JAM',
+        })
+        .expect(201);
+      await as()
+        .patch(`${route}/rules/${admin.body.id}`)
+        .send({ match: { urlHosts: ['client.example.test'] } })
+        .expect(409);
+    });
+
+    it('validates hosts and paths, and accepts a single host string', async () => {
+      const base = { name: 'R', action: 'inbox', projectKey: 'JAM' };
+      await as()
+        .post(`${route}/rules`)
+        .send({ ...base, match: { pathPrefix: 'cart' } })
+        .expect(400);
+      await as()
+        .post(`${route}/rules`)
+        .send({ ...base, match: { pathPrefix: '/cart?x=1' } })
+        .expect(400);
+      const tooMany = Array.from({ length: 21 }, (_, index) => `h${index}.example.test`);
+      await as()
+        .post(`${route}/rules`)
+        .send({ ...base, match: { urlHosts: tooMany } })
+        .expect(400);
+      const legacy = await as()
+        .post(`${route}/rules`)
+        .send({ ...base, match: { urlHost: 'Shop.Example.test, staging.example.test' } })
+        .expect(201);
+      expect(legacy.body.match).toEqual({
+        urlHosts: ['shop.example.test', 'staging.example.test'],
+      });
     });
 
     it('validates rules and needs jam.admin and project write access', async () => {

@@ -155,6 +155,17 @@ function emailAddress(value: unknown): string | null {
     : null;
 }
 
+// Jam stores its editor placeholder as the description when the reporter writes none (seen on
+// a real Jam captured with the Chrome extension, October 17, 2026).
+const JAM_PLACEHOLDER_DESCRIPTIONS = new Set(['write a description or @ to mention']);
+
+function jamDescription(value: unknown): string | null {
+  const description = text(value, 10_000);
+  return description && !JAM_PLACEHOLDER_DESCRIPTIONS.has(description.toLowerCase())
+    ? description
+    : null;
+}
+
 function isoDate(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const date = new Date(value);
@@ -354,7 +365,7 @@ function parseJamCreated(payload: Record<string, unknown>): JamSnapshot | null {
     jamUrl: canonicalJamUrl(jamId),
     jamType,
     title: text(payload.title, 500),
-    description: text(payload.description, 10_000),
+    description: jamDescription(payload.description),
     originalUrl: webUrl(payload.originalUrl),
     origin: token(payload.origin, 40),
     authorEmail: emailAddress(author.email),
@@ -384,7 +395,7 @@ function snapshotFromDetails(details: Record<string, unknown>): JamSnapshot | nu
     jamUrl: canonicalJamUrl(jamId),
     jamType,
     title: text(details.title, 500),
-    description: text(details.description, 10_000),
+    description: jamDescription(details.description),
     originalUrl: null,
     origin: token(details.origin, 40),
     authorEmail: emailAddress(author.email),
@@ -1093,7 +1104,12 @@ function recordingArrivedComment(snapshot: JamSnapshot): PluginRichTextDocument 
 }
 
 interface RuleMatch {
+  /** Any of these hosts matches; a leading *. also matches subdomains. */
+  urlHosts?: string[];
+  /** A single host, as rules saved before urlHosts stored it. */
   urlHost?: string;
+  /** The page path starts with this, at a segment boundary. */
+  pathPrefix?: string;
   authorEmailDomain?: string;
   recordingLinkPublicId?: string;
   origin?: string;
@@ -1140,6 +1156,20 @@ export function hostMatches(pattern: string, url: string | null): boolean {
   return host === wanted;
 }
 
+/** "/cart" matches /cart and /cart/step but not /cartoon; "/cart/" matches anything under it. */
+export function pathMatches(prefix: string, url: string | null): boolean {
+  if (!url) return false;
+  let path: string;
+  try {
+    path = new URL(url).pathname.toLowerCase();
+  } catch {
+    return false;
+  }
+  const wanted = prefix.toLowerCase();
+  if (wanted.endsWith('/')) return path.startsWith(wanted);
+  return path === wanted || path.startsWith(`${wanted}/`);
+}
+
 function folderNames(folder: unknown): string[] {
   if (typeof folder === 'string') return [folder.toLowerCase()];
   if (!isRecord(folder)) return [];
@@ -1151,7 +1181,11 @@ function folderNames(folder: unknown): string[] {
 
 /** True when every matcher the rule sets matches. A folder matcher needs Jam's getDetails. */
 function ruleMatches(match: RuleMatch, snapshot: JamSnapshot, folders: string[] | null): boolean {
-  if (match.urlHost && !hostMatches(match.urlHost, snapshot.originalUrl)) return false;
+  const hosts = match.urlHosts ?? (match.urlHost ? [match.urlHost] : []);
+  if (hosts.length && !hosts.some((pattern) => hostMatches(pattern, snapshot.originalUrl))) {
+    return false;
+  }
+  if (match.pathPrefix && !pathMatches(match.pathPrefix, snapshot.originalUrl)) return false;
   if (match.authorEmailDomain) {
     const domain = snapshot.authorEmail?.split('@')[1];
     if (domain !== match.authorEmailDomain.toLowerCase()) return false;
@@ -2042,12 +2076,35 @@ export async function revokeRecordingRequest(
 // ---------------------------------------------------------------------------------------------
 // Routes: routing rules (jam.admin)
 
-const RULE_MATCHERS: Array<{ key: keyof RuleMatch; max: number; pattern?: RegExp }> = [
-  {
-    key: 'urlHost',
-    max: 253,
-    pattern: /^(\*\.)?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/i,
-  },
+const HOST_PATTERN = /^(\*\.)?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/i;
+const MAX_RULE_HOSTS = 20;
+
+/** Accepts an array or one string separated by commas or new lines. */
+function parseHosts(value: unknown): string[] | null | 'invalid' {
+  if (value === undefined || value === null || value === '') return null;
+  const raw = Array.isArray(value)
+    ? value
+    : typeof value === 'string'
+      ? value.split(/[,\n]+/)
+      : null;
+  if (!raw || raw.some((host) => typeof host !== 'string')) return 'invalid';
+  const hosts = [
+    ...new Set((raw as string[]).map((host) => host.trim().toLowerCase()).filter(Boolean)),
+  ];
+  if (
+    hosts.length > MAX_RULE_HOSTS ||
+    hosts.some((host) => host.length > 253 || !HOST_PATTERN.test(host))
+  ) {
+    return 'invalid';
+  }
+  return hosts.length ? hosts : null;
+}
+
+const RULE_MATCHERS: Array<{
+  key: 'authorEmailDomain' | 'recordingLinkPublicId' | 'origin' | 'titlePrefix' | 'folder';
+  max: number;
+  pattern?: RegExp;
+}> = [
   {
     key: 'authorEmailDomain',
     max: 253,
@@ -2087,14 +2144,30 @@ function parseRuleInput(value: unknown, partial: boolean): RuleInput | { error: 
   if (value.match !== undefined || !partial) {
     if (!isRecord(value.match)) return { error: 'Add at least one matcher' };
     const match: RuleMatch = {};
+    const hosts = parseHosts(value.match.urlHosts ?? value.match.urlHost);
+    if (hosts === 'invalid') {
+      return {
+        error: `Page hosts must be at most ${MAX_RULE_HOSTS} host names, such as shop.example.com or *.example.com`,
+      };
+    }
+    if (hosts) match.urlHosts = hosts;
+    const rawPath = value.match.pathPrefix;
+    if (rawPath !== undefined && rawPath !== null && rawPath !== '') {
+      const path = text(rawPath, 201);
+      if (!path || path.length > 200 || !path.startsWith('/') || /[\s?#]/.test(path)) {
+        return {
+          error: 'The path must start with / and have no spaces, query string, or fragment',
+        };
+      }
+      match.pathPrefix = path;
+    }
     for (const { key, max, pattern } of RULE_MATCHERS) {
       const raw = value.match[key];
       if (raw === undefined || raw === null || raw === '') continue;
       const matcher = text(raw, max + 1);
       if (!matcher || matcher.length > max || (pattern && !pattern.test(matcher)))
         return { error: `Invalid ${key}` };
-      match[key] =
-        key === 'urlHost' || key === 'authorEmailDomain' ? matcher.toLowerCase() : matcher;
+      match[key] = key === 'authorEmailDomain' ? matcher.toLowerCase() : matcher;
     }
     if (!Object.keys(match).length) return { error: 'Add at least one matcher' };
     input.match = match;
@@ -2167,6 +2240,42 @@ async function projectIdForRule(context: PluginContext, projectKey: string): Pro
   return (project as { id: string }).id;
 }
 
+function hostsOf(match: RuleMatch): string[] {
+  return (match.urlHosts ?? (match.urlHost ? [match.urlHost] : [])).map((host) =>
+    host.toLowerCase(),
+  );
+}
+
+const pathKey = (match: RuleMatch) => (match.pathPrefix ?? '').toLowerCase().replace(/\/+$/, '');
+
+/**
+ * A host routes to one project. Refuse a host that another project's rule already lists with the
+ * same path prefix; different paths may split one host across projects. Wildcards are compared
+ * as written, so *.client.com and shop.client.com do not conflict and rule order decides.
+ */
+async function hostConflict(
+  context: PluginContext,
+  ruleId: string | null,
+  match: RuleMatch,
+  projectId: string,
+): Promise<string | null> {
+  const hosts = hostsOf(match);
+  if (!hosts.length) return null;
+  const others = (await context.db.query(
+    `SELECT r.name, r.match, p.key AS project_key FROM jam_routing_rules r JOIN projects p ON p.id = r.project_id
+      WHERE ($1::uuid IS NULL OR r.id <> $1) AND r.project_id <> $2`,
+    [ruleId, projectId],
+  )) as Array<{ name: string; match: RuleMatch; project_key: string }>;
+  for (const other of others) {
+    if (pathKey(other.match) !== pathKey(match)) continue;
+    const shared = hostsOf(other.match).find((host) => hosts.includes(host));
+    if (shared) {
+      return `${shared} already routes to ${other.project_key} in the rule "${other.name}". A host belongs to one project; use a path to split it.`;
+    }
+  }
+  return null;
+}
+
 export async function listRules(
   _req: PluginRequest,
   context: PluginContext,
@@ -2187,6 +2296,8 @@ export async function createRule(
   const input = parseRuleInput(req.body, false);
   if ('error' in input) return fail(400, input.error);
   const projectId = await projectIdForRule(context, input.projectKey!);
+  const conflict = await hostConflict(context, null, input.match!, projectId);
+  if (conflict) return fail(409, conflict);
   const [row] = (await context.db.query(
     `INSERT INTO jam_routing_rules
        (position, name, enabled, match, action, project_id, issue_type_id, priority, labels, assignee_id, hourly_limit, created_by)
@@ -2220,8 +2331,15 @@ export async function updateRule(
   if (!ruleId || !existing) return fail(404, 'Rule not found');
   const input = parseRuleInput(req.body, true);
   if ('error' in input) return fail(400, input.error);
-  if (input.projectKey === undefined)
+  // The editor becomes the rule's author (below), so they need write access to its project.
+  let projectId = existing.project_id;
+  if (input.projectKey === undefined) {
     await context.api.projects.assertAccess(existing.project_key, 'write');
+  } else {
+    projectId = await projectIdForRule(context, input.projectKey);
+  }
+  const conflict = await hostConflict(context, ruleId, input.match ?? existing.match, projectId);
+  if (conflict) return fail(409, conflict);
   const sets: string[] = [];
   const params: unknown[] = [ruleId];
   const set = (column: string, value: unknown, cast = '') => {
@@ -2232,8 +2350,7 @@ export async function updateRule(
   if (input.enabled !== undefined) set('enabled', input.enabled);
   if (input.match !== undefined) set('match', JSON.stringify(input.match), '::jsonb');
   if (input.action !== undefined) set('action', input.action);
-  if (input.projectKey !== undefined)
-    set('project_id', await projectIdForRule(context, input.projectKey));
+  if (input.projectKey !== undefined) set('project_id', projectId);
   if (input.issueTypeId !== undefined) set('issue_type_id', input.issueTypeId);
   if (input.priority !== undefined) set('priority', input.priority);
   if (input.labels !== undefined) set('labels', input.labels);

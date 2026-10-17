@@ -436,16 +436,17 @@ Links key on `issue_id`, not the issue key, because moving an issue changes its 
 
 `match` holds optional matchers. A rule applies when all of its matchers match:
 
-| Matcher                 | Source                             | Example                                  |
-| ----------------------- | ---------------------------------- | ---------------------------------------- |
-| `urlHost`               | `originalUrl` host, glob           | `*.gophersport.com` routes to project GS |
-| `authorEmailDomain`     | `author.email`                     | `client.com`                             |
-| `recordingLinkPublicId` | `recordingLink.publicId`           | A client's dedicated recording link      |
-| `origin`                | `origin`                           | `recording_link`, `extension_chrome`     |
-| `titlePrefix`           | `title`, case-insensitive          | `[WEB]`                                  |
-| `folder`                | `getDetails.folder` (one Jam call) | Jam folder name or short ID              |
+| Matcher                 | Source                                                            | Example                                                    |
+| ----------------------- | ----------------------------------------------------------------- | ---------------------------------------------------------- |
+| `urlHosts`              | `originalUrl` host, any of up to 20; `*.` also matches subdomains | `gophersport.com`, `*.gophersport.com` route to project GS |
+| `pathPrefix`            | `originalUrl` path, at a segment boundary, case-insensitive       | `/checkout` matches `/checkout/pay`, not `/checkouts`      |
+| `authorEmailDomain`     | `author.email`                                                    | `client.com`                                               |
+| `recordingLinkPublicId` | `recordingLink.publicId`                                          | A client's dedicated recording link                        |
+| `origin`                | `origin`                                                          | `recording_link`, `extension_chrome`                       |
+| `titlePrefix`           | `title`, case-insensitive                                         | `[WEB]`                                                    |
+| `folder`                | `getDetails.folder` (one Jam call)                                | Jam folder name or short ID                                |
 
-Page host is the main matcher for an agency: the site where a Jam was captured usually identifies the client project. `create` rules have a per-rule hourly cap (default `autoCreateHourlyLimit`). A Jam over the cap goes to the inbox flagged `rate_limited`, so a flood of Jams from a public reusable link cannot flood a project.
+Page host is the main matcher for an agency: the site where a Jam was captured usually identifies the client project. A host belongs to one project, and a project can have many hosts. Saving a rule whose host another project's rule already lists with the same path is refused with `409` and names that rule; different paths may split one host across projects. Wildcards are compared as written, so `*.client.com` and `shop.client.com` do not conflict and rule order decides. Rules saved with the earlier single `urlHost` still match. `create` rules have a per-rule hourly cap (default `autoCreateHourlyLimit`). A Jam over the cap goes to the inbox flagged `rate_limited`, so a flood of Jams from a public reusable link cannot flood a project.
 
 ## Security and privacy
 
@@ -470,7 +471,7 @@ Page host is the main matcher for an agency: the site where a Jam was captured u
 | Token expired or revoked               | Calls fail with `401`. The connection is marked **needs attention**, and the panel still renders from snapshots. Backlinks stay `pending`. The admin page warns 14 days before `jamAccessExpiresOn`.                                                                                                                                                               |
 | Jam MCP down or a tool's shape changed | Summaries show "unavailable". Webhook ingest is unaffected, because routing needs no Jam call unless a folder matcher is configured.                                                                                                                                                                                                                               |
 | Backlink comment fails                 | Retried with backoff (1m, 10m, 1h, 6h), then a final attempt, 5 in all. A new link tries at once; due retries are drained, up to 10 at a time, by **Verify connection** and **Retry Jam comments**. Reads never drain. A rejected or missing token pauses retries without using attempts. After 5 attempts the state is `failed` and shown on the Connection page. |
-| Webhook endpoint unreachable           | Svix retries for about 27 hours. After that, replay from the Svix portal. **Sync from Jam** backfills the Jams into the inbox but cannot recover recording references.                                                                                                                                                                                             |
+| Webhook endpoint unreachable           | Svix retries for about 27 hours. After that, replay from the Svix portal. **Sync from Jam** backfills the Jams into the inbox but cannot recover recording references. Weaver's rate limit on unauthenticated requests (30 a minute per client address) also applies to webhooks, so a burst above that gets `429` and is retried by Svix.                         |
 | Jam deleted in Jam                     | The snapshot remains, and the summary returns not found. The card shows "Deleted in Jam", and Unlink stays available.                                                                                                                                                                                                                                              |
 | Issue deleted                          | Links and requests cascade. The Jam returns to the inbox only if it has no other links.                                                                                                                                                                                                                                                                            |
 
@@ -536,7 +537,13 @@ Both actors (`reporterId`, `authorId`) default to the request user and must hold
 - [x] Issue panel: snapshot cards, Attach Jam by URL, Unlink.
 - [x] Backlink comments with the retry queue.
 - [x] Sync from Jam.
-- [ ] End to end against a real Jam workspace (acceptance criterion 10): a public HTTPS URL to a running Weaver, a real token, and real captures.
+- [x] End to end against a real Jam workspace (acceptance criterion 10), October 17, 2026. A local Weaver ran this branch against the `rocketweb.com` workspace with a real token, behind a Cloudflare quick tunnel that forwarded only the webhook route. Results:
+  - **Connection:** **Verify connection** confirmed the token's workspace through real `searchJams` and `getDetails` calls.
+  - **Extension Jam:** a Jam captured with the extension on drudgereport.com reached the inbox, with its page URL.
+  - **Create and summarize:** creating JAM-2 from it posted "Tracked in Weaver as JAM-2" on the Jam. The debug summary showed real counts (16 console entries; 366 requests, 3 failed with 400, 401, and 422), the console error, and the failed requests without their query strings.
+  - **Resolve:** moving JAM-2 to Done posted "JAM-2 was resolved in Weaver (Done)" on the Jam, and Jam rendered the mention as a mention of the author.
+  - **Recording request:** a recording made through JAM-1's request link attached to JAM-1 by its signed reference, the requester's comment appeared on JAM-1, and the Jam got its link-back comment.
+  - **Bug found and fixed:** Jam stores its editor placeholder, "Write a description or @ to mention", as the description when the reporter writes none, and it had become the first paragraph of JAM-2. The plugin now ignores that text.
 
 #### Phase 2 implementation notes
 
@@ -600,7 +607,9 @@ Differences from the design above:
 - Rules use per-rule routes (`POST /rules`, `PATCH` and `DELETE /rules/:ruleId`, `POST /rules/reorder`) instead of `PUT /rules`, so rule IDs stay stable for the hourly caps.
 - Resolve comments are posted after the status change's request finishes, because plugin events run inside that request.
 - **Sync** flags Jams that came through a recording link as `recording_request_unmatched`, since synced Jams carry no reference.
-- The fields of Jam's console events were never observed, because no Jam in the workspace had console output. The summary reads `console_message`, `message`, `text`, and `args`; check it against a real Jam with console errors. Network event fields were observed.
+- Jam's console events carry `console_level` and `console_message`, confirmed on a real Jam on October 17. The summary also accepts `message`, `text`, and `args`. Network event fields were observed during the spikes.
+- In development, edits to a plugin's server code take effect only after an API restart. The loader drops a module from Node's CommonJS `require` cache, but plugin TypeScript loads as an ES module under type stripping, and that cache is not cleared that way. The real-workspace run hit this when routing rules changed.
+- Routing rules take several hosts and a path prefix, and refuse a host already routed to another project (added October 17 after the real-workspace run).
 - The two new end-to-end specs listen on a fixed port (`app.listen(0, '127.0.0.1')`). Supertest's per-request servers failed twice in ten runs; the unmerged `fix/flaky-api-integration-tests` branch applies the same fix to every spec.
 
 ## Acceptance criteria

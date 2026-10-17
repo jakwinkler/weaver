@@ -73,7 +73,9 @@ export interface RecordingRequest {
 }
 
 export interface RuleMatch {
+  urlHosts?: string[];
   urlHost?: string;
+  pathPrefix?: string;
   authorEmailDomain?: string;
   recordingLinkPublicId?: string;
   origin?: string;

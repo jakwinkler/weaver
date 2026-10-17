@@ -7,14 +7,65 @@ interface RulesViewProps {
   pluginContext: PluginComponentContext;
 }
 
-const MATCHERS: Array<{ key: keyof RuleMatch; label: string; placeholder: string }> = [
-  { key: 'urlHost', label: 'Page host', placeholder: '*.example.com' },
-  { key: 'authorEmailDomain', label: 'Reporter email domain', placeholder: 'client.com' },
-  { key: 'recordingLinkPublicId', label: 'Recording link ID', placeholder: 'AbC123x' },
-  { key: 'origin', label: 'Origin', placeholder: 'recording_link' },
-  { key: 'titlePrefix', label: 'Title starts with', placeholder: '[WEB]' },
-  { key: 'folder', label: 'Jam folder', placeholder: 'Client bugs' },
+type TextMatcher =
+  | 'pathPrefix'
+  | 'authorEmailDomain'
+  | 'recordingLinkPublicId'
+  | 'origin'
+  | 'titlePrefix'
+  | 'folder';
+
+const MATCHERS: Array<{
+  key: TextMatcher;
+  label: string;
+  placeholder: string;
+  describe: (value: string) => string;
+}> = [
+  {
+    key: 'pathPrefix',
+    label: 'Path starts with',
+    placeholder: '/checkout',
+    describe: (v) => `the path starts with ${v}`,
+  },
+  {
+    key: 'authorEmailDomain',
+    label: 'Reporter email domain',
+    placeholder: 'client.com',
+    describe: (v) => `the reporter's email domain is ${v}`,
+  },
+  {
+    key: 'recordingLinkPublicId',
+    label: 'Recording link ID',
+    placeholder: 'AbC123x',
+    describe: (v) => `it came through recording link ${v}`,
+  },
+  {
+    key: 'origin',
+    label: 'Origin',
+    placeholder: 'recording_link',
+    describe: (v) => `the origin is ${v}`,
+  },
+  {
+    key: 'titlePrefix',
+    label: 'Title starts with',
+    placeholder: '[WEB]',
+    describe: (v) => `the title starts with ${v}`,
+  },
+  {
+    key: 'folder',
+    label: 'Jam folder',
+    placeholder: 'Client bugs',
+    describe: (v) => `the Jam folder is ${v}`,
+  },
 ];
+
+function ruleHosts(match: RuleMatch | undefined): string[] {
+  return match?.urlHosts ?? (match?.urlHost ? [match.urlHost] : []);
+}
+
+function textMatchers(match: RuleMatch | undefined): Partial<Record<TextMatcher, string>> {
+  return Object.fromEntries(MATCHERS.map(({ key }) => [key, match?.[key] ?? '']));
+}
 
 const PRIORITIES = ['lowest', 'low', 'medium', 'high', 'highest'];
 
@@ -40,14 +91,17 @@ export function RulesView({ pluginContext }: RulesViewProps) {
     void load();
   }, [load]);
 
-  const run = async (action: () => Promise<unknown>) => {
+  /** Resolves true when the action succeeded, so a form stays open (with its input) on failure. */
+  const run = async (action: () => Promise<unknown>): Promise<boolean> => {
     setBusy(true);
     setError(null);
     try {
       await action();
       await load();
+      return true;
     } catch (actionError) {
       setError(errorMessage(actionError));
+      return false;
     } finally {
       setBusy(false);
     }
@@ -92,7 +146,9 @@ export function RulesView({ pluginContext }: RulesViewProps) {
               busy={busy}
               onCancel={() => setEditing(null)}
               onSave={(body) =>
-                run(() => api.patch(`/rules/${rule.id}`, body)).then(() => setEditing(null))
+                run(() => api.patch(`/rules/${rule.id}`, body)).then(
+                  (saved) => saved && setEditing(null),
+                )
               }
             />
           ) : (
@@ -166,7 +222,9 @@ export function RulesView({ pluginContext }: RulesViewProps) {
           rule={null}
           busy={busy}
           onCancel={() => setEditing(null)}
-          onSave={(body) => run(() => api.post('/rules', body)).then(() => setEditing(null))}
+          onSave={(body) =>
+            run(() => api.post('/rules', body)).then((saved) => saved && setEditing(null))
+          }
         />
       ) : (
         <button
@@ -184,9 +242,13 @@ export function RulesView({ pluginContext }: RulesViewProps) {
 }
 
 function describeMatch(match: RuleMatch): string {
-  const parts = MATCHERS.filter(({ key }) => match[key]).map(
-    ({ key, label }) => `${label.toLowerCase()} is ${match[key]}`,
-  );
+  const hosts = ruleHosts(match);
+  const parts = [
+    hosts.length
+      ? `the page host is ${hosts.length > 1 ? `${hosts.slice(0, -1).join(', ')} or ${hosts[hosts.length - 1]}` : hosts[0]}`
+      : null,
+    ...MATCHERS.filter(({ key }) => match[key]).map(({ key, describe }) => describe(match[key]!)),
+  ].filter(Boolean);
   return parts.join(' and ') || 'anything';
 }
 
@@ -195,13 +257,14 @@ interface RuleFormProps {
   rule: RoutingRule | null;
   busy: boolean;
   onCancel: () => void;
-  onSave: (body: Record<string, unknown>) => Promise<void>;
+  onSave: (body: Record<string, unknown>) => Promise<unknown>;
 }
 
 function RuleForm({ pluginContext, rule, busy, onCancel, onSave }: RuleFormProps) {
   const [name, setName] = useState(rule?.name ?? '');
   const [enabled, setEnabled] = useState(rule?.enabled ?? true);
-  const [match, setMatch] = useState<RuleMatch>(rule?.match ?? {});
+  const [hosts, setHosts] = useState(ruleHosts(rule?.match).join(', '));
+  const [match, setMatch] = useState(textMatchers(rule?.match));
   const [action, setAction] = useState<'create' | 'inbox'>(rule?.action ?? 'inbox');
   const [projectKey, setProjectKey] = useState(rule?.projectKey ?? '');
   const [priority, setPriority] = useState(rule?.priority ?? '');
@@ -224,9 +287,13 @@ function RuleForm({ pluginContext, rule, busy, onCancel, onSave }: RuleFormProps
     void onSave({
       name: name.trim(),
       enabled,
-      match: Object.fromEntries(
-        Object.entries(match).filter(([, value]) => value && String(value).trim()),
-      ),
+      match: {
+        ...Object.fromEntries(Object.entries(match).filter(([, value]) => value && value.trim())),
+        urlHosts: hosts
+          .split(/[,\n]+/)
+          .map((host) => host.trim())
+          .filter(Boolean),
+      },
       action,
       projectKey,
       priority: priority || null,
@@ -256,6 +323,19 @@ function RuleForm({ pluginContext, rule, busy, onCancel, onSave }: RuleFormProps
       <p className="text-xs font-medium text-foreground sm:col-span-2">
         Conditions (all that you fill in must match)
       </p>
+      <label className="text-xs text-muted-foreground sm:col-span-2">
+        Page hosts (any of them; separate with commas)
+        <input
+          className={inputClass}
+          value={hosts}
+          placeholder="client.com, *.client.com, staging.client-dev.net"
+          onChange={(event) => setHosts(event.target.value)}
+        />
+        <span className="mt-1 block">
+          Each host belongs to one project. A host already used by another project&apos;s rule is
+          refused unless the rules use different paths.
+        </span>
+      </label>
       {MATCHERS.map(({ key, label, placeholder }) => (
         <label key={key} className="text-xs text-muted-foreground">
           {label}

@@ -36,8 +36,10 @@ Work through these in order. Each step says what should happen.
    - The request shows "1 received".
 7. **Revoke a request.** Choose **Revoke**, then record through the old link again. The Jam goes to the inbox with "Recorded through a revoked request".
 8. **Add routing rules.** In **Apps > Jam > Rules** (administrators only):
-   - Add a rule that creates issues for a page host you can capture on, such as `*.example.com`, in a test project with a priority and a label. Capture a Jam on that site: an issue is created right away with that priority and label.
+   - Add a rule that creates issues for page hosts you can capture on, such as `example.com, *.example.com`, in a test project with a priority and a label. Capture a Jam on that site: an issue is created right away with that priority and label.
    - Add a second rule that suggests a different project for another host. A matching Jam waits in the inbox showing "Suggested project", and **Create issue** starts with that project chosen.
+   - Add a **Path starts with** condition, such as `/checkout`, and check that only Jams captured under that path match.
+   - Try to add the same host to a rule for a different project. It is refused with the name of the rule that already has it, unless the two rules use different paths.
    - Reorder the rules and check that the first matching rule wins. Turn a rule off and check that it no longer applies.
 9. **Resolve an issue.** Move an issue with a linked Jam to a done status. Within a few seconds, the Jam gets a comment saying the issue was resolved, mentioning whoever captured it.
 10. **Attach a Jam to an existing issue.** From the inbox, choose **Attach** and enter an issue key. Or, on an issue, paste a Jam link into the **Jams** section and choose **Attach**. A link to a Jam Weaver has never received also works; Weaver fetches it from Jam. A Jam from a different Jam workspace is refused.
