@@ -60,7 +60,9 @@ export const pluginManifestSchema = z
     permissions: permissionList,
     requires: z
       .object({
-        coreCapabilities: z.array(z.enum(['issue-candidates', 'time-entries'])).optional(),
+        coreCapabilities: z
+          .array(z.enum(['issue-candidates', 'issue-create', 'time-entries']))
+          .optional(),
         plugins: z
           .array(
             z

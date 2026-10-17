@@ -8,7 +8,9 @@
     "declaration": false,
     "declarationMap": false,
     "sourceMap": false,
-    "isolatedModules": false
+    "isolatedModules": false,
+    "noEmit": false,
+    "allowImportingTsExtensions": false
   },
   "include": ["src/server"]
 }

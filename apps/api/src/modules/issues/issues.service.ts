@@ -167,6 +167,10 @@ export class IssuesService {
     });
 
     const saved = await repo.save(issue);
+    const activityRepo = em.getRepository(ActivityLogEntity);
+    await activityRepo.save(
+      activityRepo.create({ issueId: saved.id, userId: reporterId, action: 'created' }),
+    );
 
     this.eventDispatcher.emit('issue.created', {
       issueKey: saved.key,

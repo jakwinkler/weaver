@@ -1,0 +1,184 @@
+{
+  "id": "@weaver/plugin-jam",
+  "name": "Jam",
+  "version": "0.2.0",
+  "description": "Turn Jam bug reports into Weaver issues, link Jams to issues, and request recordings from issues",
+  "author": "Weaver",
+  "icon": "bug",
+  "type": "app",
+  "scope": "tenant",
+  "enabledByDefault": false,
+  "uninstall": {
+    "deletesPrivateData": true,
+    "confirmationMessage": "Uninstalling Jam deletes the Jam inbox, every Jam link, recording requests, and routing rules in Weaver. Jams in Jam are not changed."
+  },
+  "entrypoints": {
+    "server": "src/server/handlers.ts",
+    "client": "src/client/index.ts"
+  },
+  "permissions": [
+    "jam.view",
+    "jam.link",
+    "jam.triage",
+    "jam.admin"
+  ],
+  "requires": {
+    "coreCapabilities": [
+      "issue-create"
+    ]
+  },
+  "declaredPermissions": [
+    {
+      "key": "jam.view",
+      "label": "View Jams",
+      "description": "See Jams, their debug summaries, and recording requests on issues you can read"
+    },
+    {
+      "key": "jam.link",
+      "label": "Link Jams",
+      "description": "Attach, unlink, and request Jam recordings on issues you can edit"
+    },
+    {
+      "key": "jam.triage",
+      "label": "Triage Jams",
+      "description": "Work the Jam inbox and create issues from Jams"
+    },
+    {
+      "key": "jam.admin",
+      "label": "Administer Jam",
+      "description": "Manage the Jam connection and routing rules"
+    }
+  ],
+  "settings": {
+    "schema": {
+      "jamWorkspaceId": {
+        "type": "string",
+        "label": "Jam workspace ID",
+        "description": "From the Jam settings URL: jam.dev/s/<workspace ID>/settings"
+      },
+      "jamApiToken": {
+        "type": "string",
+        "label": "Jam personal access token",
+        "description": "A jam_pat_ token with the mcp:read and mcp:write scopes"
+      },
+      "jamAccessExpiresOn": {
+        "type": "string",
+        "label": "Token expiry date",
+        "description": "YYYY-MM-DD, shown in Jam when the token was created"
+      },
+      "jamWebhookSecret": {
+        "type": "string",
+        "label": "Webhook signing secret",
+        "description": "The whsec_ secret from the endpoint in Jam's webhook portal"
+      },
+      "recordingLinkUrl": {
+        "type": "string",
+        "label": "Reusable recording link",
+        "description": "A reusable Jam recording link, such as https://recorder.jam.dev/AbC123x. Recording requests from issues add a signed reference to it."
+      },
+      "postBacklinkComments": {
+        "type": "boolean",
+        "label": "Comment on linked Jams",
+        "description": "Post the Weaver issue link as a comment on each linked Jam",
+        "default": true
+      },
+      "showDebugSummary": {
+        "type": "boolean",
+        "label": "Show debug summaries",
+        "description": "Show console errors and failed requests from Jam on issues. Anyone who can read the issue sees them.",
+        "default": true
+      },
+      "embedPlayer": {
+        "type": "boolean",
+        "label": "Embed the Jam player",
+        "description": "Offer Jam's player on issues. It plays only Jams shared with anyone who has the link.",
+        "default": false
+      },
+      "notifyJamOnResolve": {
+        "type": "boolean",
+        "label": "Comment on Jams when issues are resolved",
+        "description": "Post a comment, mentioning whoever captured the Jam, when a linked issue moves to a done status",
+        "default": false
+      },
+      "autoCreateHourlyLimit": {
+        "type": "number",
+        "label": "Issues a rule may create per hour",
+        "description": "Default cap for routing rules that create issues; over the cap, Jams wait in the inbox",
+        "default": 20
+      }
+    }
+  },
+  "events": {
+    "subscribes": [
+      "issue.status_changed"
+    ],
+    "emits": [
+      "jam.received",
+      "jam.linked",
+      "jam.unlinked"
+    ]
+  },
+  "ui": {
+    "slots": [
+      {
+        "slot": "issue-detail-content",
+        "component": "JamIssuePanel",
+        "requiredPermissions": [
+          "jam.view"
+        ]
+      }
+    ],
+    "navigation": [
+      {
+        "label": "Jam",
+        "icon": "bug",
+        "path": "/apps/jam",
+        "requiredPermissions": [
+          "jam.triage"
+        ]
+      }
+    ],
+    "pages": [
+      {
+        "path": "/apps/jam",
+        "component": "JamPage",
+        "requiredPermissions": [
+          "jam.triage"
+        ]
+      }
+    ]
+  },
+  "routes": [
+    { "method": "POST", "path": "/webhook/:tenantId", "handler": "receiveJamWebhook", "public": true },
+    { "method": "GET", "path": "/connection", "handler": "getConnection", "requiredPermissions": ["jam.admin"] },
+    { "method": "POST", "path": "/connection/verify", "handler": "verifyConnection", "requiredPermissions": ["jam.admin"] },
+    { "method": "POST", "path": "/backlinks/retry", "handler": "retryBacklinks", "requiredPermissions": ["jam.admin"] },
+    { "method": "GET", "path": "/rules", "handler": "listRules", "requiredPermissions": ["jam.admin"] },
+    { "method": "POST", "path": "/rules", "handler": "createRule", "requiredPermissions": ["jam.admin"] },
+    { "method": "POST", "path": "/rules/reorder", "handler": "reorderRules", "requiredPermissions": ["jam.admin"] },
+    { "method": "PATCH", "path": "/rules/:ruleId", "handler": "updateRule", "requiredPermissions": ["jam.admin"] },
+    { "method": "DELETE", "path": "/rules/:ruleId", "handler": "deleteRule", "requiredPermissions": ["jam.admin"] },
+    { "method": "POST", "path": "/sync", "handler": "syncFromJam", "requiredPermissions": ["jam.triage"] },
+    { "method": "GET", "path": "/inbox", "handler": "listInbox", "requiredPermissions": ["jam.triage"] },
+    { "method": "POST", "path": "/inbox/:jamId/create-issue", "handler": "createIssueFromJam", "requiredPermissions": ["jam.triage"] },
+    { "method": "POST", "path": "/inbox/:jamId/dismiss", "handler": "dismissJam", "requiredPermissions": ["jam.triage"] },
+    { "method": "POST", "path": "/inbox/:jamId/restore", "handler": "restoreJam", "requiredPermissions": ["jam.triage"] },
+    { "method": "GET", "path": "/issues/:issueKey/jams", "handler": "listIssueJams", "requiredPermissions": ["jam.view"] },
+    { "method": "POST", "path": "/issues/:issueKey/jams", "handler": "attachJam", "requiredPermissions": ["jam.link"] },
+    { "method": "DELETE", "path": "/issues/:issueKey/jams/:jamId", "handler": "detachJam", "requiredPermissions": ["jam.link"] },
+    { "method": "GET", "path": "/issues/:issueKey/jams/:jamId/summary", "handler": "getJamSummary", "requiredPermissions": ["jam.view"] },
+    { "method": "GET", "path": "/issues/:issueKey/recording-requests", "handler": "listRecordingRequests", "requiredPermissions": ["jam.view"] },
+    { "method": "POST", "path": "/issues/:issueKey/recording-requests", "handler": "createRecordingRequest", "requiredPermissions": ["jam.link"] },
+    { "method": "DELETE", "path": "/issues/:issueKey/recording-requests/:requestId", "handler": "revokeRecordingRequest", "requiredPermissions": ["jam.link"] }
+  ],
+  "migrations": [
+    {
+      "version": "0.1.0",
+      "path": "migrations/001_create_jam_tables.sql"
+    },
+    {
+      "version": "0.2.0",
+      "path": "migrations/002_requests_rules_summaries.sql"
+    }
+  ]
+}

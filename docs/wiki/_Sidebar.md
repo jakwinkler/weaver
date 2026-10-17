@@ -22,6 +22,7 @@
 - [Intake Forms](https://github.com/jakwinkler/weaver/wiki/Intake-Forms)
 - [API Keys and Integrations](https://github.com/jakwinkler/weaver/wiki/API-Keys-and-Integrations)
 - [Jira Import](https://github.com/jakwinkler/weaver/wiki/Jira-Import)
+- [Jam](https://github.com/jakwinkler/weaver/wiki/Jam)
 - [Automatic Time](https://github.com/jakwinkler/weaver/wiki/Automatic-Time)
 
 **Administration**

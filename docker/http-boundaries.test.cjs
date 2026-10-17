@@ -46,6 +46,16 @@ test('development data services bind only to loopback', () => {
   assert.match(compose, /127\.0\.0\.1:\$\{DATABASE_PORT/);
   assert.match(compose, /127\.0\.0\.1:\$\{REDIS_PORT/);
 });
+test('the API image ships the compiled SDK that plugin handlers require at runtime', () => {
+  const dockerfile = read('docker/Dockerfile.api');
+  const production = dockerfile.slice(dockerfile.indexOf(' AS production'));
+  assert.match(JSON.parse(read('packages/sdk/package.json')).main, /^\.\/dist\//);
+  assert.match(production, /COPY --from=build \/app\/packages\/sdk\/dist \.\/packages\/sdk\/dist\n/);
+  assert.match(
+    production,
+    /COPY --from=build \/app\/packages\/sdk\/node_modules \.\/packages\/sdk\/node_modules\n/,
+  );
+});
 
 test(
   'running Nginx protects the app and preserves public-form URL variants',

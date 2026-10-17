@@ -727,6 +727,10 @@ importers:
         version: 5.9.3
 
   packages/sdk:
+    dependencies:
+      reflect-metadata:
+        specifier: ^0.2.0
+        version: 0.2.2
     devDependencies:
       '@types/jest':
         specifier: ^29.5.0
@@ -734,9 +738,6 @@ importers:
       jest:
         specifier: ^29.7.0
         version: 29.7.0(@types/node@22.20.1)
-      reflect-metadata:
-        specifier: ^0.2.0
-        version: 0.2.2
       ts-jest:
         specifier: ^29.1.0
         version: 29.4.12(@babel/core@7.29.7)(@jest/transform@29.7.0)(@jest/types@29.6.3)(babel-jest@29.7.0(@babel/core@7.29.7))(jest-util@29.7.0)(jest@29.7.0(@types/node@22.20.1))(typescript@5.9.3)
@@ -912,6 +913,9 @@ importers:
       '@weaver/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+      lucide-react:
+        specifier: '*'
+        version: 0.575.0(react@19.2.8)
       react:
         specifier: ^18.0.0 || ^19.0.0
         version: 19.2.8
@@ -922,6 +926,9 @@ importers:
         specifier: ^5.0.0
         version: 5.0.15(@types/react@18.3.31)(immer@11.1.18)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))
     devDependencies:
+      '@types/react':
+        specifier: ^18.3.18
+        version: 18.3.31
       typescript:
         specifier: ^5.4.0
         version: 5.9.3
@@ -971,6 +978,9 @@ importers:
       '@weaver/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+      lucide-react:
+        specifier: '*'
+        version: 0.575.0(react@19.2.8)
       react:
         specifier: ^18.0.0 || ^19.0.0
         version: 19.2.8
@@ -981,6 +991,9 @@ importers:
         specifier: ^5.0.0
         version: 5.0.15(@types/react@18.3.31)(immer@11.1.18)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))
     devDependencies:
+      '@types/react':
+        specifier: ^18.3.18
+        version: 18.3.31
       typescript:
         specifier: ^5.4.0
         version: 5.9.3
@@ -996,6 +1009,9 @@ importers:
       '@weaver/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+      lucide-react:
+        specifier: '*'
+        version: 0.575.0(react@19.2.8)
       react:
         specifier: ^18.0.0 || ^19.0.0
         version: 19.2.8
@@ -1006,8 +1022,45 @@ importers:
         specifier: ^5.0.0
         version: 5.0.15(@types/react@18.3.31)(immer@11.1.18)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))
     devDependencies:
+      '@types/react':
+        specifier: ^18.3.18
+        version: 18.3.31
       typescript:
         specifier: ^5.4.0
+        version: 5.9.3
+      vite:
+        specifier: ^6.4.3
+        version: 6.4.3(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.51.2)(tsx@4.23.12)
+
+  plugins/plugin-jam:
+    dependencies:
+      '@tanstack/react-query':
+        specifier: ^5.0.0
+        version: 5.102.8(react@19.2.8)
+      lucide-react:
+        specifier: '*'
+        version: 0.575.0(react@19.2.8)
+      react:
+        specifier: ^18.0.0 || ^19.0.0
+        version: 19.2.8
+      react-dom:
+        specifier: ^18.0.0 || ^19.0.0
+        version: 19.2.8(react@19.2.8)
+      zustand:
+        specifier: ^5.0.0
+        version: 5.0.15(@types/react@18.3.31)(immer@11.1.18)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))
+    devDependencies:
+      '@types/react':
+        specifier: ^18.3.18
+        version: 18.3.31
+      '@weaver/config':
+        specifier: workspace:*
+        version: link:../../packages/config
+      '@weaver/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+      typescript:
+        specifier: ^5.7.2
         version: 5.9.3
       vite:
         specifier: ^6.4.3

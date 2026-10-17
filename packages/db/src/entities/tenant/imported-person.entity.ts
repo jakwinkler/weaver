@@ -2,7 +2,7 @@ import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, Unique } from
 
 /** An attribution identity, never an authentication account or membership. */
 @Entity({ name: 'imported_people' })
-@Unique(['sourceInstance', 'externalId'])
+@Unique('imported_people_source_instance_external_id_key', ['sourceInstance', 'externalId'])
 export class ImportedPersonEntity {
   @PrimaryGeneratedColumn('uuid') id!: string;
   @Column({ name: 'source_instance', type: 'text' }) sourceInstance!: string;

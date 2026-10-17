@@ -18,6 +18,7 @@ If someone invited you to an existing project, start with [Weaver for invited cl
 | Collect requests from people without accounts | [Intake Forms](https://github.com/jakwinkler/weaver/wiki/Intake-Forms) |
 | Repeat a task on a schedule | [Recurring Tasks](https://github.com/jakwinkler/weaver/wiki/Recurring-Tasks) |
 | Connect a script or another system | [API Keys and Integrations](https://github.com/jakwinkler/weaver/wiki/API-Keys-and-Integrations) |
+| Turn Jam bug reports into issues or request a recording | [Jam](https://github.com/jakwinkler/weaver/wiki/Jam) |
 | Bring work over from Jira | [Jira Import](https://github.com/jakwinkler/weaver/wiki/Jira-Import) |
 | Enable extra features | [Plugins](https://github.com/jakwinkler/weaver/wiki/Plugins) |
 | Review private activity drafts and release time | [Automatic Time](https://github.com/jakwinkler/weaver/wiki/Automatic-Time) |
@@ -40,6 +41,6 @@ The original feature walkthrough and screenshots describe main at `1b1b370`, che
 
 The client guide and issue creation instructions also include the local inline help implementation that follows that pilot release. Its verification is recorded in [Feature Coverage](https://github.com/jakwinkler/weaver/wiki/Feature-Coverage); those UI changes still need deployment.
 
-The source roadmap contains planning history and stale checkboxes. [Feature Coverage](https://github.com/jakwinkler/weaver/wiki/Feature-Coverage) maps all 29 roadmap items to these guides and records what was checked. It also identifies external integrations and native-app behavior that were not verified in this documentation walkthrough.
+The source roadmap contains planning history and stale checkboxes. [Feature Coverage](https://github.com/jakwinkler/weaver/wiki/Feature-Coverage) maps all 30 roadmap items to these guides and records what was checked. It also identifies external integrations and native-app behavior that were not verified in this documentation walkthrough.
 
 This GitHub wiki documents Weaver itself. The [Wiki inside a Weaver project](https://github.com/jakwinkler/weaver/wiki/Project-Wiki) is where your team writes its own project documentation.

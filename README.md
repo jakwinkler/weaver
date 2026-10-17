@@ -66,6 +66,7 @@ Everything in Weaver starts with an issue: one piece of work, such as a task, a 
 - Import projects from Jira Cloud or Jira Server/Data Center, including issues, comments, attachments, sprints, statuses, and issue types.
 - Import and export a project's issues as CSV or JSON.
 - Create personal API keys with read, write, or admin scope for scripts and other systems.
+- Turn [Jam](https://jam.dev) bug reports into issues, by routing rule or from a triage inbox, see each Jam's capture details and debug summary on its issue, and send a recording link from any issue so anyone can record a Jam that lands back on it. The Jam plugin is off until an administrator connects it.
 - Send webhooks to other systems when issues, comments, or sprints change. Each webhook keeps a delivery log, and every delivery carries an id that stays the same across retries so the receiver can ignore duplicates.
 
 ### Stay in control
@@ -89,7 +90,7 @@ If you normally sign in with Google or GitHub and have no Weaver password, ask y
 - **It is young.** Its packages are still at version 0.0.x, and its first release was readied for a client pilot in October 2026. Read the [current limits](#current-limits) before you move a team over.
 - **It is built for desktop browsers.** Joining, creating an issue, and replying are tested on a phone-sized screen; other screens are less polished there.
 - **It is in English only.**
-- **Some integrations are partial.** The GitHub, GitLab, and Bitbucket plugins record which commits and pull requests mention an issue, but no screen shows those links yet. Jira import leaves out issue links, epic links, and worklogs.
+- **Some integrations are partial.** Jira import leaves out issue links, epic links, and worklogs, and the Jam plugin connects one Jam workspace per organization.
 
 ## User guides
 
@@ -109,6 +110,7 @@ If you normally sign in with Google or GitHub and have no Weaver password, ask y
 | Project wiki | [Project Wiki](docs/wiki/Project-Wiki.md) |
 | Intake forms | [Intake Forms](docs/wiki/Intake-Forms.md) |
 | Moving from Jira | [Jira Import](docs/wiki/Jira-Import.md) |
+| Jam bug reports and recording requests | [Jam](docs/wiki/Jam.md) |
 | API keys and webhooks | [API Keys and Integrations](docs/wiki/API-Keys-and-Integrations.md) |
 | Plugins | [Plugins](docs/wiki/Plugins.md) |
 | Automatic Time | [Automatic Time](docs/wiki/Automatic-Time.md) |
@@ -223,7 +225,9 @@ The API integration tests and the Playwright browser suite need disposable Postg
 
 `node deploy/compose/verify-sql-migrations.cjs` checks the SQL files in [`packages/db/migrations`](packages/db/migrations). It creates the public tables that no SQL file creates from the TypeORM entities, applies every SQL file twice in file name order, and fails if `schema-plan.cjs` still plans a change. So a new SQL file must be safe to run twice and must leave its table exactly as the entity describes it, including TypeORM's index and foreign key names. The check needs `psql` and the `DATABASE_*` variables for a disposable PostgreSQL server, where it recreates the `weaver_e2e_sql_migrations` database.
 
-CI runs on every push and pull request to `main`: lint and typecheck, unit tests, API integration tests against PostgreSQL and Redis, the SQL migration check, a full build, and Docker image builds. Separate workflows run Gitleaks secret scanning across the full history and a weekly `pnpm audit` of production dependencies. The Playwright suite runs locally, not in CI.
+`node deploy/compose/verify-tenant-migrations.cjs` does the same for the tenant migrations in [`packages/db/src/migrations/tenant`](packages/db/src/migrations/tenant). It provisions one tenant schema the way the API does: it synchronizes the tenant entities, runs every migration in file name order, and adds the custom fields GIN index. A second schema stands for an existing tenant, so the tables and indexes the migrations create come from the migrations instead of the entities. It runs the migrations again on both, as every new API connection does, and fails if `schema-plan.cjs` still plans a tenant change. So a tenant migration must be safe to rerun and must create its tables and indexes exactly as the entities describe them, including constraint and index names. Columns a migration adds to an older table are not compared. The check needs the `DATABASE_*` variables, not `psql`, and recreates the `weaver_e2e_tenant_migrations` database.
+
+CI runs on every push and pull request to `main`: lint and typecheck, unit tests, API integration tests against PostgreSQL and Redis, the SQL and tenant migration checks, a full build, and Docker image builds. Separate workflows run Gitleaks secret scanning across the full history and a weekly `pnpm audit` of production dependencies. The Playwright suite runs locally, not in CI.
 
 ### Deploy
 
@@ -249,7 +253,7 @@ Plugins add project views, issue panels, full pages, server routes, and integrat
 
 - The API scans `plugins/` (or `WEAVER_PLUGINS_DIR`) for `weaver-plugin.json` manifests, validates them, and loads server code into the API process. Plugin routes are served under `/api/v1/plugin-routes/`.
 - Plugin UIs are Module Federation remotes loaded at runtime from `/plugin-assets/`. They can add content to the issue page and its sidebar, sidebar navigation, full pages under `/apps/`, and project view tabs.
-- Server code gets a tenant-scoped database handle, an HTTP client that blocks private addresses, events, settings, logging, and APIs for issues, projects, custom fields, activity, and time entries.
+- Server code gets a tenant-scoped database handle, an HTTP client that blocks private addresses, events, settings, logging, and APIs for issues, projects, custom fields, activity, and time entries. Integration plugins can create issues and comment as a named user through the same services as the app, so workflows, validation, and notifications still apply.
 - When a newer plugin version starts, Weaver runs its versioned migrations and `onUpgrade` hook before recording the new version. Downgrades are refused.
 - Plugins are trusted code. Server code runs inside the API with the shared database role, and UI code runs with the viewer's session. Install only plugins you have reviewed.
 
@@ -261,7 +265,8 @@ Plugins add project views, issue panels, full pages, server routes, and integrat
 | Issue Timer | A start, pause, and stop timer on each issue | Saves a time entry when stopped |
 | Time Reports | Time by project, person, or issue, with CSV export and saved reports | |
 | Automatic Time | Private time drafts from the macOS companion, reviewed and released by each person | Alpha. Installs disabled. Uninstalling deletes its private data and keeps official time. |
-| GitHub, GitLab, and Bitbucket Integration | Signed webhooks that record commits and pull or merge requests mentioning an issue key | Server only; the issue panels are placeholders |
+| GitHub, GitLab, and Bitbucket Integration | Signed webhooks that record commits and pull or merge requests mentioning an issue key, listed in a panel on the issue sidebar | Only http and https links are shown |
+| Jam | Jam bug reports become issues by routing rule or from a triage inbox; linked Jams show capture details and a debug summary on the issue; recording links let anyone record a Jam onto an issue | Installs disabled. Needs a Jam token, workspace ID, and webhook secret. See [Jam](docs/wiki/Jam.md). |
 | Repository Integration | An API and custom fields for linking repositories to projects | Server only, no UI |
 | Plugin Template | A minimal example plugin | A starting point for your own |
 
@@ -321,7 +326,7 @@ These are known gaps in this release:
 ### Project history
 
 - [`docs/roadmap`](docs/roadmap/README.md) holds planning history. Its checkboxes and "current state" notes are not release status.
-- [Feature coverage](docs/wiki/Feature-Coverage.md) maps each of the 29 roadmap items to a guide and records what was checked.
+- [Feature coverage](docs/wiki/Feature-Coverage.md) maps each of the 30 roadmap items to a guide and records what was checked.
 - `PROGRESS.md`, `plan.md`, and `SCAN.md` are historical records. The `REVIEW-*-RESOLUTION.md` files record what each security review found and how it was resolved or deferred, most recently [October 15](REVIEW-2026-10-15-RESOLUTION.md).
 
 ### Security

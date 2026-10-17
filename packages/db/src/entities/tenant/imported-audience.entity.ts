@@ -1,7 +1,11 @@
 import { Column, Entity, PrimaryGeneratedColumn, Unique } from 'typeorm';
 
 @Entity({ name: 'imported_audiences' })
-@Unique(['sourceInstance', 'kind', 'identifier'])
+@Unique('imported_audiences_source_instance_kind_identifier_key', [
+  'sourceInstance',
+  'kind',
+  'identifier',
+])
 export class ImportedAudienceEntity {
   @PrimaryGeneratedColumn('uuid') id!: string;
   @Column({ name: 'source_instance', type: 'text' }) sourceInstance!: string;

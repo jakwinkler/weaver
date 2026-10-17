@@ -19,6 +19,9 @@ import type { RecurrenceRule } from '@weaver/shared';
 @Index(['projectId'])
 @Index(['statusId'])
 @Index(['recurrenceParentId', 'recurrenceOccurrence'], { unique: true })
+// GIN index on custom_fields, created by TenantProvisioningService. TypeORM cannot declare GIN,
+// so it only keeps the index.
+@Index('IDX_issue_custom_fields', { synchronize: false })
 @Entity({ name: 'issues' })
 export class IssueEntity {
   assigneeDisplayName?: string;

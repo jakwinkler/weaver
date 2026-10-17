@@ -47,6 +47,7 @@ COPY --from=build /app/packages/jira-import/package.json ./packages/jira-import/
 COPY --from=build /app/packages/jira-import/node_modules ./packages/jira-import/node_modules
 COPY --from=build /app/packages/sdk/dist ./packages/sdk/dist
 COPY --from=build /app/packages/sdk/package.json ./packages/sdk/
+COPY --from=build /app/packages/sdk/node_modules ./packages/sdk/node_modules
 COPY --from=build /app/apps/api/dist ./apps/api/dist
 COPY --from=build /app/apps/api/package.json ./apps/api/
 COPY --from=build /app/apps/api/node_modules ./apps/api/node_modules

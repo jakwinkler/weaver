@@ -1,14 +1,9 @@
 import type { PluginContext } from '@weaver/sdk';
-import * as fs from 'fs';
-import * as path from 'path';
 
 export async function onInstall(context: PluginContext): Promise<void> {
   context.logger.info('Installing Repository Integration plugin');
 
-  // Run migration
-  const migrationPath = path.join(__dirname, '../../migrations/001_create_repository_tables.sql');
-  const sql = fs.readFileSync(migrationPath, 'utf-8');
-  await context.db.runMigration(sql);
+  // The registry runs the manifest's versioned migrations before onInstall.
 
   // Register custom fields
   await context.api.customFields.register({

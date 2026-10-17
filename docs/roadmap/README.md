@@ -47,6 +47,7 @@ For user instructions, start with the [published documentation](https://github.c
 | 27 | [Recurring Tasks](27-recurring-tasks.md) | Implemented; scheduled generation verification pending |
 | 28 | [Audit Log](28-audit-log.md) | Implemented with coverage gaps |
 | 29 | [Automatic Time Plugin](29-automatic-time-plugin.md) | Local alpha; trial pending |
+| 30 | [Jam Integration Plugin](30-jam-plugin.md) | Phases 1 to 4 and resolve comments implemented; real end-to-end run recorded October 17, 2026 |
 
 ## Concrete remaining work
 
