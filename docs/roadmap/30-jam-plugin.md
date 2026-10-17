@@ -6,7 +6,7 @@
 
 **Status: specification; Phase 0 spikes run October 16, 2026 ([results](#phase-0-results)); Phases 1 to 4 and the Phase 5 resolve comment implemented on `feature/plugin-sdk-integration-prereqs`, not merged ([Phase 2 notes](#phase-2-implementation-notes), [Phases 3 to 5 notes](#phases-3-to-5-implementation-notes)).** Written October 16, 2026 against main `5db1948`. The rest of Phase 5 is not implemented. Statements about Jam are sourced in [Sources](#sources) and were checked on October 16, 2026; Jam ships often, so recheck them before each phase.
 
-- First tenant: Rocket Web's Weaver, connected to the `rocketweb.com` Jam workspace (labeled **Team** in the Jam workspace menu).
+- First tenant: an agency pilot installation of Weaver, connected to the agency's own Jam workspace.
 - Distribution: bundled first-party plugin, `@weaver/plugin-jam`, disabled on installation.
 - Human testing: [test guide](30-jam-plugin-testing.md).
 - Prerequisites: three small core SDK changes ([Weaver prerequisites](#weaver-prerequisites)). Phase 0 is done except the S4 seven-day recheck and the S6 Team-only case.
@@ -47,7 +47,7 @@ Jam has **no public REST or GraphQL API**. Everything below comes from documente
 
 | Surface                | What it provides                                                                                                                                                                                                                                                                                                                                                                                                              | Constraints that shape this design                                                                                                                                                                                                                                                                                                                                                      |
 | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Webhooks (Svix)        | `jam.created` per workspace. `recording_link.created` is documented but was not offered in the `rocketweb.com` portal's event catalog. Payload includes jam ID and URL, team ID, type, title, origin, author email and name, media URLs, system info, description and page URL (both absent on recording-link Jams without a connected domain), and `recordingLink` (`publicId`, the link name as `description`, `reference`) | Standard Webhooks signature (`svix-id`, `svix-timestamp`, `svix-signature`, `whsec_` secret). Endpoint must be public HTTPS, not localhost. Retries: immediately, 5s, 5m, 30m, 2h, 5h, 10h, 10h. Event name is not sent as a header. No folder in the payload.                                                                                                                          |
+| Webhooks (Svix)        | `jam.created` per workspace. `recording_link.created` is documented but was not offered in the pilot workspace's event catalog. Payload includes jam ID and URL, team ID, type, title, origin, author email and name, media URLs, system info, description and page URL (both absent on recording-link Jams without a connected domain), and `recordingLink` (`publicId`, the link name as `description`, `reference`) | Standard Webhooks signature (`svix-id`, `svix-timestamp`, `svix-signature`, `whsec_` secret). Endpoint must be public HTTPS, not localhost. Retries: immediately, 5s, 5m, 30m, 2h, 5h, 10h, 10h. Event name is not sent as a header. No folder in the payload.                                                                                                                          |
 | MCP server             | `https://mcp.jam.dev/mcp`, streamable HTTP, JSON-RPC. Read: `getDetails`, `getConsoleLogs`, `getNetworkRequests`, `getMetadata`, `searchJams`, and more. Write: `createComment`, `updateJam`, recording link management                                                                                                                                                                                                       | This is the only programmatic read and write path. Every response is `text/event-stream`; a JSON-only `Accept` gets `406`. No session affinity is needed. Calls took 200 to 370 ms in the spike, with no rate-limit headers. Tool output is designed for AI agents and is not a versioned API contract, except `searchJams`, which takes `v: 1`. Some tools send data to Google Gemini. |
 | Personal access tokens | `jam_pat_...` Bearer tokens for the MCP server                                                                                                                                                                                                                                                                                                                                                                                | One user and one workspace per token. Mandatory expiry: 7, 30, or 90 days, or 1 year. Scopes `mcp:read` and `mcp:write`. Every call acts as that user. No client-credentials grant.                                                                                                                                                                                                     |
 | Recording links        | `recorder.jam.dev/<publicId>`: anyone records without a Jam account. URL parameters `jam-title`, `jam-folder`, `jam-reference`, `jam-mic-enabled`                                                                                                                                                                                                                                                                             | Team plan: 150 links per month. Console and network logs only when recording starts from a verified connected domain. A `jam-reference` URL parameter reaches the webhook as `recordingLink.reference` (S2), but nothing exposes it afterwards: `searchJams` matches only a link's own reference, and `getDetails` omits it.                                                            |
@@ -438,7 +438,7 @@ Links key on `issue_id`, not the issue key, because moving an issue changes its 
 
 | Matcher                 | Source                                                            | Example                                                    |
 | ----------------------- | ----------------------------------------------------------------- | ---------------------------------------------------------- |
-| `urlHosts`              | `originalUrl` host, any of up to 20; `*.` also matches subdomains | `gophersport.com`, `*.gophersport.com` route to project GS |
+| `urlHosts`              | `originalUrl` host, any of up to 20; `*.` also matches subdomains | `shop.example.com`, `*.shop.example.com` route to project SHOP |
 | `pathPrefix`            | `originalUrl` path, at a segment boundary, case-insensitive       | `/checkout` matches `/checkout/pay`, not `/checkouts`      |
 | `authorEmailDomain`     | `author.email`                                                    | `client.com`                                               |
 | `recordingLinkPublicId` | `recordingLink.publicId`                                          | A client's dedicated recording link                        |
@@ -481,7 +481,7 @@ The Connection page shows the last verified webhook time, the last Jam call erro
 
 ### Phase 0: Spikes
 
-The spikes ran against the `rocketweb.com` Jam workspace, with a local webhook receiver behind a temporary Cloudflare quick tunnel. Results are in [Phase 0 results](#phase-0-results).
+The spikes ran against the pilot Jam workspace, with a local webhook receiver behind a temporary Cloudflare quick tunnel. Results are in [Phase 0 results](#phase-0-results).
 
 | ID  | Question                                                                                                      | Pass criterion                                                                                                            |
 | --- | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
@@ -495,7 +495,7 @@ The spikes ran against the `rocketweb.com` Jam workspace, with a local webhook r
 
 ### Phase 0 results
 
-Run October 16, 2026 against the `rocketweb.com` workspace with a 7-day token scoped `mcp:read` and `mcp:write`. The MCP probe sent every request through a byte-identical copy of `packages/server-common/src/outbound-http.ts` and the same parsing as `PluginContextFactory.makeRequest`. The spike scripts lived in a scratch directory and are not committed.
+Run October 16, 2026 against the pilot workspace with a 7-day token scoped `mcp:read` and `mcp:write`. The MCP probe sent every request through a byte-identical copy of `packages/server-common/src/outbound-http.ts` and the same parsing as `PluginContextFactory.makeRequest`. The spike scripts lived in a scratch directory and are not committed.
 
 | ID  | Result                                     | Evidence                                                                                                                                                                                                                                                                                                                                          |
 | --- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -510,7 +510,7 @@ Run October 16, 2026 against the `rocketweb.com` workspace with a 7-day token sc
 Other observations:
 
 - Four real `jam.created` deliveries (two from the extension, two from recording links) verified with the signature algorithm in [Webhook handler](#webhook-handler). Each had one signature version, clock skew of 0 to 1 seconds, and arrived 0.5 to 3.6 seconds after the Jam's `createdAt`.
-- Extension Jams carried `originalUrl` (for example a `work.rocketweb.com` page), which confirms page-host routing for extension captures. Recording-link Jams had no `originalUrl` or `description`, because the workspace has no connected domain. No `submitterComment` appeared.
+- Extension Jams carried `originalUrl` (for example a page on the pilot's own Weaver host), which confirms page-host routing for extension captures. Recording-link Jams had no `originalUrl` or `description`, because the workspace has no connected domain. No `submitterComment` appeared.
 - The Svix portal's event catalog offered `jam.created` and two Intercom events, but not `recording_link.created`.
 - The token can call 35 tools, including the undocumented `analyzeVideo`, `fetch`, `search`, and `submitFeedback`.
 
@@ -537,7 +537,7 @@ Both actors (`reporterId`, `authorId`) default to the request user and must hold
 - [x] Issue panel: snapshot cards, Attach Jam by URL, Unlink.
 - [x] Backlink comments with the retry queue.
 - [x] Sync from Jam.
-- [x] End to end against a real Jam workspace (acceptance criterion 10), October 17, 2026. A local Weaver ran this branch against the `rocketweb.com` workspace with a real token, behind a Cloudflare quick tunnel that forwarded only the webhook route. Results:
+- [x] End to end against a real Jam workspace (acceptance criterion 10), October 17, 2026. A local Weaver ran this branch against the pilot workspace with a real token, behind a Cloudflare quick tunnel that forwarded only the webhook route. Results:
   - **Connection:** **Verify connection** confirmed the token's workspace through real `searchJams` and `getDetails` calls.
   - **Extension Jam:** a Jam captured with the extension on drudgereport.com reached the inbox, with its page URL.
   - **Create and summarize:** creating JAM-2 from it posted "Tracked in Weaver as JAM-2" on the Jam. The debug summary showed real counts (16 console entries; 366 requests, 3 failed with 400, 401, and 422), the console error, and the failed requests without their query strings.
@@ -580,7 +580,7 @@ Differences from the design above:
 ### Phase 5: Optional extensions
 
 - [x] Resolve comment on the Jam when a linked issue reaches a done-category status, mentioning the Jam author when the author is a Jam member.
-- [ ] Jira relink: for tenants that imported from Jira, find Jams whose linked issue keys match imported issues (`import_records`), show a dry-run list, then link them on approval. Not started: it needs a Jam linked to Jira to learn the shape of `integrations` in Jam's replies, and the `rocketweb.com` workspace has none.
+- [ ] Jira relink: for tenants that imported from Jira, find Jams whose linked issue keys match imported issues (`import_records`), show a dry-run list, then link them on approval. Not started: it needs a Jam linked to Jira to learn the shape of `integrations` in Jam's replies, and the pilot workspace has none.
 - [ ] Intake forms: an optional **Record your screen** step that opens a recording request for the issue the form creates. Not started: it needs an extension point on the core public form's confirmation page, because core forms should not depend on this plugin.
 - [ ] Per-user Jam connection through Jam's OAuth with dynamic client registration, so each user's Jam access governs what they see. Not started: an OAuth client, per-user token storage, and refresh are more work than the rest of the plugin.
 - [ ] More than one Jam workspace per tenant. Not started: every table and setting assumes one workspace.
@@ -623,7 +623,7 @@ Differences from the design above:
 7. With the token revoked, issue pages still render Jam cards, the Connection page shows **needs attention**, and backlinks resume after a new token is saved.
 8. A `create` rule with `hourly_limit` 20 creates 20 issues in an hour. The 21st matching Jam is in the inbox flagged `rate_limited`.
 9. Uninstall with confirmation removes every plugin table, and Jam data is untouched.
-10. A real end-to-end run against the `rocketweb.com` workspace has been performed: capture with the extension, record through a recording request, create from the inbox, open the summary, and see the backlink in Jam. The roadmap records it as evidence, separately from automated tests.
+10. A real end-to-end run against the pilot workspace has been performed: capture with the extension, record through a recording request, create from the inbox, open the summary, and see the backlink in Jam. The roadmap records it as evidence, separately from automated tests.
 
 ## Out of scope
 
@@ -647,7 +647,7 @@ Jam, all checked October 16, 2026:
 - [Pricing](https://jam.dev/pricing), page dated October 15, 2026
 - [MCP protected-resource metadata](https://mcp.jam.dev/.well-known/oauth-protected-resource)
 - [Jira Marketplace listing](https://marketplace.atlassian.com/apps/1229157): its API record shows no Connect or Forge artifact, so there is no Jam panel inside Jira (inferred)
-- The `rocketweb.com` Jam workspace settings (Integrations, Webhooks, Jam SDK, MCP, CLI) and a live `getDetails` response, used for field shapes
+- The pilot Jam workspace settings (Integrations, Webhooks, Jam SDK, MCP, CLI) and a live `getDetails` response, used for field shapes
 
 Weaver source on main `5db1948`:
 
