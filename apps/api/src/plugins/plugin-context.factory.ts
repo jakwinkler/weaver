@@ -1,16 +1,38 @@
 import { InboundWebhookService } from './inbound-webhook.service';
 import { BadRequestException, ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import type { PluginContext, PluginCoreCapability, PluginIssueCandidate, PluginIssueCandidateFilters, RequestOptions } from '@weaver/sdk';
-import { InstalledPluginEntity } from '@weaver/db';
+import type {
+  PluginComment,
+  PluginContext,
+  PluginCoreCapability,
+  PluginCreatedIssue,
+  PluginIssueCandidate,
+  PluginIssueCandidateFilters,
+  PluginIssueCreateInput,
+  PluginRichTextDocument,
+  RequestOptions,
+} from '@weaver/sdk';
+import { InstalledPluginEntity, type CommentEntity, type IssueEntity } from '@weaver/db';
+import { createCommentSchema, createIssueSchema } from '@weaver/shared';
 import type { EntityManager, Repository } from 'typeorm';
-import { ProjectAccessService, TenantConnectionProvider, TenantService, requireTenantContext } from '../core/tenant';
+import { z, type ZodTypeAny } from 'zod';
+import { MemberVisibilityService, ProjectAccessService, TenantConnectionProvider, TenantService, requireTenantContext } from '../core/tenant';
+import type { RequestUser } from '../core/auth/current-user.decorator';
+import { PermissionService } from '../core/auth/permission.service';
+import type { RequiredPermission } from '../core/auth/require-permission.decorator';
+import { CommentsService } from '../modules/comments/comments.service';
 import { EventDispatcherService } from '../modules/events';
+import { IssuesService } from '../modules/issues/issues.service';
 import { TimeTrackingService } from '../modules/time-tracking/time-tracking.service';
 import { PluginLoaderService } from './plugin-loader.service';
 import { fetchWithSafeRedirects, readLimitedResponseText } from '../core/security/outbound-http';
 
 const ISSUE_UPDATE_FIELDS = new Set(['summary', 'description', 'priority', 'assignee_id', 'custom_fields', 'sprint_id', 'parent_id', 'epic_id', 'labels', 'sort_order', 'start_date', 'due_date', 'percent_done']);
+const MAX_RESPONSE_BYTES = 1024 * 1024;
+// The same fields POST /projects/:projectKey/issues accepts, minus recurrence. Strict, so a
+// misplaced option such as reporterId fails loudly instead of being dropped.
+const pluginIssueCreateSchema = createIssueSchema.omit({ recurrenceRule: true }).strict();
+const actorIdSchema = z.string().uuid();
 
 @Injectable()
 export class PluginContextFactory {
@@ -24,6 +46,10 @@ export class PluginContextFactory {
     private readonly projectAccess: ProjectAccessService,
     private readonly inboundWebhooks: InboundWebhookService,
     private readonly tenants: TenantService,
+    private readonly issuesService: IssuesService,
+    private readonly commentsService: CommentsService,
+    private readonly permissions: PermissionService,
+    private readonly memberVisibility: MemberVisibilityService,
   ) {}
 
   async create(
@@ -51,14 +77,39 @@ export class PluginContextFactory {
       return this.tenantConnections.runInTenantTransaction(fn);
     };
 
-    const actor = async () => {
-      const userId = this.requireUserId(pluginId, user);
+    const member = async (userId: string): Promise<RequestUser> => {
       const rows = await runInSchema((manager) => manager.query(
-        'SELECT role FROM public.tenant_memberships WHERE tenant_id = $1 AND user_id = $2',
+        `SELECT membership.role, account.email
+           FROM public.tenant_memberships membership
+           JOIN public.users account ON account.id = membership.user_id
+          WHERE membership.tenant_id = $1 AND membership.user_id = $2`,
         [tenant.tenantId, userId],
       ));
       if (!rows[0]) throw new ForbiddenException('Tenant membership is required');
-      return { userId, tenantId: tenant.tenantId, email: user!.email, role: rows[0].role };
+      return { userId, tenantId: tenant.tenantId, email: rows[0].email, role: rows[0].role };
+    };
+    const actor = async () => member(this.requireUserId(pluginId, user));
+    // Background calls (public webhook routes, event handlers) have no request user, so the
+    // plugin names who acts. Either way that person needs the role permissions the matching
+    // HTTP route requires; callers add the project access check.
+    const writer = async (
+      option: 'reporterId' | 'authorId',
+      explicitId: string | undefined,
+      required: RequiredPermission[],
+    ): Promise<RequestUser> => {
+      let userId: string;
+      if (explicitId !== undefined) {
+        userId = parseOrBadRequest(actorIdSchema, explicitId, option);
+      } else if (user?.id) {
+        userId = user.id;
+      } else {
+        throw new ForbiddenException(
+          `Plugin ${pluginId} requires an interactive user context or an explicit ${option}`,
+        );
+      }
+      const resolved = await member(userId);
+      await this.permissions.assertPermissions(resolved, required);
+      return resolved;
     };
     const assertIssueAccess = async (key: string, mode: 'read' | 'write') =>
       this.projectAccess.assertIssueKey(key, await actor(), mode);
@@ -107,6 +158,27 @@ export class PluginContextFactory {
             const userId = this.requireUserId(pluginId, user);
             return this.findIssueCandidates(runInSchema, userId, filters, await accessibleIds());
           },
+          create: async (projectKey: string, input: PluginIssueCreateInput, createOptions = {}) => {
+            await this.assertCapability(pluginId, 'issue-create', options?.capabilityState);
+            const dto = parseOrBadRequest(pluginIssueCreateSchema, input, 'issue');
+            // One transaction, so the counter, issue, and activity entry land together and
+            // issue.created is dispatched only after commit.
+            return runInSchema(async (manager) => {
+              const reporter = await writer('reporterId', createOptions.reporterId, [
+                { category: 'issues', action: 'create' },
+                ...(dto.assigneeId ? [{ category: 'issues', action: 'assign' }] : []),
+              ]);
+              await this.projectAccess.assertProjectKey(projectKey, reporter, 'write');
+              await this.memberVisibility.assertVisibleMember(reporter, dto.assigneeId);
+              const issue = await this.issuesService.create(projectKey, dto, reporter.userId);
+              // IssuesService.create records no activity, so the plugin path adds the entry.
+              await manager.query(
+                `INSERT INTO activity_logs (issue_id, user_id, action) VALUES ($1, $2, 'created')`,
+                [issue.id, reporter.userId],
+              );
+              return toCreatedIssue(issue);
+            });
+          },
           update: async (key: string, data: Record<string, unknown>) => {
             const fields = Object.entries(data);
             if (fields.length === 0) {
@@ -130,33 +202,33 @@ export class PluginContextFactory {
               ]),
             ).then((r) => r[0]);
           },
-          addComment: async (key: string, body: string) => {
-            const issue = await runInSchema((manager) =>
-              manager.query(`SELECT id FROM issues WHERE key = $1`, [key]),
-            );
-            if (!issue[0]) return null;
-            return runInSchema((manager) =>
-              manager.query(
-                `INSERT INTO comments (issue_id, author_id, body) VALUES ($1, $2, $3) RETURNING *`,
-                [
-                  issue[0].id,
-                  user?.id,
-                  JSON.stringify({
-                    type: 'doc',
-                    content: [
-                      {
-                        type: 'paragraph',
-                        content: [{ type: 'text', text: body }],
-                      },
-                    ],
-                  }),
-                ],
-              ),
-            ).then((r) => r[0]);
+          addComment: async (key: string, body: string | PluginRichTextDocument, commentOptions = {}) => {
+            const document = parseOrBadRequest(
+              createCommentSchema,
+              { body: toCommentDocument(body) },
+              'comment',
+            ).body;
+            return runInSchema(async (manager) => {
+              const issue = await manager.query(`SELECT id FROM issues WHERE key = $1`, [key]);
+              if (!issue[0]) return null;
+              const author = await writer('authorId', commentOptions.authorId, [
+                { category: 'comments', action: 'create' },
+              ]);
+              await this.projectAccess.assertIssueKey(key, author, 'write');
+              const comment = await this.commentsService.create(
+                key,
+                { body: document },
+                author.userId,
+                tenant.tenantId,
+              );
+              return toPluginComment(comment);
+            });
           },
         },
         projects: {
           accessibleIds,
+          assertAccess: async (key: string, mode: 'read' | 'write') =>
+            this.projectAccess.assertProjectKey(key, await actor(), mode),
           get: async (key: string) =>
             runInSchema((manager) =>
               manager.query(`SELECT * FROM projects WHERE key = $1`, [key]),
@@ -169,6 +241,18 @@ export class PluginContextFactory {
             return null; // TODO: wire up to public schema user lookup
           },
           list: async () => [],
+          findMemberByEmail: async (email: string) => {
+            const address = parseOrBadRequest(z.string().trim().email().max(255), email, 'email');
+            const rows = await runInSchema((manager) => manager.query(
+              `SELECT account.id, account.email, account.display_name AS "displayName"
+                 FROM public.tenant_memberships membership
+                 JOIN public.users account ON account.id = membership.user_id
+                WHERE membership.tenant_id = $1 AND lower(account.email) = lower($2)
+                LIMIT 1`,
+              [tenant.tenantId, address],
+            ));
+            return rows[0] ?? null;
+          },
         },
         activityLog: {
           create: async (
@@ -413,8 +497,12 @@ export class PluginContextFactory {
     method: string,
     url: string,
     body?: unknown,
-    options?: { headers?: Record<string, string>; timeout?: number },
+    options?: RequestOptions,
   ) {
+    const responseType = options?.responseType ?? 'json';
+    if (responseType !== 'json' && responseType !== 'text') {
+      throw new BadRequestException(`Unsupported responseType: ${String(responseType)}`);
+    }
     const controller = new AbortController();
     const timeout = options?.timeout || 30000;
     const timer = setTimeout(() => controller.abort(), timeout);
@@ -429,12 +517,14 @@ export class PluginContextFactory {
         body: body ? JSON.stringify(body) : undefined,
         signal: controller.signal,
       });
-      const responseText = await readLimitedResponseText(res, 1024 * 1024);
-      let data: unknown = null;
-      try {
-        data = responseText ? JSON.parse(responseText) : null;
-      } catch {
-        data = null;
+      const responseText = await readLimitedResponseText(res, MAX_RESPONSE_BYTES);
+      let data: unknown = responseText;
+      if (responseType === 'json') {
+        try {
+          data = responseText ? JSON.parse(responseText) : null;
+        } catch {
+          data = null;
+        }
       }
       const responseHeaders: Record<string, string> = {};
       res.headers.forEach((v, k) => {
@@ -445,4 +535,47 @@ export class PluginContextFactory {
       clearTimeout(timer);
     }
   }
+}
+
+function parseOrBadRequest<T extends ZodTypeAny>(schema: T, value: unknown, label: string): z.infer<T> {
+  const result = schema.safeParse(value);
+  if (!result.success) {
+    throw new BadRequestException({
+      message: `Invalid ${label}`,
+      errors: result.error.issues.map((issue) => ({
+        field: issue.path.join('.'),
+        message: issue.message,
+      })),
+    });
+  }
+  return result.data;
+}
+
+function toCommentDocument(body: string | PluginRichTextDocument): unknown {
+  if (typeof body !== 'string') return body;
+  if (!body.trim()) throw new BadRequestException('Comment body is required');
+  return { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: body }] }] };
+}
+
+function toCreatedIssue(issue: IssueEntity): PluginCreatedIssue {
+  return {
+    id: issue.id,
+    key: issue.key,
+    projectKey: issue.key.slice(0, issue.key.lastIndexOf('-')),
+    summary: issue.summary,
+    statusId: issue.statusId,
+    reporterId: issue.reporterId,
+    assigneeId: issue.assigneeId ?? null,
+    createdAt: new Date(issue.createdAt).toISOString(),
+  };
+}
+
+function toPluginComment(comment: CommentEntity): PluginComment {
+  return {
+    id: comment.id,
+    issueId: comment.issueId,
+    authorId: comment.authorId,
+    body: comment.body as PluginRichTextDocument,
+    createdAt: new Date(comment.createdAt).toISOString(),
+  };
 }

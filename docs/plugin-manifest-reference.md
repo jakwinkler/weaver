@@ -33,7 +33,7 @@ interface PluginManifest {
   };
   permissions: string[];
   requires?: {
-    coreCapabilities?: Array<'issue-candidates' | 'time-entries'>;
+    coreCapabilities?: Array<'issue-candidates' | 'issue-create' | 'time-entries'>;
     plugins?: Array<{ id: string; minimumVersion?: string }>;
   };
   companion?: PluginCompanionMetadata;
@@ -109,7 +109,7 @@ The plugin route URL replaces the scoped ID slash with `~`:
 | `feature`     | Adds capability across existing Weaver workflows    |
 | `integration` | Connects Weaver to an external system               |
 
-Classification is descriptive. Entrypoints and contributions determine actual behavior.
+Classification is mostly descriptive: entrypoints and contributions determine behavior. One exception: the sidebar shows `ui.navigation` entries only for `app` plugins, so a plugin of any other type with a page is reachable only by its URL.
 
 ### `scope`
 
@@ -156,7 +156,14 @@ When `deletesPrivateData` is `true`, `POST /api/v1/plugins/uninstall` fails unle
 }
 ```
 
-- `coreCapabilities` unlocks core APIs that are closed by default. `issue-candidates` and `time-entries` are the current capabilities. Calling one without declaring it, or while the plugin is not installed and enabled, throws a forbidden error.
+- `coreCapabilities` unlocks core APIs that are closed by default. Calling one without declaring it, or while the plugin is not installed and enabled, throws a forbidden error. The current capabilities are:
+
+  | Capability         | Unlocks                                                                                                                                                       |
+  | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | `issue-candidates` | `context.api.issues.findCandidates`                                                                                                                           |
+  | `issue-create`     | `context.api.issues.create`, which creates issues through the same service as `POST /projects/:projectKey/issues`, for a reporter who could create them there |
+  | `time-entries`     | `context.api.timeEntries`                                                                                                                                     |
+
 - `plugins` lists plugins that must already be installed for the tenant. Install and upgrade fail with a conflict when one is missing or older than `minimumVersion`.
 
 ## `companion`
