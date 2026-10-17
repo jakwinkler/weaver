@@ -13,6 +13,8 @@ import { PluginRouteController } from './plugin-route.controller';
 import { PluginAssetsController } from './plugin-assets.controller';
 import { PluginCompanionRouteController } from './plugin-companion-route.controller';
 import { TimeTrackingModule } from '../modules/time-tracking';
+import { IssuesModule } from '../modules/issues';
+import { CommentsModule } from '../modules/comments';
 import { PluginRouteAuthGuard } from './plugin-route-auth.guard';
 
 @Module({
@@ -21,6 +23,8 @@ import { PluginRouteAuthGuard } from './plugin-route-auth.guard';
     TenantModule,
     EventsModule,
     TimeTrackingModule,
+    IssuesModule,
+    CommentsModule,
   ],
   controllers: [
     PluginsController,

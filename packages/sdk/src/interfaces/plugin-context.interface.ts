@@ -35,10 +35,16 @@ export interface PluginHttpClient {
 export interface RequestOptions {
   headers?: Record<string, string>;
   timeout?: number;
+  /**
+   * `json` (the default) parses the body and returns `data: null` when it is not JSON.
+   * `text` returns the raw body as a string, for example a `text/event-stream` reply.
+   */
+  responseType?: 'json' | 'text';
 }
 
 export interface HttpResponse {
   status: number;
+  /** Parsed JSON, or the body string when the request used `responseType: 'text'`. */
   data: unknown;
   headers: Record<string, string>;
 }
@@ -52,18 +58,39 @@ export interface PluginCoreApi {
     assertAccess(key: string, mode: 'read' | 'write'): Promise<void>;
     get(key: string): Promise<unknown>;
     findCandidates(filters?: PluginIssueCandidateFilters): Promise<PluginIssueCandidate[]>;
+    /** Requires the `issue-create` core capability. */
+    create(
+      projectKey: string,
+      input: PluginIssueCreateInput,
+      options?: PluginIssueCreateOptions,
+    ): Promise<PluginCreatedIssue>;
     update(key: string, data: Record<string, unknown>): Promise<unknown>;
-    addComment(key: string, body: string): Promise<unknown>;
+    /**
+     * A string becomes one paragraph. Pass a rich-text document to include mention nodes.
+     * Resolves to null when the issue does not exist.
+     */
+    addComment(
+      key: string,
+      body: string | PluginRichTextDocument,
+      options?: PluginCommentOptions,
+    ): Promise<PluginComment | null>;
   };
   projects: {
     /** null means a tenant administrator; [] means no visible projects. */
     accessibleIds(): Promise<string[] | null>;
+    /** Throws unless the request user can read (or write) the project. */
+    assertAccess(key: string, mode: 'read' | 'write'): Promise<void>;
     get(key: string): Promise<unknown>;
     list(): Promise<unknown[]>;
   };
   users: {
     get(id: string): Promise<unknown>;
     list(): Promise<unknown[]>;
+    /**
+     * The tenant member with this email, matched case-insensitively, or null. Use it to map an
+     * external identity to a Weaver user; it confers no access by itself.
+     */
+    findMemberByEmail(email: string): Promise<PluginTenantMember | null>;
   };
   customFields: {
     register(definition: {
@@ -98,7 +125,69 @@ export interface PluginCoreApi {
   };
 }
 
-export type PluginCoreCapability = 'issue-candidates' | 'time-entries';
+export type PluginCoreCapability = 'issue-candidates' | 'issue-create' | 'time-entries';
+
+/** A TipTap/ProseMirror JSON document: `{ type: 'doc', content: [...] }`. */
+export type PluginRichTextDocument = Record<string, unknown>;
+
+export interface PluginIssueCreateInput {
+  summary: string;
+  description?: PluginRichTextDocument;
+  priority?: 'lowest' | 'low' | 'medium' | 'high' | 'highest';
+  issueTypeId?: string;
+  assigneeId?: string;
+  labels?: string[];
+  parentId?: string;
+  epicId?: string;
+  customFields?: Record<string, unknown>;
+  /** YYYY-MM-DD */
+  startDate?: string;
+  /** YYYY-MM-DD */
+  dueDate?: string;
+  percentDone?: number;
+  storyPoints?: number | null;
+}
+
+export interface PluginIssueCreateOptions {
+  /**
+   * The issue's reporter. Defaults to the request user. Required when there is no request user,
+   * such as on a public webhook route. Must be a tenant member with write access to the project.
+   */
+  reporterId?: string;
+}
+
+export interface PluginCreatedIssue {
+  id: string;
+  key: string;
+  projectKey: string;
+  summary: string;
+  statusId: string;
+  reporterId: string;
+  assigneeId: string | null;
+  createdAt: string;
+}
+
+export interface PluginCommentOptions {
+  /**
+   * The comment's author. Defaults to the request user. Required when there is no request user,
+   * such as on a public webhook route. Must be a tenant member with write access to the project.
+   */
+  authorId?: string;
+}
+
+export interface PluginTenantMember {
+  id: string;
+  email: string;
+  displayName: string;
+}
+
+export interface PluginComment {
+  id: string;
+  issueId: string;
+  authorId: string;
+  body: PluginRichTextDocument;
+  createdAt: string;
+}
 
 export interface PluginIssueCandidateFilters {
   projectKeys?: string[];

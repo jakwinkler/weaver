@@ -68,7 +68,7 @@ describe('parsePluginManifest', () => {
     confirmationMessage: 'Deletes example data',
   };
   const requires: Required<PluginRequirements> = {
-    coreCapabilities: ['issue-candidates', 'time-entries'],
+    coreCapabilities: ['issue-candidates', 'issue-create', 'time-entries'],
     plugins: [{ id: '@weaver/plugin-board', minimumVersion: '1.0.0' }],
   };
   const companion: Required<PluginCompanionMetadata> = {
@@ -123,5 +123,11 @@ describe('parsePluginManifest', () => {
     };
 
     expect(() => parsePluginManifest(manifest)).toThrow(/unrecognized/i);
+  });
+
+  it('rejects a core capability the host does not provide', () => {
+    const manifest = { ...fullManifest, requires: { ...requires, coreCapabilities: ['issue-delete'] } };
+
+    expect(() => parsePluginManifest(manifest)).toThrow(/coreCapabilities/);
   });
 });

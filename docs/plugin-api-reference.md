@@ -78,6 +78,18 @@ await context.db.runMigration(`
 
 Use parameters for values. Do not interpolate user input into SQL.
 
+`query` returns the driver's raw result. For a top-level `UPDATE` or `DELETE`, that is `[rows, rowCount]`, not the rows, so `result.length` is always 2. When you need the `RETURNING` rows, run the statement in a CTE and select them:
+
+```typescript
+const claimed = await context.db.query(
+  `WITH claimed AS (
+     UPDATE drafts SET state = 'publishing' WHERE id = $1 AND state = 'ready' RETURNING id
+   ) SELECT id FROM claimed`,
+  [draftId],
+);
+if (!claimed.length) return { status: 409, body: { message: 'Already publishing' } };
+```
+
 ### `context.http`
 
 ```typescript
@@ -92,6 +104,7 @@ interface PluginHttpClient {
 interface RequestOptions {
   headers?: Record<string, string>;
   timeout?: number;
+  responseType?: 'json' | 'text';
 }
 
 interface HttpResponse {
@@ -109,6 +122,32 @@ const response = await context.http.post(
   { project: 'WEB', version: '2.4.0' },
   { headers: { Authorization: `Bearer ${token}` }, timeout: 10_000 },
 );
+```
+
+Request bodies are sent as JSON with `Content-Type: application/json`. The timeout defaults to 30 seconds and covers reading the body. Redirects are followed only to addresses that pass the same outbound checks as the original URL, and a response body larger than 1 MB is rejected.
+
+`responseType` controls `data`:
+
+| `responseType`   | `data`                                                                   |
+| ---------------- | ------------------------------------------------------------------------ |
+| `json` (default) | The parsed JSON body, or `null` when the body is empty or not valid JSON |
+| `text`           | The body as a string, `''` when empty                                    |
+
+Use `text` for a server that does not answer JSON, such as a Model Context Protocol server that replies with `text/event-stream`:
+
+```typescript
+const response = await context.http.post(
+  'https://mcp.example.test/mcp',
+  { jsonrpc: '2.0', id: 1, method: 'tools/list' },
+  {
+    headers: { Accept: 'application/json, text/event-stream', Authorization: `Bearer ${token}` },
+    responseType: 'text',
+  },
+);
+const dataLines = String(response.data)
+  .split('\n')
+  .filter((line) => line.startsWith('data:'))
+  .map((line) => line.slice('data:'.length).trim());
 ```
 
 Treat the response data as untrusted input. Obtain credentials from supported tenant configuration or secret storage, not source literals.
@@ -149,22 +188,136 @@ Declare the corresponding types and defaults in `settings.schema`.
 
 ```typescript
 issues: {
+  assertAccess(key: string, mode: 'read' | 'write'): Promise<void>;
   get(key: string): Promise<unknown>;
+  findCandidates(filters?: PluginIssueCandidateFilters): Promise<PluginIssueCandidate[]>;
+  create(
+    projectKey: string,
+    input: PluginIssueCreateInput,
+    options?: { reporterId?: string },
+  ): Promise<PluginCreatedIssue>;
   update(key: string, data: Record<string, unknown>): Promise<unknown>;
-  addComment(key: string, body: string): Promise<unknown>;
+  addComment(
+    key: string,
+    body: string | PluginRichTextDocument,
+    options?: { authorId?: string },
+  ): Promise<PluginComment | null>;
 };
 ```
 
 ```typescript
 const issue = await context.api.issues.get('WEB-42');
-await context.api.issues.update('WEB-42', { status: 'done' });
+await context.api.issues.update('WEB-42', { priority: 'high' });
 await context.api.issues.addComment('WEB-42', 'Included in release 2.4.0');
+```
+
+`findCandidates` requires the `issue-candidates` core capability and a request user. `update` accepts only these fields: `summary`, `description`, `priority`, `assignee_id`, `custom_fields`, `sprint_id`, `parent_id`, `epic_id`, `labels`, `sort_order`, `start_date`, `due_date`, and `percent_done`.
+
+#### Acting user
+
+`create` and `addComment` act as a person, not as the plugin:
+
+- On a route with a request user, they act as that user unless an explicit actor is passed.
+- On a public route, in `onEvent`, or in a lifecycle hook there is no request user, so pass `reporterId` or `authorId`. Without one the call throws a forbidden error.
+- The actor must be a member of the tenant with the role permission the matching HTTP route requires (`issues.create`, plus `issues.assign` when an assignee is set; `comments.create` for comments) and write access to the project. Otherwise the call throws a forbidden error and writes nothing.
+
+Choosing the actor is the plugin's responsibility. Map an external identity to a Weaver user deliberately, for example through a setting an administrator controls, and fall back to a designated user rather than guessing.
+
+#### `create`
+
+Requires the `issue-create` core capability.
+
+```typescript
+interface PluginIssueCreateInput {
+  summary: string;
+  description?: PluginRichTextDocument;
+  priority?: 'lowest' | 'low' | 'medium' | 'high' | 'highest';
+  issueTypeId?: string;
+  assigneeId?: string;
+  labels?: string[];
+  parentId?: string;
+  epicId?: string;
+  customFields?: Record<string, unknown>;
+  startDate?: string; // YYYY-MM-DD
+  dueDate?: string; // YYYY-MM-DD
+  percentDone?: number;
+  storyPoints?: number | null;
+}
+
+interface PluginCreatedIssue {
+  id: string;
+  key: string;
+  projectKey: string;
+  summary: string;
+  statusId: string;
+  reporterId: string;
+  assigneeId: string | null;
+  createdAt: string;
+}
+```
+
+```typescript
+const issue = await context.api.issues.create(
+  'WEB',
+  {
+    summary: 'Checkout button does nothing',
+    description: {
+      type: 'doc',
+      content: [
+        { type: 'paragraph', content: [{ type: 'text', text: 'Reported from the help desk' }] },
+      ],
+    },
+    priority: 'high',
+    labels: ['support'],
+  },
+  { reporterId: mappedUserId },
+);
+```
+
+The input is validated like the body of `POST /projects/:projectKey/issues`, except that unknown fields, including a misplaced `reporterId`, are rejected with a bad request error and recurrence rules are not accepted. The issue is created by the same service as that route, so it starts in the initial status of the project's workflow, custom fields are validated, the assignee is notified, and `issue.created` is sent to webhooks, plugins, and connected browsers after the issue is saved. The plugin path also records a `created` activity entry for the reporter. The issue number, issue, and activity entry are written in one transaction.
+
+#### `addComment`
+
+A string body becomes one paragraph. To mention someone, pass a rich-text document with a mention node:
+
+```typescript
+await context.api.issues.addComment(
+  'WEB-42',
+  {
+    type: 'doc',
+    content: [
+      {
+        type: 'paragraph',
+        content: [
+          { type: 'mention', attrs: { id: requesterId, label: 'Riley' } },
+          { type: 'text', text: ' a recording arrived for this issue.' },
+        ],
+      },
+    ],
+  },
+  { authorId: integrationUserId },
+);
+```
+
+The comment is written by the same service as `POST /issues/:issueKey/comments`, so the document is validated, mentioned project members are notified, the reporter and assignee get comment email by their preferences, and `comment.created` is sent. `addComment` resolves to `null` when the issue does not exist.
+
+```typescript
+interface PluginComment {
+  id: string;
+  issueId: string;
+  authorId: string;
+  body: PluginRichTextDocument;
+  createdAt: string;
+}
 ```
 
 ### `context.api.projects`
 
 ```typescript
 projects: {
+  /** null means a tenant administrator; [] means no visible projects. */
+  accessibleIds(): Promise<string[] | null>;
+  assertAccess(key: string, mode: 'read' | 'write'): Promise<void>;
   get(key: string): Promise<unknown>;
   list(): Promise<unknown[]>;
 };
@@ -175,18 +328,39 @@ const project = await context.api.projects.get('WEB');
 const projects = await context.api.projects.list();
 ```
 
+`get` and `list` read rows without an access check. Use `assertAccess` when a request body or query names a project, because the host checks only `:projectKey` and `:issueKey` route parameters. It throws unless the request user can read (or write) the project, and it requires a request user:
+
+```typescript
+await context.api.projects.assertAccess(body.projectKey, 'write');
+```
+
 ### `context.api.users`
 
 ```typescript
 users: {
   get(id: string): Promise<unknown>;
   list(): Promise<unknown[]>;
+  findMemberByEmail(email: string): Promise<PluginTenantMember | null>;
 };
+
+interface PluginTenantMember {
+  id: string;
+  email: string;
+  displayName: string;
+}
 ```
 
+`get` currently returns `null` and `list` returns `[]`; neither is wired to user data yet.
+
+`findMemberByEmail` maps an external identity, such as a bug reporter's email, to a member of the current tenant. It matches case-insensitively and returns `null` for anyone outside the tenant. It confers no access by itself: `issues.create` still checks the reporter it is given.
+
 ```typescript
-const actor = await context.api.users.get(context.user!.id);
-const users = await context.api.users.list();
+const member = await context.api.users.findMemberByEmail(reporterEmail);
+const issue = await context.api.issues.create(
+  'WEB',
+  input,
+  member ? { reporterId: member.id } : {},
+);
 ```
 
 Check `context.user` before using it because background invocations may not have an actor.
