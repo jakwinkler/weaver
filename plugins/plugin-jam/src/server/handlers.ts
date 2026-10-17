@@ -33,6 +33,8 @@ const INBOX_LIMIT = 100;
 const SYNC_PAGE_SIZE = 50;
 const SYNC_DETAIL_LIMIT = 20;
 const SUMMARY_TTL_MINUTES = 60;
+const TRANSCRIPT_MAX_CUES = 500;
+const TRANSCRIPT_MAX_CHARS = 20_000;
 const DAY_MS = 86_400_000;
 const WEBHOOK_JAM_TIMEOUT_MS = 4_000;
 
@@ -68,6 +70,7 @@ interface JamSettings {
   recordingLinkUrl: string;
   postBacklinkComments: boolean;
   showDebugSummary: boolean;
+  showTranscript: boolean;
   embedPlayer: boolean;
   notifyJamOnResolve: boolean;
   autoCreateHourlyLimit: number;
@@ -85,6 +88,7 @@ function readSettings(context: PluginContext): JamSettings {
     recordingLinkUrl: webUrl(text('recordingLinkUrl'), ['https:']) ?? '',
     postBacklinkComments: context.settings.postBacklinkComments !== false,
     showDebugSummary: context.settings.showDebugSummary !== false,
+    showTranscript: context.settings.showTranscript !== false,
     embedPlayer: context.settings.embedPlayer === true,
     notifyJamOnResolve: context.settings.notifyJamOnResolve === true,
     autoCreateHourlyLimit: Number.isInteger(limit) && limit > 0 ? Math.min(limit, 500) : 20,
@@ -1904,6 +1908,115 @@ export function summarizeNetwork(events: unknown[]): Array<{
     .slice(0, 5);
 }
 
+// The transcript is what the reporter said while recording, as Jam's WebVTT captions. It is
+// reduced to start times and plain text here, so no cue markup or styling reaches the browser.
+
+interface JamTranscript {
+  status: 'available' | 'none' | 'too_long' | 'unavailable';
+  cues: Array<{ startMs: number; text: string }>;
+  truncated: boolean;
+}
+
+const VTT_TIMING = /^((?:\d+:)?\d{2}:\d{2}[.,]\d{3})[ \t]+-->[ \t]+(?:\d+:)?\d{2}:\d{2}[.,]\d{3}/;
+const VTT_ENTITIES: Record<string, string> = {
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+  nbsp: ' ',
+  lrm: '',
+  rlm: '',
+};
+
+function vttMilliseconds(stamp: string): number {
+  const seconds = stamp
+    .replace(',', '.')
+    .split(':')
+    .reduce((total, part) => total * 60 + Number(part), 0);
+  return Math.round(seconds * 1000);
+}
+
+export function parseWebVtt(body: string): Array<{ startMs: number; text: string }> {
+  const cues: Array<{ startMs: number; text: string }> = [];
+  for (const block of body.replace(/\r\n?/g, '\n').split(/\n[ \t]*\n/)) {
+    const lines = block.split('\n').map((line) => line.trim());
+    // Header, NOTE, STYLE, and REGION blocks have no timing line; a cue identifier may precede it.
+    if (/^NOTE\b/.test(lines[0])) continue;
+    const timingLine = lines.findIndex((line) => VTT_TIMING.test(line));
+    const timing = timingLine < 0 ? null : VTT_TIMING.exec(lines[timingLine]);
+    if (!timing) continue;
+    const text = lines
+      .slice(timingLine + 1)
+      .join(' ')
+      // Voice, class, language, and inline timestamp tags.
+      .replace(/<[^>]*>/g, '')
+      .replace(/&(amp|lt|gt|quot|apos|nbsp|lrm|rlm);/g, (_, name: string) => VTT_ENTITIES[name])
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (text) cues.push({ startMs: vttMilliseconds(timing[1]), text: text.slice(0, 1000) });
+  }
+  return cues;
+}
+
+/** Jam's reply may be the WebVTT document itself or a JSON document with it in one field. */
+function webVttIn(content: ToolContent[]): string | null {
+  for (const item of content) {
+    if (item.type !== 'text' || typeof item.text !== 'string') continue;
+    const raw = item.text.trim();
+    if (raw.startsWith('WEBVTT')) return raw;
+    try {
+      const value = JSON.parse(raw);
+      if (!isRecord(value)) continue;
+      const field = Object.values(value).find(
+        (candidate) => typeof candidate === 'string' && candidate.trim().startsWith('WEBVTT'),
+      );
+      if (field) return (field as string).trim();
+    } catch {
+      // Not JSON; try the next item.
+    }
+  }
+  return null;
+}
+
+export function limitTranscript(
+  cues: Array<{ startMs: number; text: string }>,
+): Pick<JamTranscript, 'cues' | 'truncated'> {
+  const kept: Array<{ startMs: number; text: string }> = [];
+  let length = 0;
+  for (const cue of cues) {
+    if (kept.length === TRANSCRIPT_MAX_CUES || length + cue.text.length > TRANSCRIPT_MAX_CHARS)
+      return { cues: kept, truncated: true };
+    kept.push(cue);
+    length += cue.text.length;
+  }
+  return { cues: kept, truncated: false };
+}
+
+async function jamTranscript(
+  context: PluginContext,
+  settings: JamSettings,
+  jamId: string,
+  jamType: string | null,
+): Promise<JamTranscript> {
+  const none: JamTranscript = { status: 'none', cues: [], truncated: false };
+  // Screenshots and replays have no recorded speech, so Jam is not asked.
+  if (jamType !== 'video') return none;
+  try {
+    const vtt = webVttIn(await callJamTool(context, settings, 'getVideoTranscript', { jamId }));
+    const cues = vtt ? parseWebVtt(vtt) : [];
+    return cues.length ? { status: 'available', ...limitTranscript(cues) } : none;
+  } catch (error) {
+    // Jam answers a tool error for a Jam without a transcript: microphone off, or Instant Replay.
+    if (jamKindOf(error) === 'tool') return none;
+    // The plugin HTTP client refuses replies over 1 MB.
+    if (/exceeded size limit/i.test(errorMessage(error)))
+      return { status: 'too_long', cues: [], truncated: false };
+    await noteJamFailure(context, error);
+    return { status: 'unavailable', cues: [], truncated: false };
+  }
+}
+
 function countsFrom(value: unknown): Record<string, number> {
   if (!isRecord(value)) return {};
   return Object.fromEntries(
@@ -1933,8 +2046,13 @@ export async function getJamSummary(
     `SELECT summary FROM jam_summaries
       WHERE jam_id = $1 AND fetched_at > now() - make_interval(mins => $2)`,
     [jamId, SUMMARY_TTL_MINUTES],
-  )) as Array<{ summary: unknown }>;
-  if (cached && req.query.refresh !== 'true') return json(200, cached.summary);
+  )) as Array<{ summary: Record<string, unknown> }>;
+  if (cached && req.query.refresh !== 'true') {
+    const { transcript, ...withoutTranscript } = cached.summary;
+    if (!settings.showTranscript) return json(200, withoutTranscript);
+    // A summary cached while transcripts were off has none, so it is fetched again.
+    if (transcript) return json(200, cached.summary);
+  }
 
   try {
     const details = await callJamJson(context, settings, 'getDetails', { jamId });
@@ -1946,22 +2064,25 @@ export async function getJamSummary(
       .filter(([status]) => Number(status) >= 400)
       .reduce((sum, [, count]) => sum + count, 0);
     const consoleLevels = countsFrom(consoleSummary.level);
-    const consoleErrors =
+    const [consoleErrors, failed, transcript] = await Promise.all([
       (consoleLevels.error ?? 0) > 0
-        ? await callJamJson(context, settings, 'getConsoleLogs', {
+        ? callJamJson(context, settings, 'getConsoleLogs', {
             jamId,
             logLevel: ['error'],
             limit: 5,
           })
-        : { events: [] };
-    const failed =
+        : { events: [] },
       failedRequests > 0
-        ? await callJamJson(context, settings, 'getNetworkRequests', {
+        ? callJamJson(context, settings, 'getNetworkRequests', {
             jamId,
             statusCode: ['4xx', '5xx'],
             limit: 5,
           })
-        : { events: [] };
+        : { events: [] },
+      settings.showTranscript
+        ? jamTranscript(context, settings, jamId, text(details.type, 20))
+        : null,
+    ]);
     const summary = {
       fetchedAt: new Date().toISOString(),
       console: {
@@ -1974,12 +2095,16 @@ export async function getJamSummary(
         failed: failedRequests,
         failures: summarizeNetwork(Array.isArray(failed.events) ? failed.events : []),
       },
+      ...(transcript ? { transcript } : {}),
     };
-    await context.db.query(
-      `INSERT INTO jam_summaries (jam_id, summary, fetched_at) VALUES ($1, $2::jsonb, now())
-       ON CONFLICT (jam_id) DO UPDATE SET summary = EXCLUDED.summary, fetched_at = now()`,
-      [jamId, JSON.stringify(summary)],
-    );
+    // A transcript Jam did not send is asked for again next time, not cached for an hour.
+    if (transcript?.status !== 'unavailable') {
+      await context.db.query(
+        `INSERT INTO jam_summaries (jam_id, summary, fetched_at) VALUES ($1, $2::jsonb, now())
+         ON CONFLICT (jam_id) DO UPDATE SET summary = EXCLUDED.summary, fetched_at = now()`,
+        [jamId, JSON.stringify(summary)],
+      );
+    }
     return json(200, summary);
   } catch (error) {
     await noteJamFailure(context, error);

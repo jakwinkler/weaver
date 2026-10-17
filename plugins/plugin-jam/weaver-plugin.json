@@ -88,6 +88,12 @@
         "description": "Show console errors and failed requests from Jam on issues. Anyone who can read the issue sees them.",
         "default": true
       },
+      "showTranscript": {
+        "type": "boolean",
+        "label": "Show what reporters said",
+        "description": "Add the spoken transcript of video Jams recorded with the microphone on to the debug summary. Anyone who can read the issue sees it. Needs Show debug summaries.",
+        "default": true
+      },
       "embedPlayer": {
         "type": "boolean",
         "label": "Embed the Jam player",

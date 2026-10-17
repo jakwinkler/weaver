@@ -2,8 +2,14 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Activity, Bug, Link2Off, Play } from 'lucide-react';
 import { JamCard } from './JamCard';
 import { RecordingRequests } from './RecordingRequests';
-import { buttonClass, errorMessage, inputClass, primaryButtonClass } from './format';
-import type { IssueJamsResponse, JamSummary, LinkedJam, PluginComponentContext } from './types';
+import { buttonClass, clockTime, errorMessage, inputClass, primaryButtonClass } from './format';
+import type {
+  IssueJamsResponse,
+  JamSummary,
+  JamTranscript,
+  LinkedJam,
+  PluginComponentContext,
+} from './types';
 
 interface JamIssuePanelProps {
   pluginContext: PluginComponentContext;
@@ -261,10 +267,47 @@ function SummaryView({ summary }: { summary: JamSummary }) {
           ))}
         </ul>
       )}
+      {summary.transcript && <TranscriptView transcript={summary.transcript} />}
       <p className="text-muted-foreground">
         From Jam, checked {new Date(summary.fetchedAt).toLocaleTimeString()}. Request bodies,
         headers, and query strings are not shown; open the Jam for full logs.
       </p>
+    </div>
+  );
+}
+
+const TRANSCRIPT_NOTES: Record<Exclude<JamTranscript['status'], 'available'>, string> = {
+  none: 'No spoken transcript. Jam has one only for video Jams recorded with the microphone on, not for screenshots or Instant Replay Jams.',
+  too_long: 'The transcript is too long to show here. Open the Jam to read it.',
+  unavailable: 'Jam did not send the transcript. Try again later.',
+};
+
+function TranscriptView({ transcript }: { transcript: JamTranscript }) {
+  return (
+    <div className="space-y-1">
+      <p className="font-medium text-foreground">What the reporter said</p>
+      {transcript.status === 'available' ? (
+        <>
+          {/* Cue text is plain text from the server; it is never rendered as HTML. */}
+          <ol className="max-h-64 space-y-1 overflow-y-auto">
+            {transcript.cues.map((cue, index) => (
+              <li key={index} className="flex gap-2">
+                <span className="shrink-0 font-mono text-muted-foreground">
+                  {clockTime(cue.startMs)}
+                </span>
+                <span className="break-words text-foreground">{cue.text}</span>
+              </li>
+            ))}
+          </ol>
+          {transcript.truncated && (
+            <p className="text-muted-foreground">
+              Showing the start of the transcript. Open the Jam for the rest.
+            </p>
+          )}
+        </>
+      ) : (
+        <p className="text-muted-foreground">{TRANSCRIPT_NOTES[transcript.status]}</p>
+      )}
     </div>
   );
 }

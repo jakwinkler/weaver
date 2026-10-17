@@ -29,6 +29,9 @@ Work through these in order. Each step says what should happen.
    - In Jam, the Jam gets a comment: "Tracked in Weaver as KEY: link".
 3. **See it on the issue.** Open the issue. The **Jams** section shows the Jam with its thumbnail and "Linked back in Jam".
 4. **Read the debug summary.** Choose **Summary** on the issue's Jam. It shows console and network counts, up to five console errors, and up to five failed requests (method, host, path, status, time). Request bodies, headers, and query strings must never appear. Try it on a Jam captured on a page with a console error or a failing request.
+   - On a video Jam recorded with the microphone on, the summary also shows **What the reporter said**: each caption with its start time, such as `0:07`, as plain text. Say something with `<b>` or `&` in it while recording; it must show as typed characters, not formatting.
+   - A video Jam recorded with the microphone off, a screenshot Jam, and an Instant Replay Jam show "No spoken transcript".
+   - Turn off **Show what reporters said** in the plugin settings and open the summary again (reload the issue first). The transcript section is gone, and the rest of the summary still shows.
 5. **Play the recording in Weaver.** Choose **Play** on a video Jam. Jam's player appears inside the issue. It works only for Jams shared with anyone who has the link.
 6. **Request a recording.** On an issue, under **Recording requests**, choose **Request a recording**, keep or change the title, and choose **Create and copy link**. Open the copied link in a browser where you are signed out of Jam (or send it to a colleague), record a few seconds in the tab the link opened, and submit. Within a few seconds:
    - The new Jam appears in the issue's **Jams** section as "Recorded for a request", not in the inbox.
@@ -57,6 +60,7 @@ Work through these in order. Each step says what should happen.
 - The create-issue form and the rule form have no assignee picker.
 - Video is never stored in Weaver. Only the thumbnail and, if turned on, Jam's own player appear.
 - The debug summary is fetched with the plugin's token, so anyone who can read the issue sees it, even without a Jam account. It is cached for an hour.
+- The reporter's transcript is part of the debug summary, so the same people see it. A long transcript shows only its start, up to 20,000 characters, and one over 1 MB shows "too long to show here". Jam's documentation does not say whether its transcripts involve Google Gemini.
 - A rule that creates issues files them as the Jam's author when that person can report in the project, otherwise as whoever last saved the rule.
 - If a comment on a Jam fails, it is retried when an administrator chooses **Verify connection** or **Retry Jam comments**, and when the next Jam is linked. It is not retried on a timer.
 - A recording request's title and reference travel in the link's address, and Jam's recorder removes them from the address as soon as it loads. If that tab reloads before recording (a manual reload, a restored tab, or a browser restart after granting screen-recording permission), Jam receives neither, and the Jam waits in the inbox instead of attaching to the issue. Attach it from the inbox.

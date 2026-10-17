@@ -58,6 +58,14 @@ export interface JamSummary {
       durationMs: number | null;
     }>;
   };
+  /** Absent when the transcript setting is off. */
+  transcript?: JamTranscript;
+}
+
+export interface JamTranscript {
+  status: 'available' | 'none' | 'too_long' | 'unavailable';
+  cues: Array<{ startMs: number; text: string }>;
+  truncated: boolean;
 }
 
 export interface RecordingRequest {
