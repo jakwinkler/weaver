@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -91,6 +92,29 @@ describe('PluginLoaderService client bundles', () => {
     const handler = await service.getHandler('@example/plugin', 'handleWebhook');
 
     expect(handler).toBeInstanceOf(Function);
+  });
+
+  it('logs why an existing handler module failed to load', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.WEAVER_TRUSTED_PLUGINS = '@example/plugin';
+    fs.writeFileSync(
+      path.join(pluginsDir, 'plugin-example/dist/server/webhook.handler.js'),
+      "require('@example/not-installed');",
+    );
+    const logError = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => {});
+
+    const handler = await service.getHandler('@example/plugin', 'handleWebhook');
+    const calls = logError.mock.calls.slice();
+    logError.mockRestore();
+
+    expect(handler).toBeUndefined();
+    expect(calls).toHaveLength(1);
+    const [message] = calls[0] as [string];
+    expect(message).toContain('Failed to load handler handleWebhook for plugin @example/plugin');
+    expect(message).toContain(
+      `${path.join('dist', 'server', 'webhook.handler.js')}: Error: Cannot find module '@example/not-installed'`,
+    );
+    expect(message).not.toContain('handlers:');
   });
 
   it('does not load deployment plugins that are absent from the production trust list', async () => {
