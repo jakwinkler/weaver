@@ -30,7 +30,7 @@ Work through these in order. Each step says what should happen.
 3. **See it on the issue.** Open the issue. The **Jams** section shows the Jam with its thumbnail and "Linked back in Jam".
 4. **Read the debug summary.** Choose **Summary** on the issue's Jam. It shows console and network counts, up to five console errors, and up to five failed requests (method, host, path, status, time). Request bodies, headers, and query strings must never appear. Try it on a Jam captured on a page with a console error or a failing request.
 5. **Play the recording in Weaver.** Choose **Play** on a video Jam. Jam's player appears inside the issue. It works only for Jams shared with anyone who has the link.
-6. **Request a recording.** On an issue, under **Recording requests**, choose **Request a recording**, keep or change the title, and choose **Create and copy link**. Open the copied link in a browser where you are signed out of Jam (or send it to a colleague), record a few seconds, and submit. Within a few seconds:
+6. **Request a recording.** On an issue, under **Recording requests**, choose **Request a recording**, keep or change the title, and choose **Create and copy link**. Open the copied link in a browser where you are signed out of Jam (or send it to a colleague), record a few seconds in the tab the link opened, and submit. Within a few seconds:
    - The new Jam appears in the issue's **Jams** section as "Recorded for a request", not in the inbox.
    - The issue gets a comment from you saying a Jam was recorded, with the recorder's comment if they left one.
    - The request shows "1 received".
@@ -43,7 +43,7 @@ Work through these in order. Each step says what should happen.
    - Reorder the rules and check that the first matching rule wins. Turn a rule off and check that it no longer applies.
 9. **Resolve an issue.** Move an issue with a linked Jam to a done status. Within a few seconds, the Jam gets a comment saying the issue was resolved, mentioning whoever captured it.
 10. **Attach a Jam to an existing issue.** From the inbox, choose **Attach** and enter an issue key. Or, on an issue, paste a Jam link into the **Jams** section and choose **Attach**. A link to a Jam Weaver has never received also works; Weaver fetches it from Jam. A Jam from a different Jam workspace is refused.
-11. **Unlink.** Choose **Unlink** on an issue's Jam. If no other issue links it, the Jam returns to the inbox.
+11. **Unlink.** Choose **Unlink** on an issue's Jam. If no other issue links it, the Jam returns to the inbox. If Weaver had posted "Tracked in Weaver as KEY" on the Jam, the Jam gets a second comment: "No longer tracked in Weaver as KEY".
 12. **Dismiss and restore.** Dismiss a Jam in the inbox, find it under **Dismissed**, and restore it.
 13. **Sync from Jam.** Choose **Sync from Jam** on the inbox. Jams from the last seven days that Weaver missed appear. They have no page or thumbnail; that is expected.
 14. **Check access.**
@@ -59,6 +59,7 @@ Work through these in order. Each step says what should happen.
 - The debug summary is fetched with the plugin's token, so anyone who can read the issue sees it, even without a Jam account. It is cached for an hour.
 - A rule that creates issues files them as the Jam's author when that person can report in the project, otherwise as whoever last saved the rule.
 - If a comment on a Jam fails, it is retried when an administrator chooses **Verify connection** or **Retry Jam comments**, and when the next Jam is linked. It is not retried on a timer.
+- A recording request's title and reference travel in the link's address, and Jam's recorder removes them from the address as soon as it loads. If that tab reloads before recording (a manual reload, a restored tab, or a browser restart after granting screen-recording permission), Jam receives neither, and the Jam waits in the inbox instead of attaching to the issue. Attach it from the inbox.
 - A recording that arrives while Weaver is unreachable can be replayed from Jam's webhook portal. **Sync from Jam** brings the Jam in but cannot tell which request it answered, so it waits in the inbox.
 - Jams that arrive through a recording link have no page URL unless your Jam workspace has a connected domain, so page-host rules do not match them.
 - Jam's own list of linked issues does not show Weaver. The comment on the Jam is the link back.

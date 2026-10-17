@@ -97,7 +97,7 @@ export function RecordingRequests({ pluginContext, issueKey, onChange }: Recordi
         )}
       </div>
       <p className="text-xs text-muted-foreground">
-        Send the link to whoever can reproduce the problem. They need no Jam account. Their
+        Send the link to whoever can reproduce the problem. They don't need a Jam account. Their
         recording attaches to this issue.
       </p>
 

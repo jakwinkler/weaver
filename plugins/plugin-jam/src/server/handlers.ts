@@ -1759,12 +1759,12 @@ export async function detachJam(
   if (!issueId) return fail(404, 'Issue not found');
   const jamId = uuid(req.params.jamId);
   if (!jamId) return fail(400, 'Invalid Jam ID');
-  const removed = await context.db.query(
+  const removed = (await context.db.query(
     `WITH removed AS (
-       DELETE FROM jam_issue_links WHERE jam_id = $1 AND issue_id = $2 RETURNING id
-     ) SELECT id FROM removed`,
+       DELETE FROM jam_issue_links WHERE jam_id = $1 AND issue_id = $2 RETURNING id, backlink_state
+     ) SELECT id, backlink_state FROM removed`,
     [jamId, issueId],
-  );
+  )) as Array<{ id: string; backlink_state: string }>;
   if (!removed.length) return fail(404, 'That Jam is not linked to this issue');
   // A Jam with no remaining links goes back to the inbox.
   await context.db.query(
@@ -1773,7 +1773,41 @@ export async function detachJam(
     [jamId],
   );
   await context.events.emit('jam.unlinked', { jamId, issueKey: req.params.issueKey });
+  // The "Tracked in Weaver" comment stays on the Jam, so say the link is gone. Only when
+  // that comment was posted, and after the response, like the resolved comment.
+  const settings = readSettings(context);
+  if (
+    removed[0].backlink_state === 'posted' &&
+    settings.postBacklinkComments &&
+    settings.apiToken
+  ) {
+    void notifyUnlinked(context, settings, jamId, req.params.issueKey).catch((error) =>
+      context.logger.warn('Could not tell Jam about an unlinked issue', {
+        message: errorMessage(error),
+      }),
+    );
+  }
   return json(200, { jamId, unlinked: true });
+}
+
+async function notifyUnlinked(
+  context: PluginContext,
+  settings: JamSettings,
+  jamId: string,
+  issueKey: string,
+): Promise<void> {
+  const base = webBaseUrl();
+  try {
+    await callJamTool(context, settings, 'createComment', {
+      jamId,
+      body: base
+        ? `No longer tracked in Weaver as ${issueKey}: ${base}/issues/${issueKey}`
+        : `No longer tracked in Weaver as ${issueKey}.`,
+    });
+  } catch (error) {
+    await noteJamFailure(context, error);
+    throw error;
+  }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -2080,22 +2114,28 @@ const HOST_PATTERN = /^(\*\.)?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]
 const MAX_RULE_HOSTS = 20;
 
 /** Accepts an array or one string separated by commas or new lines. */
-function parseHosts(value: unknown): string[] | null | 'invalid' {
+function parseHosts(value: unknown): string[] | null | { error: string } {
   if (value === undefined || value === null || value === '') return null;
   const raw = Array.isArray(value)
     ? value
     : typeof value === 'string'
       ? value.split(/[,\n]+/)
       : null;
-  if (!raw || raw.some((host) => typeof host !== 'string')) return 'invalid';
+  if (!raw || raw.some((host) => typeof host !== 'string')) {
+    return { error: 'Page hosts must be text, separated by commas' };
+  }
   const hosts = [
     ...new Set((raw as string[]).map((host) => host.trim().toLowerCase()).filter(Boolean)),
   ];
-  if (
-    hosts.length > MAX_RULE_HOSTS ||
-    hosts.some((host) => host.length > 253 || !HOST_PATTERN.test(host))
-  ) {
-    return 'invalid';
+  const invalid = hosts.find((host) => host.length > 253 || !HOST_PATTERN.test(host));
+  if (invalid) {
+    const shown = invalid.length > 60 ? `${invalid.slice(0, 60)}...` : invalid;
+    return {
+      error: `"${shown}" is not a host name. Use names such as shop.example.com or *.example.com`,
+    };
+  }
+  if (hosts.length > MAX_RULE_HOSTS) {
+    return { error: `A rule can match at most ${MAX_RULE_HOSTS} page hosts` };
   }
   return hosts.length ? hosts : null;
 }
@@ -2145,11 +2185,7 @@ function parseRuleInput(value: unknown, partial: boolean): RuleInput | { error: 
     if (!isRecord(value.match)) return { error: 'Add at least one matcher' };
     const match: RuleMatch = {};
     const hosts = parseHosts(value.match.urlHosts ?? value.match.urlHost);
-    if (hosts === 'invalid') {
-      return {
-        error: `Page hosts must be at most ${MAX_RULE_HOSTS} host names, such as shop.example.com or *.example.com`,
-      };
-    }
+    if (hosts && 'error' in hosts) return hosts;
     if (hosts) match.urlHosts = hosts;
     const rawPath = value.match.pathPrefix;
     if (rawPath !== undefined && rawPath !== null && rawPath !== '') {
