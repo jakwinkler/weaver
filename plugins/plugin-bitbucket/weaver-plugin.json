@@ -22,7 +22,7 @@
   },
   "ui": {
     "slots": [
-      { "slot": "issue-detail-panel", "component": "BitbucketPanel" }
+      { "slot": "issue-detail-sidebar", "component": "BitbucketPanel", "requiredPermissions": ["issues.read"] }
     ]
   },
   "routes": [

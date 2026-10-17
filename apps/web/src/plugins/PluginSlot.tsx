@@ -1,12 +1,12 @@
 import { Suspense } from 'react';
 import { useInstalledPlugins, useAvailablePlugins, useMyPermissions } from '@/api';
-import { getSlotEntries } from './plugin-slot-registry';
+import { getSlotEntries, type HostSlotName } from './plugin-slot-registry';
 import { createPluginContext } from './plugin-context';
 import { PluginErrorBoundary } from './PluginErrorBoundary';
 import { PluginLoading } from './PluginLoading';
 
 interface PluginSlotProps {
-  name: string;
+  name: HostSlotName;
   [key: string]: unknown;
 }
 

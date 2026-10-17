@@ -24,7 +24,7 @@
   },
   "ui": {
     "slots": [
-      { "slot": "issue-detail-panel", "component": "GitHubPanel" }
+      { "slot": "issue-detail-sidebar", "component": "GitHubPanel", "requiredPermissions": ["issues.read"] }
     ]
   },
   "routes": [

@@ -1,6 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import type { PluginManifest } from '@/api';
-import { getPageEntry, getSlotEntries, matchesPagePath } from './plugin-slot-registry';
+import {
+  getPageEntry,
+  getSlotEntries,
+  HOST_SLOT_NAMES,
+  matchesPagePath,
+  type HostSlotName,
+} from './plugin-slot-registry';
+
+const bundledManifests = import.meta.glob<PluginManifest>('../../../../plugins/*/weaver-plugin.json', {
+  eager: true,
+  import: 'default',
+});
 
 const manifest: PluginManifest = {
   id: '@example/plugin',
@@ -16,6 +27,17 @@ const manifest: PluginManifest = {
 describe('plugin slot registry', () => {
   it('does not resolve components for disabled plugins', () => {
     expect(getSlotEntries('issue-detail-content', [manifest], [])).toEqual([]);
+  });
+
+  it('only finds bundled plugin slots that the host renders', () => {
+    const unrendered = Object.entries(bundledManifests).flatMap(([path, bundled]) =>
+      (bundled.ui?.slots ?? [])
+        .filter((slot) => !HOST_SLOT_NAMES.includes(slot.slot as HostSlotName))
+        .map((slot) => `${path}: ${slot.slot}`),
+    );
+
+    expect(Object.keys(bundledManifests).length).toBeGreaterThan(0);
+    expect(unrendered).toEqual([]);
   });
 });
 
