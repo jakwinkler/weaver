@@ -289,7 +289,7 @@ Rules:
 }
 ```
 
-`subscribes` controls which events reach the server entrypoint's `onEvent` export. `"*"` subscribes to every tenant event. `emits` documents plugin event names for administrators and other plugin authors. Emit with `context.events.emit(name, data)`.
+`subscribes` controls which events reach the server entrypoint's `onEvent` export. `"*"` subscribes to every tenant event. [Plugin development](./plugin-development.md#handle-and-emit-events) lists the core event names. `comment.added` is a retired name: it receives `comment.created` events, and `weaver validate` warns about it. `emits` documents plugin event names for administrators and other plugin authors. Emit with `context.events.emit(name, data)`.
 
 ## UI contributions
 

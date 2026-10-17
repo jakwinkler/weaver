@@ -221,7 +221,7 @@ export class SprintsService {
 
   async addIssues(id: string, issueIds: string[], userId: string): Promise<void> {
     const uniqueIssueIds = [...new Set(issueIds)];
-    await this.tenantConnections.runInTenantTransaction(async (manager) => {
+    const addedIssues = await this.tenantConnections.runInTenantTransaction(async (manager) => {
       const sprint = await manager.getRepository(SprintEntity).findOne({
         where: { id },
         lock: { mode: 'pessimistic_write' },
@@ -260,6 +260,21 @@ export class SprintsService {
       }
       await issueRepo.save(changedIssues);
       if (activities.length) await activityRepo.save(activities);
+      return changedIssues;
+    });
+    if (addedIssues.length === 0) return;
+
+    // Same payload as PATCH /issues/bulk with a sprintId, so clients, webhooks,
+    // and plugins handle both routes alike. Every issue is in the sprint's project.
+    const projectKey = addedIssues[0].key.split('-')[0];
+    await this.eventDispatcher.emit('issue.bulk_updated', {
+      updates: { sprintId: id },
+      userId,
+      projectKey,
+      projectKeys: [projectKey],
+      issueIds: addedIssues.map((issue) => issue.id),
+      issueKeys: addedIssues.map((issue) => issue.key),
+      count: addedIssues.length,
     });
   }
 

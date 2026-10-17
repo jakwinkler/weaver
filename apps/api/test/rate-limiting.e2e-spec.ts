@@ -24,7 +24,7 @@ describe('Runtime rate limiting (e2e)', () => {
 
     app = moduleFixture.createNestApplication();
     app.setGlobalPrefix('api/v1');
-    await app.init();
+    await app.listen(0, '127.0.0.1');
   });
 
   afterAll(async () => {
@@ -54,7 +54,7 @@ describe('Runtime rate limiting (e2e)', () => {
     const secondModule = await Test.createTestingModule({ imports: [AppModule] }).compile();
     const secondApp = secondModule.createNestApplication();
     secondApp.setGlobalPrefix('api/v1');
-    await secondApp.init();
+    await secondApp.listen(0, '127.0.0.1');
 
     await request(secondApp.getHttpServer())
       .post('/api/v1/auth/login')
@@ -70,7 +70,7 @@ describe('Runtime rate limiting (e2e)', () => {
       controllers: [RateLimitProbeController],
     }).compile();
     const probeApp = probeModule.createNestApplication();
-    await probeApp.init();
+    await probeApp.listen(0, '127.0.0.1');
 
     for (const token of ['invalid-token-a', 'invalid-token-b']) {
       await request(probeApp.getHttpServer())

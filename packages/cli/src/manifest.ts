@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
-import { pluginManifestSchema } from '@weaver/shared';
+import { pluginManifestSchema, RENAMED_EVENTS } from '@weaver/shared';
 
 export type ValidationSeverity = 'error' | 'warning';
 
@@ -384,6 +384,23 @@ function validateHandlerReferences(
   }
 }
 
+function validateEventSubscriptions(manifest: JsonObject, result: ValidationResult): void {
+  const subscribes = isObject(manifest.events) ? manifest.events.subscribes : undefined;
+  if (!isStringArray(subscribes)) return;
+
+  subscribes.forEach((event, index) => {
+    const current = RENAMED_EVENTS.get(event);
+    if (!current) return;
+    addIssue(
+      result,
+      'warning',
+      'renamed-event',
+      `${event} is a retired name. This subscription receives ${current} events, and onEvent sees them as ${current}; subscribe to ${current} instead.`,
+      `events.subscribes[${index}]`,
+    );
+  });
+}
+
 function validateComponentReferences(
   clientEntrypoint: string | undefined,
   components: string[],
@@ -464,6 +481,7 @@ export function validatePlugin(pluginDirectory = process.cwd()): ValidationResul
   const handlers = collectRouteHandlers(manifest, result);
   validateHandlerReferences(entrypoints.server, handlers, result);
   validateComponentReferences(entrypoints.client, collectComponents(manifest), result);
+  validateEventSubscriptions(manifest, result);
 
   return result;
 }

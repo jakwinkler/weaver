@@ -56,3 +56,12 @@ export const MAX_PAGE_SIZE = 200;
 
 export const PROJECT_KEY_REGEX = /^[A-Z][A-Z0-9]{1,9}$/;
 export const ISSUE_KEY_REGEX = /^[A-Z][A-Z0-9]{1,9}-\d+$/;
+
+/**
+ * Retired event names that plugin manifests and webhooks may still subscribe to, mapped to the
+ * event the API emits instead. The SDK once exported `comment.added` and the webhook form offered
+ * it, but the API has never emitted it; new comments send `comment.created`.
+ */
+export const RENAMED_EVENTS: ReadonlyMap<string, string> = new Map([
+  ['comment.added', 'comment.created'],
+]);

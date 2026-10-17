@@ -30,7 +30,7 @@ describe('Organization invitations (e2e)', () => {
     const module = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = module.createNestApplication();
     app.setGlobalPrefix('api/v1');
-    await app.init();
+    await app.listen(0, '127.0.0.1');
     dataSource = app.get(DataSource);
     connections = app.get(TenantConnectionProvider);
     const registration = await request(app.getHttpServer())

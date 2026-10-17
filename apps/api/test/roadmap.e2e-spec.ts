@@ -22,7 +22,7 @@ describe('Roadmap (e2e)', () => {
 
     app = moduleFixture.createNestApplication();
     app.setGlobalPrefix('api/v1');
-    await app.init();
+    await app.listen(0, '127.0.0.1');
 
     dataSource = app.get(DataSource);
     connections = app.get(TenantConnectionProvider);

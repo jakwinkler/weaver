@@ -5,7 +5,41 @@ describe('@weaver/sdk', () => {
   it('should export WEAVER_EVENTS constants', () => {
     expect(WEAVER_EVENTS.ISSUE_CREATED).toBe('issue.created');
     expect(WEAVER_EVENTS.ISSUE_STATUS_CHANGED).toBe('issue.status_changed');
-    expect(WEAVER_EVENTS.COMMENT_ADDED).toBe('comment.added');
+    expect(WEAVER_EVENTS.COMMENT_CREATED).toBe('comment.created');
+  });
+
+  it('should name core events the way the API emits them', () => {
+    // Plugins that still compare against COMMENT_ADDED receive the event the API sends.
+    expect(WEAVER_EVENTS.COMMENT_ADDED).toBe(WEAVER_EVENTS.COMMENT_CREATED);
+    expect([
+      WEAVER_EVENTS.ISSUE_MOVED,
+      WEAVER_EVENTS.ISSUE_SPRINT_CHANGED,
+      WEAVER_EVENTS.ISSUE_REORDERED,
+      WEAVER_EVENTS.ISSUE_BULK_UPDATED,
+      WEAVER_EVENTS.ISSUE_BULK_DELETED,
+      WEAVER_EVENTS.SPRINT_CREATED,
+      WEAVER_EVENTS.SPRINT_UPDATED,
+      WEAVER_EVENTS.SPRINT_STARTED,
+      WEAVER_EVENTS.SPRINT_COMPLETED,
+      WEAVER_EVENTS.SPRINT_DELETED,
+      WEAVER_EVENTS.TIME_LOGGED,
+      WEAVER_EVENTS.TIME_UPDATED,
+      WEAVER_EVENTS.TIME_DELETED,
+    ]).toEqual([
+      'issue.moved',
+      'issue.sprint_changed',
+      'issue.reordered',
+      'issue.bulk_updated',
+      'issue.bulk_deleted',
+      'sprint.created',
+      'sprint.updated',
+      'sprint.started',
+      'sprint.completed',
+      'sprint.deleted',
+      'time.logged',
+      'time.updated',
+      'time.deleted',
+    ]);
   });
 
   it('should allow creating a plugin manifest', () => {

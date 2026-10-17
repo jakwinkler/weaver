@@ -78,7 +78,7 @@ The local CLI scaffold/validation check for this documentation does not constitu
 | `permissions`, `declaredPermissions` | Required and plugin-defined permissions with human-readable labels |
 | `requires` | Required core capabilities and plugins, optionally with minimum versions |
 | `settings.schema` | Named settings with type (`string`, `number`, `boolean`, or `select`), description, default, required flag, and select options. The API rejects other keys, including `label` |
-| `events` | Subscribed and emitted domain event names |
+| `events` | Subscribed and emitted domain event names. `WEAVER_EVENTS` in `@weaver/sdk` lists the core events; subscribe to `comment.created`, not the retired `comment.added` |
 | `ui` | Named slots, navigation items, pages, and project views with relevant permissions |
 | `routes` | HTTP method, path, named handler, authentication mode, and required permissions/scopes |
 | `migrations` | Legacy SQL paths or versioned objects with `version` and `sql` or `path` |

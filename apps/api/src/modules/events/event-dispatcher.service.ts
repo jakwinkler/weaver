@@ -3,6 +3,7 @@ import { ProjectEntity, WebhookEntity } from '@weaver/db';
 import { TenantConnectionProvider, getTenantContext } from '../../core/tenant';
 import { WeaverGateway } from '../../core/websocket';
 import { WebhooksService } from '../webhooks';
+import { subscribesTo } from './event-subscriptions';
 
 export type PluginDispatcherFn = (event: string, payload: Record<string, unknown>) => Promise<void>;
 export type DomainDispatcherFn = (event: string, payload: Record<string, unknown>) => Promise<void>;
@@ -80,7 +81,7 @@ export class EventDispatcherService {
 
       const matching = webhooks.filter(
         (wh) =>
-          (wh.events.includes(event) || wh.events.includes('*')) &&
+          subscribesTo(wh.events, event) &&
           (wh.projectId === null || wh.projectId === projectId),
       );
 

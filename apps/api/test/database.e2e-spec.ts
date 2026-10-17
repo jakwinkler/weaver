@@ -17,7 +17,7 @@ describe('Database Module (e2e)', () => {
     }).compile();
 
     app = moduleFixture.createNestApplication();
-    await app.init();
+    await app.listen(0, '127.0.0.1');
 
     tenantRepo = app.get(getRepositoryToken(TenantEntity));
     dataSource = app.get(DataSource);

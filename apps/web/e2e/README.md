@@ -52,6 +52,8 @@ For API integration tests against the same disposable services:
 TZ=UTC WEAVER_E2E_DATABASE_PORT=15432 WEAVER_E2E_REDIS_PORT=16380 pnpm --filter @weaver/api test:e2e --runInBand --forceExit
 ```
 
+Each API spec starts its app with `await app.listen(0, '127.0.0.1')` before sending requests. Supertest gives an unbound app a port on every interface but sends to `127.0.0.1`, so on macOS another process listening on `127.0.0.1` at that port, such as a Docker port forward, can receive the request and fail the suite with a stray `404` or `401`. Both API Jest configs map `supertest` to `apps/api/test/loopback-supertest.js`, which throws when a spec sends a request to an app that is not bound to loopback.
+
 The browser fixture honors the API's `429` retry interval during account setup. A full run can pause briefly when the local unauthenticated rate limit is reached. Set `PLAYWRIGHT_BASE_URL` and `PLAYWRIGHT_API_URL` only when your local ports differ; the fixture still requires a loopback hostname. The test report and traces live in ignored `apps/web/test-results/`.
 
 Stop the disposable services after testing:

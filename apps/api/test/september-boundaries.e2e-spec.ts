@@ -22,7 +22,7 @@ describe('September session, public data, and assignee boundaries', () => {
       await Test.createTestingModule({ imports: [AppModule] }).compile()
     ).createNestApplication();
     app.setGlobalPrefix('api/v1');
-    await app.init();
+    await app.listen(0, '127.0.0.1');
     db = app.get(DataSource);
     for (const suffix of ['a', 'b']) {
       const response = await http()
