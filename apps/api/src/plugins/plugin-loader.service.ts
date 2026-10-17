@@ -236,19 +236,26 @@ export class PluginLoaderService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
+    const loadErrors: string[] = [];
     for (const candidate of candidates) {
       try {
         const handlers = this.requirePlugin(candidate, pluginDir);
         if (typeof handlers[handlerName] === 'function') {
           return handlers[handlerName];
         }
-      } catch {
-        // Try the next supported handler module convention.
+      } catch (err) {
+        // A convention the plugin does not use is expected to be missing; a module that exists
+        // but fails to load is the real cause of the missing handler, so keep its error.
+        const resolved = this.resolvePluginPath(candidate);
+        if (fs.existsSync(resolved)) {
+          loadErrors.push(`${path.relative(pluginDir, resolved)}: ${err}`);
+        }
       }
     }
 
     this.logger.error(
-      `Failed to load handler ${handlerName} for plugin ${pluginId}`,
+      `Failed to load handler ${handlerName} for plugin ${pluginId}` +
+        (loadErrors.length ? ` (${loadErrors.join('; ')})` : ''),
     );
     return undefined;
   }
