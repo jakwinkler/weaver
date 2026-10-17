@@ -161,9 +161,9 @@ export class PluginContextFactory {
           create: async (projectKey: string, input: PluginIssueCreateInput, createOptions = {}) => {
             await this.assertCapability(pluginId, 'issue-create', options?.capabilityState);
             const dto = parseOrBadRequest(pluginIssueCreateSchema, input, 'issue');
-            // One transaction, so the counter, issue, and activity entry land together and
-            // issue.created is dispatched only after commit.
-            return runInSchema(async (manager) => {
+            // One transaction, so the counter, issue, and IssuesService's created activity entry
+            // land together and issue.created is dispatched only after commit.
+            return runInSchema(async () => {
               const reporter = await writer('reporterId', createOptions.reporterId, [
                 { category: 'issues', action: 'create' },
                 ...(dto.assigneeId ? [{ category: 'issues', action: 'assign' }] : []),
@@ -171,11 +171,6 @@ export class PluginContextFactory {
               await this.projectAccess.assertProjectKey(projectKey, reporter, 'write');
               await this.memberVisibility.assertVisibleMember(reporter, dto.assigneeId);
               const issue = await this.issuesService.create(projectKey, dto, reporter.userId);
-              // IssuesService.create records no activity, so the plugin path adds the entry.
-              await manager.query(
-                `INSERT INTO activity_logs (issue_id, user_id, action) VALUES ($1, $2, 'created')`,
-                [issue.id, reporter.userId],
-              );
               return toCreatedIssue(issue);
             });
           },

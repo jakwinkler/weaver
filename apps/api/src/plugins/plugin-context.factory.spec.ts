@@ -297,9 +297,10 @@ describe('PluginContextFactory core capability enforcement', () => {
         expect.objectContaining({ summary: 'Checkout button does nothing', priority: 'medium', labels: [], customFields: {} }),
         reporterId,
       );
-      expect(entityManager.query).toHaveBeenCalledWith(
-        expect.stringContaining("INSERT INTO activity_logs (issue_id, user_id, action) VALUES ($1, $2, 'created')"),
-        ['issue-1', reporterId],
+      // IssuesService.create writes the created activity entry; a second one here would duplicate it.
+      expect(entityManager.query).not.toHaveBeenCalledWith(
+        expect.stringContaining('INSERT INTO activity_logs'),
+        expect.anything(),
       );
       expect(tenantConnections.runInTenantTransaction).toHaveBeenCalled();
     });
