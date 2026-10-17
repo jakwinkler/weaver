@@ -1,41 +1,23 @@
-import type { WeaverPlugin, PluginContext, PluginRouter } from '@weaver/sdk';
-import { handleBitbucketWebhook, getBitbucketLinks } from './webhook.handler';
+import type { PluginContext } from '@weaver/sdk';
 
-const manifest = require('../../weaver-plugin.json');
+// No onInstall: the registry runs the manifest's migrations (bitbucket_links) only for plugins
+// without one. Routes come from the manifest and webhook.handler.ts, so nothing is registered here.
 
-export const plugin: WeaverPlugin = {
-  manifest,
+export async function onEnable(context: PluginContext): Promise<void> {
+  context.logger.info('Bitbucket plugin enabled');
+}
 
-  async onInstall(context: PluginContext) {
-    context.logger.info('Bitbucket plugin installed');
-    const migrationSql = require('fs').readFileSync(
-      require('path').join(__dirname, '../../migrations/001_create_bitbucket_links.sql'),
-      'utf-8',
-    );
-    await context.db.runMigration(migrationSql);
-  },
+export async function onDisable(context: PluginContext): Promise<void> {
+  context.logger.info('Bitbucket plugin disabled');
+}
 
-  async onEnable(context: PluginContext) {
-    context.logger.info('Bitbucket plugin enabled');
-  },
+export async function onUninstall(context: PluginContext): Promise<void> {
+  context.logger.info('Bitbucket plugin uninstalled');
+  await context.db.query('DROP TABLE IF EXISTS bitbucket_links');
+}
 
-  async onDisable(context: PluginContext) {
-    context.logger.info('Bitbucket plugin disabled');
-  },
-
-  async onUninstall(context: PluginContext) {
-    context.logger.info('Bitbucket plugin uninstalled');
-    await context.db.query('DROP TABLE IF EXISTS bitbucket_links');
-  },
-
-  async onEvent(event: string, _data: unknown, context: PluginContext) {
-    if (event === 'issue.created') {
-      context.logger.info('New issue created, checking for Bitbucket references');
-    }
-  },
-
-  registerRoutes(router: PluginRouter) {
-    router.post('/webhook', handleBitbucketWebhook);
-    router.get('/links/:issueKey', getBitbucketLinks);
-  },
-};
+export async function onEvent(event: string, _data: unknown, context: PluginContext): Promise<void> {
+  if (event === 'issue.created') {
+    context.logger.info('New issue created, checking for Bitbucket references');
+  }
+}
