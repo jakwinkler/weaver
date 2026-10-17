@@ -11,6 +11,7 @@ describe('Projects & Issues (e2e)', () => {
   let connections: TenantConnectionProvider;
   let accessToken: string;
   let tenantId: string;
+  let userId: string;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -35,6 +36,7 @@ describe('Projects & Issues (e2e)', () => {
 
     accessToken = res.body.accessToken;
     tenantId = res.body.tenantId;
+    userId = res.body.user.id;
   });
 
   afterAll(async () => {
@@ -179,6 +181,19 @@ describe('Projects & Issues (e2e)', () => {
       expect(res.body.summary).toBe('First issue');
       expect(res.body.priority).toBe('medium');
       expect(res.body.statusId).toBeDefined();
+    });
+
+    it('POST /projects/:key/issues - records one created activity entry by the reporter', async () => {
+      const res = await authedRequest().get('/api/v1/issues/WEB-1/activity').expect(200);
+      expect(res.body).toEqual([
+        expect.objectContaining({
+          action: 'created',
+          userId,
+          fieldName: null,
+          oldValue: null,
+          newValue: null,
+        }),
+      ]);
     });
 
     it('should create sequential keys', async () => {
