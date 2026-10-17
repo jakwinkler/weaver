@@ -1,0 +1,118 @@
+{
+  "id": "@weaver/plugin-jam",
+  "name": "Jam",
+  "version": "0.1.0",
+  "description": "Turn Jam bug reports into Weaver issues and link Jams to the issues they explain",
+  "author": "Weaver",
+  "icon": "bug",
+  "type": "app",
+  "scope": "tenant",
+  "enabledByDefault": false,
+  "uninstall": {
+    "deletesPrivateData": true,
+    "confirmationMessage": "Uninstalling Jam deletes the Jam inbox and every Jam link in Weaver. Jams in Jam are not changed."
+  },
+  "entrypoints": {
+    "server": "src/server/index.ts",
+    "client": "src/client/index.ts"
+  },
+  "permissions": ["jam.view", "jam.link", "jam.triage", "jam.admin"],
+  "requires": {
+    "coreCapabilities": ["issue-create"]
+  },
+  "declaredPermissions": [
+    {
+      "key": "jam.view",
+      "label": "View Jams",
+      "description": "See Jams linked to issues you can read"
+    },
+    {
+      "key": "jam.link",
+      "label": "Link Jams",
+      "description": "Attach and unlink Jams on issues you can edit"
+    },
+    {
+      "key": "jam.triage",
+      "label": "Triage Jams",
+      "description": "Work the Jam inbox and create issues from Jams"
+    },
+    {
+      "key": "jam.admin",
+      "label": "Administer Jam",
+      "description": "Manage the Jam connection"
+    }
+  ],
+  "settings": {
+    "schema": {
+      "jamWorkspaceId": {
+        "type": "string",
+        "label": "Jam workspace ID",
+        "description": "From the Jam settings URL: jam.dev/s/<workspace ID>/settings"
+      },
+      "jamApiToken": {
+        "type": "string",
+        "label": "Jam personal access token",
+        "description": "A jam_pat_ token with the mcp:read and mcp:write scopes"
+      },
+      "jamAccessExpiresOn": {
+        "type": "string",
+        "label": "Token expiry date",
+        "description": "YYYY-MM-DD, shown in Jam when the token was created"
+      },
+      "jamWebhookSecret": {
+        "type": "string",
+        "label": "Webhook signing secret",
+        "description": "The whsec_ secret from the endpoint in Jam's webhook portal"
+      },
+      "postBacklinkComments": {
+        "type": "boolean",
+        "label": "Comment on linked Jams",
+        "description": "Post the Weaver issue link as a comment on each linked Jam",
+        "default": true
+      }
+    }
+  },
+  "events": {
+    "subscribes": [],
+    "emits": ["jam.received", "jam.linked", "jam.unlinked"]
+  },
+  "ui": {
+    "slots": [
+      {
+        "slot": "issue-detail-content",
+        "component": "JamIssuePanel",
+        "requiredPermissions": ["jam.view"]
+      }
+    ],
+    "navigation": [
+      {
+        "label": "Jam",
+        "icon": "bug",
+        "path": "/apps/jam",
+        "requiredPermissions": ["jam.triage"]
+      }
+    ],
+    "pages": [
+      {
+        "path": "/apps/jam",
+        "component": "JamPage",
+        "requiredPermissions": ["jam.triage"]
+      }
+    ]
+  },
+  "routes": [
+    { "method": "POST", "path": "/webhook/:tenantId", "handler": "receiveJamWebhook", "public": true },
+    { "method": "GET", "path": "/connection", "handler": "getConnection", "requiredPermissions": ["jam.admin"] },
+    { "method": "POST", "path": "/connection/verify", "handler": "verifyConnection", "requiredPermissions": ["jam.admin"] },
+    { "method": "POST", "path": "/backlinks/retry", "handler": "retryBacklinks", "requiredPermissions": ["jam.admin"] },
+    { "method": "POST", "path": "/sync", "handler": "syncFromJam", "requiredPermissions": ["jam.triage"] },
+    { "method": "GET", "path": "/inbox", "handler": "listInbox", "requiredPermissions": ["jam.triage"] },
+    { "method": "POST", "path": "/inbox/:jamId/create-issue", "handler": "createIssueFromJam", "requiredPermissions": ["jam.triage"] },
+    { "method": "POST", "path": "/inbox/:jamId/dismiss", "handler": "dismissJam", "requiredPermissions": ["jam.triage"] },
+    { "method": "POST", "path": "/inbox/:jamId/restore", "handler": "restoreJam", "requiredPermissions": ["jam.triage"] },
+    { "method": "GET", "path": "/issues/:issueKey/jams", "handler": "listIssueJams", "requiredPermissions": ["jam.view"] },
+    { "method": "POST", "path": "/issues/:issueKey/jams", "handler": "attachJam", "requiredPermissions": ["jam.link"] },
+    { "method": "DELETE", "path": "/issues/:issueKey/jams/:jamId", "handler": "detachJam", "requiredPermissions": ["jam.link"] }
+  ],
+  "migrations": [{ "version": "0.1.0", "path": "migrations/001_create_jam_tables.sql" }]
+}
