@@ -66,6 +66,8 @@ interface JamSettings {
   accessExpiresOn: string;
   webhookSecret: string;
   recordingLinkUrl: string;
+  /** A connected domain's ID from Jam's listRecordingUrls. Request links start recording there. */
+  recordingUrlId: string;
   postBacklinkComments: boolean;
   showDebugSummary: boolean;
   embedPlayer: boolean;
@@ -83,6 +85,7 @@ function readSettings(context: PluginContext): JamSettings {
     accessExpiresOn: text('jamAccessExpiresOn'),
     webhookSecret: text('jamWebhookSecret'),
     recordingLinkUrl: webUrl(text('recordingLinkUrl'), ['https:']) ?? '',
+    recordingUrlId: text('jamRecordingUrlId'),
     postBacklinkComments: context.settings.postBacklinkComments !== false,
     showDebugSummary: context.settings.showDebugSummary !== false,
     embedPlayer: context.settings.embedPlayer === true,
@@ -1426,6 +1429,7 @@ export async function getConnection(
     tokenConfigured: Boolean(settings.apiToken),
     webhookSecretConfigured: Boolean(settings.webhookSecret),
     recordingLinkConfigured: Boolean(settings.recordingLinkUrl),
+    recordingUrlId: settings.recordingUrlId || null,
     olderRecordingRequests: {
       active: olderRequests?.active ?? 0,
       lastExpiresAt: olderRequests?.last_expires_at
@@ -1496,6 +1500,39 @@ export async function retryBacklinks(
   );
   const posted = await drainBacklinks(context, settings, 10);
   return json(200, { requeued: requeued.length, posted });
+}
+
+/**
+ * The Jam workspace's connected domains, so an administrator can find the ID for the
+ * jamRecordingUrlId setting. Jam's tool description names each domain's id, url, and verified
+ * state; only a verified domain captures logs.
+ */
+export async function listRecordingDomains(
+  _req: PluginRequest,
+  context: PluginContext,
+): Promise<PluginResponse> {
+  const settings = readSettings(context);
+  let reply: Record<string, unknown>;
+  try {
+    reply = await callJamJson(context, settings, 'listRecordingUrls', {});
+  } catch (error) {
+    await noteJamFailure(context, error);
+    return jamFailureResponse(error);
+  }
+  const listed = Array.isArray(reply.recordingUrls) ? reply.recordingUrls.filter(isRecord) : [];
+  const domains = listed.flatMap((item) => {
+    const id = text(item.id, 200);
+    if (!id) return [];
+    return [
+      {
+        id,
+        url: text(item.url, 2048),
+        verified: item.verified === true,
+        configured: id === settings.recordingUrlId,
+      },
+    ];
+  });
+  return json(200, { configuredId: settings.recordingUrlId || null, domains });
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -2095,13 +2132,20 @@ export async function listRecordingRequests(
   });
 }
 
-/** Creates a request's own recording link in Jam. Jam stops accepting recordings at expiresAt. */
+/**
+ * Creates a request's own recording link in Jam. Jam stops accepting recordings at expiresAt.
+ * Without a recordingUrlId the link opens Jam's generic recorder, which captures no console or
+ * network logs; with one it starts recording from that connected domain.
+ */
 async function createJamRecordingLink(
   context: PluginContext,
   settings: JamSettings,
   link: { name: string; jamTitle: string; reference: string; expiresAt: string },
 ): Promise<{ publicId: string; url: string }> {
-  const reply = await callJamJson(context, settings, 'createRecordingLink', link);
+  const reply = await callJamJson(context, settings, 'createRecordingLink', {
+    ...link,
+    ...(settings.recordingUrlId ? { recordingUrlId: settings.recordingUrlId } : {}),
+  });
   const publicId = token(reply.publicId, 64);
   const url = webUrl(reply.url, ['https:']);
   if (!publicId || !url) {

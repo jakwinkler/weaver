@@ -71,6 +71,11 @@
         "label": "Webhook signing secret",
         "description": "The whsec_ secret from the endpoint in Jam's webhook portal"
       },
+      "jamRecordingUrlId": {
+        "type": "string",
+        "label": "Connected domain for recording requests",
+        "description": "The ID of a verified connected domain in Jam, listed on Apps > Jam > Connection. Request links then start recording from that domain and capture console and network logs. Empty, they open Jam's generic recorder, which captures neither."
+      },
       "recordingLinkUrl": {
         "type": "string",
         "label": "Reusable recording link (older requests)",
@@ -152,6 +157,7 @@
     { "method": "POST", "path": "/webhook/:tenantId", "handler": "receiveJamWebhook", "public": true },
     { "method": "GET", "path": "/connection", "handler": "getConnection", "requiredPermissions": ["jam.admin"] },
     { "method": "POST", "path": "/connection/verify", "handler": "verifyConnection", "requiredPermissions": ["jam.admin"] },
+    { "method": "GET", "path": "/connection/recording-domains", "handler": "listRecordingDomains", "requiredPermissions": ["jam.admin"] },
     { "method": "POST", "path": "/backlinks/retry", "handler": "retryBacklinks", "requiredPermissions": ["jam.admin"] },
     { "method": "GET", "path": "/rules", "handler": "listRules", "requiredPermissions": ["jam.admin"] },
     { "method": "POST", "path": "/rules", "handler": "createRule", "requiredPermissions": ["jam.admin"] },

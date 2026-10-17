@@ -48,6 +48,16 @@ describe('Jam plugin (e2e)', () => {
   const jamDirectory = new Map<string, Record<string, unknown>>();
   const jamEvents = new Map<string, { console: unknown[]; network: unknown[] }>();
   const jamLinks = new Map<string, { args: Record<string, any>; deletedAt: string | null }>();
+  // The pilot's live listRecordingUrls reply was {"recordingUrls":[]}. The item fields follow
+  // Jam's tool description: each domain's id, url, and verified state.
+  const jamRecordingUrls = [
+    { id: 'c8013d4d-0000-4000-8000-00000000d001', url: 'https://shop.example.com', verified: true },
+    {
+      id: 'c8013d4d-0000-4000-8000-00000000d002',
+      url: 'https://staging.example.com',
+      verified: false,
+    },
+  ];
   let makeRequestSpy: jest.SpyInstance;
 
   beforeAll(async () => {
@@ -258,6 +268,9 @@ describe('Jam plugin (e2e)', () => {
         }
         break;
       }
+      case 'listRecordingUrls':
+        result = text({ recordingUrls: jamRecordingUrls });
+        break;
       case 'getConsoleLogs':
       case 'getNetworkRequests': {
         const events =
@@ -732,6 +745,7 @@ describe('Jam plugin (e2e)', () => {
     it('gives each request its own Jam recording link and attaches its Jam to the requesting issue', async () => {
       const key = await createIssue('JAM', 'Payment fails');
       const request = await newRequest(key);
+      // No connected domain is set, so no recordingUrlId: the link opens Jam's generic recorder.
       expect(request.args).toEqual({
         name: `Weaver ${key}: Show me`,
         jamTitle: 'Show me',
@@ -789,6 +803,58 @@ describe('Jam plugin (e2e)', () => {
       expect(comment.author_id).toBe(ids.reporter);
       expect(comment.body).toContain('A Jam was recorded for this request');
       expect(comment.body).toContain('It breaks right after I press pay.');
+    });
+
+    it('starts request links from the connected domain in the settings, and lists the domains for administrators', async () => {
+      const [verified, unverified] = jamRecordingUrls;
+      const before = await as().get(`${route}/connection/recording-domains`).expect(200);
+      expect(before.body).toEqual({
+        configuredId: null,
+        domains: [
+          { ...verified, configured: false },
+          { ...unverified, configured: false },
+        ],
+      });
+      await as(tokens.reporter).get(`${route}/connection/recording-domains`).expect(403);
+      jamMode = 'down';
+      await as().get(`${route}/connection/recording-domains`).expect(502);
+      jamMode = 'ok';
+
+      const key = await createIssue('JAM', 'Logs from the connected domain');
+      await configure({ jamRecordingUrlId: ` ${verified.id} ` });
+      try {
+        const withDomain = await newRequest(key);
+        expect(withDomain.args).toEqual({
+          name: `Weaver ${key}: Show me`,
+          jamTitle: 'Show me',
+          reference: withDomain.reference,
+          expiresAt: withDomain.expiresAt,
+          recordingUrlId: verified.id,
+        });
+        const connection = await as().get(`${route}/connection`).expect(200);
+        expect(connection.body.recordingUrlId).toBe(verified.id);
+        const listed = await as().get(`${route}/connection/recording-domains`).expect(200);
+        expect(listed.body.configuredId).toBe(verified.id);
+        expect(
+          listed.body.domains.map((domain: { id: string; configured: boolean }) => [
+            domain.id,
+            domain.configured,
+          ]),
+        ).toEqual([
+          [verified.id, true],
+          [unverified.id, false],
+        ]);
+
+        // Clearing the setting goes back to Jam's generic recorder.
+        await configure({ jamRecordingUrlId: '' });
+        const withoutDomain = await newRequest(key);
+        expect(withoutDomain.args).not.toHaveProperty('recordingUrlId');
+        const cleared = await as().get(`${route}/connection`).expect(200);
+        expect(cleared.body.recordingUrlId).toBeNull();
+      } finally {
+        // configure() merges into the saved settings, so only an empty value removes the ID.
+        await configure({ jamRecordingUrlId: '' });
+      }
     });
 
     it('attaches by the reference alone, as for a request made with the reusable link before 0.3.0', async () => {

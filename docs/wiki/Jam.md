@@ -14,7 +14,8 @@ Weaver must be reachable at a public HTTPS address, because Jam does not deliver
 4. Open the Jam plugin's settings and enter the workspace ID, the token, and its expiry date (`YYYY-MM-DD`). Choose whether to embed Jam's player and whether to comment on Jams when issues are resolved.
 5. Open **Apps → Jam → Connection** and copy the webhook URL. In Jam, add a webhook endpoint with that URL for the `jam.created` event, then copy its signing secret (it starts with `whsec_`) into the plugin's **Webhook signing secret** setting.
 6. Choose **Verify connection**. Every row except **Last webhook** should turn green; that one turns green when the first Jam arrives. **Access token** stays amber while the token expires within 14 days.
-7. In **Administration → Roles & Permissions**, grant **View Jams**, **Link Jams**, and **Triage Jams** to the roles that need them, and keep **Administer Jam** for whoever manages the connection and rules.
+7. Optionally, for console and network logs on requested recordings, copy a verified domain's ID from **Connected domains** on the Connection page into the plugin's **Connected domain for recording requests** setting. If your Jam workspace has no connected domains, leave it empty.
+8. In **Administration → Roles & Permissions**, grant **View Jams**, **Link Jams**, and **Triage Jams** to the roles that need them, and keep **Administer Jam** for whoever manages the connection and rules.
 
 ## Everyday use
 
@@ -22,7 +23,7 @@ Weaver must be reachable at a public HTTPS address, because Jam does not deliver
 
 **On an issue.** The **Jams** section shows each linked Jam with its thumbnail. **Summary** shows console and network counts, up to five console errors, and up to five failed requests; it never shows request bodies, headers, or query strings. **Play** opens Jam's player inside the issue when the administrator turned it on and the Jam is shared with anyone who has the link. Paste a Jam link and choose **Attach** to link another Jam. **Unlink** returns the Jam to the inbox when no other issue links it.
 
-**Recording requests.** Under **Recording requests**, choose **Request a recording**, then **Create and copy link**, and send the link to whoever can reproduce the problem. Their Jam appears on the issue as "Recorded for a request", the issue gets a comment, and the request counts it, even if their recorder's tab reloaded before they recorded. Each request gets its own recording link in Jam, which counts toward the Jam workspace's monthly limit (5 on Free, 150 on Team). **Revoke** closes the link in Jam; a Jam that still arrives through it goes to the inbox marked as coming from a revoked request.
+**Recording requests.** Under **Recording requests**, choose **Request a recording**, then **Create and copy link**, and send the link to whoever can reproduce the problem. Their Jam appears on the issue as "Recorded for a request", the issue gets a comment, and the request counts it, even if their recorder's tab reloaded before they recorded. Each request gets its own recording link in Jam, which counts toward the Jam workspace's monthly limit (5 on Free, 150 on Team). With a connected domain set, those links capture console and network logs. **Revoke** closes the link in Jam; a Jam that still arrives through it goes to the inbox marked as coming from a revoked request.
 
 **Rules.** In **Apps → Jam → Rules**, administrators route Jams by the page host they were captured on, optionally narrowed by a path prefix such as `/checkout`. A rule either creates an issue at once, with its own priority and labels, or suggests a project in the inbox. The first matching rule wins, rules can be reordered or turned off, and a host can belong to only one project unless the rules use different paths. A rule can create up to 20 issues an hour by default.
 
@@ -36,8 +37,8 @@ Weaver must be reachable at a public HTTPS address, because Jam does not deliver
 - The debug summary is fetched with the plugin's token, so anyone who can read the issue sees it, even without a Jam account. It is cached for an hour.
 - An issue created by a rule is filed as the Jam's author when that person can report in the project, and otherwise as whoever last saved the rule.
 - A failed comment on a Jam is retried when an administrator verifies the connection or retries Jam comments, and when the next Jam is linked, not on a timer.
-- Recording request links capture no console or network logs, even if your Jam workspace has a connected domain.
-- Jams recorded through a recording link have no page address unless your Jam workspace has a connected domain, so page-host rules do not match them.
+- Recording request links capture no console or network logs unless the **Connected domain for recording requests** setting names a verified connected domain.
+- Jams recorded through a recording link have no page address unless the link starts from a connected domain, so page-host rules do not match them.
 - One Jam workspace per organization. People do not sign in to Jam individually, and relinking Jams after a Jira import is not available yet.
 - The Jam token and webhook secret are plugin settings: masked in Weaver, but stored unencrypted in the database.
 
@@ -47,7 +48,7 @@ Weaver must be reachable at a public HTTPS address, because Jam does not deliver
 
 The guidance above covers everyday use. The details below explain the plugin's contracts and limits.
 
-`@weaver/plugin-jam` (version 0.3.0) is a tenant-scoped app plugin that installs disabled. Its manifest declares the permissions `jam.view`, `jam.link`, `jam.triage`, and `jam.admin`; the settings `jamWorkspaceId`, `jamApiToken`, `jamAccessExpiresOn`, `jamWebhookSecret`, `recordingLinkUrl` (only for recording requests made before 0.3.0), `postBacklinkComments`, `showDebugSummary`, `embedPlayer`, `notifyJamOnResolve`, and `autoCreateHourlyLimit`; a page and navigation entry at `/apps/jam`; and an `issue-detail-content` slot. Jam delivers `jam.created` webhooks to the public route `POST /api/v1/plugin-routes/@weaver~plugin-jam/webhook/:tenantId`, which verifies the Standard Webhooks (Svix) signature with the `whsec_` secret. Its tables come from the plugin's SQL migrations.
+`@weaver/plugin-jam` (version 0.3.0) is a tenant-scoped app plugin that installs disabled. Its manifest declares the permissions `jam.view`, `jam.link`, `jam.triage`, and `jam.admin`; the settings `jamWorkspaceId`, `jamApiToken`, `jamAccessExpiresOn`, `jamWebhookSecret`, `jamRecordingUrlId` (a connected domain's ID, passed to Jam's `createRecordingLink` as `recordingUrlId`), `recordingLinkUrl` (only for recording requests made before 0.3.0), `postBacklinkComments`, `showDebugSummary`, `embedPlayer`, `notifyJamOnResolve`, and `autoCreateHourlyLimit`; a page and navigation entry at `/apps/jam`; and an `issue-detail-content` slot. Jam delivers `jam.created` webhooks to the public route `POST /api/v1/plugin-routes/@weaver~plugin-jam/webhook/:tenantId`, which verifies the Standard Webhooks (Svix) signature with the `whsec_` secret. Its tables come from the plugin's SQL migrations.
 
 Creating issues and comments from a webhook, where there is no request user, uses the core plugin API added for integrations: the `issue-create` capability with `context.api.issues.create` (reporter named with `reporterId`, who must hold `issues.create` and project write access) and `issues.addComment` with an explicit actor. Both run through the same services as the HTTP routes, so workflows, validation, events, and notifications apply. See the [plugin API reference](https://github.com/jakwinkler/weaver/blob/main/docs/plugin-api-reference.md).
 

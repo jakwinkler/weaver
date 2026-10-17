@@ -15,7 +15,8 @@ The Weaver you test against must run this branch at a public HTTPS address. Jam 
 5. **Fill in the plugin settings.** In **Administration > Plugins**, open Jam's settings and enter the workspace ID, the token, and its expiry date as `YYYY-MM-DD`. For this test, also turn on **Embed the Jam player** and **Comment on Jams when issues are resolved**. Leave the rest as they are.
 6. **Connect the webhook.** In Weaver, open **Apps > Jam > Connection** and copy the webhook URL. In Jam, open **Settings > Webhooks > Set up**, choose **Add Endpoint**, paste the URL, select only `jam.created`, and create it. Copy the endpoint's signing secret (it starts with `whsec_`) into the plugin's **Webhook signing secret** setting.
 7. **Verify.** Back on **Apps > Jam > Connection**, choose **Verify connection**. Every status row except **Last webhook** should show a green check. **Last webhook** turns green after the first Jam arrives, and **Access token** stays amber while the token expires within 14 days.
-8. **Give testers access.** In **Administration > Roles & Permissions**, give testers' roles **View Jams**, **Link Jams**, and **Triage Jams**. Keep **Administer Jam** for whoever manages the connection and rules. Testers also need membership in at least one test project.
+8. **Choose a connected domain (optional).** On the same page, **Connected domains** lists your Jam workspace's connected domains. To get console and network logs on requested recordings, copy a verified domain's ID into the plugin's **Connected domain for recording requests** setting. If the list is empty, leave the setting empty; request links then capture no logs.
+9. **Give testers access.** In **Administration > Roles & Permissions**, give testers' roles **View Jams**, **Link Jams**, and **Triage Jams**. Keep **Administer Jam** for whoever manages the connection and rules. Testers also need membership in at least one test project.
 
 ## What to try
 
@@ -35,6 +36,7 @@ Work through these in order. Each step says what should happen.
    - The issue gets a comment from you saying a Jam was recorded, with the recorder's comment if they left one.
    - The request shows "1 received".
    - In Jam, the request has its own recording link, named "Weaver KEY: title".
+   - If you set a connected domain, the Jam has console and network logs, and **Summary** on it counts them.
 7. **Revoke a request.** Choose **Revoke**, then open the old link again. Jam no longer lets you record through it, and its list of recording links no longer shows it. A Jam that still arrives through it goes to the inbox with "Recorded through a revoked request".
 8. **Add routing rules.** In **Apps > Jam > Rules** (administrators only):
    - Add a rule that creates issues for page hosts you can capture on, such as `example.com, *.example.com`, in a test project with a priority and a label. Capture a Jam on that site: an issue is created right away with that priority and label.
@@ -60,9 +62,9 @@ Work through these in order. Each step says what should happen.
 - The debug summary is fetched with the plugin's token, so anyone who can read the issue sees it, even without a Jam account. It is cached for an hour.
 - A rule that creates issues files them as the Jam's author when that person can report in the project, otherwise as whoever last saved the rule.
 - If a comment on a Jam fails, it is retried when an administrator chooses **Verify connection** or **Retry Jam comments**, and when the next Jam is linked. It is not retried on a timer.
-- Request links capture no console or network logs, even if your Jam workspace has a connected domain.
+- Request links capture no console or network logs unless the **Connected domain for recording requests** setting names a verified connected domain.
 - A recording that arrives while Weaver is unreachable can be replayed from Jam's webhook portal. **Sync from Jam** brings the Jam in but cannot tell which request it answered, so it waits in the inbox.
-- Jams that arrive through a recording link have no page URL unless your Jam workspace has a connected domain, so page-host rules do not match them.
+- Jams that arrive through a recording link have no page URL unless the link starts from a connected domain, so page-host rules do not match them.
 - Jam's own list of linked issues does not show Weaver. The comment on the Jam is the link back.
 - Thumbnails load from Jam's media host. Anyone who has a thumbnail's address can open it, whatever the Jam's sharing setting.
 
