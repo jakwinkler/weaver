@@ -4,6 +4,10 @@ import { getPluginComponent } from './dynamic-loader';
 
 // ── Slot Entries ──
 
+/** Slots the host renders. A manifest slot with any other name never appears. */
+export const HOST_SLOT_NAMES = ['issue-detail-content', 'issue-detail-sidebar'] as const;
+export type HostSlotName = (typeof HOST_SLOT_NAMES)[number];
+
 export interface SlotEntry {
   pluginId: string;
   slotName: string;

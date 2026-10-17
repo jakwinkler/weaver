@@ -912,6 +912,9 @@ importers:
       '@weaver/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+      lucide-react:
+        specifier: '*'
+        version: 0.575.0(react@19.2.8)
       react:
         specifier: ^18.0.0 || ^19.0.0
         version: 19.2.8
@@ -922,6 +925,9 @@ importers:
         specifier: ^5.0.0
         version: 5.0.15(@types/react@18.3.31)(immer@11.1.18)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))
     devDependencies:
+      '@types/react':
+        specifier: ^18.3.18
+        version: 18.3.31
       typescript:
         specifier: ^5.4.0
         version: 5.9.3
@@ -971,6 +977,9 @@ importers:
       '@weaver/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+      lucide-react:
+        specifier: '*'
+        version: 0.575.0(react@19.2.8)
       react:
         specifier: ^18.0.0 || ^19.0.0
         version: 19.2.8
@@ -981,6 +990,9 @@ importers:
         specifier: ^5.0.0
         version: 5.0.15(@types/react@18.3.31)(immer@11.1.18)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))
     devDependencies:
+      '@types/react':
+        specifier: ^18.3.18
+        version: 18.3.31
       typescript:
         specifier: ^5.4.0
         version: 5.9.3
@@ -996,6 +1008,9 @@ importers:
       '@weaver/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+      lucide-react:
+        specifier: '*'
+        version: 0.575.0(react@19.2.8)
       react:
         specifier: ^18.0.0 || ^19.0.0
         version: 19.2.8
@@ -1006,6 +1021,9 @@ importers:
         specifier: ^5.0.0
         version: 5.0.15(@types/react@18.3.31)(immer@11.1.18)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))
     devDependencies:
+      '@types/react':
+        specifier: ^18.3.18
+        version: 18.3.31
       typescript:
         specifier: ^5.4.0
         version: 5.9.3

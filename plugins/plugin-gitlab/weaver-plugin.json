@@ -23,7 +23,7 @@
   },
   "ui": {
     "slots": [
-      { "slot": "issue-detail-panel", "component": "GitLabPanel" }
+      { "slot": "issue-detail-sidebar", "component": "GitLabPanel", "requiredPermissions": ["issues.read"] }
     ]
   },
   "routes": [
