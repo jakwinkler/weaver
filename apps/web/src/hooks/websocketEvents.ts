@@ -67,8 +67,19 @@ export function getInvalidationKeys(event: string, data: Record<string, unknown>
         ...ISSUE_PLANNING_KEYS,
         ['dashboard'],
       ];
-    case 'issue.bulk_updated':
-      return [['issues'], ['boards'], ...ISSUE_PLANNING_KEYS, ['dashboard']];
+    // Bulk edits and POST /sprints/:id/issues name every changed issue in issueKeys.
+    case 'issue.bulk_updated': {
+      const issueKeys = Array.isArray(data.issueKeys)
+        ? data.issueKeys.filter((key): key is string => typeof key === 'string')
+        : [];
+      return [
+        ...issueKeys.flatMap((key) => [['issue', key], ['activity', key]]),
+        ['issues'],
+        ['boards'],
+        ...ISSUE_PLANNING_KEYS,
+        ['dashboard'],
+      ];
+    }
     case 'issue.reordered':
       return [
         ['issues'],

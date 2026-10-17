@@ -50,6 +50,24 @@ describe('getInvalidationKeys', () => {
     );
   });
 
+  it('refreshes every issue a bulk update or sprint addition changed', () => {
+    const keys = getInvalidationKeys('issue.bulk_updated', {
+      updates: { sprintId: 'sprint-1' },
+      projectKey: 'WS',
+      issueKeys: ['WS-1', 'WS-2', 42],
+    });
+
+    expect(keys).toEqual(
+      expect.arrayContaining([
+        ['issue', 'WS-1'],
+        ['activity', 'WS-1'],
+        ['issue', 'WS-2'],
+        ['activity', 'WS-2'],
+      ]),
+    );
+    expect(keys).not.toContainEqual(['issue', 42]);
+  });
+
   it.each([
     'sprint.created',
     'sprint.updated',

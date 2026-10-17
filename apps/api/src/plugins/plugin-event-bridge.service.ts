@@ -2,7 +2,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { InstalledPluginEntity } from '@weaver/db';
-import { EventDispatcherService } from '../modules/events';
+import { EventDispatcherService, subscribesTo } from '../modules/events';
 import { PluginRegistryService } from './plugin-registry.service';
 import { PluginLoaderService } from './plugin-loader.service';
 import { PluginContextFactory } from './plugin-context.factory';
@@ -50,8 +50,7 @@ export class PluginEventBridgeService implements OnModuleInit {
       const manifest = this.loader.getManifest(plugin.pluginId);
       if (!manifest) continue;
 
-      const subscribes = manifest.events?.subscribes || [];
-      if (!subscribes.includes(event) && !subscribes.includes('*')) continue;
+      if (!subscribesTo(manifest.events?.subscribes ?? [], event)) continue;
 
       try {
         const mod = await this.loader.getModule(plugin.pluginId);
