@@ -13,6 +13,7 @@ describe('Recurring tasks (e2e)', () => {
   let recurrenceService: RecurrenceService;
   let accessToken: string;
   let tenantId: string;
+  let userId: string;
   let recurringIssue: Record<string, any>;
 
   const schemaName = 'tenant_recurring_tasks_test';
@@ -43,6 +44,7 @@ describe('Recurring tasks (e2e)', () => {
 
     accessToken = registration.body.accessToken;
     tenantId = registration.body.tenantId;
+    userId = registration.body.user.id;
 
     await authedRequest()
       .post('/api/v1/projects')
@@ -146,6 +148,14 @@ describe('Recurring tasks (e2e)', () => {
     expect(fromInstance.body.map((issue: any) => issue.id)).toEqual(
       history.body.map((issue: any) => issue.id),
     );
+
+    // The instance is attributed to the root issue's reporter, like its Reporter field.
+    const instanceActivity = await authedRequest()
+      .get(`/api/v1/issues/${history.body[1].key}/activity`)
+      .expect(200);
+    expect(instanceActivity.body).toEqual([
+      expect.objectContaining({ action: 'created', userId, fieldName: null }),
+    ]);
   });
 
   it('stops after the configured maximum number of occurrences', async () => {

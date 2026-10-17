@@ -13,6 +13,7 @@ describe('External intake forms (e2e)', () => {
   let rateLimitingGuard: RateLimitingGuard;
   let accessToken: string;
   let tenantId: string;
+  let userId: string;
   let formId: string;
   let issueTypeId: string;
 
@@ -43,6 +44,7 @@ describe('External intake forms (e2e)', () => {
 
     accessToken = registerResponse.body.accessToken;
     tenantId = registerResponse.body.tenantId;
+    userId = registerResponse.body.user.id;
 
     await authed()
       .post('/api/v1/projects')
@@ -179,6 +181,14 @@ describe('External intake forms (e2e)', () => {
       }),
     );
     expect(issueResponse.body.description.content[0].content[0].text).toContain('payment button');
+
+    // The form records its reporter (the project lead, else the form creator) as the creator.
+    const activityResponse = await authed()
+      .get(`/api/v1/issues/${submitResponse.body.issueKey}/activity`)
+      .expect(200);
+    expect(activityResponse.body).toEqual([
+      expect.objectContaining({ action: 'created', userId, fieldName: null }),
+    ]);
 
     const submissionsResponse = await authed()
       .get(`/api/v1/projects/${projectKey}/forms/${formId}/submissions`)
