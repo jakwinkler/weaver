@@ -2,6 +2,7 @@ import {
   createPostgresDataSource,
   runJiraImportMigration,
   runReviewReliabilityMigration,
+  runTimeEntryUpdatedAtMigration,
 } from '@weaver/db';
 import { Injectable } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
@@ -68,6 +69,7 @@ export class TenantConnectionProvider {
       await runAutomaticTimeCoreMigration(ds, schemaName);
       await runReviewReliabilityMigration(ds, schemaName);
       await runJiraImportMigration(ds, schemaName);
+      await runTimeEntryUpdatedAtMigration(ds, schemaName);
       this.connections.set(schemaName, ds);
       return ds;
     } catch (error) {

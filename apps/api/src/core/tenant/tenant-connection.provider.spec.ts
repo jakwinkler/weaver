@@ -6,6 +6,7 @@ jest.mock('@weaver/db', () => ({
   runJiraImportMigration: jest.fn().mockResolvedValue(undefined),
   runAutomaticTimeCoreMigration: jest.fn().mockResolvedValue(undefined),
   runReviewReliabilityMigration: jest.fn().mockResolvedValue(undefined),
+  runTimeEntryUpdatedAtMigration: jest.fn().mockResolvedValue(undefined),
 }));
 
 describe('TenantConnectionProvider raw query isolation', () => {

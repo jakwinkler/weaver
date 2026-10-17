@@ -2,6 +2,7 @@ import {
   createPostgresDataSource,
   runJiraImportMigration,
   runReviewReliabilityMigration,
+  runTimeEntryUpdatedAtMigration,
 } from '@weaver/db';
 import { assertTenantSchemaName } from '@weaver/server-common';
 import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
@@ -54,6 +55,7 @@ export class TenantProvisioningService {
       await runAutomaticTimeCoreMigration(tempDs, schemaName);
       await runReviewReliabilityMigration(tempDs, schemaName);
       await runJiraImportMigration(tempDs, schemaName);
+      await runTimeEntryUpdatedAtMigration(tempDs, schemaName);
     } finally {
       if (tempDs.isInitialized) await tempDs.destroy();
     }
