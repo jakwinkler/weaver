@@ -1,7 +1,7 @@
 {
   "id": "@weaver/plugin-jam",
   "name": "Jam",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Turn Jam bug reports into Weaver issues, link Jams to issues, and request recordings from issues",
   "author": "Weaver",
   "icon": "bug",
@@ -59,7 +59,7 @@
       "jamApiToken": {
         "type": "string",
         "label": "Jam personal access token",
-        "description": "A jam_pat_ token with the mcp:read and mcp:write scopes"
+        "description": "A jam_pat_ token with the mcp:read and mcp:write scopes. Each recording request creates a Jam recording link as the token's owner."
       },
       "jamAccessExpiresOn": {
         "type": "string",
@@ -73,8 +73,8 @@
       },
       "recordingLinkUrl": {
         "type": "string",
-        "label": "Reusable recording link",
-        "description": "A reusable Jam recording link, such as https://recorder.jam.dev/AbC123x. Recording requests from issues add a signed reference to it."
+        "label": "Reusable recording link (older requests)",
+        "description": "Only for recording requests made before plugin version 0.3.0, which add a signed reference to this link. New requests get their own Jam recording link. Clear it once those requests expire."
       },
       "postBacklinkComments": {
         "type": "boolean",
@@ -179,6 +179,10 @@
     {
       "version": "0.2.0",
       "path": "migrations/002_requests_rules_summaries.sql"
+    },
+    {
+      "version": "0.3.0",
+      "path": "migrations/003_dedicated_recording_links.sql"
     }
   ]
 }

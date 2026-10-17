@@ -96,6 +96,8 @@ export function ConnectionView({ pluginContext }: ConnectionViewProps) {
         ? `expired on ${status.accessExpiresOn}`
         : `expires ${status.accessExpiresOn} (${status.daysUntilExpiry} days)`;
   const tokenWarning = status.daysUntilExpiry !== null && status.daysUntilExpiry <= 14;
+  // Requests made before 0.3.0 add a reference to the reusable link instead of having their own.
+  const older = status.olderRecordingRequests;
 
   return (
     <div className="space-y-6">
@@ -111,11 +113,20 @@ export function ConnectionView({ pluginContext }: ConnectionViewProps) {
           <StatusRow ok={status.webhookSecretConfigured} label="Webhook signing secret">
             {status.webhookSecretConfigured ? 'Set' : 'Not set'}
           </StatusRow>
-          <StatusRow ok={status.recordingLinkConfigured} label="Reusable recording link">
-            {status.recordingLinkConfigured
-              ? 'Set; issues can request recordings'
-              : 'Not set; recording requests are off'}
+          <StatusRow ok={status.tokenConfigured} label="Recording requests">
+            {status.tokenConfigured
+              ? 'On; each request creates its own recording link in Jam'
+              : 'Off until the access token is set'}
           </StatusRow>
+          {(status.recordingLinkConfigured || older.active > 0) && (
+            <StatusRow ok={status.recordingLinkConfigured} label="Reusable recording link">
+              {older.active > 0
+                ? `${older.active} older ${older.active === 1 ? 'request uses' : 'requests use'} it until ${older.lastExpiresAt?.slice(0, 10)}${
+                    status.recordingLinkConfigured ? '' : '; set it again to copy their links'
+                  }`
+                : 'No request uses it any more; you can clear it'}
+            </StatusRow>
+          )}
           <StatusRow ok={Boolean(status.lastWebhookAt)} label="Last webhook">
             {relativeTime(status.lastWebhookAt)}
           </StatusRow>

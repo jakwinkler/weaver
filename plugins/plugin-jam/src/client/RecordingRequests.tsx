@@ -68,8 +68,12 @@ export function RecordingRequests({ pluginContext, issueKey, onChange }: Recordi
     setBusy(true);
     setError(null);
     try {
-      await api.delete(`/issues/${issueKey}/recording-requests/${requestId}`);
+      const result = await api.delete<{ jamLinkDeleted?: boolean; message?: string }>(
+        `/issues/${issueKey}/recording-requests/${requestId}`,
+      );
       await load();
+      // Revoked in Weaver, but the link in Jam is still open.
+      if (result?.jamLinkDeleted === false && result.message) setError(result.message);
     } catch (revokeError) {
       setError(errorMessage(revokeError, 'Could not revoke the request'));
     } finally {

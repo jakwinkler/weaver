@@ -108,6 +108,8 @@ export interface ConnectionStatus {
   tokenConfigured: boolean;
   webhookSecretConfigured: boolean;
   recordingLinkConfigured: boolean;
+  /** Active requests made before 0.3.0, which use the reusable recording link. */
+  olderRecordingRequests: { active: number; lastExpiresAt: string | null };
   accessExpiresOn: string | null;
   daysUntilExpiry: number | null;
   postBacklinkComments: boolean;
