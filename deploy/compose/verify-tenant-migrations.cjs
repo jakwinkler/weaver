@@ -3,9 +3,8 @@
 // @weaver/db, recreates a disposable database, and prepares two tenant schemas. The new tenant is
 // provisioned the way TenantProvisioningService does it: synchronize TENANT_ENTITIES, run every
 // migration in file name order, create the custom fields GIN index. The existing tenant stands for
-// one provisioned before the migrations: synchronize leaves out the tables and indexes the migrations
-// create, so the migrations create them. Columns a migration adds to an older table still come from
-// synchronize, so this check does not compare them. Both tenants then connect the way
+// one provisioned before the migrations: synchronize leaves out the tables, columns, and indexes the
+// migrations create, so the migrations create them. Both then connect the way
 // TenantConnectionProvider does, which runs the migrations again, and schema-plan.cjs must plan no
 // tenant change. Reads DATABASE_HOST, DATABASE_PORT, DATABASE_USER, DATABASE_PASSWORD, and
 // DATABASE_NAME (the database it connects to for CREATE DATABASE).
@@ -32,8 +31,8 @@ const existingTenant = 'tenant_check_existing';
 // Same statement as TenantProvisioningService. No entity can declare a GIN index.
 const ginIndex = (schema) => `CREATE INDEX IF NOT EXISTS "IDX_issue_custom_fields" ON "${schema}"."issues" USING GIN ("custom_fields")`;
 
-// Tables and indexes that one migration's SQL creates in schema. The existing tenant leaves these to
-// the migrations, the way a tenant provisioned before them got them.
+// Tables, added columns, and indexes that one migration's SQL creates in schema. The existing
+// tenant leaves these to the migrations, the way a tenant provisioned before them got them.
 function createdBy(file, queries, schema) {
   const sql = queries.join(';\n').replace(/--[^\n]*/g, '');
   const table = `"?${schema}"?\\."?([a-z_][a-z0-9_]*)"?`;
@@ -42,9 +41,13 @@ function createdBy(file, queries, schema) {
     .map(([, name]) => name);
   const indexes = [...sql.matchAll(new RegExp(`\\bcreate\\s+(?:unique\\s+)?index\\s+(?:concurrently\\s+)?(?:if\\s+not\\s+exists\\s+)?"?([A-Za-z_][A-Za-z0-9_]*)"?\\s+on\\s+(?:only\\s+)?${table}`, 'gi'))]
     .map(([, name, on]) => ({ name, table: on }));
+  const columns = [...sql.matchAll(new RegExp(`\\balter\\s+table\\s+(?:if\\s+exists\\s+)?(?:only\\s+)?${table}([^;]*)`, 'gi'))]
+    .flatMap(([, on, actions]) => [...actions.matchAll(/\badd\s+column\s+(?:if\s+not\s+exists\s+)?"?([a-z_][a-z0-9_]*)"?/gi)]
+      .map(([, name]) => ({ name, table: on })));
   if (tables.length !== count(/\bcreate\s+(?:unlogged\s+)?table\b/gi)) throw new Error(`Cannot read every CREATE TABLE in ${file}`);
   if (indexes.length !== count(/\bcreate\s+(?:unique\s+)?index\b/gi)) throw new Error(`Cannot read every CREATE INDEX in ${file}`);
-  return { tables, indexes };
+  if (columns.length !== count(/\badd\s+column\b/gi)) throw new Error(`Cannot read every ADD COLUMN in ${file}`);
+  return { tables, indexes, columns };
 }
 
 function plan(schemas) {
@@ -123,12 +126,16 @@ async function main() {
     const unmapped = [...createdTables].filter((table) => ![...tableOf.values()].includes(table));
     if (unmapped.length) throw new Error(`Tenant migrations create tables that no tenant entity maps: ${unmapped.join(', ')}`);
     const baseline = entities.filter((entity) => !createdTables.has(tableOf.get(entity)));
-    const indexes = created.flatMap(({ indexes }) => indexes).filter(({ table }) => !createdTables.has(table));
-    console.log(`Tables created by migrations: ${[...createdTables].join(', ') || 'none'}`);
-    console.log(`Indexes created by migrations on synchronized tables: ${indexes.map(({ name }) => name).join(', ') || 'none'}`);
+    const baselineTables = new Set(baseline.map((entity) => tableOf.get(entity)));
+    const columns = created.flatMap(({ columns }) => columns).filter(({ table }) => baselineTables.has(table));
+    const indexes = created.flatMap(({ indexes }) => indexes).filter(({ table }) => baselineTables.has(table));
+    console.log(`Created by migrations: ${[...createdTables].join(', ') || 'none'}`);
+    console.log(`Columns added by migrations: ${columns.map(({ table, name }) => `${table}.${name}`).join(', ') || 'none'}`);
+    console.log(`Indexes created by migrations: ${indexes.map(({ name }) => name).join(', ') || 'none'}`);
 
     await client.query(`CREATE SCHEMA "${existingTenant}"`);
     await connect(existingTenant, { only: baseline, synchronize: true, migrate: false });
+    for (const { table, name } of columns) await client.query(`ALTER TABLE "${existingTenant}"."${table}" DROP COLUMN IF EXISTS "${name}" CASCADE`);
     for (const { name } of indexes) await client.query(`DROP INDEX IF EXISTS "${existingTenant}"."${name}"`);
     await client.query(ginIndex(existingTenant));
 
