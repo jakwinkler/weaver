@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { CheckCircle2, CircleAlert, Copy, RefreshCw } from 'lucide-react';
 import { buttonClass, errorMessage, isForbidden, primaryButtonClass, relativeTime } from './format';
-import type { ConnectionStatus, PluginComponentContext } from './types';
+import type { ConnectionStatus, PluginComponentContext, RecordingDomains } from './types';
 
 interface ConnectionViewProps {
   pluginContext: PluginComponentContext;
@@ -14,7 +14,9 @@ export function ConnectionView({ pluginContext }: ConnectionViewProps) {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<string | null>(null);
+  const [domains, setDomains] = useState<RecordingDomains | null>(null);
+  const [domainsError, setDomainsError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -25,9 +27,26 @@ export function ConnectionView({ pluginContext }: ConnectionViewProps) {
     }
   }, [api]);
 
+  // A separate call to Jam, so the status above still shows when Jam cannot be reached.
+  const loadDomains = useCallback(async () => {
+    setDomainsError(null);
+    try {
+      setDomains(await api.get<RecordingDomains>('/connection/recording-domains'));
+    } catch (loadError) {
+      setDomainsError(
+        errorMessage(loadError, "Could not load the Jam workspace's connected domains"),
+      );
+    }
+  }, [api]);
+
   useEffect(() => {
     void load();
   }, [load]);
+
+  const tokenConfigured = status?.tokenConfigured ?? false;
+  useEffect(() => {
+    if (tokenConfigured) void loadDomains();
+  }, [tokenConfigured, loadDomains]);
 
   const run = async (action: () => Promise<string>) => {
     setBusy(true);
@@ -68,8 +87,8 @@ export function ConnectionView({ pluginContext }: ConnectionViewProps) {
 
   const copy = async (value: string) => {
     await navigator.clipboard.writeText(value);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+    setCopied(value);
+    setTimeout(() => setCopied(null), 1500);
   };
 
   if (forbidden) {
@@ -96,6 +115,9 @@ export function ConnectionView({ pluginContext }: ConnectionViewProps) {
         ? `expired on ${status.accessExpiresOn}`
         : `expires ${status.accessExpiresOn} (${status.daysUntilExpiry} days)`;
   const tokenWarning = status.daysUntilExpiry !== null && status.daysUntilExpiry <= 14;
+  // Requests made before 0.3.0 add a reference to the reusable link instead of having their own.
+  const older = status.olderRecordingRequests;
+  const domainInUse = domains?.domains.find((domain) => domain.configured) ?? null;
 
   return (
     <div className="space-y-6">
@@ -111,11 +133,22 @@ export function ConnectionView({ pluginContext }: ConnectionViewProps) {
           <StatusRow ok={status.webhookSecretConfigured} label="Webhook signing secret">
             {status.webhookSecretConfigured ? 'Set' : 'Not set'}
           </StatusRow>
-          <StatusRow ok={status.recordingLinkConfigured} label="Reusable recording link">
-            {status.recordingLinkConfigured
-              ? 'Set; issues can request recordings'
-              : 'Not set; recording requests are off'}
+          <StatusRow ok={status.tokenConfigured} label="Recording requests">
+            {!status.tokenConfigured
+              ? 'Off until the access token is set'
+              : status.recordingUrlId
+                ? 'On; each request gets its own Jam link, recorded from the connected domain'
+                : 'On; each request gets its own Jam link, which captures no logs'}
           </StatusRow>
+          {(status.recordingLinkConfigured || older.active > 0) && (
+            <StatusRow ok={status.recordingLinkConfigured} label="Reusable recording link">
+              {older.active > 0
+                ? `${older.active} older ${older.active === 1 ? 'request uses' : 'requests use'} it until ${older.lastExpiresAt?.slice(0, 10)}${
+                    status.recordingLinkConfigured ? '' : '; set it again to copy their links'
+                  }`
+                : 'No request uses it any more; you can clear it'}
+            </StatusRow>
+          )}
           <StatusRow ok={Boolean(status.lastWebhookAt)} label="Last webhook">
             {relativeTime(status.lastWebhookAt)}
           </StatusRow>
@@ -165,6 +198,83 @@ export function ConnectionView({ pluginContext }: ConnectionViewProps) {
         {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
       </section>
 
+      {status.tokenConfigured && (
+        <section className="rounded-lg border border-border bg-card p-4">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-foreground">Connected domains</h2>
+            <button type="button" className={buttonClass} onClick={() => void loadDomains()}>
+              <RefreshCw className="h-3.5 w-3.5" />
+              Refresh
+            </button>
+          </div>
+          <p className="mb-3 text-xs text-muted-foreground">
+            Request links capture console and network logs only when they start from a verified
+            connected domain. Copy its ID into the plugin's Connected domain for recording requests
+            setting.
+          </p>
+          {domainsError ? (
+            <p className="text-sm text-destructive">{domainsError}</p>
+          ) : !domains ? (
+            <p className="text-sm text-muted-foreground">Loading...</p>
+          ) : domains.domains.length === 0 ? (
+            <p className="text-sm text-foreground">
+              This Jam workspace has no connected domains, so request links capture no console or
+              network logs.{' '}
+              <a
+                href="https://jam.dev/docs/custom-recording-domain"
+                target="_blank"
+                rel="noreferrer"
+                className="underline"
+              >
+                Connect one in Jam
+              </a>{' '}
+              first.
+            </p>
+          ) : (
+            <ul className="space-y-2 text-sm">
+              {domains.domains.map((domain) => (
+                <li key={domain.id} className="flex flex-wrap items-center gap-2">
+                  {domain.verified ? (
+                    <CheckCircle2 className="h-4 w-4 shrink-0 text-green-600" />
+                  ) : (
+                    <CircleAlert className="h-4 w-4 shrink-0 text-amber-600" />
+                  )}
+                  <span className="min-w-0 flex-1 truncate text-foreground">
+                    {domain.url ?? 'No address'}
+                  </span>
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    {[domain.configured && 'In use', domain.verified ? 'Verified' : 'Not verified']
+                      .filter(Boolean)
+                      .join(', ')}
+                  </span>
+                  <code className="max-w-48 truncate rounded-md bg-muted px-2 py-0.5 text-xs text-foreground">
+                    {domain.id}
+                  </code>
+                  <button
+                    type="button"
+                    className={buttonClass}
+                    onClick={() => void copy(domain.id)}
+                  >
+                    <Copy className="h-3.5 w-3.5" />
+                    {copied === domain.id ? 'Copied' : 'Copy ID'}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {domains && domains.configuredId && !domainInUse && (
+            <p className="mt-3 text-sm text-destructive">
+              The Connected domain for recording requests setting names none of these domains.
+            </p>
+          )}
+          {domainInUse && !domainInUse.verified && (
+            <p className="mt-3 text-sm text-destructive">
+              The domain in use is not verified in Jam, so its links capture no logs until it is.
+            </p>
+          )}
+        </section>
+      )}
+
       <section className="rounded-lg border border-border bg-card p-4">
         <h2 className="mb-2 text-sm font-semibold text-foreground">Webhook URL</h2>
         <div className="flex items-center gap-2">
@@ -177,7 +287,7 @@ export function ConnectionView({ pluginContext }: ConnectionViewProps) {
             onClick={() => void copy(status.webhookUrl)}
           >
             <Copy className="h-3.5 w-3.5" />
-            {copied ? 'Copied' : 'Copy'}
+            {copied === status.webhookUrl ? 'Copied' : 'Copy'}
           </button>
         </div>
         {status.webhookUrlIsLocal && (
@@ -207,6 +317,10 @@ export function ConnectionView({ pluginContext }: ConnectionViewProps) {
           <li>
             Copy the endpoint's signing secret (whsec_...) into the plugin settings, then verify the
             connection.
+          </li>
+          <li>
+            Optionally, for console and network logs on requested recordings, copy a verified
+            domain's ID from Connected domains into the plugin settings.
           </li>
         </ol>
       </section>

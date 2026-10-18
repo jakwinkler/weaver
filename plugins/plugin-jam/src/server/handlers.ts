@@ -66,6 +66,8 @@ interface JamSettings {
   accessExpiresOn: string;
   webhookSecret: string;
   recordingLinkUrl: string;
+  /** A connected domain's ID from Jam's listRecordingUrls. Request links start recording there. */
+  recordingUrlId: string;
   postBacklinkComments: boolean;
   showDebugSummary: boolean;
   embedPlayer: boolean;
@@ -83,6 +85,7 @@ function readSettings(context: PluginContext): JamSettings {
     accessExpiresOn: text('jamAccessExpiresOn'),
     webhookSecret: text('jamWebhookSecret'),
     recordingLinkUrl: webUrl(text('recordingLinkUrl'), ['https:']) ?? '',
+    recordingUrlId: text('jamRecordingUrlId'),
     postBacklinkComments: context.settings.postBacklinkComments !== false,
     showDebugSummary: context.settings.showDebugSummary !== false,
     embedPlayer: context.settings.embedPlayer === true,
@@ -249,9 +252,13 @@ export function verifyJamSignature(input: {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Recording request references. A request's link carries jam-reference=<issue URL>?jr=<id>.<sig>.
-// The signature binds the request to this tenant, so a recipient cannot point a recording at
-// another issue. The request row, not the issue key in the URL, decides where the Jam goes.
+// Recording request references: <issue URL>?jr=<id>.<sig>. Each request gets its own Jam recording
+// link with that reference, and Jam echoes it on jam.created as recordingLink.reference. Requests
+// made before 0.3.0 put it in a jam-reference URL parameter on the reusable link from the settings
+// instead; Jam's recorder strips URL parameters on load, so a reload before recording lost it
+// (October 17, 2026). The signature binds the request to this tenant, so a recipient cannot point
+// a recording at another issue. The request row, not the issue key in the URL, decides where the
+// Jam goes.
 
 async function referenceSecret(context: PluginContext): Promise<Buffer> {
   await context.db.query(
@@ -286,6 +293,7 @@ function requestReference(issueKey: string, requestId: string, signature: string
   return base ? `${base}/issues/${issueKey}?${token}` : `weaver:${issueKey}?${token}`;
 }
 
+/** The reusable-link URL of a request made before 0.3.0. */
 function recordingUrl(linkUrl: string, reference: string, title: string | null): string {
   const url = new URL(linkUrl);
   url.searchParams.set('jam-reference', reference);
@@ -1007,34 +1015,59 @@ interface RequestRow {
   revoked_at: string | Date | null;
 }
 
+const REQUEST_SELECT = `SELECT r.id, r.issue_id, i.key AS issue_key, r.requested_by, r.expires_at, r.revoked_at
+  FROM jam_recording_requests r JOIN issues i ON i.id = r.issue_id`;
+
+/**
+ * The request a Jam answers: the one its signed reference names, otherwise the one whose own
+ * recording link it came through. 'invalid' is a reference that names no request of this tenant.
+ */
+async function requestFor(
+  context: PluginContext,
+  snapshot: JamSnapshot,
+): Promise<RequestRow | 'invalid' | null> {
+  const parsed = parseRequestToken(snapshot.recordingReference);
+  if (parsed) {
+    const expected = signRequest(
+      await referenceSecret(context),
+      context.tenant.id,
+      parsed.requestId,
+    );
+    const provided = Buffer.from(parsed.signature);
+    if (provided.length === expected.length && timingSafeEqual(provided, Buffer.from(expected))) {
+      const [request] = (await context.db.query(`${REQUEST_SELECT} WHERE r.id = $1`, [
+        parsed.requestId,
+      ])) as RequestRow[];
+      if (request) return request;
+    }
+  }
+  if (snapshot.recordingLinkPublicId) {
+    const [request] = (await context.db.query(
+      `${REQUEST_SELECT} WHERE r.recording_link_public_id = $1`,
+      [snapshot.recordingLinkPublicId],
+    )) as RequestRow[];
+    if (request) return request;
+  }
+  return parsed ? 'invalid' : null;
+}
+
 async function routeToRequest(
   context: PluginContext,
   settings: JamSettings,
   snapshot: JamSnapshot,
 ): Promise<'attached' | 'flagged' | 'none'> {
-  const parsed = parseRequestToken(snapshot.recordingReference);
-  if (!parsed) return 'none';
-  const expected = signRequest(await referenceSecret(context), context.tenant.id, parsed.requestId);
-  const provided = Buffer.from(parsed.signature);
-  const valid =
-    provided.length === expected.length && timingSafeEqual(provided, Buffer.from(expected));
-  const [request] = valid
-    ? ((await context.db.query(
-        `SELECT r.id, r.issue_id, i.key AS issue_key, r.requested_by, r.expires_at, r.revoked_at
-           FROM jam_recording_requests r JOIN issues i ON i.id = r.issue_id
-          WHERE r.id = $1`,
-        [parsed.requestId],
-      )) as RequestRow[])
-    : [];
-  const problem = !request
-    ? 'invalid_reference'
-    : request.revoked_at
-      ? 'request_revoked'
-      : new Date(request.expires_at).getTime() < Date.now()
-        ? 'request_expired'
-        : null;
-  if (!request || problem) {
-    await flagInboxJam(context, snapshot.jamId, problem ?? 'invalid_reference', null);
+  const request = await requestFor(context, snapshot);
+  if (!request) return 'none';
+  const problem =
+    request === 'invalid'
+      ? 'invalid_reference'
+      : request.revoked_at
+        ? 'request_revoked'
+        : new Date(request.expires_at).getTime() < Date.now()
+          ? 'request_expired'
+          : null;
+  if (request === 'invalid' || problem) {
+    await flagInboxJam(context, snapshot.jamId, problem, null);
     return 'flagged';
   }
   if (!(await claimJam(context, snapshot.jamId))) return 'none';
@@ -1383,6 +1416,11 @@ export async function getConnection(
             count(*) FILTER (WHERE backlink_state = 'failed')::int AS failed
        FROM jam_issue_links`,
   )) as Array<{ pending: number; failed: number }>;
+  // Requests made before 0.3.0 still need the reusable link for their Copy link button.
+  const [olderRequests] = (await context.db.query(
+    `SELECT count(*)::int AS active, max(expires_at) AS last_expires_at FROM jam_recording_requests
+      WHERE mode = 'url_parameter' AND revoked_at IS NULL AND expires_at > now()`,
+  )) as Array<{ active: number; last_expires_at: string | Date | null }>;
   const webhook = apiWebhookUrl(context.tenant.id);
   return json(200, {
     webhookUrl: webhook.url,
@@ -1391,6 +1429,13 @@ export async function getConnection(
     tokenConfigured: Boolean(settings.apiToken),
     webhookSecretConfigured: Boolean(settings.webhookSecret),
     recordingLinkConfigured: Boolean(settings.recordingLinkUrl),
+    recordingUrlId: settings.recordingUrlId || null,
+    olderRecordingRequests: {
+      active: olderRequests?.active ?? 0,
+      lastExpiresAt: olderRequests?.last_expires_at
+        ? new Date(olderRequests.last_expires_at).toISOString()
+        : null,
+    },
     accessExpiresOn: settings.accessExpiresOn || null,
     daysUntilExpiry: daysUntil(settings.accessExpiresOn),
     postBacklinkComments: settings.postBacklinkComments,
@@ -1455,6 +1500,39 @@ export async function retryBacklinks(
   );
   const posted = await drainBacklinks(context, settings, 10);
   return json(200, { requeued: requeued.length, posted });
+}
+
+/**
+ * The Jam workspace's connected domains, so an administrator can find the ID for the
+ * jamRecordingUrlId setting. Jam's tool description names each domain's id, url, and verified
+ * state; only a verified domain captures logs.
+ */
+export async function listRecordingDomains(
+  _req: PluginRequest,
+  context: PluginContext,
+): Promise<PluginResponse> {
+  const settings = readSettings(context);
+  let reply: Record<string, unknown>;
+  try {
+    reply = await callJamJson(context, settings, 'listRecordingUrls', {});
+  } catch (error) {
+    await noteJamFailure(context, error);
+    return jamFailureResponse(error);
+  }
+  const listed = Array.isArray(reply.recordingUrls) ? reply.recordingUrls.filter(isRecord) : [];
+  const domains = listed.flatMap((item) => {
+    const id = text(item.id, 200);
+    if (!id) return [];
+    return [
+      {
+        id,
+        url: text(item.url, 2048),
+        verified: item.verified === true,
+        configured: id === settings.recordingUrlId,
+      },
+    ];
+  });
+  return json(200, { configuredId: settings.recordingUrlId || null, domains });
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1708,7 +1786,7 @@ export async function listIssueJams(
     display: {
       showDebugSummary: settings.showDebugSummary && Boolean(settings.apiToken),
       embedPlayer: settings.embedPlayer,
-      recordingRequests: Boolean(settings.recordingLinkUrl),
+      recordingRequests: Boolean(settings.apiToken),
     },
   });
 }
@@ -1994,11 +2072,16 @@ interface RecordingRequestRow {
   id: string;
   title: string | null;
   requested_by: string;
+  mode: 'url_parameter' | 'dedicated_link';
+  recording_link_url: string | null;
   expires_at: string | Date;
   revoked_at: string | Date | null;
   jams_received: number;
   created_at: string | Date;
 }
+
+const RECORDING_REQUEST_COLUMNS =
+  'id, title, requested_by, mode, recording_link_url, expires_at, revoked_at, jams_received, created_at';
 
 function requestView(row: RecordingRequestRow, url: string | null): Record<string, unknown> {
   const expired = new Date(row.expires_at).getTime() < Date.now();
@@ -2024,26 +2107,51 @@ export async function listRecordingRequests(
   if (!issueId) return fail(404, 'Issue not found');
   const settings = readSettings(context);
   const rows = (await context.db.query(
-    `SELECT id, title, requested_by, expires_at, revoked_at, jams_received, created_at
+    `SELECT ${RECORDING_REQUEST_COLUMNS}
        FROM jam_recording_requests WHERE issue_id = $1 ORDER BY created_at DESC LIMIT 20`,
     [issueId],
   )) as RecordingRequestRow[];
-  const secret = rows.length && settings.recordingLinkUrl ? await referenceSecret(context) : null;
+  const hasOlderRequests = rows.some((row) => row.mode === 'url_parameter');
+  const secret =
+    hasOlderRequests && settings.recordingLinkUrl ? await referenceSecret(context) : null;
   return json(200, {
-    enabled: Boolean(settings.recordingLinkUrl),
+    enabled: Boolean(settings.apiToken),
     items: rows.map((row) => {
       const active = !row.revoked_at && new Date(row.expires_at).getTime() >= Date.now();
-      const url =
-        active && secret
-          ? recordingUrl(
-              settings.recordingLinkUrl,
-              requestReference(issueKey, row.id, signRequest(secret, context.tenant.id, row.id)),
-              row.title,
-            )
-          : null;
+      let url: string | null = null;
+      if (active && row.mode === 'dedicated_link') url = row.recording_link_url;
+      else if (active && secret) {
+        url = recordingUrl(
+          settings.recordingLinkUrl,
+          requestReference(issueKey, row.id, signRequest(secret, context.tenant.id, row.id)),
+          row.title,
+        );
+      }
       return requestView(row, url);
     }),
   });
+}
+
+/**
+ * Creates a request's own recording link in Jam. Jam stops accepting recordings at expiresAt.
+ * Without a recordingUrlId the link opens Jam's generic recorder, which captures no console or
+ * network logs; with one it starts recording from that connected domain.
+ */
+async function createJamRecordingLink(
+  context: PluginContext,
+  settings: JamSettings,
+  link: { name: string; jamTitle: string; reference: string; expiresAt: string },
+): Promise<{ publicId: string; url: string }> {
+  const reply = await callJamJson(context, settings, 'createRecordingLink', {
+    ...link,
+    ...(settings.recordingUrlId ? { recordingUrlId: settings.recordingUrlId } : {}),
+  });
+  const publicId = token(reply.publicId, 64);
+  const url = webUrl(reply.url, ['https:']);
+  if (!publicId || !url) {
+    throw jamError('unavailable', "Jam's createRecordingLink reply had no recording link");
+  }
+  return { publicId, url };
 }
 
 export async function createRecordingRequest(
@@ -2053,11 +2161,8 @@ export async function createRecordingRequest(
   const user = context.user;
   if (!user) return fail(401, 'Sign in to request recordings');
   const settings = readSettings(context);
-  if (!settings.recordingLinkUrl) {
-    return fail(
-      400,
-      'An administrator needs to add a reusable Jam recording link in the plugin settings',
-    );
+  if (!settings.apiToken) {
+    return fail(400, 'An administrator needs to add the Jam access token in the plugin settings');
   }
   const issueKey = req.params.issueKey;
   const issueId = await issueIdFor(context, issueKey);
@@ -2072,19 +2177,43 @@ export async function createRecordingRequest(
   if (!Number.isInteger(days) || days < 1 || days > 90)
     return fail(400, 'Expiry must be 1 to 90 days');
 
-  const [row] = (await context.db.query(
-    `INSERT INTO jam_recording_requests (issue_id, requested_by, mode, title, expires_at)
-     VALUES ($1, $2, 'url_parameter', $3, now() + make_interval(days => $4))
-     RETURNING id, title, requested_by, expires_at, revoked_at, jams_received, created_at`,
-    [issueId, user.id, title, days],
-  )) as RecordingRequestRow[];
-  const signature = signRequest(await referenceSecret(context), context.tenant.id, row.id);
-  const url = recordingUrl(
-    settings.recordingLinkUrl,
-    requestReference(issueKey, row.id, signature),
-    title,
-  );
-  return json(201, requestView(row, url));
+  // Each request gets its own Jam link, which keeps the reference through a reload of the
+  // recorder. Each one counts against the Jam workspace's recording link quota.
+  const requestId = randomUUID();
+  const expiresAt = new Date(Date.now() + days * DAY_MS).toISOString();
+  const signature = signRequest(await referenceSecret(context), context.tenant.id, requestId);
+  let link: { publicId: string; url: string };
+  try {
+    link = await createJamRecordingLink(context, settings, {
+      name: `Weaver ${issueKey}: ${title}`,
+      jamTitle: title,
+      reference: requestReference(issueKey, requestId, signature),
+      expiresAt,
+    });
+  } catch (error) {
+    await noteJamFailure(context, error);
+    if (jamKindOf(error) === 'tool') {
+      return fail(502, `Jam could not create a recording link: ${errorMessage(error)}`);
+    }
+    return jamFailureResponse(error);
+  }
+  let row: RecordingRequestRow;
+  try {
+    [row] = (await context.db.query(
+      `INSERT INTO jam_recording_requests
+         (id, issue_id, requested_by, mode, recording_link_public_id, recording_link_url, title, expires_at)
+       VALUES ($1, $2, $3, 'dedicated_link', $4, $5, $6, $7)
+       RETURNING ${RECORDING_REQUEST_COLUMNS}`,
+      [requestId, issueId, user.id, link.publicId, link.url, title, expiresAt],
+    )) as RecordingRequestRow[];
+  } catch (error) {
+    // Leave no open link in Jam that no request answers for.
+    await callJamTool(context, settings, 'deleteRecordingLink', { publicId: link.publicId }).catch(
+      () => undefined,
+    );
+    throw error;
+  }
+  return json(201, requestView(row, link.url));
 }
 
 export async function revokeRecordingRequest(
@@ -2094,17 +2223,39 @@ export async function revokeRecordingRequest(
   const issueId = await issueIdFor(context, req.params.issueKey);
   const requestId = uuid(req.params.requestId);
   if (!issueId || !requestId) return fail(404, 'Not found');
-  const rows = await context.db.query(
+  const rows = (await context.db.query(
     `WITH revoked AS (
        UPDATE jam_recording_requests SET revoked_at = now()
         WHERE id = $1 AND issue_id = $2 AND revoked_at IS NULL
-        RETURNING id
-     ) SELECT id FROM revoked`,
+        RETURNING id, recording_link_public_id
+     ) SELECT id, recording_link_public_id FROM revoked`,
     [requestId, issueId],
-  );
-  return rows.length
-    ? json(200, { id: requestId, status: 'revoked' })
-    : fail(404, 'No active request with that ID on this issue');
+  )) as Array<{ id: string; recording_link_public_id: string | null }>;
+  if (!rows.length) return fail(404, 'No active request with that ID on this issue');
+  const publicId = rows[0].recording_link_public_id;
+  // A request made before 0.3.0 shares the reusable link, which stays open for everyone else.
+  if (!publicId) return json(200, { id: requestId, status: 'revoked' });
+
+  // Weaver already refuses the request's recordings. Deleting its link in Jam, a soft delete
+  // that keeps Jams already recorded, stops new ones. If that fails, the link stays open until
+  // it expires and its recordings wait in the inbox, flagged request_revoked.
+  try {
+    await callJamTool(context, readSettings(context), 'deleteRecordingLink', { publicId });
+  } catch (error) {
+    await noteJamFailure(context, error);
+    if (!jamKindOf(error)) {
+      context.logger.error('Unexpected failure deleting a Jam recording link', {
+        message: errorMessage(error),
+      });
+    }
+    return json(200, {
+      id: requestId,
+      status: 'revoked',
+      jamLinkDeleted: false,
+      message: `Revoked. Jam could not close the link (${errorMessage(error)}), so it accepts recordings until it expires, and they wait in the Jam inbox.`,
+    });
+  }
+  return json(200, { id: requestId, status: 'revoked', jamLinkDeleted: true });
 }
 
 // ---------------------------------------------------------------------------------------------
