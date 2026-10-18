@@ -116,6 +116,10 @@ export interface ConnectionStatus {
   tokenConfigured: boolean;
   webhookSecretConfigured: boolean;
   recordingLinkConfigured: boolean;
+  /** The connected domain request links start recording from, or null for Jam's generic recorder. */
+  recordingUrlId: string | null;
+  /** Active requests made before 0.3.0, which use the reusable recording link. */
+  olderRecordingRequests: { active: number; lastExpiresAt: string | null };
   accessExpiresOn: string | null;
   daysUntilExpiry: number | null;
   postBacklinkComments: boolean;
@@ -123,4 +127,10 @@ export interface ConnectionStatus {
   lastVerifiedAt: string | null;
   connectionError: { message: string; at: string } | null;
   backlinks: { pending: number; failed: number };
+}
+
+/** The Jam workspace's connected domains, from Jam's listRecordingUrls. */
+export interface RecordingDomains {
+  configuredId: string | null;
+  domains: Array<{ id: string; url: string | null; verified: boolean; configured: boolean }>;
 }

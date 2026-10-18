@@ -1,7 +1,7 @@
 {
   "id": "@weaver/plugin-jam",
   "name": "Jam",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Turn Jam bug reports into Weaver issues, link Jams to issues, and request recordings from issues",
   "author": "Weaver",
   "icon": "bug",
@@ -59,7 +59,7 @@
       "jamApiToken": {
         "type": "string",
         "label": "Jam personal access token",
-        "description": "A jam_pat_ token with the mcp:read and mcp:write scopes"
+        "description": "A jam_pat_ token with the mcp:read and mcp:write scopes. Each recording request creates a Jam recording link as the token's owner."
       },
       "jamAccessExpiresOn": {
         "type": "string",
@@ -71,10 +71,15 @@
         "label": "Webhook signing secret",
         "description": "The whsec_ secret from the endpoint in Jam's webhook portal"
       },
+      "jamRecordingUrlId": {
+        "type": "string",
+        "label": "Connected domain for recording requests",
+        "description": "The ID of a verified connected domain in Jam, listed on Apps > Jam > Connection. Request links then start recording from that domain and capture console and network logs. Empty, they open Jam's generic recorder, which captures neither."
+      },
       "recordingLinkUrl": {
         "type": "string",
-        "label": "Reusable recording link",
-        "description": "A reusable Jam recording link, such as https://recorder.jam.dev/AbC123x. Recording requests from issues add a signed reference to it."
+        "label": "Reusable recording link (older requests)",
+        "description": "Only for recording requests made before plugin version 0.3.0, which add a signed reference to this link. New requests get their own Jam recording link. Clear it once those requests expire."
       },
       "postBacklinkComments": {
         "type": "boolean",
@@ -158,6 +163,7 @@
     { "method": "POST", "path": "/webhook/:tenantId", "handler": "receiveJamWebhook", "public": true },
     { "method": "GET", "path": "/connection", "handler": "getConnection", "requiredPermissions": ["jam.admin"] },
     { "method": "POST", "path": "/connection/verify", "handler": "verifyConnection", "requiredPermissions": ["jam.admin"] },
+    { "method": "GET", "path": "/connection/recording-domains", "handler": "listRecordingDomains", "requiredPermissions": ["jam.admin"] },
     { "method": "POST", "path": "/backlinks/retry", "handler": "retryBacklinks", "requiredPermissions": ["jam.admin"] },
     { "method": "GET", "path": "/rules", "handler": "listRules", "requiredPermissions": ["jam.admin"] },
     { "method": "POST", "path": "/rules", "handler": "createRule", "requiredPermissions": ["jam.admin"] },
@@ -185,6 +191,10 @@
     {
       "version": "0.2.0",
       "path": "migrations/002_requests_rules_summaries.sql"
+    },
+    {
+      "version": "0.3.0",
+      "path": "migrations/003_dedicated_recording_links.sql"
     }
   ]
 }

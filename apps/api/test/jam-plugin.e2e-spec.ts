@@ -50,6 +50,17 @@ describe('Jam plugin (e2e)', () => {
   const jamEvents = new Map<string, { console: unknown[]; network: unknown[] }>();
   const jamTranscripts = new Map<string, string>();
   const jamDownTools = new Set<string>();
+  const jamLinks = new Map<string, { args: Record<string, any>; deletedAt: string | null }>();
+  // The pilot's live listRecordingUrls reply was {"recordingUrls":[]}. The item fields follow
+  // Jam's tool description: each domain's id, url, and verified state.
+  const jamRecordingUrls = [
+    { id: 'c8013d4d-0000-4000-8000-00000000d001', url: 'https://shop.example.com', verified: true },
+    {
+      id: 'c8013d4d-0000-4000-8000-00000000d002',
+      url: 'https://staging.example.com',
+      verified: false,
+    },
+  ];
   let makeRequestSpy: jest.SpyInstance;
 
   beforeAll(async () => {
@@ -238,6 +249,32 @@ describe('Jam plugin (e2e)', () => {
       }
       case 'createComment':
         result = text({ id: randomUUID(), jamId: args.jamId, body: args.body });
+        break;
+      // Reply shapes from the Phase 0 spike (S3).
+      case 'createRecordingLink': {
+        const publicId = randomBytes(6).toString('base64url').slice(0, 7);
+        jamLinks.set(publicId, { args, deletedAt: null });
+        result = text({
+          id: randomUUID(),
+          publicId,
+          url: `https://recorder.jam.dev/${publicId}`,
+          name: args.name,
+          type: 'reusable',
+        });
+        break;
+      }
+      case 'deleteRecordingLink': {
+        const link = jamLinks.get(args.publicId);
+        if (link && !link.deletedAt) {
+          link.deletedAt = new Date().toISOString();
+          result = text({ publicId: args.publicId, deletedAt: link.deletedAt });
+        } else {
+          result = { content: [{ type: 'text', text: 'Recording link not found' }], isError: true };
+        }
+        break;
+      }
+      case 'listRecordingUrls':
+        result = text({ recordingUrls: jamRecordingUrls });
         break;
       case 'getConsoleLogs':
       case 'getNetworkRequests': {
@@ -685,19 +722,16 @@ describe('Jam plugin (e2e)', () => {
   });
 
   describe('recording requests', () => {
-    function requestedJam(reference: string, overrides: Record<string, unknown> = {}) {
+    function requestedJam(recordingLink: Record<string, unknown>) {
       return jamCreated({
         origin: 'recording_link',
         originalUrl: undefined,
         title: 'Show me',
         recordingLink: {
-          publicId: 'Tst1234',
           type: 'reusable',
-          description: 'Weaver requests',
-          reference,
           submitterComment: 'It breaks right after I press pay.',
+          ...recordingLink,
         },
-        ...overrides,
       });
     }
 
@@ -706,44 +740,79 @@ describe('Jam plugin (e2e)', () => {
         .post(`${route}/issues/${issueKey}/recording-requests`)
         .send({ title: 'Show me', expiresInDays: 7 })
         .expect(201);
-      const reference = new URL(created.body.url).searchParams.get('jam-reference')!;
-      return { id: created.body.id as string, url: created.body.url as string, reference };
+      const call = jamCalls.filter((entry) => entry.tool === 'createRecordingLink').at(-1)!;
+      return {
+        id: created.body.id as string,
+        url: created.body.url as string,
+        expiresAt: created.body.expiresAt as string,
+        publicId: new URL(created.body.url).pathname.slice(1),
+        name: call.args.name as string,
+        reference: call.args.reference as string,
+        args: call.args,
+      };
     }
 
-    it('attaches a Jam recorded through a request to the requesting issue, whatever key the link shows', async () => {
+    async function jamsReceived(requestId: string): Promise<number> {
+      const [row] = await dataSource.query(
+        `SELECT jams_received FROM "${schemaName}".jam_recording_requests WHERE id = $1`,
+        [requestId],
+      );
+      return row.jams_received;
+    }
+
+    it('gives each request its own Jam recording link and attaches its Jam to the requesting issue', async () => {
       const key = await createIssue('JAM', 'Payment fails');
       const request = await newRequest(key);
-      expect(request.url.startsWith('https://recorder.jam.dev/Tst1234?')).toBe(true);
-      expect(new URL(request.url).searchParams.get('jam-title')).toBe('Show me');
-      expect(request.reference).toMatch(
-        new RegExp(`^http://localhost:5173/issues/${key}\\?jr=${request.id}\\.[A-Za-z0-9_-]{22}$`),
+      // No connected domain is set, so no recordingUrlId: the link opens Jam's generic recorder.
+      expect(request.args).toEqual({
+        name: `Weaver ${key}: Show me`,
+        jamTitle: 'Show me',
+        reference: expect.stringMatching(
+          new RegExp(
+            `^http://localhost:5173/issues/${key}\\?jr=${request.id}\\.[A-Za-z0-9_-]{22}$`,
+          ),
+        ),
+        expiresAt: request.expiresAt,
+      });
+      expect(new Date(request.expiresAt).getTime() - Date.now()).toBeGreaterThan(6.9 * 86_400_000);
+      // Nothing rides in the link's address, so a reload of Jam's recorder loses nothing.
+      expect(request.url).toBe(`https://recorder.jam.dev/${request.publicId}`);
+      const [row] = await dataSource.query(
+        `SELECT mode, recording_link_public_id, recording_link_url
+           FROM "${schemaName}".jam_recording_requests WHERE id = $1`,
+        [request.id],
       );
+      expect(row).toEqual({
+        mode: 'dedicated_link',
+        recording_link_public_id: request.publicId,
+        recording_link_url: request.url,
+      });
 
       const listed = await as(tokens.viewer)
         .get(`${route}/issues/${key}/recording-requests`)
         .expect(200);
+      expect(listed.body.enabled).toBe(true);
       expect(listed.body.items).toEqual([
         expect.objectContaining({ id: request.id, status: 'active', url: request.url }),
       ]);
 
-      // The issue key in the reference is cosmetic; the signed request decides.
-      const payload = requestedJam(
-        request.reference.replace(`/issues/${key}?`, '/issues/WRONG-1?'),
-      );
+      // Jam echoes the link's reference. The issue key in it is cosmetic; the signed request decides.
+      const payload = requestedJam({
+        publicId: request.publicId,
+        description: request.name,
+        reference: request.reference.replace(`/issues/${key}?`, '/issues/WRONG-1?'),
+      });
       await sendWebhook(payload).expect(200);
 
       expect((await jamRow(payload.jamId)).state).toBe('linked');
       const panel = await as().get(`${route}/issues/${key}/jams`).expect(200);
       expect(panel.body.items[0]).toMatchObject({
         jamId: payload.jamId,
+        recordingLinkName: request.name,
         link: { source: 'recording_request', backlinkState: 'posted' },
       });
       expect(panel.body.display.recordingRequests).toBe(true);
-      const [counted] = await dataSource.query(
-        `SELECT jams_received FROM "${schemaName}".jam_recording_requests WHERE id = $1`,
-        [request.id],
-      );
-      expect(counted.jams_received).toBe(1);
+      expect(await jamsReceived(request.id)).toBe(1);
       const [comment] = await dataSource.query(
         `SELECT c.author_id, c.body::text AS body FROM "${schemaName}".comments c
            JOIN "${schemaName}".issues i ON i.id = c.issue_id WHERE i.key = $1`,
@@ -754,12 +823,134 @@ describe('Jam plugin (e2e)', () => {
       expect(comment.body).toContain('It breaks right after I press pay.');
     });
 
-    it('sends a tampered, revoked, or expired request to the inbox with the reason', async () => {
+    it('starts request links from the connected domain in the settings, and lists the domains for administrators', async () => {
+      const [verified, unverified] = jamRecordingUrls;
+      const before = await as().get(`${route}/connection/recording-domains`).expect(200);
+      expect(before.body).toEqual({
+        configuredId: null,
+        domains: [
+          { ...verified, configured: false },
+          { ...unverified, configured: false },
+        ],
+      });
+      await as(tokens.reporter).get(`${route}/connection/recording-domains`).expect(403);
+      jamMode = 'down';
+      await as().get(`${route}/connection/recording-domains`).expect(502);
+      jamMode = 'ok';
+
+      const key = await createIssue('JAM', 'Logs from the connected domain');
+      await configure({ jamRecordingUrlId: ` ${verified.id} ` });
+      try {
+        const withDomain = await newRequest(key);
+        expect(withDomain.args).toEqual({
+          name: `Weaver ${key}: Show me`,
+          jamTitle: 'Show me',
+          reference: withDomain.reference,
+          expiresAt: withDomain.expiresAt,
+          recordingUrlId: verified.id,
+        });
+        const connection = await as().get(`${route}/connection`).expect(200);
+        expect(connection.body.recordingUrlId).toBe(verified.id);
+        const listed = await as().get(`${route}/connection/recording-domains`).expect(200);
+        expect(listed.body.configuredId).toBe(verified.id);
+        expect(
+          listed.body.domains.map((domain: { id: string; configured: boolean }) => [
+            domain.id,
+            domain.configured,
+          ]),
+        ).toEqual([
+          [verified.id, true],
+          [unverified.id, false],
+        ]);
+
+        // Clearing the setting goes back to Jam's generic recorder.
+        await configure({ jamRecordingUrlId: '' });
+        const withoutDomain = await newRequest(key);
+        expect(withoutDomain.args).not.toHaveProperty('recordingUrlId');
+        const cleared = await as().get(`${route}/connection`).expect(200);
+        expect(cleared.body.recordingUrlId).toBeNull();
+      } finally {
+        // configure() merges into the saved settings, so only an empty value removes the ID.
+        await configure({ jamRecordingUrlId: '' });
+      }
+    });
+
+    it('attaches by the reference alone, as for a request made with the reusable link before 0.3.0', async () => {
+      const key = await createIssue('JAM', 'Older request');
+      const [older] = await dataSource.query(
+        `INSERT INTO "${schemaName}".jam_recording_requests (issue_id, requested_by, mode, title, expires_at)
+         SELECT id, $2, 'url_parameter', 'Older', now() + interval '7 days'
+           FROM "${schemaName}".issues WHERE key = $1
+         RETURNING id`,
+        [key, ids.reporter],
+      );
+      // The reusable link setting still serves its Copy link button until it expires.
+      const listed = await as().get(`${route}/issues/${key}/recording-requests`).expect(200);
+      const url = new URL(listed.body.items[0].url);
+      expect(`${url.origin}${url.pathname}`).toBe('https://recorder.jam.dev/Tst1234');
+      expect(url.searchParams.get('jam-title')).toBe('Older');
+      const reference = url.searchParams.get('jam-reference')!;
+      expect(reference).toMatch(new RegExp(`/issues/${key}\\?jr=${older.id}\\.[A-Za-z0-9_-]{22}$`));
+      const connection = await as().get(`${route}/connection`).expect(200);
+      expect(connection.body.olderRecordingRequests).toEqual({
+        active: 1,
+        lastExpiresAt: expect.any(String),
+      });
+
+      // The shared link's publicId names no request, so the reference routes the Jam.
+      const payload = requestedJam({
+        publicId: 'Tst1234',
+        description: 'Weaver requests',
+        reference,
+      });
+      await sendWebhook(payload).expect(200);
+      expect((await jamRow(payload.jamId)).state).toBe('linked');
+      expect(await jamsReceived(older.id)).toBe(1);
+
+      // Revoking it leaves the shared link in Jam open.
+      jamCalls.length = 0;
+      const revoked = await as(tokens.reporter)
+        .delete(`${route}/issues/${key}/recording-requests/${older.id}`)
+        .expect(200);
+      expect(revoked.body).toEqual({ id: older.id, status: 'revoked' });
+      expect(jamCalls).toEqual([]);
+    });
+
+    it("attaches by the link's publicId when the reference is missing or altered", async () => {
+      const key = await createIssue('JAM', 'Lost reference');
+      const request = await newRequest(key);
+      const bare = requestedJam({ publicId: request.publicId, description: request.name });
+      await sendWebhook(bare).expect(200);
+      const altered = requestedJam({
+        publicId: request.publicId,
+        description: request.name,
+        reference: request.reference.replace(/.$/, (last) => (last === 'A' ? 'B' : 'A')),
+      });
+      await sendWebhook(altered).expect(200);
+
+      expect(await jamRow(bare.jamId)).toMatchObject({ state: 'linked', flag: null });
+      expect(await jamRow(altered.jamId)).toMatchObject({ state: 'linked', flag: null });
+      expect(await jamsReceived(request.id)).toBe(2);
+      const panel = await as().get(`${route}/issues/${key}/jams`).expect(200);
+      expect(
+        panel.body.items.map((item: { jamId: string; link: { source: string } }) => [
+          item.jamId,
+          item.link.source,
+        ]),
+      ).toEqual([
+        [bare.jamId, 'recording_request'],
+        [altered.jamId, 'recording_request'],
+      ]);
+    });
+
+    it('deletes the link in Jam on revoke, and sends a tampered, revoked, or expired request to the inbox with the reason', async () => {
       const key = await createIssue('JAM', 'Reference refusals');
       const tampered = await newRequest(key);
-      const forged = requestedJam(
-        tampered.reference.replace(/.$/, (last) => (last === 'A' ? 'B' : 'A')),
-      );
+      // A forged reference on a link that is no request's own names nothing.
+      const forged = requestedJam({
+        publicId: 'Tst1234',
+        reference: tampered.reference.replace(/.$/, (last) => (last === 'A' ? 'B' : 'A')),
+      });
       await sendWebhook(forged).expect(200);
       expect(await jamRow(forged.jamId)).toMatchObject({ state: 'new', flag: 'invalid_reference' });
 
@@ -767,10 +958,27 @@ describe('Jam plugin (e2e)', () => {
       await as(tokens.viewer)
         .delete(`${route}/issues/${key}/recording-requests/${revoked.id}`)
         .expect(403);
-      await as(tokens.reporter)
+      jamCalls.length = 0;
+      const revokedResponse = await as(tokens.reporter)
         .delete(`${route}/issues/${key}/recording-requests/${revoked.id}`)
         .expect(200);
-      const afterRevoke = requestedJam(revoked.reference);
+      expect(revokedResponse.body).toEqual({
+        id: revoked.id,
+        status: 'revoked',
+        jamLinkDeleted: true,
+      });
+      expect(jamCalls.map((call) => [call.tool, call.args])).toEqual([
+        ['deleteRecordingLink', { publicId: revoked.publicId }],
+      ]);
+      expect(jamLinks.get(revoked.publicId)?.deletedAt).toEqual(expect.any(String));
+      await as(tokens.reporter)
+        .delete(`${route}/issues/${key}/recording-requests/${revoked.id}`)
+        .expect(404);
+      // A Jam recorded before Jam closed the link still arrives, and Weaver refuses it.
+      const afterRevoke = requestedJam({
+        publicId: revoked.publicId,
+        reference: revoked.reference,
+      });
       await sendWebhook(afterRevoke).expect(200);
       expect(await jamRow(afterRevoke.jamId)).toMatchObject({
         state: 'new',
@@ -782,22 +990,61 @@ describe('Jam plugin (e2e)', () => {
         `UPDATE "${schemaName}".jam_recording_requests SET expires_at = now() - interval '1 day' WHERE id = $1`,
         [expired.id],
       );
-      const late = requestedJam(expired.reference);
+      const late = requestedJam({ publicId: expired.publicId, reference: expired.reference });
       await sendWebhook(late).expect(200);
       expect(await jamRow(late.jamId)).toMatchObject({ state: 'new', flag: 'request_expired' });
     });
 
-    it('needs a reusable recording link and write access', async () => {
+    it('revokes in Weaver even when Jam cannot delete the link', async () => {
+      const key = await createIssue('JAM', 'Revoke while Jam is down');
+      const request = await newRequest(key);
+      jamMode = 'down';
+      const response = await as(tokens.reporter)
+        .delete(`${route}/issues/${key}/recording-requests/${request.id}`)
+        .expect(200);
+      jamMode = 'ok';
+      expect(response.body).toMatchObject({
+        id: request.id,
+        status: 'revoked',
+        jamLinkDeleted: false,
+      });
+      expect(response.body.message).toContain('Jam could not close the link');
+      expect(jamLinks.get(request.publicId)?.deletedAt).toBeNull();
+      const listed = await as().get(`${route}/issues/${key}/recording-requests`).expect(200);
+      expect(listed.body.items[0]).toMatchObject({ status: 'revoked', url: null });
+    });
+
+    it('needs the Jam token and write access, and keeps no request Jam could not make a link for', async () => {
       const key = await createIssue('JAM', 'Request permissions');
       await as(tokens.viewer)
         .post(`${route}/issues/${key}/recording-requests`)
         .send({})
         .expect(403);
-      await configure({ recordingLinkUrl: '' });
+
+      jamMode = 'down';
       await as(tokens.reporter)
         .post(`${route}/issues/${key}/recording-requests`)
         .send({})
+        .expect(502);
+      jamMode = 'ok';
+      const [{ count }] = await dataSource.query(
+        `SELECT count(*)::int AS count FROM "${schemaName}".jam_recording_requests r
+           JOIN "${schemaName}".issues i ON i.id = r.issue_id WHERE i.key = $1`,
+        [key],
+      );
+      expect(count).toBe(0);
+
+      // An empty secret setting keeps the saved one, so a blank token stands for none.
+      await configure({ jamApiToken: ' ' });
+      const off = await as(tokens.reporter)
+        .post(`${route}/issues/${key}/recording-requests`)
+        .send({})
         .expect(400);
+      expect(off.body.message).toBe(
+        'An administrator needs to add the Jam access token in the plugin settings',
+      );
+      const panel = await as().get(`${route}/issues/${key}/jams`).expect(200);
+      expect(panel.body.display.recordingRequests).toBe(false);
       await configure();
     });
   });
