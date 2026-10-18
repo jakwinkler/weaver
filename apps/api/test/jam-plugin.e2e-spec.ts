@@ -8,6 +8,7 @@ import Redis from 'ioredis';
 import { AppModule } from '../src/app.module';
 import { TenantConnectionProvider } from '../src/core/tenant';
 import { PluginContextFactory } from '../src/plugins/plugin-context.factory';
+import { readLimitedResponseText } from '../src/core/security/outbound-http';
 
 // Jam is reached only through its MCP server, so the fake below answers at the plugin HTTP
 // boundary with the text/event-stream replies the real server sends (docs/roadmap/30-jam-plugin.md,
@@ -47,6 +48,8 @@ describe('Jam plugin (e2e)', () => {
   const jamCalls: Array<{ tool: string; args: Record<string, any>; authorization?: string }> = [];
   const jamDirectory = new Map<string, Record<string, unknown>>();
   const jamEvents = new Map<string, { console: unknown[]; network: unknown[] }>();
+  const jamTranscripts = new Map<string, string>();
+  const jamDownTools = new Set<string>();
   const jamLinks = new Map<string, { args: Record<string, any>; deletedAt: string | null }>();
   // The pilot's live listRecordingUrls reply was {"recordingUrls":[]}. The item fields follow
   // Jam's tool description: each domain's id, url, and verified state.
@@ -152,6 +155,7 @@ describe('Jam plugin (e2e)', () => {
   beforeEach(async () => {
     jamMode = 'ok';
     jamCalls.length = 0;
+    jamDownTools.clear();
     // Unauthenticated requests, webhooks included, share 30 per minute per address. This suite
     // sends more than that from one address, so each test starts with a fresh window.
     const limiter = new Redis({
@@ -201,6 +205,7 @@ describe('Jam plugin (e2e)', () => {
           recordingLinkUrl: 'https://recorder.jam.dev/Tst1234',
           postBacklinkComments: true,
           showDebugSummary: true,
+          showTranscript: true,
           embedPlayer: false,
           notifyJamOnResolve: false,
           autoCreateHourlyLimit: 20,
@@ -210,7 +215,7 @@ describe('Jam plugin (e2e)', () => {
       .expect(200);
   }
 
-  function fakeJam(body: any, options: any) {
+  async function fakeJam(body: any, options: any) {
     const tool = body?.params?.name as string;
     const args = (body?.params?.arguments ?? {}) as Record<string, any>;
     jamCalls.push({ tool, args, authorization: options?.headers?.Authorization });
@@ -221,7 +226,7 @@ describe('Jam plugin (e2e)', () => {
         headers: { 'content-type': 'application/json' },
       };
     }
-    if (jamMode === 'down')
+    if (jamMode === 'down' || jamDownTools.has(tool))
       return {
         status: 503,
         data: 'Service Unavailable',
@@ -284,6 +289,17 @@ describe('Jam plugin (e2e)', () => {
         });
         break;
       }
+      case 'getVideoTranscript': {
+        // Jam keeps a WebVTT transcript only for video Jams recorded with the microphone on.
+        const transcript = jamTranscripts.get(args.jamId);
+        result = transcript
+          ? { content: [{ type: 'text', text: transcript }] }
+          : {
+              content: [{ type: 'text', text: 'No transcript is available for this Jam' }],
+              isError: true,
+            };
+        break;
+      }
       case 'searchJams': {
         const from = args.window?.from as string | undefined;
         const jams = [...jamDirectory.values()]
@@ -311,9 +327,11 @@ describe('Jam plugin (e2e)', () => {
         result = { content: [{ type: 'text', text: `Unknown tool ${tool}` }], isError: true };
     }
     const sse = `event: message\ndata: ${JSON.stringify({ result, jsonrpc: '2.0', id: body.id })}\n\n`;
+    // The same reader and 1 MB cap as PluginContextFactory.makeRequest.
+    const data = await readLimitedResponseText(new Response(sse), 1024 * 1024);
     return {
       status: 200,
-      data: options?.responseType === 'text' ? sse : null,
+      data: options?.responseType === 'text' ? data : null,
       headers: { 'content-type': 'text/event-stream' },
     };
   }
@@ -1360,6 +1378,171 @@ describe('Jam plugin (e2e)', () => {
       await as().get(`${route}/issues/${key}/jams/${payload.jamId}/summary`).expect(404);
       await configure();
       jamDirectory.delete(payload.jamId);
+    });
+
+    describe('transcript', () => {
+      const linked: string[] = [];
+      const transcriptCalls = () =>
+        jamCalls.filter((call) => call.tool === 'getVideoTranscript').length;
+      const vttCue = (index: number) =>
+        `00:${String(Math.floor(index / 60) % 60).padStart(2, '0')}:${String(index % 60).padStart(2, '0')}.000 --> 00:59:59.000\n` +
+        `The reporter repeats what they tried, attempt number ${index}.`;
+
+      async function linkedJam(overrides: Record<string, unknown> = {}) {
+        const payload = jamCreated(overrides);
+        await sendWebhook(payload).expect(200);
+        const created = await as()
+          .post(`${route}/inbox/${payload.jamId}/create-issue`)
+          .send({ projectKey: 'JAM' })
+          .expect(201);
+        jamDirectory.set(payload.jamId, directoryEntry(payload));
+        linked.push(payload.jamId);
+        return {
+          jamId: payload.jamId,
+          summaryUrl: `${route}/issues/${created.body.issue.key}/jams/${payload.jamId}/summary`,
+        };
+      }
+
+      afterEach(async () => {
+        for (const jamId of linked.splice(0)) {
+          jamDirectory.delete(jamId);
+          jamTranscripts.delete(jamId);
+        }
+        await configure();
+      });
+
+      it('adds what the reporter said as plain text with start times, cached with the summary', async () => {
+        const jam = await linkedJam();
+        jamTranscripts.set(
+          jam.jamId,
+          [
+            'WEBVTT',
+            'Kind: captions',
+            'Language: en',
+            '',
+            'NOTE Generated captions',
+            '',
+            '1',
+            '00:00:01.000 --> 00:00:04.200 align:start position:0%',
+            '<v Riley>So I click <b>checkout</b>',
+            'and nothing happens.</v>',
+            '',
+            '00:07.500 --> 00:09.000',
+            '<c.yellow>It says</c> &lt;script&gt;alert(1)&lt;/script&gt; &amp; <00:00:08.000>spins',
+            '',
+            '01:02:03.000 --> 01:02:05.000',
+            '<script>alert(2)</script>Bye',
+            '',
+          ].join('\r\n'),
+        );
+
+        const summary = await as(tokens.viewer).get(jam.summaryUrl).expect(200);
+        expect(summary.body.transcript).toEqual({
+          status: 'available',
+          truncated: false,
+          cues: [
+            { startMs: 1000, text: 'So I click checkout and nothing happens.' },
+            // Escaped characters become literal text; the panel never renders cues as HTML.
+            { startMs: 7500, text: 'It says <script>alert(1)</script> & spins' },
+            { startMs: 3_723_000, text: 'alert(2)Bye' },
+          ],
+        });
+        expect(jamCalls.find((call) => call.tool === 'getVideoTranscript')?.args).toEqual({
+          jamId: jam.jamId,
+        });
+        expect(summary.body.console).toBeDefined();
+
+        const callsBefore = jamCalls.length;
+        await as().get(jam.summaryUrl).expect(200);
+        expect(jamCalls.length).toBe(callsBefore);
+
+        // Turned off: hidden from the cached summary, and not fetched on refresh.
+        await configure({ showTranscript: false });
+        const hidden = await as().get(jam.summaryUrl).expect(200);
+        expect(hidden.body).not.toHaveProperty('transcript');
+        expect(hidden.body.network).toBeDefined();
+        await as().get(`${jam.summaryUrl}?refresh=true`).expect(200);
+        expect(transcriptCalls()).toBe(1);
+
+        // Back on: the summary cached while it was off has no transcript, so Jam is asked again.
+        await configure();
+        const again = await as().get(jam.summaryUrl).expect(200);
+        expect(again.body.transcript.status).toBe('available');
+        expect(transcriptCalls()).toBe(2);
+      });
+
+      it('says there is none for a Jam without speech, and skips Jam for screenshots and replays', async () => {
+        const noMicrophone = await linkedJam();
+        const none = await as().get(noMicrophone.summaryUrl).expect(200);
+        expect(none.body.transcript).toEqual({ status: 'none', cues: [], truncated: false });
+
+        const silent = await linkedJam();
+        jamTranscripts.set(silent.jamId, 'WEBVTT\n\n');
+        const empty = await as().get(silent.summaryUrl).expect(200);
+        expect(empty.body.transcript.status).toBe('none');
+        expect(transcriptCalls()).toBe(2);
+
+        for (const type of ['screenshot', 'sessionReplay']) {
+          const jam = await linkedJam({ type });
+          const summary = await as().get(jam.summaryUrl).expect(200);
+          expect(summary.body.transcript).toEqual({ status: 'none', cues: [], truncated: false });
+        }
+        expect(transcriptCalls()).toBe(2);
+      });
+
+      it('keeps the summary when the transcript is long, too long, or not sent', async () => {
+        const long = await linkedJam();
+        jamTranscripts.set(
+          long.jamId,
+          `WEBVTT\n\n${Array.from({ length: 600 }, (_, index) => vttCue(index)).join('\n\n')}`,
+        );
+        const shortened = await as().get(long.summaryUrl).expect(200);
+        expect(shortened.body.transcript.status).toBe('available');
+        expect(shortened.body.transcript.truncated).toBe(true);
+        const kept = shortened.body.transcript.cues as Array<{ startMs: number; text: string }>;
+        expect(kept.length).toBeGreaterThan(100);
+        expect(kept.length).toBeLessThan(600);
+        expect(kept.reduce((total, cue) => total + cue.text.length, 0)).toBeLessThanOrEqual(20_000);
+        expect(kept[1]).toEqual({
+          startMs: 1000,
+          text: 'The reporter repeats what they tried, attempt number 1.',
+        });
+
+        // Over the plugin HTTP client's 1 MB reply cap.
+        const huge = await linkedJam();
+        jamTranscripts.set(
+          huge.jamId,
+          `WEBVTT\n\n${Array.from({ length: 15_000 }, (_, index) => vttCue(index)).join('\n\n')}`,
+        );
+        const tooLong = await as().get(huge.summaryUrl).expect(200);
+        expect(tooLong.body.transcript).toEqual({ status: 'too_long', cues: [], truncated: false });
+        expect(tooLong.body.console).toBeDefined();
+        const callsBefore = jamCalls.length;
+        await as().get(huge.summaryUrl).expect(200);
+        expect(jamCalls.length).toBe(callsBefore);
+
+        // The transcript call fails alone: the rest of the summary shows, and nothing is cached.
+        const flaky = await linkedJam();
+        jamTranscripts.set(
+          flaky.jamId,
+          JSON.stringify({ transcript: 'WEBVTT\n\n00:01.000 --> 00:02.000\nHello' }),
+        );
+        jamDownTools.add('getVideoTranscript');
+        const unavailable = await as().get(flaky.summaryUrl).expect(200);
+        expect(unavailable.body.transcript).toEqual({
+          status: 'unavailable',
+          cues: [],
+          truncated: false,
+        });
+        expect(unavailable.body.network).toBeDefined();
+        jamDownTools.clear();
+        const recovered = await as().get(flaky.summaryUrl).expect(200);
+        expect(recovered.body.transcript.cues).toEqual([{ startMs: 1000, text: 'Hello' }]);
+
+        // Jam unreachable altogether: the summary is unavailable, as before.
+        jamMode = 'down';
+        await as().get(`${flaky.summaryUrl}?refresh=true`).expect(502);
+      });
     });
   });
 

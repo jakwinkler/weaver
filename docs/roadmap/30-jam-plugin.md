@@ -136,8 +136,9 @@ The `issue-detail-content` slot shows a **Jams** section when the issue has link
   - console error and warning counts, and network status counts, from `getDetails.eventsSummary`
   - up to five console errors: the message, trimmed to 300 characters
   - up to five failed requests: method, host and path, status, and duration
+  - what the reporter said, from `getVideoTranscript`, while `showTranscript` is on: each caption's start time and plain text, up to 500 captions or 20,000 characters. Only video Jams are asked. A Jam without a transcript (microphone off, a screenshot, or an Instant Replay Jam) shows "No spoken transcript". A reply over the HTTP client's 1 MB cap shows "too long to show here". A failed transcript call leaves the rest of the summary in place and is not cached.
 
-  Request and response bodies, headers, cookies, and query strings are dropped before storage.
+  Request and response bodies, headers, cookies, and query strings are dropped before storage. WebVTT markup (voice, class, and timestamp tags) is removed on the server, and the panel renders caption text as text, never as HTML.
 
 - With `jam.link`: **Attach Jam** (paste a `jam.dev/c/<id>` URL), **Unlink**, and **Request a recording**.
 
@@ -202,7 +203,7 @@ POST /webhook/:tenantId  ->  verify  ->  snapshot (jam_items)  ->  route
                         v
                  jam_issue_links  ->  backlink retry queue  ->  Jam MCP createComment
 
-Issue panel  ->  GET summary  ->  JamMcpClient  ->  Jam MCP getDetails, getConsoleLogs, getNetworkRequests
+Issue panel  ->  GET summary  ->  JamMcpClient  ->  Jam MCP getDetails, getConsoleLogs, getNetworkRequests, getVideoTranscript
 ```
 
 ### Webhook handler
@@ -224,7 +225,7 @@ A small adapter in the plugin. No MCP SDK dependency.
 - `POST https://mcp.jam.dev/mcp` with `Authorization: Bearer <token>`, `Accept: application/json, text/event-stream` (required: `application/json` alone gets `406`), and JSON-RPC 2.0 bodies.
 - Session: one `initialize` and `notifications/initialized` per process. The server issues `Mcp-Session-Id` but accepted later calls without it (S1), so the client does not depend on session affinity. It reinitializes on `404` or a session error.
 - Read the SSE `data:` line (P3), then parse `result.content[].text` as JSON where the tool returns JSON. Strip the `?s=mcp` attribution parameter from returned Jam URLs. Validate only the fields the plugin uses, with zod, and ignore extra fields. A tool error or schema mismatch becomes a typed `JamUnavailable` error. The UI shows "Summary unavailable" and keeps working from the snapshot.
-- Calls used: `getDetails`, `getConsoleLogs` (`logLevel: ['error']`, `limit: 5`), `getNetworkRequests` (`statusCode: ['4xx','5xx']`, `limit: 5`), `createComment`, `searchJams`, `createRecordingLink`, `deleteRecordingLink`, and `listRecordingUrls`.
+- Calls used: `getDetails`, `getConsoleLogs` (`logLevel: ['error']`, `limit: 5`), `getNetworkRequests` (`statusCode: ['4xx','5xx']`, `limit: 5`), `getVideoTranscript` (video Jams only, while `showTranscript` is on), `createComment`, `searchJams`, `createRecordingLink`, `deleteRecordingLink`, and `listRecordingUrls`.
 - `401` or `403` marks the connection **needs attention**, so the panel and admin page show a banner. Timeout is 10 seconds. Concurrency is one in-flight call per tenant per tool, so opening a busy issue page cannot fan out.
 - Contract tests run against recorded fixtures for each tool. A changed shape fails CI instead of failing silently in production.
 
@@ -279,6 +280,7 @@ A small adapter in the plugin. No MCP SDK dependency.
       "recordingLinkUrl": { "type": "string", "label": "Reusable recording link for requests" },
       "postBacklinkComments": { "type": "boolean", "default": true },
       "showDebugSummary": { "type": "boolean", "default": true },
+      "showTranscript": { "type": "boolean", "default": true },
       "notifyJamOnResolve": { "type": "boolean", "default": false },
       "autoCreateHourlyLimit": { "type": "number", "default": 20 }
     }
@@ -468,12 +470,12 @@ Page host is the main matcher for an agency: the site where a Jam was captured u
   - summaries are limited to Jams linked to that issue
   - bodies, headers, cookies, and query strings are dropped
   - console messages are trimmed
-  - `showDebugSummary` turns summaries off for the tenant
+  - `showDebugSummary` turns summaries off for the tenant, and `showTranscript` turns off the reporter's transcript inside them
   - Full logs stay behind Jam's own link access.
 - **Data minimization.** The plugin stores no media, logs, or raw payloads. `system_info` is limited to browser, OS, screen, and connection. Media URLs are public capability URLs on `cdn-jam-screenshots.jam.dev`. S4 fetched a thumbnail and the full video with no Jam session, so they bypass Jam's sharing settings. The plugin stores `thumbnailUrl` only, never `videoUrl`, shows the thumbnail only to issue readers, and never writes media URLs into issue descriptions or comments.
 - **Secrets.** The token and webhook secret live in plugin settings. They are masked in API responses but stored in plaintext JSONB, the same as every plugin secret today. Sealing plugin secrets the way Jira import jobs are sealed (`sealImportJob`) is a platform improvement, not part of this plugin. The token must never be logged. Jam tokens start with `jam_pat_`, so secret scanners catch accidental commits.
 - **Outbound content.** Backlink comments carry the issue key and URL only. Resolve comments (Phase 5) add the status name, never the issue title or Weaver comments.
-- **Jam AI processing.** Some Jam MCP tools send content to Google Gemini. The plugin calls none of the video or transcript tools.
+- **Jam AI processing.** Jam's MCP page says some MCP tools use Google Gemini, without naming them. Its Security page names only Jam AI ticket creation and reproduction steps as Gemini features (both checked October 17, 2026). The plugin calls one video tool, `getVideoTranscript`, for the transcript in the debug summary. Its tool description does not mention AI, and Jam's search already covers transcripts, so the transcript appears to exist before the plugin reads it (inferred). Jam does not document whether making or reading a transcript involves Gemini. `showTranscript` turns the call off. The plugin calls no other video tool: not `getFrames`, `getVideoChapters`, `getScreenshots`, or the retired `analyzeVideo`.
 - **Client bundles.** The client runs with the viewer's session, like every federated plugin. It talks only to the plugin's own routes and never receives the Jam token.
 
 ## Operations and failure handling
@@ -481,7 +483,7 @@ Page host is the main matcher for an agency: the site where a Jam was captured u
 | Failure                                | Behavior                                                                                                                                                                                                                                                                                                                                                           |
 | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Token expired or revoked               | Calls fail with `401`. The connection is marked **needs attention**, and the panel still renders from snapshots. Backlinks stay `pending`. The admin page warns 14 days before `jamAccessExpiresOn`.                                                                                                                                                               |
-| Jam MCP down or a tool's shape changed | Summaries show "unavailable". Webhook ingest is unaffected, because routing needs no Jam call unless a folder matcher is configured.                                                                                                                                                                                                                               |
+| Jam MCP down or a tool's shape changed | Summaries show "unavailable". If only the transcript call fails, the summary shows without it and is not cached. Webhook ingest is unaffected, because routing needs no Jam call unless a folder matcher is configured.                                                                                                                                       |
 | Backlink comment fails                 | Retried with backoff (1m, 10m, 1h, 6h), then a final attempt, 5 in all. A new link tries at once; due retries are drained, up to 10 at a time, by **Verify connection** and **Retry Jam comments**. Reads never drain. A rejected or missing token pauses retries without using attempts. After 5 attempts the state is `failed` and shown on the Connection page. |
 | Webhook endpoint unreachable           | Svix retries for about 27 hours. After that, replay from the Svix portal. **Sync from Jam** backfills the Jams into the inbox but cannot recover recording references. Weaver's rate limit on unauthenticated requests (30 a minute per client address) also applies to webhooks, so a burst above that gets `429` and is retried by Svix.                         |
 | Jam deleted in Jam                     | The snapshot remains, and the summary returns not found. The card shows "Deleted in Jam", and Unlink stays available.                                                                                                                                                                                                                                              |
@@ -588,6 +590,7 @@ Differences from the design above:
 
 - [x] Routing rules UI and engine, including hourly caps and the optional folder lookup.
 - [x] Debug summary with redaction and one-hour cache.
+- [x] Reporter's spoken transcript in the debug summary, behind `showTranscript` (on by default), added October 17, 2026. See the transcript notes below.
 - [x] Optional embedded player, behind the `embedPlayer` setting, off by default. The enforced web CSP sets no `frame-src`; the report-only policy now allows `https://jam.dev`. S6: it renders only for Jams shared with anyone who has the link, and then for anyone holding the URL. Requires a `frame-src https://jam.dev` allowance in the web CSP.
 
 ### Phase 5: Optional extensions
@@ -637,6 +640,15 @@ Implemented October 17, 2026 as plugin version 0.3.0 on `fix/jam-recording-links
 - Connected domain: the optional `jamRecordingUrlId` setting is passed as `recordingUrlId` when set and left out when empty. `GET /connection/recording-domains` (`jam.admin`) returns `listRecordingUrls`, marking the domain the setting names. The pilot's live `listRecordingUrls` reply was `{"recordingUrls":[]}`; the item fields `id`, `url`, and `verified` come from Jam's tool description, not from a reply. One more e2e test, 32 in all, covers the argument with and without the setting, the listing, its `jam.admin` gate, and a `502` while Jam is down.
 - Not yet checked against Jam itself: a request link made by this code, a reload of its recorder before recording, and a link made from a connected domain.
 
+#### Transcript notes
+
+Added October 17, 2026 on `feature/jam-reporter-transcript`, without a manifest version change: the setting needs no migration, and the settings form reads the manifest on disk.
+
+- `getJamSummary` calls `getVideoTranscript` beside the console and network calls when `getDetails` reports a video Jam. It accepts the WebVTT document as the reply text or as a string field of a JSON reply, keeps start times and plain text, and drops header, `NOTE`, `STYLE`, and `REGION` blocks, cue settings, and tags. Entities such as `&lt;` become literal characters.
+- A tool error or an empty transcript is "none". The 1 MB reply cap is "too long". Any other failure is "unavailable" and skips the cache, so the next view asks again. A summary cached while `showTranscript` was off is fetched again when it is turned on, and a cached transcript is hidden when it is turned off.
+- `apps/api/test/jam-plugin.e2e-spec.ts` adds three transcript tests: markup, entities, and hour timestamps; caching and the setting; no microphone, an empty transcript, and screenshot and replay Jams that are not sent to Jam; the 20,000-character limit; a reply over 1 MB through the same reader and cap as `makeRequest`; a failed transcript call; and Jam down altogether.
+- Not verified against Jam: the reply shape, which follows the tool description ("WebVTT format with timestamps"); the reply for a Jam without a transcript; and whether Instant Replay Jams report type `video`. The last two are handled whatever the answer.
+
 ## Acceptance criteria
 
 1. A `jam.created` delivery with a valid signature from the configured workspace produces exactly one `jam_items` row and one routing outcome. Receiving the same `svix-id` or `jamId` again changes nothing.
@@ -667,7 +679,8 @@ Jam, all checked October 16, 2026:
 
 - [Jira integration](https://jam.dev/docs/jira) and [integrations overview](https://jam.dev/docs/integrations-overview)
 - [Webhooks and events](https://jam.dev/docs/webhooks)
-- [Personal access tokens](https://jam.dev/docs/personal-access-tokens) and [MCP](https://jam.dev/docs/jam-mcp)
+- [Personal access tokens](https://jam.dev/docs/personal-access-tokens) and [MCP](https://jam.dev/docs/jam-mcp) (MCP checked again October 17, 2026 for the transcript)
+- [Security](https://jam.dev/docs/security), checked October 17, 2026: Jam AI ticket creation and reproduction steps use Gemini
 - [Recording Links](https://jam.dev/docs/recording-links)
 - [Pricing](https://jam.dev/pricing), page dated October 15, 2026
 - [MCP protected-resource metadata](https://mcp.jam.dev/.well-known/oauth-protected-resource)
