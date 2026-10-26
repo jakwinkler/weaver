@@ -207,6 +207,7 @@ interface UseProjectIssuesParams {
   statusId?: string;
   assigneeId?: string;
   priority?: string;
+  parentId?: string;
   startDateFrom?: string;
   startDateTo?: string;
   dueDateFrom?: string;

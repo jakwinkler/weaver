@@ -12,6 +12,7 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  BadRequestException,
 } from '@nestjs/common';
 import {
   bulkDeleteIssuesSchema,
@@ -75,6 +76,12 @@ export class IssuesController {
     if (query.statusId) filters.statusId = query.statusId;
     if (query.assigneeId) filters.assigneeId = query.assigneeId;
     if (query.priority) filters.priority = query.priority;
+    if (query.parentId) {
+      if (!z.string().uuid().safeParse(query.parentId).success) {
+        throw new BadRequestException('parentId must be an issue ID');
+      }
+      filters.parentId = query.parentId;
+    }
     if (query.startDateFrom) filters.startDateFrom = query.startDateFrom;
     if (query.startDateTo) filters.startDateTo = query.startDateTo;
     if (query.dueDateFrom) filters.dueDateFrom = query.dueDateFrom;

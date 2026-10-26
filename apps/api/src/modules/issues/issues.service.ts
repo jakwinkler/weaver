@@ -32,6 +32,7 @@ export interface IssueFilters {
   assigneeId?: string;
   priority?: string;
   issueTypeId?: string;
+  parentId?: string;
   startDateFrom?: string;
   startDateTo?: string;
   dueDateFrom?: string;
@@ -97,6 +98,12 @@ export class IssuesService {
     if (!sprintId) return null;
     const sprint = await em.getRepository(SprintEntity).findOneBy({ id: sprintId });
     return sprint?.name || sprintId;
+  }
+
+  private async resolveIssueKey(em: EntityManager, issueId: string | null): Promise<string | null> {
+    if (!issueId) return null;
+    const issue = await em.getRepository(IssueEntity).findOne({ where: { id: issueId }, select: { id: true, key: true } });
+    return issue?.key || issueId;
   }
 
   async create(
@@ -198,6 +205,13 @@ export class IssuesService {
     const names = await attributionNames(em, [issue.assigneeId, issue.reporterId]);
     issue.assigneeDisplayName = issue.assigneeId ? names.get(issue.assigneeId) : undefined;
     issue.reporterDisplayName = names.get(issue.reporterId);
+    if (issue.parentId) {
+      // Only the parent's key and summary, and only from this issue's project, which the caller can read.
+      issue.parent = await repo.findOne({
+        where: { id: issue.parentId, projectId: issue.projectId },
+        select: { id: true, key: true, summary: true },
+      });
+    }
     return issue;
   }
 
@@ -235,6 +249,8 @@ export class IssuesService {
         qb.andWhere('issue.priority = :priority', { priority: filters.priority });
       if (filters.issueTypeId)
         qb.andWhere('issue.issueTypeId = :issueTypeId', { issueTypeId: filters.issueTypeId });
+      if (filters.parentId)
+        qb.andWhere('issue.parentId = :parentId', { parentId: filters.parentId });
       if (filters.startDateFrom)
         qb.andWhere('issue.startDate >= :startDateFrom', { startDateFrom: filters.startDateFrom });
       if (filters.startDateTo)
@@ -449,6 +465,7 @@ export class IssuesService {
         summary: issue.summary,
         percentDone: issue.percentDone,
         storyPoints: issue.storyPoints,
+        parentId: issue.parentId,
       };
 
       await authorizeChanges?.({
@@ -1158,6 +1175,7 @@ export class IssuesService {
       summary: string;
       percentDone: number;
       storyPoints: number | null;
+      parentId: string | null;
     },
     userId: string,
   ): Promise<void> {
@@ -1180,6 +1198,13 @@ export class IssuesService {
         this.resolveSprintName(em, issue.sprintId),
       ]);
       trackedChanges.push({ field: 'sprint', oldVal: oldName, newVal: newName });
+    }
+    if (dto.parentId !== undefined && issue.parentId !== previous.parentId) {
+      const [oldKey, newKey] = await Promise.all([
+        this.resolveIssueKey(em, previous.parentId),
+        this.resolveIssueKey(em, issue.parentId),
+      ]);
+      trackedChanges.push({ field: 'parent', oldVal: oldKey, newVal: newKey });
     }
     if (dto.priority !== undefined && issue.priority !== previous.priority) {
       trackedChanges.push({

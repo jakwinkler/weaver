@@ -295,7 +295,9 @@ export interface Issue {
   reporterId: string;
   customFields: Record<string, unknown>;
   sprintId?: string | null;
-  parentId?: string;
+  parentId?: string | null;
+  /** The parent's key and summary, sent with a single issue when it has a parent. */
+  parent?: IssueReference | null;
   epicId?: string;
   labels: string[];
   sortOrder: number;
@@ -310,6 +312,8 @@ export interface Issue {
   updatedAt: Date;
   issueType?: IssueType | null;
 }
+
+export type IssueReference = Pick<Issue, 'id' | 'key' | 'summary'>;
 
 export interface IssueType {
   id: string;
