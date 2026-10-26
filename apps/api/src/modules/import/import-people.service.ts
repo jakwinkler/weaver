@@ -7,7 +7,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { DataSource, In, IsNull } from 'typeorm';
+import { DataSource, In, IsNull, type EntityManager } from 'typeorm';
 import { createHash, randomBytes } from 'crypto';
 import * as bcrypt from 'bcrypt';
 import {
@@ -47,6 +47,51 @@ function remapMentions(value: any, from: string, to: string): any {
   };
 }
 
+/** Attribution remains the same person; only the local principal changes. */
+async function reattribute(
+  em: EntityManager,
+  schemaName: string,
+  personId: string,
+  userId: string,
+): Promise<void> {
+  assertTenantSchemaName(schemaName);
+  const schema = `"${schemaName}"`;
+  for (const [table, column] of [
+    ['projects', 'lead_user_id'],
+    ['issues', 'reporter_id'],
+    ['issues', 'assignee_id'],
+    ['comments', 'author_id'],
+    ['attachments', 'uploader_id'],
+    ['time_entries', 'user_id'],
+    ['activity_logs', 'user_id'],
+  ]) {
+    await em.query(`UPDATE ${schema}."${table}" SET "${column}" = $1 WHERE "${column}" = $2`, [
+      userId,
+      personId,
+    ]);
+  }
+  for (const [entity, column] of [
+    [CommentEntity, 'body'],
+    [IssueEntity, 'description'],
+  ] as const) {
+    const rows = await em
+      .getRepository(entity)
+      .createQueryBuilder('item')
+      .where(`item.${column}::text LIKE :match`, { match: `%${personId}%` })
+      .getMany();
+    for (const row of rows)
+      await em.getRepository(entity).update(row.id, {
+        [column]: remapMentions((row as any)[column], personId, userId),
+        updatedAt: row.updatedAt,
+      });
+  }
+  // Reimports compare against these snapshots; a stale person id would read as a local edit.
+  await em.query(
+    `UPDATE ${schema}."imported_resources" SET "native_snapshot" = replace("native_snapshot"::text, $2, $1)::jsonb WHERE "native_snapshot"::text LIKE '%' || $2 || '%'`,
+    [userId, personId],
+  );
+}
+
 @Injectable()
 export class ImportPeopleService {
   constructor(
@@ -64,7 +109,7 @@ export class ImportPeopleService {
       .find({ order: { displayName: 'ASC' } });
     return people.map(({ inviteTokenHash: _secret, ...person }) => ({
       ...person,
-      status: person.acceptedAt
+      status: person.linkedUserId
         ? 'active'
         : person.inviteExpiresAt && person.inviteExpiresAt > new Date()
           ? 'invited'
@@ -194,6 +239,40 @@ export class ImportPeopleService {
       .update(id, { inviteTokenHash: null, inviteExpiresAt: null });
   }
 
+  /** Attributes an imported person to an existing member. Project access is left unchanged. */
+  async link(personId: string, userId: string) {
+    const { tenantId, schemaName } = requireTenantContext();
+    const em = await this.connections.getEntityManager();
+    if (await em.getRepository(ImportJobEntity).countBy({ status: In(['queued', 'running']) }))
+      throw new ConflictException('Finish or cancel the running import before linking people');
+    const [member] = await em.query(
+      'SELECT user_id FROM public.tenant_memberships WHERE tenant_id = $1 AND user_id = $2',
+      [tenantId, userId],
+    );
+    if (!member) throw new BadRequestException('Choose an active organization member');
+    await em.transaction(async (tx) => {
+      const repo = tx.getRepository(ImportedPersonEntity);
+      const person = await repo
+        .createQueryBuilder('person')
+        .where('person.id = :personId', { personId })
+        .setLock('pessimistic_write')
+        .getOne();
+      if (!person) throw new NotFoundException('Imported person not found');
+      if (person.linkedUserId)
+        throw new ConflictException('This imported person is already linked to a member');
+      if (person.accountType !== 'atlassian' && person.accountType !== 'customer')
+        throw new BadRequestException('System and unidentified accounts cannot be linked');
+      await reattribute(tx, schemaName, person.id, userId);
+      // An outstanding invitation for this person must not remain usable.
+      await repo.update(person.id, {
+        linkedUserId: userId,
+        inviteTokenHash: null,
+        inviteExpiresAt: null,
+      });
+    });
+    return { personId, userId };
+  }
+
   private async locate(token: string) {
     const match = token.match(
       /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.([0-9a-f]{64})$/,
@@ -290,37 +369,7 @@ export class ImportPeopleService {
         if (!(await r.findOneBy({ projectId, userId: user.id })))
           await r.save(r.create({ projectId, userId: user.id, role: person.inviteRole }));
       }
-      // Attribution remains the same person; only the local principal changes.
-      const schema = `"${tenant.schema_name}"`;
-      for (const [table, column] of [
-        ['projects', 'lead_user_id'],
-        ['issues', 'reporter_id'],
-        ['issues', 'assignee_id'],
-        ['comments', 'author_id'],
-        ['attachments', 'uploader_id'],
-        ['time_entries', 'user_id'],
-        ['activity_logs', 'user_id'],
-      ]) {
-        await em.query(`UPDATE ${schema}."${table}" SET "${column}" = $1 WHERE "${column}" = $2`, [
-          user.id,
-          person.id,
-        ]);
-      }
-      for (const [entity, column] of [
-        [CommentEntity, 'body'],
-        [IssueEntity, 'description'],
-      ] as const) {
-        const rows = await em
-          .getRepository(entity)
-          .createQueryBuilder('item')
-          .where(`item.${column}::text LIKE :match`, { match: `%${person.id}%` })
-          .getMany();
-        for (const row of rows)
-          await em.getRepository(entity).update(row.id, {
-            [column]: remapMentions((row as any)[column], person.id, user.id),
-            updatedAt: row.updatedAt,
-          });
-      }
+      await reattribute(em, tenant.schema_name, person.id, user.id);
       person.linkedUserId = user.id;
       person.acceptedAt = new Date();
       person.inviteTokenHash = null;

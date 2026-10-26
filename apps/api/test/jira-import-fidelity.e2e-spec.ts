@@ -732,6 +732,70 @@ imported('Jira import fidelity with PostgreSQL', () => {
     expect(mail.sendInvitation).not.toHaveBeenCalled();
   });
 
+  it('links imported people to existing members and keeps source changes flowing on reimport', async () => {
+    await run();
+    const people = tenantDb.getRepository(ImportedPersonEntity);
+    const reporter = await people.findOneByOrFail({ externalId: author.accountId });
+    const assignee = await people.findOneByOrFail({ externalId: other.accountId });
+    await context(async () => {
+      await expect(service.link(reporter.id, randomUUID())).rejects.toThrow(
+        'active organization member',
+      );
+      const pending = await tenantDb.getRepository(ImportJobEntity).save({
+        source: 'jira_cloud',
+        sourceUrl: source,
+        status: 'running',
+        selectedProjectKeys: [],
+      });
+      await expect(service.link(reporter.id, viewer.id)).rejects.toThrow('running import');
+      await tenantDb.getRepository(ImportJobEntity).delete(pending.id);
+      const link = await service.invite([
+        {
+          personId: reporter.id,
+          email: viewer.email,
+          role: 'viewer',
+          projectIds: reporter.projectIds,
+          delivery: 'link',
+        },
+      ]);
+      await service.link(reporter.id, viewer.id);
+      await service.link(assignee.id, owner.id);
+      await expect(service.link(reporter.id, owner.id)).rejects.toThrow('already linked');
+      await expect(service.preview(link[0].url!.split('/').at(-1)!)).rejects.toThrow('expired');
+      expect((await service.people()).find((p) => p.id === reporter.id)?.status).toBe('active');
+    });
+    expect((await people.findOneByOrFail({ id: reporter.id })).linkedUserId).toBe(viewer.id);
+    const issue = await tenantDb.getRepository(IssueEntity).findOneByOrFail({ key: 'GS-2' });
+    expect(issue.reporterId).toBe(viewer.id);
+    expect(issue.assigneeId).toBe(owner.id);
+    expect(JSON.stringify(issue.description)).toContain(viewer.id);
+    expect(JSON.stringify(issue.description)).not.toContain(reporter.id);
+    const comments = await tenantDb.getRepository(CommentEntity).find();
+    expect(comments.map((c) => c.authorId).sort()).toEqual([viewer.id, viewer.id, owner.id].sort());
+    expect(
+      (await tenantDb.getRepository(AttachmentEntity).find()).map((a) => a.uploaderId),
+    ).toEqual([viewer.id]);
+    expect(
+      (await tenantDb.getRepository(TimeEntryEntity).find()).map((entry) => entry.userId),
+    ).toEqual([viewer.id]);
+    // Linking attributes history only; it grants no project access.
+    expect(await tenantDb.getRepository(ProjectMemberEntity).countBy({ userId: viewer.id })).toBe(
+      0,
+    );
+    // A Jira-side reassignment after the link must not be mistaken for a local edit.
+    task.fields.assignee = author;
+    task.fields.updated = '2022-01-01T00:00:00Z';
+    const job = await run();
+    expect(
+      (await tenantDb.getRepository(IssueEntity).findOneByOrFail({ key: 'GS-2' })).assigneeId,
+    ).toBe(viewer.id);
+    expect((job.report.conflicts as string[]).filter((c) => c.startsWith('GS-2'))).toEqual([]);
+    expect(await people.countBy({ externalId: author.accountId })).toBe(1);
+    expect(
+      (await tenantDb.getRepository(IssueEntity).findOneByOrFail({ key: 'GS-2' })).reporterId,
+    ).toBe(viewer.id);
+  });
+
   it('reports failed worklog retrieval and preserves local assignments on repeat imports', async () => {
     await run();
     const issue = await tenantDb.getRepository(IssueEntity).findOneByOrFail({ key: 'GS-2' });

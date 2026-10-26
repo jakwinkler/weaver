@@ -66,6 +66,13 @@ export class ImportController {
     if (!parsed.success) throw new BadRequestException('Invalid invitation selection');
     return this.people.invite(parsed.data.invitations);
   }
+  @Post('people/:id/link')
+  @Audit({ action: 'import.person_linked', resource: 'import' })
+  link(@Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
+    const parsed = z.object({ userId: z.string().uuid() }).safeParse(body);
+    if (!parsed.success) throw new BadRequestException('Choose a member to link');
+    return this.people.link(id, parsed.data.userId);
+  }
   @Post('people/:id/revoke')
   @Audit({ action: 'import.invitation_revoked', resource: 'import' })
   revoke(@Param('id', ParseUUIDPipe) id: string) {
