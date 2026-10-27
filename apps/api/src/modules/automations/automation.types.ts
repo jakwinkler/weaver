@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { partialWithoutDefaults } from '@weaver/shared';
 import { parseExpression } from 'cron-parser';
 
 export const NAMED_AUTOMATION_SCHEDULES = {
@@ -158,7 +159,7 @@ export const automationActionSchema = z
     }),
     z.object({
       type: z.literal('add_comment'),
-      body: z.union([z.string().min(1).max(10_000), z.record(z.unknown())]),
+      body: z.union([z.string().min(1).max(10_000), z.record(z.string(), z.unknown())]),
     }),
     z.object({
       type: z.literal('send_notification'),
@@ -217,9 +218,9 @@ export const createAutomationRuleSchema = automationRuleFieldsSchema.superRefine
   validateQueryConditionScope,
 );
 
-export const updateAutomationRuleSchema = automationRuleFieldsSchema
-  .partial()
-  .superRefine(validateQueryConditionScope);
+export const updateAutomationRuleSchema = partialWithoutDefaults(automationRuleFieldsSchema).superRefine(
+  validateQueryConditionScope,
+);
 
 export type AutomationTrigger = z.infer<typeof automationTriggerSchema>;
 export type AutomationCondition = z.infer<typeof automationConditionSchema>;

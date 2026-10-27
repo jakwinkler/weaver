@@ -11,6 +11,7 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { z } from 'zod';
+import { partialWithoutDefaults } from '@weaver/shared';
 import { JwtAuthGuard, CurrentUser, RequestUser, PermissionGuard, RequirePermission } from '../../core/auth';
 import { ZodValidationPipe } from '../../common';
 import { TimeTrackingService } from './time-tracking.service';
@@ -22,7 +23,7 @@ const createTimeEntrySchema = z.object({
   source: z.enum(['manual', 'timer']).optional(),
 });
 
-const updateTimeEntrySchema = createTimeEntrySchema.partial();
+const updateTimeEntrySchema = partialWithoutDefaults(createTimeEntrySchema);
 
 @Controller('issues/:issueKey/time-entries')
 @UseGuards(JwtAuthGuard, PermissionGuard, ProjectAccessGuard)

@@ -12,7 +12,7 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { z } from 'zod';
-import { CUSTOM_FIELD_TYPES } from '@weaver/shared';
+import { CUSTOM_FIELD_TYPES, partialWithoutDefaults } from '@weaver/shared';
 import {
   JwtAuthGuard,
   PermissionGuard,
@@ -28,12 +28,12 @@ const createCustomFieldSchema = z.object({
   slug: z.string().min(1).max(100),
   fieldType: z.enum(CUSTOM_FIELD_TYPES),
   entityType: z.enum(ENTITY_TYPES).default('issue'),
-  options: z.record(z.unknown()).nullable().default(null),
-  validation: z.record(z.unknown()).nullable().default(null),
+  options: z.record(z.string(), z.unknown()).nullable().default(null),
+  validation: z.record(z.string(), z.unknown()).nullable().default(null),
   required: z.boolean().default(false),
 });
 
-const updateCustomFieldSchema = createCustomFieldSchema.partial();
+const updateCustomFieldSchema = partialWithoutDefaults(createCustomFieldSchema);
 
 @Controller('custom-fields')
 @UseGuards(JwtAuthGuard, PermissionGuard)

@@ -99,7 +99,7 @@ export const pluginManifestSchema = z
       .optional(),
     settings: z
       .object({
-        schema: z.record(settingDefinitionSchema).optional(),
+        schema: z.record(z.string(), settingDefinitionSchema).optional(),
       })
       .strict()
       .optional(),
