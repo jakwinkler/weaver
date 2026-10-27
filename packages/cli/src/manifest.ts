@@ -78,18 +78,18 @@ function addIssue(
   result[severity === 'error' ? 'errors' : 'warnings'].push(issue);
 }
 
-function formatSchemaPath(path: Array<string | number>): string {
+function formatSchemaPath(path: ReadonlyArray<PropertyKey>): string {
   return path.reduce<string>((formatted, segment) => {
     if (typeof segment === 'number') return `${formatted}[${segment}]`;
-    return formatted ? `${formatted}.${segment}` : segment;
+    return formatted ? `${formatted}.${String(segment)}` : String(segment);
   }, '');
 }
 
-function schemaIssueCode(path: Array<string | number>): string {
+function schemaIssueCode(path: ReadonlyArray<PropertyKey>): string {
   const shape = path.reduce<string>((formatted, segment, index) => {
     if (typeof segment === 'number') return `${formatted}[]`;
     const isSettingKey = index === 2 && path[0] === 'settings' && path[1] === 'schema';
-    const name = isSettingKey ? '*' : segment;
+    const name = isSettingKey ? '*' : String(segment);
     return formatted ? `${formatted}.${name}` : name;
   }, '');
 
@@ -102,8 +102,12 @@ function schemaIssueCode(path: Array<string | number>): string {
 
 /** Zod reports a failed union as one opaque issue; surface the branch the author was aiming for. */
 function expandSchemaIssue(issue: SchemaIssue): SchemaIssue[] {
-  if (issue.code !== 'invalid_union') return [issue];
-  const branches = issue.unionErrors.map((error) => error.issues);
+  // A discriminator mismatch has no branch issues, so it stays as the union's own issue.
+  if (issue.code !== 'invalid_union' || issue.errors.length === 0) return [issue];
+  // Branch issue paths are relative to the union.
+  const branches = issue.errors.map((issues) =>
+    issues.map((branchIssue) => ({ ...branchIssue, path: [...issue.path, ...branchIssue.path] })),
+  );
   const informative = branches.filter(
     (issues) =>
       !(
@@ -137,10 +141,20 @@ function validateAgainstSchema(manifest: JsonObject, result: ValidationResult): 
       result,
       'error',
       schemaIssueCode(issue.path),
-      issue.message === 'Required' ? 'is required' : issue.message,
+      isMissingValue(manifest, issue) ? 'is required' : issue.message,
       formatSchemaPath(issue.path),
     );
   }
+}
+
+function isMissingValue(manifest: JsonObject, issue: SchemaIssue): boolean {
+  if (issue.code !== 'invalid_type') return false;
+  let value: unknown = manifest;
+  for (const segment of issue.path) {
+    if (value === null || typeof value !== 'object') return false;
+    value = (value as Record<PropertyKey, unknown>)[segment];
+  }
+  return value === undefined;
 }
 
 function isUnsafeRelativePath(value: string): boolean {

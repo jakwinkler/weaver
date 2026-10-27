@@ -14,6 +14,7 @@ import {
   createWorkflowSchema,
   createWorkflowStatusSchema,
   createWorkflowTransitionSchema,
+  partialWithoutDefaults,
 } from '@weaver/shared';
 import {
   JwtAuthGuard,
@@ -53,7 +54,7 @@ export class WorkflowsController {
   @Audit({ action: 'workflow.updated', resource: 'workflow', captureBefore: true })
   async update(
     @Param('id') id: string,
-    @Body(new ZodValidationPipe(createWorkflowSchema.partial())) dto: any,
+    @Body(new ZodValidationPipe(partialWithoutDefaults(createWorkflowSchema))) dto: any,
   ) {
     return this.workflowsService.update(id, dto);
   }
@@ -94,7 +95,7 @@ export class WorkflowsController {
   async updateStatus(
     @Param('id') id: string,
     @Param('statusId') statusId: string,
-    @Body(new ZodValidationPipe(createWorkflowStatusSchema.partial())) dto: any,
+    @Body(new ZodValidationPipe(partialWithoutDefaults(createWorkflowStatusSchema))) dto: any,
   ) {
     return this.workflowsService.updateStatus(id, statusId, dto);
   }
@@ -143,7 +144,7 @@ export class WorkflowsController {
   async updateTransition(
     @Param('id') id: string,
     @Param('transitionId') transitionId: string,
-    @Body(new ZodValidationPipe(createWorkflowTransitionSchema.partial())) dto: any,
+    @Body(new ZodValidationPipe(partialWithoutDefaults(createWorkflowTransitionSchema))) dto: any,
   ) {
     return this.workflowsService.updateTransition(id, transitionId, dto);
   }

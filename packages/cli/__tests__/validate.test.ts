@@ -254,6 +254,26 @@ describe('validate', () => {
       expect(validatePlugin(writePlugin(manifest)).errors.length).toBeGreaterThan(0);
     });
 
+    it('reports the union branch the author was aiming for at its full path', () => {
+      const manifest = cloneManifest((m) => {
+        m.migrations = ['src/server/index.ts', { version: '1.0.0', path: 7 }];
+      });
+
+      expect(validatePlugin(writePlugin(manifest)).errors).toEqual([
+        expect.objectContaining({ severity: 'error', path: 'migrations[1].path' }),
+      ]);
+    });
+
+    it('says a missing required field is required', () => {
+      const manifest = cloneManifest((m) => {
+        delete m.name;
+      });
+
+      expect(validatePlugin(writePlugin(manifest)).errors).toEqual([
+        expect.objectContaining({ code: 'missing-name', path: 'name', message: 'is required' }),
+      ]);
+    });
+
     it('warns that comment.added subscriptions receive comment.created', () => {
       const manifest = cloneManifest((m) => {
         m.events = { subscribes: ['issue.created', 'comment.added'] };

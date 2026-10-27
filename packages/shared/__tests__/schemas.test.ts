@@ -14,6 +14,8 @@ import {
   updateNotificationPreferencesSchema,
   updateTenantSettingsSchema,
   createWebhookSchema,
+  createWorkflowTransitionSchema,
+  partialWithoutDefaults,
 } from '../src/schemas';
 
 describe('registerSchema', () => {
@@ -299,12 +301,13 @@ describe('notificationPreferencesSchema', () => {
     });
   });
 
-  it('accepts a partial notification preference update', () => {
+  it('accepts a partial notification preference update without filling defaults', () => {
     const result = updateNotificationPreferencesSchema.safeParse({
       emailOnMention: false,
     });
 
     expect(result.success).toBe(true);
+    expect(result.data).toEqual({ emailOnMention: false });
   });
 
   it('rejects unknown notification preference keys', () => {
@@ -342,6 +345,27 @@ describe('createWorkflowStatusSchema', () => {
       color: '#3B82F6',
     });
     expect(result.success).toBe(false);
+  });
+});
+
+describe('partialWithoutDefaults', () => {
+  it('leaves omitted fields out instead of resetting them to their defaults', () => {
+    const updateStatusSchema = partialWithoutDefaults(createWorkflowStatusSchema);
+
+    expect(updateStatusSchema.parse({ name: 'Testing' })).toEqual({ name: 'Testing' });
+  });
+
+  it('keeps transition rules the client did not send', () => {
+    const updateTransitionSchema = partialWithoutDefaults(createWorkflowTransitionSchema);
+
+    expect(updateTransitionSchema.parse({ name: 'Ready for QA' })).toEqual({ name: 'Ready for QA' });
+  });
+
+  it('still validates the fields that are sent', () => {
+    const updateStatusSchema = partialWithoutDefaults(createWorkflowStatusSchema);
+
+    expect(updateStatusSchema.safeParse({ isTerminal: 'yes' }).success).toBe(false);
+    expect(updateStatusSchema.parse({ isTerminal: true })).toEqual({ isTerminal: true });
   });
 });
 

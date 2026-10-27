@@ -1,7 +1,9 @@
 import { z } from 'zod';
 import { richTextDocumentSchema } from './rich-text';
+import { partialWithoutDefaults } from './partial-update';
 export * from './rich-text';
 export * from './plugin-manifest';
+export * from './partial-update';
 import {
   ISSUE_PRIORITIES,
   TENANT_PLANS,
@@ -130,7 +132,7 @@ export const updateProjectSchema = z.object({
   leadUserId: z.string().uuid().optional(),
   workflowId: z.string().uuid().optional(),
   iconAttachmentId: z.string().uuid().nullable().optional(),
-  customFields: z.record(z.unknown()).optional(),
+  customFields: z.record(z.string(), z.unknown()).optional(),
   visibility: z.enum(['private', 'public']).optional(),
 });
 export type UpdateProjectDto = z.infer<typeof updateProjectSchema>;
@@ -274,7 +276,7 @@ export type UpdateFormDto = z.infer<typeof updateFormSchema>;
 
 export const publicFormSubmissionSchema = z.object({
   values: z
-    .record(z.string().max(10_000))
+    .record(z.string(), z.string().max(10_000))
     .refine((values) => Object.keys(values).length <= 30, 'Too many submitted fields'),
   website: z.string().max(500).optional(),
   recaptchaToken: z.string().max(4096).optional(),
@@ -327,7 +329,7 @@ export const createIssueSchema = z.object({
   labels: z.array(z.string()).default([]),
   parentId: z.string().uuid().optional(),
   epicId: z.string().uuid().optional(),
-  customFields: z.record(z.unknown()).default({}),
+  customFields: z.record(z.string(), z.unknown()).default({}),
   startDate: dateStringSchema.optional(),
   dueDate: dateStringSchema.optional(),
   percentDone: z.number().int().min(0).max(100).default(0),
@@ -346,7 +348,7 @@ export const updateIssueSchema = z.object({
   labels: z.array(z.string()).optional(),
   parentId: z.string().uuid().nullable().optional(),
   epicId: z.string().uuid().nullable().optional(),
-  customFields: z.record(z.unknown()).optional(),
+  customFields: z.record(z.string(), z.unknown()).optional(),
   sortOrder: z.number().optional(),
   startDate: dateStringSchema.nullable().optional(),
   dueDate: dateStringSchema.nullable().optional(),
@@ -449,9 +451,9 @@ export const createWorkflowTransitionSchema = z.object({
   fromStatusId: z.string().uuid(),
   toStatusId: z.string().uuid(),
   name: z.string().min(1).max(255),
-  conditions: z.array(z.record(z.unknown())).default([]),
-  validators: z.array(z.record(z.unknown())).default([]),
-  postFunctions: z.array(z.record(z.unknown())).default([]),
+  conditions: z.array(z.record(z.string(), z.unknown())).default([]),
+  validators: z.array(z.record(z.string(), z.unknown())).default([]),
+  postFunctions: z.array(z.record(z.string(), z.unknown())).default([]),
 });
 export type CreateWorkflowTransitionDto = z.infer<typeof createWorkflowTransitionSchema>;
 
@@ -512,10 +514,9 @@ export const createWebhookSchema = z.object({
 });
 export type CreateWebhookDto = z.infer<typeof createWebhookSchema>;
 
-export const updateWebhookSchema = createWebhookSchema
-  .omit({ projectId: true })
-  .partial()
-  .extend({ active: z.boolean().optional() });
+export const updateWebhookSchema = partialWithoutDefaults(
+  createWebhookSchema.omit({ projectId: true }),
+).extend({ active: z.boolean().optional() });
 export type UpdateWebhookDto = z.infer<typeof updateWebhookSchema>;
 
 // ── Time Entry Schema ──
@@ -587,5 +588,5 @@ export const notificationPreferencesSchema = z
   })
   .strict();
 
-export const updateNotificationPreferencesSchema = notificationPreferencesSchema.partial().strict();
+export const updateNotificationPreferencesSchema = partialWithoutDefaults(notificationPreferencesSchema).strict();
 export type UpdateNotificationPreferencesDto = z.infer<typeof updateNotificationPreferencesSchema>;

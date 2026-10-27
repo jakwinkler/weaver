@@ -11,6 +11,7 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { z } from 'zod';
+import { partialWithoutDefaults } from '@weaver/shared';
 import {
   JwtAuthGuard,
   CurrentUser, RequestUser, AdminGuard,
@@ -68,7 +69,7 @@ export class RolesController {
   @Audit({ action: 'role.updated', resource: 'role', captureBefore: true })
   async update(
     @Param('id') id: string,
-    @Body(new ZodValidationPipe(createRoleSchema.partial()))
+    @Body(new ZodValidationPipe(partialWithoutDefaults(createRoleSchema)))
     dto: Partial<{ name: string; permissions: Record<string, boolean> }>,
     @CurrentUser() user: RequestUser,
   ) {

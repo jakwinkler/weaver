@@ -11,6 +11,7 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { z } from 'zod';
+import { partialWithoutDefaults } from '@weaver/shared';
 import { JwtAuthGuard, CurrentUser, RequestUser } from '../../core/auth';
 import { ZodValidationPipe } from '../../common';
 import { SavedFiltersService } from './saved-filters.service';
@@ -21,7 +22,7 @@ const createSavedFilterSchema = z.object({
   isShared: z.boolean().default(false),
 });
 
-const updateSavedFilterSchema = createSavedFilterSchema.partial();
+const updateSavedFilterSchema = partialWithoutDefaults(createSavedFilterSchema);
 
 @Controller('saved-filters')
 @UseGuards(JwtAuthGuard)
