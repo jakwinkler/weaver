@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useId } from 'react';
 import type { StatusCategory, WorkflowStatus, WorkflowTransition } from '@weaver/shared';
 import { useUpdateWorkflowStatus, useUpdateWorkflowTransition } from '@/api/hooks-admin';
+import { STATUS_FIELD_HELP } from './statusFieldHelp';
 
 interface EditPanelProps {
   workflowId: string;
@@ -72,6 +73,7 @@ function StatusEditForm({
   const [isInitial, setIsInitial] = useState(status.isInitial);
   const [isTerminal, setIsTerminal] = useState(status.isTerminal);
   const updateStatus = useUpdateWorkflowStatus();
+  const helpId = useId();
 
   useEffect(() => {
     setName(status.name);
@@ -113,12 +115,16 @@ function StatusEditForm({
         <select
           value={category}
           onChange={(e) => setCategory(e.target.value as StatusCategory)}
+          aria-describedby={`${helpId}-category`}
           className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
         >
           <option value="todo">To Do</option>
           <option value="in_progress">In Progress</option>
           <option value="done">Done</option>
         </select>
+        <p id={`${helpId}-category`} className="mt-1 text-xs text-gray-500">
+          {STATUS_FIELD_HELP.category}
+        </p>
       </div>
 
       <div>
@@ -139,25 +145,37 @@ function StatusEditForm({
         </div>
       </div>
 
-      <div className="flex items-center gap-4">
-        <label className="flex items-center gap-1.5 text-xs text-gray-700">
-          <input
-            type="checkbox"
-            checked={isInitial}
-            onChange={(e) => setIsInitial(e.target.checked)}
-            className="rounded border-gray-300"
-          />
-          Initial
-        </label>
-        <label className="flex items-center gap-1.5 text-xs text-gray-700">
-          <input
-            type="checkbox"
-            checked={isTerminal}
-            onChange={(e) => setIsTerminal(e.target.checked)}
-            className="rounded border-gray-300"
-          />
-          Terminal
-        </label>
+      <div className="space-y-2">
+        <div>
+          <label className="flex items-center gap-1.5 text-xs text-gray-700">
+            <input
+              type="checkbox"
+              checked={isInitial}
+              onChange={(e) => setIsInitial(e.target.checked)}
+              aria-describedby={`${helpId}-initial`}
+              className="rounded border-gray-300"
+            />
+            Initial
+          </label>
+          <p id={`${helpId}-initial`} className="mt-1 pl-5 text-xs text-gray-500">
+            {STATUS_FIELD_HELP.initial}
+          </p>
+        </div>
+        <div>
+          <label className="flex items-center gap-1.5 text-xs text-gray-700">
+            <input
+              type="checkbox"
+              checked={isTerminal}
+              onChange={(e) => setIsTerminal(e.target.checked)}
+              aria-describedby={`${helpId}-terminal`}
+              className="rounded border-gray-300"
+            />
+            Terminal
+          </label>
+          <p id={`${helpId}-terminal`} className="mt-1 pl-5 text-xs text-gray-500">
+            {STATUS_FIELD_HELP.terminal}
+          </p>
+        </div>
       </div>
 
       <button
