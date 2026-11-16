@@ -13,6 +13,7 @@ describe('SprintsService live events', () => {
     remove: jest.fn(),
   };
   const issueRepository = {
+    findBy: jest.fn().mockResolvedValue([]),
     find: jest.fn().mockResolvedValue([]),
     update: jest.fn(),
     save: jest.fn(async (value) => value),
@@ -33,7 +34,9 @@ describe('SprintsService live events', () => {
   manager.transaction = jest.fn(async (callback: (value: unknown) => unknown) => callback(manager));
   const tenantConnections = {
     getEntityManager: jest.fn().mockResolvedValue(manager),
-    runInTenantTransaction: jest.fn(async (callback: (value: unknown) => unknown) => callback(manager)),
+    runInTenantTransaction: jest.fn(async (callback: (value: unknown) => unknown) =>
+      callback(manager),
+    ),
   };
   const eventDispatcher = { emit: jest.fn().mockResolvedValue(undefined) };
   let service: SprintsService;
@@ -177,9 +180,9 @@ describe('SprintsService live events', () => {
   it('does not announce a sprint that failed to save', async () => {
     sprintRepository.save.mockRejectedValue(new Error('constraint violation'));
 
-    await expect(service.create('project-1', { name: 'Sprint 4' } as CreateSprintDto, 'user-1')).rejects.toThrow(
-      'constraint violation',
-    );
+    await expect(
+      service.create('project-1', { name: 'Sprint 4' } as CreateSprintDto, 'user-1'),
+    ).rejects.toThrow('constraint violation');
     expect(eventDispatcher.emit).not.toHaveBeenCalled();
   });
 });

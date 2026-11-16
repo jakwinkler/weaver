@@ -3,3 +3,7 @@ export * from './jira-client';
 export * from './field-mapper';
 export * from './import-orchestrator';
 export * from './source-store';
+
+export * from './attachment-transfer';
+
+export * from './issue-access';

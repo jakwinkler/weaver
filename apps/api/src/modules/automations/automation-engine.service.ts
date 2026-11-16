@@ -136,7 +136,8 @@ export class AutomationEngineService implements OnModuleInit, OnModuleDestroy {
     const data = job.data;
     assertTenantSchemaName(data.schemaName);
     const tenant = await this.tenantService.findById(data.tenantId);
-    if (!tenant || tenant.schemaName !== data.schemaName) throw new Error('Tenant does not match job schema');
+    if (!tenant || tenant.schemaName !== data.schemaName)
+      throw new Error('Tenant does not match job schema');
     await tenantStorage.run({ tenantId: data.tenantId, schemaName: data.schemaName }, () =>
       data.kind === 'schedule' ? this.evaluateScheduledRule(data) : this.evaluateEvent(data),
     );
@@ -226,7 +227,13 @@ export class AutomationEngineService implements OnModuleInit, OnModuleDestroy {
     conditions: Array<Extract<AutomationCondition, { type: 'query' }>>,
   ): Promise<IssueEntity[]> {
     const em = await this.tenantConnections.getEntityManager();
-    const query = em.getRepository(IssueEntity).createQueryBuilder('issue');
+    const query = em
+      .getRepository(IssueEntity)
+      .createQueryBuilder('issue')
+      .where("issue.access_state = 'unrestricted'")
+      .andWhere(
+        'EXISTS (SELECT 1 FROM projects scheduled_project WHERE scheduled_project.id = issue.project_id AND scheduled_project.import_quarantined = false)',
+      );
     if (rule.projectId)
       query.andWhere('issue.projectId = :projectId', { projectId: rule.projectId });
 
@@ -256,7 +263,9 @@ export class AutomationEngineService implements OnModuleInit, OnModuleDestroy {
 
     const issues = await query.orderBy('issue.key', 'ASC').take(101).getMany();
     if (issues.length > 100) {
-      throw new Error('Scheduled automation matches more than 100 issues; narrow the rule before retrying');
+      throw new Error(
+        'Scheduled automation matches more than 100 issues; narrow the rule before retrying',
+      );
     }
     return issues;
   }
@@ -309,7 +318,9 @@ export class AutomationEngineService implements OnModuleInit, OnModuleDestroy {
   private async loadIssue(payload: Record<string, unknown>): Promise<IssueEntity | null> {
     if (typeof payload.issueKey !== 'string') return null;
     const em = await this.tenantConnections.getEntityManager();
-    return em.getRepository(IssueEntity).findOneBy({ key: payload.issueKey });
+    return em
+      .getRepository(IssueEntity)
+      .findOneBy({ key: payload.issueKey, accessState: 'unrestricted' });
   }
 
   private resolveActorId(payload: Record<string, unknown>, fallback: string): string {

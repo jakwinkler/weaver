@@ -2,13 +2,15 @@
 // jest-e2e.config.js sets TZ for the whole run; assigning it here would not reach Node.
 const e2eTimeZone = process.env.WEAVER_E2E_TZ || 'UTC';
 if (Intl.DateTimeFormat().resolvedOptions().timeZone !== e2eTimeZone) {
-  throw new Error(`API e2e tests must run in ${e2eTimeZone}; run them with test/jest-e2e.config.js`);
+  throw new Error(
+    `API e2e tests must run in ${e2eTimeZone}; run them with test/jest-e2e.config.js`,
+  );
 }
 process.env.NODE_ENV = 'development';
 process.env.DATABASE_HOST = 'localhost';
 process.env.DATABASE_PORT = process.env.WEAVER_E2E_DATABASE_PORT ?? '5432';
 process.env.DATABASE_USER = 'weaver';
-process.env.DATABASE_PASSWORD = 'weaver_dev';
+process.env.DATABASE_PASSWORD = process.env.WEAVER_E2E_DATABASE_PASSWORD ?? 'weaver_dev';
 process.env.DATABASE_NAME = process.env.WEAVER_E2E_DATABASE ?? 'weaver_e2e';
 if (!/^weaver_e2e(?:_[a-z0-9_]+)?$/.test(process.env.DATABASE_NAME)) {
   throw new Error('E2E tests require an isolated weaver_e2e database');

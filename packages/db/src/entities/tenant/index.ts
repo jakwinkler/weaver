@@ -34,3 +34,5 @@ export { InboundWebhookReceiptEntity } from './inbound-webhook-receipt.entity';
 export * from './imported-person.entity';
 export * from './imported-audience.entity';
 export * from './imported-resource.entity';
+
+export * from './issue-access-policy.entity';

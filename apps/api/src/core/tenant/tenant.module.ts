@@ -1,3 +1,6 @@
+import { AccessRevisionController } from './access-revision.controller';
+import { APP_INTERCEPTOR } from '@nestjs/core';
+import { IssueReferenceInterceptor } from './issue-reference.interceptor';
 import { Module, Global, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
@@ -20,7 +23,9 @@ import { MemberVisibilityService } from './member-visibility.service';
       }),
     }),
   ],
+  controllers: [AccessRevisionController],
   providers: [
+    { provide: APP_INTERCEPTOR, useClass: IssueReferenceInterceptor },
     TenantMiddleware,
     TenantService,
     TenantConnectionProvider,

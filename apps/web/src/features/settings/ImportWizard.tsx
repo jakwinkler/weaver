@@ -139,7 +139,14 @@ export function ImportWizard() {
       </CardHeader>
       <CardContent>
         {importId ? (
-          <ImportProgress importId={importId} onStartAnother={reset} />
+          <ImportProgress
+            importId={importId}
+            onStartAnother={reset}
+            onRecoveryStarted={(id) => {
+              window.sessionStorage.setItem(ACTIVE_IMPORT_STORAGE_KEY, id);
+              setImportId(id);
+            }}
+          />
         ) : (
           <div className="space-y-6">
             <ol className="grid grid-cols-5 gap-2" aria-label="Jira import steps">

@@ -1,3 +1,5 @@
+import { WebSocketModule } from '../../core/websocket';
+import { IssueSecurityController } from './issue-security.controller';
 import { ImportSourceController } from './import-source.controller';
 import { ImportPeopleService } from './import-people.service';
 import { ImportInvitationController } from './import-invitation.controller';
@@ -10,8 +12,13 @@ import { ImportService } from './import.service';
 import { JiraClientService } from './jira-client.service';
 
 @Module({
-  imports: [MailModule],
-  controllers: [ImportController, ImportInvitationController, ImportSourceController],
+  imports: [MailModule, WebSocketModule],
+  controllers: [
+    IssueSecurityController,
+    ImportController,
+    ImportInvitationController,
+    ImportSourceController,
+  ],
   providers: [
     ImportPeopleService,
     ImportService,

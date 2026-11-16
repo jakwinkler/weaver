@@ -1,3 +1,4 @@
+import { getTenantContext } from '../tenant/tenant.context';
 import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@nestjs/common';
 import type { RequestUser } from './current-user.decorator';
 
@@ -15,6 +16,8 @@ export class AdminGuard implements CanActivate {
       throw new ForbiddenException('Admin access required');
     }
 
+    const tenant = getTenantContext();
+    if (tenant && user.tenantId === tenant.tenantId) tenant.actor = user;
     return true;
   }
 }

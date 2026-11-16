@@ -1,3 +1,5 @@
+import { requireTenantContext } from '../../core/tenant';
+import { eventHasRestrictedContent } from '@weaver/server-common';
 import { BadRequestException, Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { ProjectEntity, WebhookEntity } from '@weaver/db';
 import { getTenantContext, TenantConnectionProvider } from '../../core/tenant';
@@ -53,7 +55,10 @@ export class WebhooksService {
   async create(dto: CreateWebhookDto): Promise<WebhookEntity> {
     await assertSafeOutboundUrl(dto.url);
     const em = await this.tenantConnections.getEntityManager();
-    if (dto.projectId && !await em.getRepository(ProjectEntity).findOneBy({ id: dto.projectId })) {
+    if (
+      dto.projectId &&
+      !(await em.getRepository(ProjectEntity).findOneBy({ id: dto.projectId }))
+    ) {
       throw new BadRequestException('Webhook project does not exist');
     }
     const repo = em.getRepository(WebhookEntity);
@@ -98,10 +103,7 @@ export class WebhooksService {
     return webhook;
   }
 
-  async update(
-    id: string,
-    dto: UpdateWebhookDto,
-  ): Promise<WebhookResponse> {
+  async update(id: string, dto: UpdateWebhookDto): Promise<WebhookResponse> {
     if (dto.url) {
       await assertSafeOutboundUrl(dto.url);
     }
@@ -132,6 +134,15 @@ export class WebhooksService {
       return { success: false, statusCode: null };
     }
 
+    const securityContext = requireTenantContext();
+    if (
+      await eventHasRestrictedContent(
+        await this.tenantConnections.getEntityManager(),
+        securityContext.schemaName,
+        payload,
+      )
+    )
+      return { success: false, statusCode: null };
     const body = JSON.stringify(payload);
     const timestamp = Math.floor(Date.now() / 1000).toString();
     const signature = crypto

@@ -2,21 +2,22 @@ import type { PluginRequest, PluginResponse, PluginContext } from '@weaver/sdk';
 
 /** Map each stored link type to its source and target display labels */
 const LINK_TYPE_LABELS: Record<string, { source: string; target: string }> = {
-  blocks:            { source: 'blocks',            target: 'is blocked by' },
-  is_blocked_by:     { source: 'is blocked by',     target: 'blocks' },
-  relates_to:        { source: 'relates to',        target: 'relates to' },
-  duplicates:        { source: 'duplicates',        target: 'is duplicated by' },
-  is_duplicated_by:  { source: 'is duplicated by',  target: 'duplicates' },
-  causes:            { source: 'causes',            target: 'is caused by' },
-  is_caused_by:      { source: 'is caused by',      target: 'causes' },
-  clones:            { source: 'clones',            target: 'is cloned from' },
-  is_cloned_from:    { source: 'is cloned from',    target: 'clones' },
+  blocks: { source: 'blocks', target: 'is blocked by' },
+  is_blocked_by: { source: 'is blocked by', target: 'blocks' },
+  relates_to: { source: 'relates to', target: 'relates to' },
+  duplicates: { source: 'duplicates', target: 'is duplicated by' },
+  is_duplicated_by: { source: 'is duplicated by', target: 'duplicates' },
+  causes: { source: 'causes', target: 'is caused by' },
+  is_caused_by: { source: 'is caused by', target: 'causes' },
+  clones: { source: 'clones', target: 'is cloned from' },
+  is_cloned_from: { source: 'is cloned from', target: 'clones' },
 };
 
 async function getIssueByKey(
   context: PluginContext,
   issueKey: string,
 ): Promise<{ id: string; key: string; summary: string; project_id: string } | null> {
+  await context.api.issues.assertAccess(issueKey, 'read');
   const rows = await context.db.query(
     'SELECT id, key, summary, project_id FROM issues WHERE key = $1',
     [issueKey],
@@ -37,6 +38,7 @@ export async function listRelations(
   if (!issue) return { status: 404, body: { message: 'Issue not found' } };
 
   const projectIds = await context.api.projects.accessibleIds();
+  const issueIds = await context.api.issues.accessibleIds();
   const rows = await context.db.query(
     `SELECT
        il.id,
@@ -65,8 +67,9 @@ export async function listRelations(
      LEFT JOIN workflow_statuses ss ON ss.id = si.status_id
      WHERE (il.source_issue_id = $1 OR il.target_issue_id = $1)
        AND ($2::uuid[] IS NULL OR (si.project_id = ANY($2::uuid[]) AND ti.project_id = ANY($2::uuid[])))
+       AND ($3::uuid[] IS NULL OR (si.id = ANY($3::uuid[]) AND ti.id = ANY($3::uuid[])))
      ORDER BY il.created_at DESC`,
-    [issue.id, projectIds],
+    [issue.id, projectIds, issueIds],
   );
 
   const relations = (rows as any[]).map((row) => {
@@ -108,11 +111,13 @@ export async function createRelation(
   }
 
   const sourceIssue = await getIssueByKey(context, issueKey);
-  if (!sourceIssue) return { status: 404, body: { message: `Source issue not found: ${issueKey}` } };
+  if (!sourceIssue)
+    return { status: 404, body: { message: `Source issue not found: ${issueKey}` } };
 
   await context.api.issues.assertAccess(targetIssueKey, 'write');
   const targetIssue = await getIssueByKey(context, targetIssueKey);
-  if (!targetIssue) return { status: 404, body: { message: `Target issue not found: ${targetIssueKey}` } };
+  if (!targetIssue)
+    return { status: 404, body: { message: `Target issue not found: ${targetIssueKey}` } };
 
   if (sourceIssue.id === targetIssue.id) {
     return { status: 400, body: { message: 'Cannot create a relation to the same issue' } };
@@ -188,7 +193,10 @@ export async function deleteRelation(
 
   const link = (rows as any[])[0];
   const isSource = link.sourceIssueId === issue.id;
-  const labels = LINK_TYPE_LABELS[link.linkType] ?? { source: link.linkType, target: link.linkType };
+  const labels = LINK_TYPE_LABELS[link.linkType] ?? {
+    source: link.linkType,
+    target: link.linkType,
+  };
   const relatedKey = isSource ? link.targetKey : link.sourceKey;
   const label = isSource ? labels.source : labels.target;
 
@@ -232,6 +240,7 @@ export async function searchIssues(
   if (!issue) return { status: 404, body: { message: 'Issue not found' } };
 
   const projectIds = await context.api.projects.accessibleIds();
+  const issueIds = await context.api.issues.accessibleIds();
   const rows = await context.db.query(
     `SELECT i.key, i.summary, p.key AS "projectKey",
             ws.name AS "statusName", ws.category AS "statusCategory"
@@ -241,9 +250,10 @@ export async function searchIssues(
      WHERE i.id != $1
        AND (i.key ILIKE $2 OR i.summary ILIKE $2)
        AND ($3::uuid[] IS NULL OR i.project_id = ANY($3::uuid[]))
+       AND ($4::uuid[] IS NULL OR i.id = ANY($4::uuid[]))
      ORDER BY i.key ASC
      LIMIT 20`,
-    [issue.id, `%${q}%`, projectIds],
+    [issue.id, `%${q}%`, projectIds, issueIds],
   );
 
   return { status: 200, body: rows };

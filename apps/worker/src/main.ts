@@ -10,7 +10,7 @@ import {
   processNotification,
 } from './processors/notifications.processor';
 import { createScheduledAutomationProcessor } from './processors/automation.processor';
-import { processImport } from './processors/import.processor';
+import { processImport, stopImportTransfers } from './processors/import.processor';
 
 assertProductionDataCredentials();
 
@@ -69,7 +69,11 @@ function createWorkers(): void {
   for (const worker of workers) attachWorkerLogging(worker);
   for (const queue of queues) {
     queue.on('error', (error: Error & { code?: string }) => {
-      console.error('Worker queue connection error', { queue: queue.name, name: error.name, code: error.code });
+      console.error('Worker queue connection error', {
+        queue: queue.name,
+        name: error.name,
+        code: error.code,
+      });
     });
   }
 
@@ -79,6 +83,7 @@ function createWorkers(): void {
 
 async function shutdown(): Promise<void> {
   console.log('Shutting down workers...');
+  stopImportTransfers();
   await Promise.all(workers.map((w) => w.close()));
   await Promise.all(queues.map((queue) => queue.close()));
   await closeNotificationProcessor();

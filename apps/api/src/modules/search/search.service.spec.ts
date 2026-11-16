@@ -13,19 +13,26 @@ describe('SearchService', () => {
     };
     const entityManager = {
       getRepository: jest.fn().mockReturnValue({
+        metadata: { tablePath: 'tenant_test.issue_access_policies' },
         createQueryBuilder: jest.fn().mockReturnValue(queryBuilder),
       }),
     };
     const tenantConnections = {
       getEntityManager: jest.fn().mockResolvedValue(entityManager),
     };
-    const service = new SearchService(tenantConnections as any, { accessibleProjectIds: jest.fn().mockResolvedValue(['p1']) } as never);
+    const service = new SearchService(
+      tenantConnections as any,
+      { accessibleProjectIds: jest.fn().mockResolvedValue(['p1']) } as never,
+    );
 
-    const result = await service.search({
-      query: 'priority = "medium"',
-      page: 2,
-      perPage: 1,
-    }, { userId: 'u', tenantId: 't', role: 'member', email: '' });
+    const result = await service.search(
+      {
+        query: 'priority = "medium"',
+        page: 2,
+        perPage: 1,
+      },
+      { userId: 'u', tenantId: 't', role: 'member', email: '' },
+    );
 
     expect(result).toEqual({
       data: issues,
@@ -37,6 +44,8 @@ describe('SearchService', () => {
       },
     });
     expect(queryBuilder.where).toHaveBeenCalledWith('(issue.priority = :p0)', { p0: 'medium' });
-    expect(queryBuilder.andWhere).toHaveBeenCalledWith('issue.project_id IN (:...projectIds)', { projectIds: ['p1'] });
+    expect(queryBuilder.andWhere).toHaveBeenCalledWith('issue.project_id IN (:...projectIds)', {
+      projectIds: ['p1'],
+    });
   });
 });

@@ -13,6 +13,26 @@ export async function runJiraImportMigration(
       `${schemaName}:jira-import-migration`,
     ]);
     await manager.query(`
+    CREATE TABLE IF NOT EXISTS ${s}.import_storage_writes (
+      storage_key TEXT PRIMARY KEY, import_job_id UUID NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS ${s}.issue_access_policies (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(), source_instance TEXT NOT NULL,
+      source_project_id TEXT NOT NULL, security_level_id TEXT NOT NULL, project_id UUID NOT NULL,
+      name TEXT NOT NULL, user_ids UUID[] NOT NULL DEFAULT '{}', reviewed BOOLEAN NOT NULL DEFAULT false,
+      revision INTEGER NOT NULL DEFAULT 1, reviewed_by UUID, reviewed_at TIMESTAMPTZ,
+      CONSTRAINT issue_access_policy_source_project_level UNIQUE(source_instance, source_project_id, security_level_id)
+    );
+    DO $access$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = '${schemaName}' AND table_name = 'issues' AND column_name = 'access_state') THEN
+        ALTER TABLE ${s}.issues ADD COLUMN access_state VARCHAR(20) NOT NULL DEFAULT 'unrestricted';
+        UPDATE ${s}.issues SET access_state = 'quarantined' WHERE custom_fields ? 'jira.original-key';
+      END IF;
+    END $access$;
+    ALTER TABLE ${s}.issues ADD COLUMN IF NOT EXISTS access_policy_id UUID,
+      ADD COLUMN IF NOT EXISTS source_security JSONB;
+    UPDATE ${s}.issues SET access_state = 'quarantined' WHERE access_state = 'unrestricted' AND source_security IS NULL AND custom_fields ? 'jira.original-key';
+    CREATE INDEX IF NOT EXISTS "IDX_issues_access_policy" ON ${s}.issues(access_policy_id);
     CREATE TABLE IF NOT EXISTS ${s}.imported_people (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(), source_instance TEXT NOT NULL,
       external_id VARCHAR(255) NOT NULL, display_name VARCHAR(255) NOT NULL,

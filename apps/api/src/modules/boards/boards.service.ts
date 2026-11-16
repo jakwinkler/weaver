@@ -1,3 +1,4 @@
+import { issueVisibilityWhere } from '../../core/tenant/issue-visibility';
 import { attributionNames } from '@weaver/jira-import';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -60,7 +61,7 @@ export class BoardsService {
     const issueRepo = em.getRepository(IssueEntity);
 
     const issues = await issueRepo.find({
-      where: { projectId: board.projectId },
+      where: { projectId: board.projectId, ...issueVisibilityWhere(em) },
       order: { sortOrder: 'ASC', createdAt: 'DESC' },
     });
 

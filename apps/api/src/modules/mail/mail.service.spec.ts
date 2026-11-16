@@ -17,9 +17,9 @@ describe('MailService', () => {
     fromEmail: 'weaver@example.com',
   };
 
-  let tenantService: { getSettings: jest.Mock };
+  let tenantService: { getSettings: jest.Mock; findById: jest.Mock };
   let userRepo: { findOneBy: jest.Mock; query: jest.Mock };
-  let membershipRepo: { findOneBy: jest.Mock };
+  let membershipRepo: { findOneBy: jest.Mock; manager: { query: jest.Mock } };
   let notificationQueue: { enqueue: jest.Mock };
   let accountMailQueue: { enqueue: jest.Mock };
   let config: { get: jest.Mock };
@@ -28,7 +28,10 @@ describe('MailService', () => {
   let service: MailService;
 
   beforeEach(() => {
-    tenantService = { getSettings: jest.fn().mockResolvedValue({ smtp }) };
+    tenantService = {
+      getSettings: jest.fn().mockResolvedValue({ smtp }),
+      findById: jest.fn().mockResolvedValue({ schemaName: 'tenant_test' }),
+    };
     userRepo = {
       findOneBy: jest.fn().mockResolvedValue({
         id: 'user-1',
@@ -39,6 +42,7 @@ describe('MailService', () => {
       query: jest.fn(async () => [[{ notification_preferences: {} }], 1]),
     };
     membershipRepo = {
+      manager: { query: jest.fn().mockResolvedValue([{}]) },
       findOneBy: jest.fn().mockResolvedValue({
         tenantId: 'tenant-1',
         userId: 'user-1',

@@ -24,6 +24,15 @@ import type { RecurrenceRule } from '@weaver/shared';
 @Index('IDX_issue_custom_fields', { synchronize: false })
 @Entity({ name: 'issues' })
 export class IssueEntity {
+  @Column({ name: 'access_state', type: 'varchar', length: 20, default: 'unrestricted' })
+  accessState!: 'unrestricted' | 'restricted' | 'quarantined';
+
+  @Column({ name: 'access_policy_id', type: 'uuid', nullable: true })
+  accessPolicyId!: string | null;
+
+  @Column({ name: 'source_security', type: 'jsonb', nullable: true })
+  sourceSecurity!: { levelId: string | null; verified: boolean } | null;
+
   assigneeDisplayName?: string;
   reporterDisplayName?: string;
   @PrimaryGeneratedColumn('uuid')

@@ -488,6 +488,29 @@ enabled('Jira HTTP, Redis worker and production migration', () => {
       .set('Cookie', viewerCookie)
       .expect(200);
     expect(Buffer.from(download.body).toString()).toBe('hello');
+    const partial = await request(app.getHttpServer())
+      .get(`/api/v1/attachments/${file.id}/download`)
+      .set('Cookie', viewerCookie)
+      .set('Range', 'bytes=1-3')
+      .expect(206);
+    expect(partial.headers['content-range']).toBe('bytes 1-3/5');
+    expect(Buffer.from(partial.body).toString()).toBe('ell');
+    const head = await request(app.getHttpServer())
+      .head(`/api/v1/attachments/${file.id}/download`)
+      .set('Cookie', viewerCookie)
+      .expect(200);
+    expect(head.headers['content-length']).toBe('5');
+    await request(app.getHttpServer())
+      .get(`/api/v1/attachments/${file.id}/download`)
+      .set('Cookie', viewerCookie)
+      .set('Range', 'bytes=5-6')
+      .expect(416);
+    await request(app.getHttpServer())
+      .get(`/api/v1/attachments/${file.id}/download`)
+      .set('Cookie', otherCookie)
+      .set('Range', 'bytes=0-1')
+      .expect(404);
+
     await request(app.getHttpServer())
       .post(`/api/v1/import/audiences/${audience.id}`)
       .set('Cookie', ownerCookie)

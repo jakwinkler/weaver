@@ -1,3 +1,5 @@
+import { redactIssueReferences } from '../../core/tenant/issue-reference-redaction';
+import { issueVisibilityWhere } from '../../core/tenant/issue-visibility';
 import { Controller, Get, Param, Query, NotFoundException } from '@nestjs/common';
 import { TenantService } from '../../core/tenant/tenant.service';
 import { TenantConnectionProvider } from '../../core/tenant/tenant-connection.provider';
@@ -32,7 +34,9 @@ export class PublicProjectsController {
   private async withTenant<T>(slug: string, fn: () => Promise<T>): Promise<T> {
     const tenant = await this.tenantService.findBySlug(slug);
     if (!tenant) throw new NotFoundException('Organization not found');
-    return tenantStorage.run({ tenantId: tenant.id, schemaName: tenant.schemaName }, fn);
+    return tenantStorage.run({ tenantId: tenant.id, schemaName: tenant.schemaName }, async () =>
+      redactIssueReferences(await this.tenantConnections.getEntityManager(), await fn()),
+    );
   }
 
   @Get(':tenantSlug/projects')
@@ -48,6 +52,7 @@ export class PublicProjectsController {
         .createQueryBuilder('project')
         .select(projectColumns)
         .where('project.visibility = :vis', { vis: 'public' })
+        .andWhere('project.import_quarantined = false')
         .orderBy('project.name', 'ASC');
       const result = await paginate(qb, params, ['name', 'createdAt']);
       return { ...result, data: result.data.map(publicProject) };
@@ -59,7 +64,7 @@ export class PublicProjectsController {
     return this.withTenant(slug, async () => {
       const em = await this.tenantConnections.getEntityManager();
       const project = await em.getRepository(ProjectEntity).findOne({
-        where: { key, visibility: 'public' },
+        where: { key, visibility: 'public', importQuarantined: false },
         select: { id: true, key: true, name: true, description: true },
       });
       if (!project) throw new NotFoundException('Project not found');
@@ -76,15 +81,17 @@ export class PublicProjectsController {
     const params = parsePagination(query);
     return this.withTenant(slug, async () => {
       const em = await this.tenantConnections.getEntityManager();
-      const project = await em
-        .getRepository(ProjectEntity)
-        .findOne({ where: { key, visibility: 'public' }, select: { id: true } });
+      const project = await em.getRepository(ProjectEntity).findOne({
+        where: { key, visibility: 'public', importQuarantined: false },
+        select: { id: true },
+      });
       if (!project) throw new NotFoundException('Project not found');
       const qb = em
         .getRepository(IssueEntity)
         .createQueryBuilder('issue')
         .select(issueColumns)
         .where('issue.projectId = :pid', { pid: project.id })
+        .andWhere(issueVisibilityWhere(em, undefined))
         .orderBy('issue.createdAt', 'DESC');
       const result = await paginate(qb, params, ['createdAt', 'priority', 'summary']);
       return { ...result, data: result.data.map(publicIssue) };
@@ -100,15 +107,17 @@ export class PublicProjectsController {
     const params = parsePagination(query);
     return this.withTenant(slug, async () => {
       const em = await this.tenantConnections.getEntityManager();
-      const project = await em
-        .getRepository(ProjectEntity)
-        .findOne({ where: { key, visibility: 'public' }, select: { id: true, workflowId: true } });
+      const project = await em.getRepository(ProjectEntity).findOne({
+        where: { key, visibility: 'public', importQuarantined: false },
+        select: { id: true, workflowId: true },
+      });
       if (!project) throw new NotFoundException('Project not found');
       const qb = em
         .getRepository(IssueEntity)
         .createQueryBuilder('issue')
         .select(issueColumns)
         .where('issue.projectId = :pid', { pid: project.id })
+        .andWhere(issueVisibilityWhere(em, undefined))
         .orderBy('issue.sortOrder', 'ASC');
       const result = await paginate(qb, params, ['sortOrder', 'createdAt', 'priority', 'summary']);
       const statuses = project.workflowId

@@ -1,3 +1,4 @@
+import { eventHasRestrictedContent } from '@weaver/server-common';
 import { createHmac } from 'crypto';
 import { Job } from 'bullmq';
 import { DataSource } from 'typeorm';
@@ -26,9 +27,7 @@ function createTenantDataSource(schemaName: string): DataSource {
   });
 }
 
-export async function processWebhook(
-  job: Job<WebhookJobData>,
-): Promise<void> {
+export async function processWebhook(job: Job<WebhookJobData>): Promise<void> {
   return processWebhookWithDependencies(job);
 }
 
@@ -48,6 +47,7 @@ export async function processWebhookWithDependencies(
     const webhook = await repo.findOneBy({ id: webhookId });
     if (!webhook || !webhook.active) return;
 
+    if (await eventHasRestrictedContent(dataSource, schemaName, payload)) return;
     const body = JSON.stringify(payload);
     const timestamp = Math.floor((dependencies.now?.() ?? Date.now()) / 1000).toString();
     const signature = createHmac('sha256', webhook.secret)

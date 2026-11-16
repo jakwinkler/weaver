@@ -1,3 +1,6 @@
+jest.mock('../core/tenant/issue-reference-redaction', () => ({
+  redactIssueReferences: jest.fn(async (_manager, value) => value),
+}));
 import type { Request, Response } from 'express';
 import type { PluginRouteDefinition } from '@weaver/sdk';
 import { PluginRouteController } from './plugin-route.controller';
@@ -8,11 +11,20 @@ jest.mock('./plugin-route.matcher', () => ({ matchPluginRoute: jest.fn() }));
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
 
 describe('public plugin routes that declare required permissions', () => {
-  function setup(route: Partial<PluginRouteDefinition>, roles: Record<string, Record<string, boolean>> = {}) {
+  function setup(
+    route: Partial<PluginRouteDefinition>,
+    roles: Record<string, Record<string, boolean>> = {},
+  ) {
     (matchPluginRoute as jest.Mock).mockReturnValue({
       pluginId: 'acme',
       normalizedPath: `/public/${TENANT_ID}/status`,
-      route: { method: 'GET', path: '/public/:tenantId/status', handler: 'status', public: true, ...route },
+      route: {
+        method: 'GET',
+        path: '/public/:tenantId/status',
+        handler: 'status',
+        public: true,
+        ...route,
+      },
       params: { tenantId: TENANT_ID },
     });
     const handler = jest.fn().mockResolvedValue({ status: 200, body: { ok: true } });
@@ -29,7 +41,9 @@ describe('public plugin routes that declare required permissions', () => {
       getEntityManager: jest.fn().mockResolvedValue({ getRepository: () => ({ findOne }) }),
     };
     const tenantService = {
-      findById: jest.fn().mockResolvedValue({ id: TENANT_ID, schemaName: 'tenant_acme', slug: 'acme' }),
+      findById: jest
+        .fn()
+        .mockResolvedValue({ id: TENANT_ID, schemaName: 'tenant_acme', slug: 'acme' }),
     };
     const controller = new PluginRouteController(
       registry as never,
@@ -69,12 +83,18 @@ describe('public plugin routes that declare required permissions', () => {
     await call({ userId: 'u1', email: 'u1@example.com', role: 'retired-role' });
 
     expect(res.status).toHaveBeenCalledWith(403);
-    expect(res.json).toHaveBeenCalledWith({ message: 'Missing required permissions', missing: ['issues.read'] });
+    expect(res.json).toHaveBeenCalledWith({
+      message: 'Missing required permissions',
+      missing: ['issues.read'],
+    });
     expect(handler).not.toHaveBeenCalled();
   });
 
   it('runs the handler once the role grants the permission', async () => {
-    const { call, res, handler } = setup({ requiredPermissions: ['issues.read'] }, { member: { 'issues.read': true } });
+    const { call, res, handler } = setup(
+      { requiredPermissions: ['issues.read'] },
+      { member: { 'issues.read': true } },
+    );
 
     await call({ userId: 'u1', email: 'u1@example.com', role: 'member' });
 

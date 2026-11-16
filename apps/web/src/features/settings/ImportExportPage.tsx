@@ -1,3 +1,4 @@
+import { IssueSecurityPanel } from './IssueSecurityPanel';
 import { ImportedPeoplePanel } from './ImportedPeoplePanel';
 import { useState, useRef, type ChangeEvent } from 'react';
 import { useProjects } from '@/api';
@@ -83,7 +84,8 @@ export function ImportExportPage() {
 
       for (const issue of issues) {
         const row = headers.map((h) => {
-          const val = h === 'description' ? extractPlainText(issue.description) : issue[h as keyof Issue];
+          const val =
+            h === 'description' ? extractPlainText(issue.description) : issue[h as keyof Issue];
           if (val === null || val === undefined) return '';
           const raw = Array.isArray(val) ? val.join(';') : String(val);
           return csvCell(raw);
@@ -227,6 +229,7 @@ export function ImportExportPage() {
 
       <ImportWizard />
       <ImportedPeoplePanel />
+      <IssueSecurityPanel />
 
       <h2 className="mb-4 text-lg font-semibold text-foreground">File import and export</h2>
 

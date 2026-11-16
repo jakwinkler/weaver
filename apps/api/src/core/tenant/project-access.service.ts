@@ -1,5 +1,5 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { canReadImportedVisibility } from '@weaver/jira-import';
+import { canReadImportedVisibility, canReadIssue } from '@weaver/jira-import';
 import {
   AttachmentEntity,
   BoardEntity,
@@ -19,7 +19,10 @@ export type ProjectAccessMode = 'read' | 'write';
 
 @Injectable()
 export class ProjectAccessService {
-  constructor(private readonly tenantConnections: TenantConnectionProvider, private readonly memberVisibility: MemberVisibilityService) {}
+  constructor(
+    private readonly tenantConnections: TenantConnectionProvider,
+    private readonly memberVisibility: MemberVisibilityService,
+  ) {}
 
   async accessibleProjectIds(user: RequestUser): Promise<string[] | null> {
     if (this.isTenantAdministrator(user)) {
@@ -69,6 +72,7 @@ export class ProjectAccessService {
     if (!issue) {
       throw new NotFoundException(`Issue "${key}" not found`);
     }
+    if (!(await canReadIssue(em, issue, user))) throw new NotFoundException('Issue not found');
     await this.assertProjectId(issue.projectId, user, mode);
   }
 
@@ -77,10 +81,14 @@ export class ProjectAccessService {
     const em = await this.tenantConnections.getEntityManager();
     const issues = await em.getRepository(IssueEntity).find({
       where: { id: In(uniqueIds) },
-      select: ['id', 'projectId'],
+      select: ['id', 'projectId', 'accessState', 'accessPolicyId'],
     });
     if (issues.length !== uniqueIds.length) {
       throw new NotFoundException('One or more issues not found');
+    }
+    for (const issue of issues) {
+      if (!(await canReadIssue(em, issue, user)))
+        throw new NotFoundException('One or more issues not found');
     }
     for (const projectId of new Set(issues.map(({ projectId }) => projectId))) {
       await this.assertProjectId(projectId, user, mode);

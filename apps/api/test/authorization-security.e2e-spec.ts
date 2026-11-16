@@ -141,19 +141,14 @@ describe('Administrative authorization security (e2e)', () => {
 
   afterAll(async () => {
     await dataSource.query(`DROP SCHEMA IF EXISTS "${tenantSchema}" CASCADE`);
-    await dataSource.query(
-      `DELETE FROM public.installed_plugins WHERE tenant_id = $1`,
-      [tenantId],
-    );
-    await dataSource.query(
-      `DELETE FROM public.tenant_memberships WHERE tenant_id = $1`,
-      [tenantId],
-    );
+    await dataSource.query(`DELETE FROM public.installed_plugins WHERE tenant_id = $1`, [tenantId]);
+    await dataSource.query(`DELETE FROM public.tenant_memberships WHERE tenant_id = $1`, [
+      tenantId,
+    ]);
     await dataSource.query(`DELETE FROM public.tenants WHERE id = $1`, [tenantId]);
-    await dataSource.query(
-      `DELETE FROM public.users WHERE email = ANY($1)`,
-      [[ownerEmail, adminEmail, viewerEmail]],
-    );
+    await dataSource.query(`DELETE FROM public.users WHERE email = ANY($1)`, [
+      [ownerEmail, adminEmail, viewerEmail],
+    ]);
     await connections.closeAll();
     await app.close();
   });
@@ -192,8 +187,7 @@ describe('Administrative authorization security (e2e)', () => {
     const response = await authenticated(viewerToken)
       .post('/api/v1/search')
       .send({
-        query:
-          'summary ~ "Primary authorization" OR summary ~ "Secondary authorization"',
+        query: 'summary ~ "Primary authorization" OR summary ~ "Secondary authorization"',
       })
       .expect(201);
 
@@ -232,7 +226,7 @@ describe('Administrative authorization security (e2e)', () => {
     expect(response.status).toBe(403);
   });
 
-  it('prevents demoting the tenant\'s last owner', async () => {
+  it("prevents demoting the tenant's last owner", async () => {
     const response = await authenticated(ownerToken)
       .patch(`/api/v1/users/${ownerId}/role`)
       .send({ role: 'admin' });
@@ -247,7 +241,7 @@ describe('Administrative authorization security (e2e)', () => {
     expect(response.status).toBe(400);
   });
 
-  it('prevents privileged users from editing another user\'s comment or time entry', async () => {
+  it("prevents privileged users from editing another user's comment or time entry", async () => {
     const commentResponse = await authenticated(adminToken)
       .patch(`/api/v1/issues/${primaryIssueKey}/comments/${ownerCommentId}`)
       .send({ body: { type: 'doc', content: [] } });
@@ -293,9 +287,7 @@ describe('Administrative authorization security (e2e)', () => {
       .expect(201);
     webhookId = created.body.id;
 
-    const response = await authenticated(ownerToken)
-      .get('/api/v1/webhooks')
-      .expect(200);
+    const response = await authenticated(ownerToken).get('/api/v1/webhooks').expect(200);
 
     expect(response.body).toHaveLength(1);
     expect(response.body[0]).not.toHaveProperty('secret');
@@ -307,9 +299,7 @@ describe('Administrative authorization security (e2e)', () => {
       .mockResolvedValue(new Response('ok', { status: 200 }));
 
     try {
-      await authenticated(ownerToken)
-        .post(`/api/v1/webhooks/${webhookId}/test`)
-        .expect(201);
+      await authenticated(ownerToken).post(`/api/v1/webhooks/${webhookId}/test`).expect(201);
     } finally {
       fetchSpy.mockRestore();
     }
@@ -343,19 +333,15 @@ describe('Administrative authorization security (e2e)', () => {
       })
       .expect(200);
 
-    const [migration] = await dataSource.query(
-      `SELECT to_regclass($1) AS table_name`,
-      [`${tenantSchema}.github_links`],
-    );
+    const [migration] = await dataSource.query(`SELECT to_regclass($1) AS table_name`, [
+      `${tenantSchema}.github_links`,
+    ]);
     expect(migration.table_name).toBe(`${tenantSchema}.github_links`);
 
     const payload = JSON.stringify({ commits: [] });
-    const signature =
-      'sha256=' + createHmac('sha256', secret).update(payload).digest('hex');
+    const signature = 'sha256=' + createHmac('sha256', secret).update(payload).digest('hex');
     await request(app.getHttpServer())
-      .post(
-        `/api/v1/plugin-routes/@weaver~plugin-github/webhook/${tenantId}`,
-      )
+      .post(`/api/v1/plugin-routes/@weaver~plugin-github/webhook/${tenantId}`)
       .set('x-github-event', 'push')
       .set('x-hub-signature-256', signature)
       .set('Content-Type', 'application/json')
@@ -381,10 +367,9 @@ describe('Administrative authorization security (e2e)', () => {
       })
       .expect(200);
 
-    const [gitLabMigration] = await dataSource.query(
-      `SELECT to_regclass($1) AS table_name`,
-      [`${tenantSchema}.gitlab_links`],
-    );
+    const [gitLabMigration] = await dataSource.query(`SELECT to_regclass($1) AS table_name`, [
+      `${tenantSchema}.gitlab_links`,
+    ]);
     expect(gitLabMigration.table_name).toBe(`${tenantSchema}.gitlab_links`);
     await request(app.getHttpServer())
       .post(`/api/v1/plugin-routes/@weaver~plugin-gitlab/webhook/${tenantId}`)
@@ -412,102 +397,667 @@ describe('Administrative authorization security (e2e)', () => {
       })
       .expect(200);
 
-    const [bitbucketMigration] = await dataSource.query(
-      `SELECT to_regclass($1) AS table_name`,
-      [`${tenantSchema}.bitbucket_links`],
-    );
+    const [bitbucketMigration] = await dataSource.query(`SELECT to_regclass($1) AS table_name`, [
+      `${tenantSchema}.bitbucket_links`,
+    ]);
     expect(bitbucketMigration.table_name).toBe(`${tenantSchema}.bitbucket_links`);
     await request(app.getHttpServer())
-      .post(
-        `/api/v1/plugin-routes/@weaver~plugin-bitbucket/webhook/${tenantId}`,
-      )
+      .post(`/api/v1/plugin-routes/@weaver~plugin-bitbucket/webhook/${tenantId}`)
       .set('x-event-key', 'repo:push')
-      .set('x-hub-signature', 'sha256=' + createHmac('sha256', bitbucketSecret).update(JSON.stringify({ push: { changes: [] } })).digest('hex'))
+      .set(
+        'x-hub-signature',
+        'sha256=' +
+          createHmac('sha256', bitbucketSecret)
+            .update(JSON.stringify({ push: { changes: [] } }))
+            .digest('hex'),
+      )
       .send({ push: { changes: [] } })
       .expect(200);
     await request(app.getHttpServer())
-      .post(
-        `/api/v1/plugin-routes/@weaver~plugin-bitbucket/webhook/${tenantId}`,
-      )
+      .post(`/api/v1/plugin-routes/@weaver~plugin-bitbucket/webhook/${tenantId}`)
       .set('x-event-key', 'repo:push')
       .send({ push: { changes: [] } })
       .expect(401);
   });
   it('binds attachment deletion to its issue and shares only the active avatar', async () => {
-    const attachment = await authenticated(ownerToken).post(`/api/v1/issues/${primaryIssueKey}/attachments`)
-      .attach('file', Buffer.from('retained'), { filename: 'retained.txt' }).expect(201);
-    await request(app.getHttpServer()).delete(`/api/v1/issues/${secondaryIssueKey}/attachments/${attachment.body.id}`)
-      .set('Authorization', `Bearer ${ownerToken}`).expect(404);
-    await authenticated(ownerToken).get(`/api/v1/attachments/${attachment.body.id}/download`).expect(200);
-    await request(app.getHttpServer()).delete(`/api/v1/issues/${primaryIssueKey}/attachments/${attachment.body.id}`)
-      .set('Authorization', `Bearer ${ownerToken}`).expect(204);
+    const attachment = await authenticated(ownerToken)
+      .post(`/api/v1/issues/${primaryIssueKey}/attachments`)
+      .attach('file', Buffer.from('retained'), { filename: 'retained.txt' })
+      .expect(201);
+    await request(app.getHttpServer())
+      .delete(`/api/v1/issues/${secondaryIssueKey}/attachments/${attachment.body.id}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(404);
+    await authenticated(ownerToken)
+      .get(`/api/v1/attachments/${attachment.body.id}/download`)
+      .expect(200);
+    await request(app.getHttpServer())
+      .delete(`/api/v1/issues/${primaryIssueKey}/attachments/${attachment.body.id}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(204);
 
-    const avatar = await authenticated(ownerToken).post('/api/v1/users/me/avatar')
-      .attach('file', Buffer.from('89504e470d0a1a0a00000000', 'hex'), { filename: 'avatar.png', contentType: 'image/png' }).expect(201);
+    const avatar = await authenticated(ownerToken)
+      .post('/api/v1/users/me/avatar')
+      .attach('file', Buffer.from('89504e470d0a1a0a00000000', 'hex'), {
+        filename: 'avatar.png',
+        contentType: 'image/png',
+      })
+      .expect(201);
     await authenticated(viewerToken).get(`/api/v1${avatar.body.avatarUrl}`).expect(403);
     await authenticated(adminToken).get(`/api/v1${avatar.body.avatarUrl}`).expect(200);
-    await authenticated(ownerToken).post('/api/v1/users/me/avatar')
-      .attach('file', Buffer.from('<svg/>'), { filename: 'avatar.svg', contentType: 'image/svg+xml' }).expect(400);
+    await authenticated(ownerToken)
+      .post('/api/v1/users/me/avatar')
+      .attach('file', Buffer.from('<svg/>'), {
+        filename: 'avatar.svg',
+        contentType: 'image/svg+xml',
+      })
+      .expect(400);
   });
 
   it('masks saved credentials in reads and updates without overwriting the secret', async () => {
     const secret = 'review-synthetic-secret';
-    const update = await authenticated(ownerToken).patch('/api/v1/plugins/settings')
-      .send({ pluginId: '@weaver/plugin-github', settings: { webhookSecret: secret } }).expect(200);
+    const update = await authenticated(ownerToken)
+      .patch('/api/v1/plugins/settings')
+      .send({ pluginId: '@weaver/plugin-github', settings: { webhookSecret: secret } })
+      .expect(200);
     expect(JSON.stringify(update.body)).not.toContain(secret);
-    const settings = await authenticated(ownerToken).get('/api/v1/plugins/settings?pluginId=@weaver/plugin-github').expect(200);
+    const settings = await authenticated(ownerToken)
+      .get('/api/v1/plugins/settings?pluginId=@weaver/plugin-github')
+      .expect(200);
     expect(settings.body.webhookSecret).toBe('********');
-    await authenticated(ownerToken).patch('/api/v1/plugins/settings')
-      .send({ pluginId: '@weaver/plugin-github', settings: { webhookSecret: settings.body.webhookSecret } }).expect(200);
-    const [plugin] = await dataSource.query('SELECT settings FROM public.installed_plugins WHERE tenant_id = $1 AND plugin_id = $2', [tenantId, '@weaver/plugin-github']);
+    await authenticated(ownerToken)
+      .patch('/api/v1/plugins/settings')
+      .send({
+        pluginId: '@weaver/plugin-github',
+        settings: { webhookSecret: settings.body.webhookSecret },
+      })
+      .expect(200);
+    const [plugin] = await dataSource.query(
+      'SELECT settings FROM public.installed_plugins WHERE tenant_id = $1 AND plugin_id = $2',
+      [tenantId, '@weaver/plugin-github'],
+    );
     expect(plugin.settings.webhookSecret).toBe(secret);
   });
 
   it('enforces private-project visibility in relations, reports, checklist and time capabilities', async () => {
-    const project = await authenticated(ownerToken).post('/api/v1/projects').send({ key: 'OPEN', name: 'Visible project' }).expect(201);
-    const [viewer] = await dataSource.query('SELECT id FROM public.users WHERE email = $1', [viewerEmail]);
-    await authenticated(ownerToken).post('/api/v1/projects/OPEN/members').send({ userId: viewer.id, role: 'member' }).expect(201);
-    const issue = await authenticated(ownerToken).post('/api/v1/projects/OPEN/issues').send({ summary: 'Visible issue' }).expect(201);
-    await dataSource.query(`UPDATE "${tenantSchema}".roles SET permissions = permissions || $1::jsonb WHERE name = 'viewer'`, [JSON.stringify({
-      'relations.view': true, 'relations.manage': true, 'time-reports.view': true, 'checklist.view': true,
-    })]);
+    const project = await authenticated(ownerToken)
+      .post('/api/v1/projects')
+      .send({ key: 'OPEN', name: 'Visible project' })
+      .expect(201);
+    const [viewer] = await dataSource.query('SELECT id FROM public.users WHERE email = $1', [
+      viewerEmail,
+    ]);
+    await authenticated(ownerToken)
+      .post('/api/v1/projects/OPEN/members')
+      .send({ userId: viewer.id, role: 'member' })
+      .expect(201);
+    const issue = await authenticated(ownerToken)
+      .post('/api/v1/projects/OPEN/issues')
+      .send({ summary: 'Visible issue' })
+      .expect(201);
+    await dataSource.query(
+      `UPDATE "${tenantSchema}".roles SET permissions = permissions || $1::jsonb WHERE name = 'viewer'`,
+      [
+        JSON.stringify({
+          'relations.view': true,
+          'relations.manage': true,
+          'time-reports.view': true,
+          'checklist.view': true,
+        }),
+      ],
+    );
     for (const id of ['relations', 'time-reports', 'checklist', 'automatic-time']) {
-      await authenticated(ownerToken).post('/api/v1/plugins/install').send({ pluginId: `@weaver/plugin-${id}` }).expect(201);
+      await authenticated(ownerToken)
+        .post('/api/v1/plugins/install')
+        .send({ pluginId: `@weaver/plugin-${id}` })
+        .expect(201);
     }
-    await authenticated(ownerToken).post('/api/v1/plugins/enable').send({ pluginId: '@weaver/plugin-automatic-time' }).expect(201);
+    await authenticated(ownerToken)
+      .post('/api/v1/plugins/enable')
+      .send({ pluginId: '@weaver/plugin-automatic-time' })
+      .expect(201);
     const root = `/api/v1/plugin-routes/@weaver~plugin-relations/issues/${issue.body.key}/relations`;
-    await authenticated(viewerToken).post(root).send({ targetIssueKey: primaryIssueKey, linkType: 'blocks' }).expect(403);
-    const link = await authenticated(ownerToken).post(root).send({ targetIssueKey: primaryIssueKey, linkType: 'blocks' }).expect(201);
+    await authenticated(viewerToken)
+      .post(root)
+      .send({ targetIssueKey: primaryIssueKey, linkType: 'blocks' })
+      .expect(403);
+    const link = await authenticated(ownerToken)
+      .post(root)
+      .send({ targetIssueKey: primaryIssueKey, linkType: 'blocks' })
+      .expect(201);
     const listed = await authenticated(viewerToken).get(root).expect(200);
     expect(listed.body).toEqual([]);
-    const searched = await authenticated(viewerToken).get(`${root}/search?q=authorization`).expect(200);
+    const searched = await authenticated(viewerToken)
+      .get(`${root}/search?q=authorization`)
+      .expect(200);
     expect(searched.body).toEqual([]);
-    await request(app.getHttpServer()).delete(`${root}/${link.body.id}`).set('Authorization', `Bearer ${viewerToken}`).expect(403);
-    const report = await authenticated(viewerToken).get('/api/v1/plugin-routes/@weaver~plugin-time-reports/report').expect(200);
+    await request(app.getHttpServer())
+      .delete(`${root}/${link.body.id}`)
+      .set('Authorization', `Bearer ${viewerToken}`)
+      .expect(403);
+    const report = await authenticated(viewerToken)
+      .get('/api/v1/plugin-routes/@weaver~plugin-time-reports/report')
+      .expect(200);
     expect(report.body.rows).toEqual([]);
-    const checklist = await authenticated(viewerToken).get('/api/v1/plugin-routes/@weaver~plugin-checklist/checklists').expect(200);
+    const checklist = await authenticated(viewerToken)
+      .get('/api/v1/plugin-routes/@weaver~plugin-checklist/checklists')
+      .expect(200);
     expect(checklist.body).toEqual([]);
     const { tenantStorage } = await import('../src/core/tenant');
     const { PluginContextFactory } = await import('../src/plugins/plugin-context.factory');
     await tenantStorage.run({ tenantId, schemaName: tenantSchema }, async () => {
-      const context = await app.get(PluginContextFactory).create('@weaver/plugin-automatic-time', {}, { id: viewer.id, email: viewerEmail, displayName: 'Viewer' });
-      await expect(context.api.timeEntries.createBatch({ entries: [{ issueKey: primaryIssueKey, minutes: 10, sourceReference: 'forbidden-private' }] })).rejects.toThrow('Project membership');
+      const context = await app
+        .get(PluginContextFactory)
+        .create(
+          '@weaver/plugin-automatic-time',
+          {},
+          { id: viewer.id, email: viewerEmail, displayName: 'Viewer' },
+        );
+      await expect(
+        context.api.timeEntries.createBatch({
+          entries: [
+            { issueKey: primaryIssueKey, minutes: 10, sourceReference: 'forbidden-private' },
+          ],
+        }),
+      ).rejects.toThrow('Project membership');
     });
     expect(project.body.id).toBeDefined();
   });
 
   it('installs the repository migration and binds deletions to the project', async () => {
-    await authenticated(ownerToken).post('/api/v1/plugins/install').send({ pluginId: '@weaver/plugin-repository' }).expect(201);
+    await authenticated(ownerToken)
+      .post('/api/v1/plugins/install')
+      .send({ pluginId: '@weaver/plugin-repository' })
+      .expect(201);
     const base = '/api/v1/plugin-routes/@weaver~plugin-repository/projects/OPEN/repositories';
-    const created = await authenticated(ownerToken).post(base).send({ name: 'Review repo', url: 'https://github.com/example/review' }).expect(201);
-    const other = await authenticated(ownerToken).post('/api/v1/projects').send({ key: 'OTHER', name: 'Other project' }).expect(201);
+    const created = await authenticated(ownerToken)
+      .post(base)
+      .send({ name: 'Review repo', url: 'https://github.com/example/review' })
+      .expect(201);
+    const other = await authenticated(ownerToken)
+      .post('/api/v1/projects')
+      .send({ key: 'OTHER', name: 'Other project' })
+      .expect(201);
     expect(other.body.id).toBeDefined();
-    await request(app.getHttpServer()).delete(`/api/v1/plugin-routes/@weaver~plugin-repository/projects/OTHER/repositories/${created.body.id}`).set('Authorization', `Bearer ${ownerToken}`).expect(204);
+    await request(app.getHttpServer())
+      .delete(
+        `/api/v1/plugin-routes/@weaver~plugin-repository/projects/OTHER/repositories/${created.body.id}`,
+      )
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(204);
     const remaining = await authenticated(ownerToken).get(base).expect(200);
     expect(remaining.body.map((item: { id: string }) => item.id)).toContain(created.body.id);
-    await authenticated(ownerToken).post(base).send({ name: 'Unsafe', url: 'javascript:alert(1)' }).expect(400);
-    await request(app.getHttpServer()).delete(`${base}/${created.body.id}`).set('Authorization', `Bearer ${ownerToken}`).expect(204);
+    await authenticated(ownerToken)
+      .post(base)
+      .send({ name: 'Unsafe', url: 'javascript:alert(1)' })
+      .expect(400);
+    await request(app.getHttpServer())
+      .delete(`${base}/${created.body.id}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(204);
     expect((await authenticated(ownerToken).get(base).expect(200)).body).toEqual([]);
   });
 
+  it('enforces reviewed issue security through HTTP, API keys, child reads, search and revocation', async () => {
+    const project = (
+      await authenticated(ownerToken)
+        .post('/api/v1/projects')
+        .send({ key: 'SEC', name: 'Secured fixture' })
+        .expect(201)
+    ).body;
+    const [viewer] = await dataSource.query('SELECT id FROM public.users WHERE email = $1', [
+      viewerEmail,
+    ]);
+    await authenticated(ownerToken)
+      .post('/api/v1/projects/SEC/members')
+      .send({ userId: viewer.id, role: 'viewer' })
+      .expect(201);
+    const issue = (
+      await authenticated(ownerToken)
+        .post('/api/v1/projects/SEC/issues')
+        .send({ summary: 'Confidential fixture' })
+        .expect(201)
+    ).body;
+    const attachment = (
+      await authenticated(ownerToken)
+        .post(`/api/v1/issues/${issue.key}/attachments`)
+        .attach('file', Buffer.from('secret'), { filename: 'secret.txt' })
+        .expect(201)
+    ).body;
+    const [policy] = await dataSource.query(
+      `INSERT INTO "${tenantSchema}".issue_access_policies
+      (source_instance, source_project_id, security_level_id, project_id, name)
+      VALUES ('https://fixture.example', 'source-sec', '10000', $1, 'Internal') RETURNING id`,
+      [project.id],
+    );
+    await dataSource.query(
+      `UPDATE "${tenantSchema}".issues SET access_state = 'restricted', access_policy_id = $1 WHERE id = $2`,
+      [policy.id, issue.id],
+    );
+    const apiKey = (
+      await authenticated(viewerToken)
+        .post('/api/v1/api-keys')
+        .send({ name: 'Security fixture', scopes: ['read'] })
+        .expect(201)
+    ).body.key;
+    const revisionBefore = (
+      await authenticated(viewerToken).get('/api/v1/access-revision').expect(200)
+    ).body.revision;
+    const assertDenied = async () => {
+      await authenticated(viewerToken).get(`/api/v1/issues/${issue.key}`).expect(404);
+      await authenticated(apiKey).get(`/api/v1/issues/${issue.key}`).expect(404);
+      await authenticated(viewerToken).get(`/api/v1/issues/${issue.key}/comments`).expect(404);
+      await authenticated(viewerToken)
+        .get(`/api/v1/attachments/${attachment.id}/download`)
+        .expect(404);
+      const list = await authenticated(viewerToken).get('/api/v1/projects/SEC/issues').expect(200);
+      expect(list.body.data).toEqual([]);
+      expect(list.body.meta.total).toBe(0);
+      const search = await authenticated(viewerToken)
+        .post('/api/v1/search')
+        .send({ query: 'summary ~ "Confidential fixture"' })
+        .expect(201);
+      expect(search.body.data).toEqual([]);
+    };
+    await assertDenied();
+    await authenticated(ownerToken).get(`/api/v1/issues/${issue.key}`).expect(200);
+    await authenticated(viewerToken).get('/api/v1/import/issue-security').expect(403);
+    await authenticated(ownerToken)
+      .post(`/api/v1/import/issue-security/${policy.id}`)
+      .send({ userIds: [viewer.id], revision: 1, affectedCount: 1 })
+      .expect(201);
+    await authenticated(viewerToken).get(`/api/v1/issues/${issue.key}`).expect(200);
+    await authenticated(apiKey).get(`/api/v1/issues/${issue.key}`).expect(200);
+    await dataSource.query(
+      `UPDATE "${tenantSchema}".roles SET permissions = permissions || '{"issues.update":true}'::jsonb WHERE name = 'viewer'`,
+    );
+    const { tenantStorage } = await import('../src/core/tenant/tenant.context');
+    const { PluginContextFactory } = await import('../src/plugins/plugin-context.factory');
+    await dataSource.query(
+      `UPDATE "${tenantSchema}".project_members SET role = 'member' WHERE project_id = $1 AND user_id = $2`,
+      [project.id, viewer.id],
+    );
+    const updateAsMappedViewer = () =>
+      tenantStorage.run({ tenantId, schemaName: tenantSchema }, async () => {
+        const context = await app
+          .get(PluginContextFactory)
+          .create(
+            '@weaver/plugin-checklist',
+            {},
+            { id: viewer.id, email: viewerEmail, displayName: 'Viewer' },
+          );
+        return context.api.issues.update(issue.key, { percent_done: 15 });
+      });
+    await expect(updateAsMappedViewer()).resolves.toMatchObject({ percentDone: 15 });
+    await authenticated(viewerToken)
+      .get(`/api/v1/attachments/${attachment.id}/download`)
+      .expect(200);
+    const mappedRevision = (
+      await authenticated(viewerToken).get('/api/v1/access-revision').expect(200)
+    ).body.revision;
+    expect(mappedRevision).not.toBe(revisionBefore);
+    await authenticated(ownerToken)
+      .post(`/api/v1/import/issue-security/${policy.id}`)
+      .send({ userIds: [], revision: 1, affectedCount: 1 })
+      .expect(409);
+    await authenticated(ownerToken)
+      .post(`/api/v1/import/issue-security/${policy.id}`)
+      .send({ userIds: [], revision: 2, affectedCount: 1 })
+      .expect(201);
+    await assertDenied();
+    await expect(updateAsMappedViewer()).rejects.toThrow();
+    expect(
+      (await authenticated(viewerToken).get('/api/v1/access-revision').expect(200)).body.revision,
+    ).not.toBe(mappedRevision);
+    const audit = await dataSource.query(
+      `SELECT metadata FROM "${tenantSchema}".audit_logs WHERE action = 'import.issue_security_mapped' AND resource_id = $1`,
+      [policy.id],
+    );
+    expect(audit).toHaveLength(2);
+  });
+  it('security regression: hides a restricted Jira remote-link title on a readable issue', async () => {
+    const secret = (
+      await authenticated(ownerToken)
+        .post('/api/v1/projects/OPEN/issues')
+        .send({ summary: 'Confidential payroll acquisition' })
+        .expect(201)
+    ).body;
+    const visible = (
+      await authenticated(ownerToken)
+        .post('/api/v1/projects/OPEN/issues')
+        .send({ summary: 'Readable linked issue' })
+        .expect(201)
+    ).body;
+    await dataSource.query(
+      `UPDATE "${tenantSchema}".issues SET access_state = 'quarantined' WHERE id = $1`,
+      [secret.id],
+    );
+    await authenticated(viewerToken).get(`/api/v1/issues/${secret.key}`).expect(404);
+    await dataSource.query(
+      `INSERT INTO "${tenantSchema}".imported_resources
+      (source_instance, kind, external_id, import_job_id, project_id, issue_id, payload)
+      VALUES ('https://jira.fixture.example', 'issue', 'review-readable', gen_random_uuid(), $1, $2, $3),
+             ('https://jira.fixture.example', 'remote_link', 'review-link', gen_random_uuid(), $1, $2, $4)`,
+      [
+        visible.projectId,
+        visible.id,
+        { key: visible.key, fields: {} },
+        {
+          id: 'remote-link-1',
+          object: {
+            title: secret.summary,
+            url: `https://jira.fixture.example/browse/${secret.key}`,
+          },
+        },
+      ],
+    );
+    const result = await authenticated(viewerToken)
+      .get(`/api/v1/issues/${visible.key}/jira`)
+      .expect(200);
+    expect(JSON.stringify(result.body)).not.toContain(secret.summary);
+  });
+
+  it('security regression: gives authorized plugin writes the authenticated issue principal', async () => {
+    await authenticated(ownerToken)
+      .patch('/api/v1/plugins/settings')
+      .send({ pluginId: '@weaver/plugin-checklist', settings: { syncDoneRatio: true } })
+      .expect(200);
+    const result = await authenticated(ownerToken)
+      .post(`/api/v1/plugin-routes/@weaver~plugin-checklist/issues/${primaryIssueKey}/checklist`)
+      .send({ subject: 'Private owner checklist action' });
+    const rows = await dataSource.query(
+      `SELECT subject FROM "${tenantSchema}".checklist_items WHERE subject = 'Private owner checklist action'`,
+    );
+    expect(result.status).toBe(201);
+    expect(rows).toHaveLength(1);
+  });
+
+  it('security regression: masks restricted references in bundled plugin responses', async () => {
+    const secret = (
+      await authenticated(ownerToken)
+        .post('/api/v1/projects/OPEN/issues')
+        .send({ summary: 'Restricted takeover target' })
+        .expect(201)
+    ).body;
+    const visible = (
+      await authenticated(ownerToken)
+        .post('/api/v1/projects/OPEN/issues')
+        .send({ summary: 'Visible checklist issue' })
+        .expect(201)
+    ).body;
+    await dataSource.query(
+      `UPDATE "${tenantSchema}".issues SET access_state = 'quarantined' WHERE id = $1`,
+      [secret.id],
+    );
+    await dataSource.query(
+      `INSERT INTO "${tenantSchema}".checklist_items (issue_id, subject, position, created_by) VALUES ($1, $2, 0, $3)`,
+      [visible.id, `Depends on ${secret.key}: ${secret.summary}`, ownerId],
+    );
+    const result = await authenticated(viewerToken)
+      .get(`/api/v1/plugin-routes/@weaver~plugin-checklist/issues/${visible.key}/checklist`)
+      .expect(200);
+    expect(JSON.stringify(result.body)).not.toContain(secret.summary);
+  });
+
+  it('security regression: delivers ordinary rendered email after authorizing its issue', async () => {
+    const { NotificationQueueService } =
+      await import('../src/modules/mail/notification-queue.service');
+    const { createNotificationProcessor } =
+      await import('../../worker/src/processors/notifications.processor');
+    const { recipientCanReadIssue } = await import('@weaver/server-common');
+    const [viewer] = await dataSource.query('SELECT id FROM public.users WHERE email = $1', [
+      viewerEmail,
+    ]);
+    const secret = (
+      await authenticated(ownerToken)
+        .post('/api/v1/projects/OPEN/issues')
+        .send({ summary: 'Secret acquisition negotiation' })
+        .expect(201)
+    ).body;
+    const visible = (
+      await authenticated(ownerToken)
+        .post('/api/v1/projects/OPEN/issues')
+        .send({ summary: 'Readable discussion' })
+        .expect(201)
+    ).body;
+    await dataSource.query(
+      `UPDATE "${tenantSchema}".issues SET access_state = 'quarantined' WHERE id = $1`,
+      [secret.id],
+    );
+    await dataSource.query(`UPDATE "${tenantSchema}".issues SET reporter_id = $1 WHERE id = $2`, [
+      viewer.id,
+      visible.id,
+    ]);
+    await dataSource.query(
+      `UPDATE public.tenants SET settings = settings || $2::jsonb WHERE id = $1`,
+      [
+        tenantId,
+        JSON.stringify({
+          smtp: {
+            host: '127.0.0.1',
+            port: 2525,
+            secure: false,
+            user: '',
+            pass: '',
+            fromEmail: 'fixture@example.com',
+            fromName: 'Fixture',
+          },
+        }),
+      ],
+    );
+    const jobs: any[] = [];
+    const enqueue = jest
+      .spyOn(app.get(NotificationQueueService), 'enqueue')
+      .mockImplementation(async (job) => {
+        jobs.push(job);
+      });
+    try {
+      await authenticated(ownerToken)
+        .post(`/api/v1/issues/${visible.key}/comments`)
+        .send({
+          body: {
+            type: 'doc',
+            content: [
+              {
+                type: 'paragraph',
+                content: [
+                  {
+                    type: 'text',
+                    text: secret.summary,
+                    marks: [
+                      {
+                        type: 'link',
+                        attrs: { href: `http://localhost:5173/issues/${secret.key}` },
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        })
+        .expect(201);
+      const response = await authenticated(viewerToken)
+        .get(`/api/v1/issues/${visible.key}/comments`)
+        .expect(200);
+      expect(JSON.stringify(response.body)).not.toContain(secret.summary);
+      expect(jobs.find((item) => item.userId === viewer.id)).toBeUndefined();
+      // A link readable at enqueue time must still be checked after revocation.
+      await dataSource.query(
+        `UPDATE "${tenantSchema}".issues SET access_state = 'unrestricted' WHERE id = $1`,
+        [secret.id],
+      );
+      await authenticated(ownerToken)
+        .post(`/api/v1/issues/${visible.key}/comments`)
+        .send({
+          body: {
+            type: 'doc',
+            content: [
+              {
+                type: 'paragraph',
+                content: [
+                  {
+                    type: 'text',
+                    text: secret.summary,
+                    marks: [
+                      {
+                        type: 'link',
+                        attrs: { href: `http://localhost:5173/issues/${secret.key}` },
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        })
+        .expect(201);
+      const retainedJob = jobs.find((item) => item.userId === viewer.id);
+      expect(retainedJob.data.issueReferences.keys).toContain(secret.key);
+      await dataSource.query(
+        `UPDATE "${tenantSchema}".issues SET access_state = 'quarantined' WHERE id = $1`,
+        [secret.id],
+      );
+      jobs.length = 0;
+      await authenticated(ownerToken)
+        .post(`/api/v1/issues/${visible.key}/comments`)
+        .send({
+          body: {
+            type: 'doc',
+            content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Ordinary comment' }] }],
+          },
+        })
+        .expect(201);
+      const job = jobs.find((item) => item.userId === viewer.id);
+      expect(job).toBeDefined();
+      const sendMail = jest.fn().mockResolvedValue({});
+      const processor = createNotificationProcessor({
+        getTenantSmtpSettings: async () => null,
+        getSystemSmtpSettings: () => ({
+          host: '127.0.0.1',
+          port: 2525,
+          secure: false,
+          user: '',
+          pass: '',
+          fromEmail: 'fixture@example.com',
+          fromName: 'Fixture',
+        }),
+        allowPrivateSystemHost: true,
+        canDeliverIssue: async (t, u, key) => {
+          const allowed = await recipientCanReadIssue(dataSource, tenantSchema, t, u, { key });
+          return allowed;
+        },
+        transportFactory: () => ({ sendMail }),
+        rateLimiter: { wait: async () => undefined },
+        logger: { info: () => undefined, warn: () => undefined },
+      });
+      await processor({ data: retainedJob } as never);
+      expect(sendMail).not.toHaveBeenCalled();
+      await processor({ data: job } as never);
+      expect(sendMail).toHaveBeenCalledTimes(1);
+      expect(sendMail.mock.calls[0][0].text).toContain('Ordinary comment');
+      expect(sendMail.mock.calls[0][0].text).not.toContain(secret.summary);
+    } finally {
+      enqueue.mockRestore();
+    }
+  });
+
+  it('security regression: does not interpret an event actor UUID as an issue key', async () => {
+    const { eventHasRestrictedContent } = await import('@weaver/server-common');
+    const blocked = await eventHasRestrictedContent(dataSource, tenantSchema, {
+      issueKey: primaryIssueKey,
+      userId: 'aaaaaaaa-1234-4123-8123-123456789012',
+    });
+    expect(blocked).toBe(false);
+  });
+
+  it('rolls back checklist writes when its issue update fails, then permits a clean retry', async () => {
+    const { IssuesService } = await import('../src/modules/issues/issues.service');
+    const subject = 'Rollback fixture checklist';
+    const update = jest
+      .spyOn(app.get(IssuesService), 'update')
+      .mockRejectedValueOnce(new Error('Injected dependent failure'));
+    try {
+      await authenticated(ownerToken)
+        .post(`/api/v1/plugin-routes/@weaver~plugin-checklist/issues/${primaryIssueKey}/checklist`)
+        .send({ subject })
+        .expect(500);
+      expect(
+        await dataSource.query(
+          `SELECT id FROM "${tenantSchema}".checklist_items WHERE subject = $1`,
+          [subject],
+        ),
+      ).toEqual([]);
+    } finally {
+      update.mockRestore();
+    }
+    await authenticated(ownerToken)
+      .post(`/api/v1/plugin-routes/@weaver~plugin-checklist/issues/${primaryIssueKey}/checklist`)
+      .send({ subject })
+      .expect(201);
+    expect(
+      await dataSource.query(
+        `SELECT id FROM "${tenantSchema}".checklist_items WHERE subject = $1`,
+        [subject],
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('binds direct plugin SDK service calls to their resolved member', async () => {
+    const { tenantStorage } = await import('../src/core/tenant/tenant.context');
+    const { PluginContextFactory } = await import('../src/plugins/plugin-context.factory');
+    await tenantStorage.run({ tenantId, schemaName: tenantSchema }, async () => {
+      const context = await app
+        .get(PluginContextFactory)
+        .create(
+          '@weaver/plugin-automatic-time',
+          {},
+          { id: ownerId, email: ownerEmail, displayName: 'Owner' },
+        );
+      await expect(
+        context.api.issues.update(primaryIssueKey, { percent_done: 25 }),
+      ).resolves.toMatchObject({ percentDone: 25 });
+      const batch = await context.api.timeEntries.createBatch({
+        entries: [
+          { issueKey: primaryIssueKey, minutes: 10, sourceReference: 'private-owner-entry' },
+        ],
+      });
+      expect(batch.created).toBe(1);
+      expect(batch.entries).toHaveLength(1);
+    });
+  });
+
+  it('redacts restricted references before formatting time-report CSV', async () => {
+    const secret = (
+      await authenticated(ownerToken)
+        .post('/api/v1/projects/OPEN/issues')
+        .send({ summary: 'Hidden CSV acquisition' })
+        .expect(201)
+    ).body;
+    const visible = (
+      await authenticated(ownerToken)
+        .post('/api/v1/projects/OPEN/issues')
+        .send({ summary: `Depends on ${secret.key}: ${secret.summary}` })
+        .expect(201)
+    ).body;
+    await authenticated(ownerToken)
+      .post(`/api/v1/issues/${visible.key}/time-entries`)
+      .send({ minutes: 30 })
+      .expect(201);
+    await dataSource.query(
+      `UPDATE "${tenantSchema}".issues SET access_state = 'quarantined' WHERE id = $1`,
+      [secret.id],
+    );
+    await dataSource.query(
+      `UPDATE "${tenantSchema}".roles SET permissions = permissions || '{"time-reports.export":true}'::jsonb WHERE name = 'viewer'`,
+    );
+    const response = await authenticated(viewerToken)
+      .get('/api/v1/plugin-routes/@weaver~plugin-time-reports/report/export?groupBy=issue')
+      .expect(200);
+    expect(response.text).toContain('Issue Key,Issue Title,Total Hours,Entry Count');
+    expect(response.text).toContain(visible.key);
+    expect(response.text).toContain('[Restricted issue reference]');
+    expect(response.text).not.toContain(secret.summary);
+    expect(response.text).not.toContain(secret.key);
+  });
 });

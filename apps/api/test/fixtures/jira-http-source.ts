@@ -81,6 +81,7 @@ export function fixtureIssue(id: number) {
     id: String(id),
     key: `GS-${id}`,
     fields: {
+      security: null,
       summary: `Fixture issue ${id}`,
       description: fixtureDoc(`Source description ${id}`),
       status: fixtureStatuses[(id - 1) % 11],

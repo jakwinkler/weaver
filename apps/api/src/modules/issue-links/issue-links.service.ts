@@ -1,17 +1,23 @@
+import { issueVisibilityWhere } from '../../core/tenant/issue-visibility';
+import { In } from 'typeorm';
 import {
   Injectable,
   NotFoundException,
   ConflictException,
   BadRequestException,
 } from '@nestjs/common';
-import { IssueLinkEntity } from '@weaver/db';
+import { IssueLinkEntity, IssueEntity } from '@weaver/db';
 import { TenantConnectionProvider } from '../../core/tenant';
 
 @Injectable()
 export class IssueLinksService {
   constructor(private readonly tenantConnections: TenantConnectionProvider) {}
 
-  async create(dto: { linkType: string; sourceIssueId: string; targetIssueId: string }): Promise<IssueLinkEntity> {
+  async create(dto: {
+    linkType: string;
+    sourceIssueId: string;
+    targetIssueId: string;
+  }): Promise<IssueLinkEntity> {
     if (dto.sourceIssueId === dto.targetIssueId) {
       throw new BadRequestException('An issue cannot be linked to itself');
     }
@@ -40,10 +46,14 @@ export class IssueLinksService {
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(IssueLinkEntity);
 
+    const readable = await em
+      .getRepository(IssueEntity)
+      .find({ where: issueVisibilityWhere(em), select: ['id'] });
+    const ids = readable.map((issue) => issue.id);
     return repo.find({
       where: [
-        { sourceIssueId: issueId },
-        { targetIssueId: issueId },
+        { sourceIssueId: issueId, targetIssueId: In(ids) },
+        { targetIssueId: issueId, sourceIssueId: In(ids) },
       ],
       order: { createdAt: 'DESC' },
     });

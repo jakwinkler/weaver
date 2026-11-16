@@ -1,8 +1,16 @@
 import { describe, it, expect, vi } from 'vitest';
 import { createHmac } from 'node:crypto';
 import { processEvent, type EventJobData } from '../src/processors/events.processor';
-import { processWebhookWithDependencies, type WebhookJobData } from '../src/processors/webhooks.processor';
-import { createNotificationProcessor, processNotification, TenantEmailRateLimiter, type NotificationJobData } from '../src/processors/notifications.processor';
+import {
+  processWebhookWithDependencies,
+  type WebhookJobData,
+} from '../src/processors/webhooks.processor';
+import {
+  createNotificationProcessor,
+  processNotification,
+  TenantEmailRateLimiter,
+  type NotificationJobData,
+} from '../src/processors/notifications.processor';
 import type { Job } from 'bullmq';
 
 function mockJob<T>(data: T): Job<T> {
@@ -46,14 +54,16 @@ describe('Worker Processors', () => {
           findOneBy: vi.fn().mockResolvedValue(webhook),
           save: vi.fn(),
         }),
-        query: vi.fn().mockResolvedValue(undefined),
+        query: vi.fn().mockResolvedValue([{ key: 'WEB-1', access_state: 'unrestricted' }]),
       };
 
-      await expect(processWebhookWithDependencies(job, {
-        createDataSource: () => dataSource as never,
-        fetcher,
-        now: () => 1_800_000_000_000,
-      })).resolves.toBeUndefined();
+      await expect(
+        processWebhookWithDependencies(job, {
+          createDataSource: () => dataSource as never,
+          fetcher,
+          now: () => 1_800_000_000_000,
+        }),
+      ).resolves.toBeUndefined();
       expect(fetcher).toHaveBeenCalledOnce();
       const [url, init] = fetcher.mock.calls[0];
       expect(String(url)).toBe(webhook.url);
@@ -83,6 +93,7 @@ describe('Worker Processors', () => {
       const sendMail = vi.fn().mockResolvedValue({ messageId: 'mail-1' });
       const wait = vi.fn().mockResolvedValue(undefined);
       const processor = createNotificationProcessor({
+        canDeliverIssue: vi.fn().mockResolvedValue(true),
         getTenantSmtpSettings: vi.fn().mockResolvedValue({
           host: '8.8.8.8',
           port: 587,
@@ -105,6 +116,11 @@ describe('Worker Processors', () => {
           tenantId: 'tenant-1',
           to: 'recipient@example.com',
           title: 'You were assigned WEB-42',
+          data: {
+            issueKey: 'WEB-42',
+            referenceVersion: 1,
+            issueReferences: { keys: ['WEB-42'], ids: [] },
+          },
           body: 'Open https://weaver.example.com/issues/WEB-42',
           html: '<a href="https://weaver.example.com/issues/WEB-42">Open</a>',
           headers: {

@@ -1,3 +1,4 @@
+import { AttachmentRecovery } from './AttachmentRecovery';
 import { AlertCircle, CheckCircle2, Loader2, XCircle } from 'lucide-react';
 import { useCancelImport, useImportStatus } from '@/api';
 import { Button } from '@/components/ui/button';
@@ -6,9 +7,14 @@ import { API_BASE_URL } from '@/api/client';
 interface ImportProgressProps {
   importId: string;
   onStartAnother: () => void;
+  onRecoveryStarted?: (id: string) => void;
 }
 
-export function ImportProgress({ importId, onStartAnother }: ImportProgressProps) {
+export function ImportProgress({
+  importId,
+  onStartAnother,
+  onRecoveryStarted,
+}: ImportProgressProps) {
   const status = useImportStatus(importId);
   const cancel = useCancelImport(importId);
   const job = status.data;
@@ -82,6 +88,13 @@ export function ImportProgress({ importId, onStartAnother }: ImportProgressProps
         </div>
       </div>
 
+      <p className="text-sm">
+        <a className="text-primary underline" href="#imported-people">
+          Review imported people and account invitations
+        </a>{' '}
+        Historical authors do not need accounts. Linking and invitations are available after the
+        import finishes.
+      </p>
       {job.errors.length > 0 && (
         <div className="border border-destructive/30 bg-destructive/5 p-4">
           <div className="mb-2 flex items-center gap-2 text-sm font-medium text-destructive">
@@ -97,6 +110,10 @@ export function ImportProgress({ importId, onStartAnother }: ImportProgressProps
             ))}
           </ul>
         </div>
+      )}
+
+      {!isActive && onRecoveryStarted && (
+        <AttachmentRecovery key={job.id} job={job} onStarted={onRecoveryStarted} />
       )}
 
       {job.report && (

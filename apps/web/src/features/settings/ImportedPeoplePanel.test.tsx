@@ -129,6 +129,24 @@ describe('Imported people invitation boundary', () => {
     });
   });
 
+  it('makes historical people searchable without creating accounts or invitations', async () => {
+    render(
+      <QueryClientProvider
+        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+      >
+        <ImportedPeoplePanel />
+      </QueryClientProvider>,
+    );
+    await screen.findByText('Original author');
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Find imported people' }), {
+      target: { value: 'Original' },
+    });
+    expect(screen.getByText('Original author')).toBeTruthy();
+    expect(screen.queryByText('Another author')).toBeNull();
+    expect(screen.getByText(/Former employees can remain here without an account/)).toBeTruthy();
+    expect(fixtures.post).not.toHaveBeenCalled();
+  });
+
   it('suggests members by email first and never on an ambiguous name', () => {
     const person = (displayName: string, email: string | null = null) => ({
       ...fixtures.people[0],

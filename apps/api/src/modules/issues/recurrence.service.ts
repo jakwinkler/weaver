@@ -105,6 +105,7 @@ export class RecurrenceService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async createDueInstances(root: IssueEntity, through: Date): Promise<IssueEntity[]> {
+    if (root.accessState !== 'unrestricted') return [];
     const parsedRule = recurrenceRuleSchema.safeParse(root.recurrenceRule);
     if (!parsedRule.success) {
       this.logger.warn(`Skipping invalid recurrence rule on ${root.key}`);

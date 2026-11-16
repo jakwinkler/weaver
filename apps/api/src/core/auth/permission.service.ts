@@ -1,6 +1,6 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { RoleEntity } from '@weaver/db';
-import { TenantConnectionProvider } from '../tenant';
+import { TenantConnectionProvider } from '../tenant/tenant-connection.provider';
 import type { RequiredPermission } from './require-permission.decorator';
 import type { RequestUser } from './current-user.decorator';
 

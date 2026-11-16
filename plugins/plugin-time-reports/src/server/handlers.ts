@@ -5,6 +5,7 @@ const VALID_GROUP_BY = ['project', 'user', 'issue'] as const;
 function buildReportQuery(
   query: Record<string, string>,
   projectIds: string[] | null,
+  issueIds: string[] | null,
 ): {
   sql: string;
   params: unknown[];
@@ -37,6 +38,10 @@ function buildReportQuery(
   if (projectIds !== null) {
     conditions.push(`p.id = ANY($${paramIdx++}::uuid[])`);
     params.push(projectIds);
+  }
+  if (issueIds !== null) {
+    conditions.push(`i.id = ANY($${paramIdx++}::uuid[])`);
+    params.push(issueIds);
   }
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
@@ -92,6 +97,7 @@ export async function getReport(
   const { sql, params, groupBy } = buildReportQuery(
     req.query,
     await context.api.projects.accessibleIds(),
+    await context.api.issues.accessibleIds(),
   );
   const rows = (await context.db.query(sql, params)) as any[];
 
@@ -115,8 +121,11 @@ export async function exportCsv(
   const { sql, params, groupBy } = buildReportQuery(
     req.query,
     await context.api.projects.accessibleIds(),
+    await context.api.issues.accessibleIds(),
   );
-  const rows = (await context.db.query(sql, params)) as any[];
+  const rows = await context.api.issues.redactReferences(
+    (await context.db.query(sql, params)) as any[],
+  );
 
   const totalMinutes = rows.reduce((sum: number, r: any) => sum + r.total_minutes, 0);
   const totalEntries = rows.reduce((sum: number, r: any) => sum + r.entry_count, 0);

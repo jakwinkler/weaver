@@ -1,5 +1,6 @@
 module.exports = {
   rootDir: '../../..',
+  modulePathIgnorePatterns: ['<rootDir>/.worktrees/', '<rootDir>/.claude/'],
   testEnvironment: 'node',
   testMatch: [
     '<rootDir>/apps/api/test/jira-import-fidelity.e2e-spec.ts',
@@ -18,7 +19,7 @@ module.exports = {
     '^.+\\.ts$': [require.resolve('ts-jest'), { tsconfig: '<rootDir>/apps/api/tsconfig.json' }],
   },
   collectCoverageFrom: [
-    'packages/jira-import/src/{import-orchestrator,source-store,field-mapper}.ts',
+    'packages/jira-import/src/{import-orchestrator,source-store,field-mapper,attachment-transfer,issue-access,issue-security-import}.ts',
     'apps/api/src/modules/import/import-people.service.ts',
     'apps/api/src/modules/comments/comments.service.ts',
     'apps/worker/src/processors/import.processor.ts',

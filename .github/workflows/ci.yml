@@ -45,6 +45,10 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+      s3:
+        image: adobe/s3mock:5.2.3@sha256:ab01a6946750f451ca215a47e91030695b260e4003b8a5a6201d25029b8fca92
+        ports:
+          - 55441:9090
       redis:
         image: redis:7-alpine
         ports:
@@ -92,6 +96,10 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+      s3:
+        image: adobe/s3mock:5.2.3@sha256:ab01a6946750f451ca215a47e91030695b260e4003b8a5a6201d25029b8fca92
+        ports:
+          - 55441:9090
       redis:
         image: redis:7-alpine
         ports:
@@ -99,6 +107,7 @@ jobs:
     env:
       WEAVER_IMPORT_TEST_DB: '1'
       WEAVER_IMPORT_DATABASE: weaver_e2e_jira_import
+      WEAVER_TEST_S3_ENDPOINT: http://127.0.0.1:55441
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -111,6 +120,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm turbo build --filter=@weaver/api --filter=@weaver/worker
       - run: pnpm --filter @weaver/api exec jest --config test/jest-jira.config.cjs --runInBand --coverage
+      - run: node --test packages/server-common/test/storage-stream.test.cjs packages/server-common/test/storage-s3.test.cjs
 
   build:
     runs-on: ubuntu-latest

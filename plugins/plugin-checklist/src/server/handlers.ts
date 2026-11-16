@@ -10,7 +10,11 @@ function shouldTrackActivity(context: PluginContext): boolean {
   return context.settings.trackActivity !== false;
 }
 
-async function syncDoneRatio(context: PluginContext, issueId: string, issueKey: string): Promise<void> {
+async function syncDoneRatio(
+  context: PluginContext,
+  issueId: string,
+  issueKey: string,
+): Promise<void> {
   if (!context.settings.syncDoneRatio) return;
 
   const rows = await context.db.query(
@@ -22,25 +26,33 @@ async function syncDoneRatio(context: PluginContext, issueId: string, issueKey: 
   await context.api.issues.update(issueKey, { percent_done: percentDone });
 }
 
-export async function listAllItems(req: PluginRequest, context: PluginContext): Promise<PluginResponse> {
+export async function listAllItems(
+  req: PluginRequest,
+  context: PluginContext,
+): Promise<PluginResponse> {
   const limit = Math.max(1, Math.min(parseInt(req.query.limit || '50', 10) || 50, 200));
   const offset = Math.max(0, parseInt(req.query.offset || '0', 10) || 0);
   const projectIds = await context.api.projects.accessibleIds();
+  const issueIds = await context.api.issues.accessibleIds();
 
   const rows = await context.db.query(
     `SELECT ci.*, i.key AS issue_key, i.summary AS issue_title
      FROM checklist_items ci
      JOIN issues i ON i.id = ci.issue_id
      WHERE ($3::uuid[] IS NULL OR i.project_id = ANY($3::uuid[]))
+       AND ($4::uuid[] IS NULL OR i.id = ANY($4::uuid[]))
      ORDER BY ci.updated_at DESC
      LIMIT $1 OFFSET $2`,
-    [limit, offset, projectIds],
+    [limit, offset, projectIds, issueIds],
   );
 
   return { status: 200, body: rows };
 }
 
-export async function listItems(req: PluginRequest, context: PluginContext): Promise<PluginResponse> {
+export async function listItems(
+  req: PluginRequest,
+  context: PluginContext,
+): Promise<PluginResponse> {
   const { issueKey } = req.params;
   const issueId = await getIssueId(context, issueKey);
   if (!issueId) return { status: 404, body: { message: 'Issue not found' } };
@@ -86,7 +98,10 @@ export async function addItem(req: PluginRequest, context: PluginContext): Promi
 
   if (shouldTrackActivity(context)) {
     try {
-      context.logger.info('Logging checklist activity: item_added', { issueKey, subject: subject.trim() });
+      context.logger.info('Logging checklist activity: item_added', {
+        issueKey,
+        subject: subject.trim(),
+      });
       await context.api.activityLog.create(issueKey, {
         action: 'checklist_item_added',
         fieldName: 'checklist',
@@ -103,7 +118,10 @@ export async function addItem(req: PluginRequest, context: PluginContext): Promi
   return { status: 201, body: (rows as any[])[0] };
 }
 
-export async function updateItem(req: PluginRequest, context: PluginContext): Promise<PluginResponse> {
+export async function updateItem(
+  req: PluginRequest,
+  context: PluginContext,
+): Promise<PluginResponse> {
   const { issueKey, itemId } = req.params;
   const body = req.body as { subject?: string; is_done?: boolean };
 
@@ -179,7 +197,10 @@ export async function updateItem(req: PluginRequest, context: PluginContext): Pr
   return { status: 200, body: updated };
 }
 
-export async function deleteItem(req: PluginRequest, context: PluginContext): Promise<PluginResponse> {
+export async function deleteItem(
+  req: PluginRequest,
+  context: PluginContext,
+): Promise<PluginResponse> {
   const { issueKey, itemId } = req.params;
 
   const issueId = await getIssueId(context, issueKey);
@@ -193,10 +214,10 @@ export async function deleteItem(req: PluginRequest, context: PluginContext): Pr
     return { status: 404, body: { message: 'Checklist item not found' } };
   }
 
-  await context.db.query(
-    'DELETE FROM checklist_items WHERE id = $1 AND issue_id = $2',
-    [itemId, issueId],
-  );
+  await context.db.query('DELETE FROM checklist_items WHERE id = $1 AND issue_id = $2', [
+    itemId,
+    issueId,
+  ]);
 
   const deletedSubject = (existing as any[])[0].subject;
 
@@ -219,7 +240,10 @@ export async function deleteItem(req: PluginRequest, context: PluginContext): Pr
   return { status: 204, body: null };
 }
 
-export async function reorderItems(req: PluginRequest, context: PluginContext): Promise<PluginResponse> {
+export async function reorderItems(
+  req: PluginRequest,
+  context: PluginContext,
+): Promise<PluginResponse> {
   const { issueKey } = req.params;
   const { order } = req.body as { order: string[] };
 

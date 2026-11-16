@@ -172,7 +172,11 @@ function AudienceForm({ audience }: { audience: Audience }) {
         ))}
       </div>
       {!['role', 'group'].includes(audience.kind) && (
-        <p>{audience.name === 'Imported Jira file requires access review' ? "Review individual files in each issue's Attachments tab after the final import." : 'Reimport with an authorized Jira account to verify this restriction.'}</p>
+        <p>
+          {audience.name === 'Imported Jira file requires access review'
+            ? "Review individual files in each issue's Attachments tab after the final import."
+            : 'Reimport with an authorized Jira account to verify this restriction.'}
+        </p>
       )}
       <Button size="sm" disabled={save.isPending || !['role', 'group'].includes(audience.kind)}>
         Save audience
@@ -185,6 +189,7 @@ function AudienceForm({ audience }: { audience: Audience }) {
 
 export function ImportedPeoplePanel() {
   const cache = useQueryClient();
+  const [search, setSearch] = useState('');
   const people = useQuery({
     queryKey: ['import-people'],
     queryFn: async () => (await apiClient.get<Person[]>('/import/people')).data,
@@ -235,6 +240,7 @@ export function ImportedPeoplePanel() {
   return (
     <section
       className="my-6 space-y-5 rounded border bg-card p-5"
+      id="imported-people"
       aria-label="Imported people and access"
     >
       <h2 className="text-lg font-semibold">Imported people and restricted audiences</h2>
@@ -242,6 +248,22 @@ export function ImportedPeoplePanel() {
         Imported people preserve authorship without a login or project access. Link a person who
         already has an account here to that member, or select people when you are ready to invite
         them. Access starts only after acceptance, and historical notifications are never replayed.
+      </p>
+      <p className="text-sm text-muted-foreground">
+        Former employees can remain here without an account. Their names and historical work stay
+        attributed to them. To create an account, select the person, supply an email, and review an
+        invitation. They create their account when they accept. Linking an existing member changes
+        attribution only; it does not grant access.
+      </p>
+      <Input
+        type="search"
+        aria-label="Find imported people"
+        placeholder="Search imported names or emails"
+        value={search}
+        onChange={(event) => setSearch(event.target.value)}
+      />
+      <p className="text-sm text-muted-foreground">
+        {people.data?.length ?? 0} imported people. {selected.length} selected for invitation.
       </p>
       <form
         onSubmit={(event) => {
@@ -251,70 +273,76 @@ export function ImportedPeoplePanel() {
         className="space-y-4"
       >
         <div className="max-h-96 space-y-3 overflow-auto">
-          {people.data?.map((person) => (
-            <div key={person.id} className="flex flex-wrap items-center gap-3 rounded border p-3">
-              <label className="flex min-w-48 items-center gap-2">
-                <input
-                  type="checkbox"
-                  disabled={
-                    person.status === 'active' ||
-                    !['atlassian', 'customer'].includes(person.accountType)
-                  }
-                  checked={selected.includes(person.id)}
+          {people.data
+            ?.filter((person) =>
+              `${person.displayName} ${person.email ?? ''}`
+                .toLocaleLowerCase()
+                .includes(search.trim().toLocaleLowerCase()),
+            )
+            .map((person) => (
+              <div key={person.id} className="flex flex-wrap items-center gap-3 rounded border p-3">
+                <label className="flex min-w-48 items-center gap-2">
+                  <input
+                    type="checkbox"
+                    disabled={
+                      person.status === 'active' ||
+                      !['atlassian', 'customer'].includes(person.accountType)
+                    }
+                    checked={selected.includes(person.id)}
+                    onChange={(event) => {
+                      setReview(false);
+                      setSelected(
+                        event.target.checked
+                          ? [...selected, person.id]
+                          : selected.filter((id) => id !== person.id),
+                      );
+                    }}
+                  />
+                  <span>
+                    {person.displayName}
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      {person.linkedUserId
+                        ? `linked to ${memberName(users.find((user) => user.id === person.linkedUserId))}`
+                        : person.status}
+                      {!person.sourceActive ? ' · historical' : ''}
+                    </span>
+                  </span>
+                </label>
+                <Input
+                  aria-label={`Invitation email for ${person.displayName}`}
+                  className="max-w-xs"
+                  type="email"
+                  disabled={person.status === 'active'}
+                  value={emails[person.id] ?? person.email ?? ''}
                   onChange={(event) => {
                     setReview(false);
-                    setSelected(
-                      event.target.checked
-                        ? [...selected, person.id]
-                        : selected.filter((id) => id !== person.id),
-                    );
+                    setEmails({ ...emails, [person.id]: event.target.value });
                   }}
+                  placeholder="Email needed before inviting"
                 />
-                <span>
-                  {person.displayName}
-                  <span className="ml-2 text-xs text-muted-foreground">
-                    {person.linkedUserId
-                      ? `linked to ${memberName(users.find((user) => user.id === person.linkedUserId))}`
-                      : person.status}
-                    {!person.sourceActive ? ' · historical' : ''}
-                  </span>
+                <span className="text-xs text-muted-foreground">
+                  {person.projectIds.map(nameProject).join(', ')}
                 </span>
-              </label>
-              <Input
-                aria-label={`Invitation email for ${person.displayName}`}
-                className="max-w-xs"
-                type="email"
-                disabled={person.status === 'active'}
-                value={emails[person.id] ?? person.email ?? ''}
-                onChange={(event) => {
-                  setReview(false);
-                  setEmails({ ...emails, [person.id]: event.target.value });
-                }}
-                placeholder="Email needed before inviting"
-              />
-              <span className="text-xs text-muted-foreground">
-                {person.projectIds.map(nameProject).join(', ')}
-              </span>
-              {person.status === 'invited' && (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => revoke.mutate(person.id)}
-                >
-                  Revoke invitation
-                </Button>
-              )}
-              {person.status !== 'active' &&
-                ['atlassian', 'customer'].includes(person.accountType) && (
-                  <LinkMember
-                    person={person}
-                    users={users}
-                    onLinked={() => setSelected((ids) => ids.filter((id) => id !== person.id))}
-                  />
+                {person.status === 'invited' && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => revoke.mutate(person.id)}
+                  >
+                    Revoke invitation
+                  </Button>
                 )}
-            </div>
-          ))}
+                {person.status !== 'active' &&
+                  ['atlassian', 'customer'].includes(person.accountType) && (
+                    <LinkMember
+                      person={person}
+                      users={users}
+                      onLinked={() => setSelected((ids) => ids.filter((id) => id !== person.id))}
+                    />
+                  )}
+              </div>
+            ))}
         </div>
         <div className="flex flex-wrap items-end gap-4">
           <label className="space-y-1 text-sm">
