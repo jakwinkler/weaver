@@ -28,6 +28,12 @@ The examples below run from the repository root.
   image tags or digests. Preserve those pins when changing configuration.
 - Choose `WEB_PORT` for the host's loopback listener and configure an HTTPS
   reverse proxy to forward to it.
+- Set `WEAVER_TRUSTED_PLUGINS` to the comma-separated IDs of the plugins reviewed
+  for this installation. This list controls the available catalog in production;
+  plugin files in the image do not make them available. Preserve the full reviewed
+  list when adding a plugin. Trusting a plugin, installing it for an organization,
+  and enabling it for a project are separate steps. A project's default feature
+  flags do not install the corresponding organization plugins.
 - Set `SMTP_HOST`, `SMTP_FROM`, and the other `SMTP_*` values for the
   installation's mail server. The API and worker both receive them. Password
   reset email uses only this server, so without it "Forgot password?" sends
@@ -131,9 +137,24 @@ available for rollback.
 
 ## Configuration checks
 
+After deploying, run the read-only activation check inside the API container:
+
+```sh
+docker compose --env-file "$WEAVER_ENV_FILE" -f deploy/compose/compose.yaml exec -T api \
+  node /app/deploy/compose/verify-plugin-activation.cjs
+```
+
+This exercises the actual production loader and checks every organization's
+installed plugins and enabled project features. It fails when no plugins load,
+an installed plugin is absent from the catalog, or an enabled project feature
+has no organization installation. Organization-level disabled plugins remain
+disabled. Review any failures before declaring the deployment accepted; an HTTP
+health check and the bundle verifier do not establish plugin activation.
+
 The following tests use synthetic values and resolve Compose configuration
 without starting containers:
 
 ```sh
 node --test deploy/compose/oauth-config.test.cjs
+node --test deploy/compose/verify-plugin-activation.test.cjs
 ```

@@ -24,6 +24,8 @@ const apiMocks = vi.hoisted(() => {
     recurrenceOccurrence: 0,
     createdAt: '2026-08-27T12:00:00.000Z',
     updatedAt: '2026-08-27T12:00:00.000Z',
+    parentId: null as string | null,
+    parent: null as { id: string; key: string; summary: string } | null,
   };
   return {
     baseIssue,
@@ -36,6 +38,17 @@ const apiMocks = vi.hoisted(() => {
 
 vi.mock('@/api', () => ({
   useHasPermission: () => true,
+  useCreateIssue: () => ({ mutateAsync: vi.fn(), isPending: false, isError: false }),
+  useProjectIssueTypes: () => ({ data: [] }),
+  useProjectIssues: (params: { parentId?: string }) => ({
+    data: {
+      data: params.parentId
+        ? [{ id: 'issue-2', key: 'TEST-2', summary: 'First subtask', statusId: 'todo', assigneeId: null }]
+        : [],
+    },
+    isLoading: false,
+    isError: false,
+  }),
   useIssue: () => ({ data: apiMocks.issue, isLoading: false }),
   useIssueRecurrence: () => ({ data: [] }),
   useProject: () => ({ data: { workflowId: 'workflow-1' } }),
@@ -140,6 +153,28 @@ describe('IssueDetailPage keyboard shortcuts', () => {
 
     fireEvent.keyDown(document, { key: 's' });
     expect(screen.getByRole('menuitem', { name: 'Done' })).toBeInTheDocument();
+  });
+});
+
+describe('IssueDetailPage hierarchy', () => {
+  it('shows the parent in the breadcrumb and details', () => {
+    apiMocks.issue = {
+      ...apiMocks.baseIssue,
+      parentId: 'parent-1',
+      parent: { id: 'parent-1', key: 'TEST-9', summary: 'Parent story' },
+    };
+    renderPage();
+
+    expect(screen.getByRole('link', { name: 'TEST-9' })).toHaveAttribute('href', '/issues/TEST-9');
+    expect(screen.getByRole('link', { name: 'TEST-9 Parent story' })).toBeVisible();
+  });
+
+  it('lists subtasks with their status', () => {
+    renderPage();
+
+    const subtasks = screen.getByRole('list', { name: 'Subtasks' });
+    expect(subtasks).toHaveTextContent('TEST-2First subtaskTo DoUnassigned');
+    expect(screen.getByRole('button', { name: 'Add subtask' })).toBeVisible();
   });
 });
 

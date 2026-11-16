@@ -37,6 +37,16 @@ Administrators manage **Workflows** and **Issue Types**. A workflow contains sta
 
 Before changing a shared workflow, consider the projects and existing issues that use it. A status name does not determine completion by itself. Reports rely on workflow status metadata, including whether a status is terminal.
 
+Each status has three settings in the workflow editor's **Add Status** and **Edit Status** panels:
+
+| Setting | What it does |
+| --- | --- |
+| **Category** (To Do, In Progress, Done) | Groups and colors the status in the editor and its minimap. The automation condition **Status category** matches it, and plugins such as Relations use it to color statuses. It does not mark work as done. |
+| **Terminal** | Marks work as done. Sprint completion and carryover, completed points, velocity, dashboard counts, and epic progress all use it. |
+| **Initial** | New issues start in this status. A workflow has one initial status, so turning it on for one status turns it off for the others. |
+
+For a status such as Testing or Blocked, choose the category that should group it, usually In Progress, and leave **Terminal** off so the work still counts as open.
+
 If a user cannot see a project or make a change, check organization membership, project membership, role permissions, and feature enablement in that order. See [Troubleshooting](https://github.com/jakwinkler/weaver/wiki/Troubleshooting).
 
 ---
@@ -53,6 +63,8 @@ The pilot release also applies `MemberVisibilityService` to directory results, r
 
 Tenant data is stored in tenant schemas. Shared identity and memberships live in the public schema. HTTP tenant headers must match the authenticated identity; they are not a way to switch to arbitrary tenant data.
 
+Completion reads `WorkflowStatusEntity.isTerminal`, not the status name or `category`. Sprint completion and velocity, dashboard counts, epic progress, and plugin issue candidates all filter on it. `category` feeds editor grouping and colors, plugin status colors, and the `status_category` automation condition. New issues take the workflow's `isInitial` status, and creating or updating a status with `isInitial: true` clears the flag on the workflow's other statuses.
+
 ### Source reference
 
 Checked against source revision [`1b1b370`](https://github.com/jakwinkler/weaver/commit/1b1b3704c37b4d1ab09347508d57968e1de38130).
@@ -61,5 +73,7 @@ Checked against source revision [`1b1b370`](https://github.com/jakwinkler/weaver
 - [apps/api/src/core/tenant/tenant-provisioning.service.ts](https://github.com/jakwinkler/weaver/blob/1b1b3704c37b4d1ab09347508d57968e1de38130/apps/api/src/core/tenant/tenant-provisioning.service.ts)
 - [apps/api/src/modules/projects/projects.controller.ts](https://github.com/jakwinkler/weaver/blob/1b1b3704c37b4d1ab09347508d57968e1de38130/apps/api/src/modules/projects/projects.controller.ts)
 - [apps/web/src/features/projects/ProjectSettingsPage.tsx](https://github.com/jakwinkler/weaver/blob/1b1b3704c37b4d1ab09347508d57968e1de38130/apps/web/src/features/projects/ProjectSettingsPage.tsx)
+
+Status settings checked against [`eb1e6d3`](https://github.com/jakwinkler/weaver/commit/eb1e6d307159b98e986221e434d376b0ae682252): [workflows service](https://github.com/jakwinkler/weaver/blob/eb1e6d307159b98e986221e434d376b0ae682252/apps/api/src/modules/workflows/workflows.service.ts), [sprints service](https://github.com/jakwinkler/weaver/blob/eb1e6d307159b98e986221e434d376b0ae682252/apps/api/src/modules/sprints/sprints.service.ts), [dashboard service](https://github.com/jakwinkler/weaver/blob/eb1e6d307159b98e986221e434d376b0ae682252/apps/api/src/modules/dashboard/dashboard.service.ts), [issues service](https://github.com/jakwinkler/weaver/blob/eb1e6d307159b98e986221e434d376b0ae682252/apps/api/src/modules/issues/issues.service.ts), [plugin context](https://github.com/jakwinkler/weaver/blob/eb1e6d307159b98e986221e434d376b0ae682252/apps/api/src/plugins/plugin-context.factory.ts), and [automation conditions](https://github.com/jakwinkler/weaver/blob/eb1e6d307159b98e986221e434d376b0ae682252/apps/api/src/modules/automations/condition-evaluator.service.ts).
 
 Pilot update checked against [`ce5494a`](https://github.com/jakwinkler/weaver/commit/ce5494a445f0a5412cf7e0be378308afbeb5e5f8): [directory privacy policy](https://github.com/jakwinkler/weaver/blob/ce5494a445f0a5412cf7e0be378308afbeb5e5f8/docs/security/project-directory-privacy.md), [project access service](https://github.com/jakwinkler/weaver/blob/ce5494a445f0a5412cf7e0be378308afbeb5e5f8/apps/api/src/core/tenant/project-access.service.ts), and [invitation browser checks](https://github.com/jakwinkler/weaver/blob/ce5494a445f0a5412cf7e0be378308afbeb5e5f8/apps/web/e2e/invitations.spec.ts).

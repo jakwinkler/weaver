@@ -13,6 +13,8 @@ import {
 } from '@/api';
 import type { Issue, IssuePriority, RecurrenceRule } from '@weaver/shared';
 import { IssueActivityTabs } from './IssueActivityTabs';
+import { ParentIssueField } from './ParentIssueField';
+import { SubtasksSection } from './SubtasksSection';
 import { PluginSlot } from '@/plugins';
 import {
   RichTextEditor,
@@ -66,6 +68,7 @@ function IssueDetail({ issueKey }: { issueKey: string | undefined }) {
     (transition) => transition.fromStatusId === issue?.statusId,
   );
   const { data: users } = useUsers();
+  const canCreate = useHasPermission('issues.create');
   const canUpdate = useHasPermission('issues.update');
   const canTransition = useHasPermission('issues.transition');
   const canAssign = useHasPermission('issues.assign');
@@ -256,6 +259,14 @@ function IssueDetail({ issueKey }: { issueKey: string | undefined }) {
           Issues
         </Link>
         <span>/</span>
+        {issue.parent && (
+          <>
+            <Link to={`/issues/${issue.parent.key}`} className="hover:text-primary">
+              {issue.parent.key}
+            </Link>
+            <span>/</span>
+          </>
+        )}
         <span className="text-foreground">{issue.key}</span>
       </div>
 
@@ -405,6 +416,14 @@ function IssueDetail({ issueKey }: { issueKey: string | undefined }) {
               )}
             </CardContent>
           </Card>
+
+          <SubtasksSection
+            issue={issue}
+            projectKey={projectKey}
+            canCreate={canCreate}
+            statusName={getStatusName}
+            statusColor={getStatusColor}
+          />
 
           {/* Plugin content slots (e.g. checklist) */}
           <PluginSlot name="issue-detail-content" issueKey={issueKey!} />
@@ -556,6 +575,17 @@ function IssueDetail({ issueKey }: { issueKey: string | undefined }) {
             </CardHeader>
             <CardContent className="px-4 pb-4 pt-0">
               <dl className="space-y-3">
+                <div>
+                  <dt className="text-xs text-muted-foreground">Parent</dt>
+                  <dd className="mt-0.5">
+                    <ParentIssueField
+                      issue={issue}
+                      projectKey={projectKey}
+                      canUpdate={canUpdate}
+                      onChange={(parentId) => updateIssue.mutateAsync({ parentId })}
+                    />
+                  </dd>
+                </div>
                 <div>
                   <dt className="text-xs text-muted-foreground">Priority</dt>
                   <dd className="mt-0.5">

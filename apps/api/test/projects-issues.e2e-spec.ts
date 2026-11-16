@@ -334,6 +334,44 @@ describe('Projects & Issues (e2e)', () => {
         await authedRequest().delete(`/api/v1/issues/${second.key}`).expect(204);
       }
     });
+
+    it('lists subtasks under their parent and shows the parent on each subtask', async () => {
+      const create = (summary: string, parentId?: string) => authedRequest()
+        .post('/api/v1/projects/WEB/issues')
+        .send({ summary, ...(parentId ? { parentId } : {}) })
+        .expect(201)
+        .then((res) => res.body as { id: string; key: string });
+      const childKeys = async (projectKey: string, parentId: string) => (
+        await authedRequest().get(`/api/v1/projects/${projectKey}/issues?parentId=${parentId}`).expect(200)
+      ).body.data.map((issue: { key: string }) => issue.key);
+      const parent = await create('Subtask parent');
+      const otherParent = await create('Other subtask parent');
+      const child = await create('First subtask', parent.id);
+
+      expect(await childKeys('WEB', parent.id)).toEqual([child.key]);
+      expect(await childKeys('MOB', parent.id)).toEqual([]);
+      const detail = await authedRequest().get(`/api/v1/issues/${child.key}`).expect(200);
+      expect(detail.body.parent).toEqual({ id: parent.id, key: parent.key, summary: 'Subtask parent' });
+      expect((await authedRequest().get(`/api/v1/issues/${parent.key}`).expect(200)).body.parent).toBeUndefined();
+
+      await authedRequest().patch(`/api/v1/issues/${child.key}`).send({ parentId: otherParent.id }).expect(200);
+      expect(await childKeys('WEB', parent.id)).toEqual([]);
+      expect(await childKeys('WEB', otherParent.id)).toEqual([child.key]);
+
+      await authedRequest().patch(`/api/v1/issues/${child.key}`).send({ parentId: null }).expect(200);
+      const cleared = await authedRequest().get(`/api/v1/issues/${child.key}`).expect(200);
+      expect(cleared.body.parentId).toBeNull();
+      expect(cleared.body.parent).toBeUndefined();
+      const activity = await authedRequest().get(`/api/v1/issues/${child.key}/activity`).expect(200);
+      const entries: Array<{ fieldName?: string; oldValue: string | null; newValue: string | null }> = activity.body;
+      expect(entries.filter((entry) => entry.fieldName === 'parent').map((entry) => [entry.oldValue, entry.newValue]))
+        .toEqual(expect.arrayContaining([[parent.key, otherParent.key], [otherParent.key, null]]));
+
+      await authedRequest().get(`/api/v1/projects/WEB/issues?parentId=${parent.key}`).expect(400);
+      for (const issue of [child, otherParent, parent]) {
+        await authedRequest().delete(`/api/v1/issues/${issue.key}`).expect(204);
+      }
+    });
   });
 
   describe('Pagination & Sorting', () => {

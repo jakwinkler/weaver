@@ -1060,4 +1060,49 @@ describe('Administrative authorization security (e2e)', () => {
     expect(response.text).not.toContain(secret.summary);
     expect(response.text).not.toContain(secret.key);
   });
+  it("keeps main's parent/subtask features inside the Jira issue-security boundary", async () => {
+    const parent = (
+      await authenticated(ownerToken)
+        .post('/api/v1/projects/OPEN/issues')
+        .send({ summary: 'Confidential parent fixture' })
+        .expect(201)
+    ).body;
+    const child = (
+      await authenticated(ownerToken)
+        .post('/api/v1/projects/OPEN/issues')
+        .send({ summary: 'Readable child fixture', parentId: parent.id })
+        .expect(201)
+    ).body;
+    const hiddenChild = (
+      await authenticated(ownerToken)
+        .post('/api/v1/projects/OPEN/issues')
+        .send({ summary: 'Confidential subtask fixture', parentId: child.id })
+        .expect(201)
+    ).body;
+    await dataSource.query(
+      `UPDATE "${tenantSchema}".issues SET access_state = 'quarantined' WHERE id = ANY($1::uuid[])`,
+      [[parent.id, hiddenChild.id]],
+    );
+    const visible = (
+      await authenticated(viewerToken).get(`/api/v1/issues/${child.key}`).expect(200)
+    ).body;
+    expect(visible.parentId).toBeNull();
+    expect(visible.parent).toBeNull();
+    expect(JSON.stringify(visible)).not.toContain(parent.summary);
+    const adminView = (
+      await authenticated(ownerToken).get(`/api/v1/issues/${child.key}`).expect(200)
+    ).body;
+    expect(adminView.parent).toMatchObject({
+      id: parent.id,
+      key: parent.key,
+      summary: parent.summary,
+    });
+    const children = (
+      await authenticated(viewerToken)
+        .get(`/api/v1/projects/OPEN/issues?parentId=${child.id}`)
+        .expect(200)
+    ).body;
+    expect(children.data).toEqual([]);
+    expect(children.meta.total).toBe(0);
+  });
 });

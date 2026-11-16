@@ -27,6 +27,17 @@ export function relativeTime(iso: string | null): string {
   return new Date(iso).toLocaleDateString();
 }
 
+/** A position in a recording, such as 0:07 or 1:02:03. */
+export function clockTime(milliseconds: number): string {
+  const total = Math.max(0, Math.floor(milliseconds / 1000));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = String(total % 60).padStart(2, '0');
+  return hours
+    ? `${hours}:${String(minutes).padStart(2, '0')}:${seconds}`
+    : `${minutes}:${seconds}`;
+}
+
 export function environment(info: JamSystemInfo): string | null {
   const nameVersion = (value?: { name: string | null; version: string | null }) =>
     value?.name ? [value.name, value.version].filter(Boolean).join(' ') : null;
