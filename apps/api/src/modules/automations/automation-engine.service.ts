@@ -1,6 +1,12 @@
 import { assertTenantSchemaName } from '@weaver/server-common';
 import { TenantService } from '../../core/tenant/tenant.service';
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AutomationRuleEntity, IssueEntity, ProjectEntity } from '@weaver/db';
 import { Job, Queue, Worker } from 'bullmq';
@@ -27,6 +33,9 @@ import {
   AutomationsService,
 } from './automations.service';
 import { AutomationConditionEvaluatorService } from './condition-evaluator.service';
+import { backgroundActor } from '../../core/tenant/background-actor';
+import { requireTenantContext } from '../../core/tenant';
+import { issueVisibilityWhere } from '../../core/tenant/issue-visibility';
 
 const MAX_CHAIN_DEPTH = 5;
 const CONDITION_TYPES = [
@@ -146,6 +155,8 @@ export class AutomationEngineService implements OnModuleInit, OnModuleDestroy {
   private async evaluateEvent(data: AutomationEventJobData): Promise<void> {
     const rules = await this.findMatchingRules(data.event, data.payload);
     const issue = await this.loadIssue(data.payload);
+    // Queued events can outlive an issue's access policy or project quarantine change.
+    if (typeof data.payload.issueKey === 'string' && !issue) return;
 
     for (const rule of rules) {
       await this.executeRule(rule, data.event, data.payload, issue, data.depth, data.chainId);
@@ -195,17 +206,30 @@ export class AutomationEngineService implements OnModuleInit, OnModuleDestroy {
     let success = true;
     let executionError: string | undefined;
     try {
-      await automationExecutionStorage.run({ depth: depth + 1, chainId }, async () => {
-        for (const action of asAutomationActions(rule)) {
-          await this.actionExecutor.execute(action, {
-            issueKey: issue?.key ?? null,
-            actorId: this.resolveActorId(payload, rule.createdBy),
-            event,
-            payload,
-          });
-          actionsExecuted.push(action);
-        }
-      });
+      const em = await this.tenantConnections.getEntityManager();
+      const actor = await backgroundActor(em, this.resolveActorId(payload, rule.createdBy));
+      if (!actor) throw new ForbiddenException('Automation actor is no longer a tenant member');
+      if (
+        issue &&
+        !(await em.getRepository(IssueEntity).existsBy({
+          id: issue.id,
+          ...issueVisibilityWhere(em, actor),
+        }))
+      )
+        throw new ForbiddenException('Automation actor cannot access the issue');
+      await tenantStorage.run({ ...requireTenantContext(), actor }, () =>
+        automationExecutionStorage.run({ depth: depth + 1, chainId }, async () => {
+          for (const action of asAutomationActions(rule)) {
+            await this.actionExecutor.execute(action, {
+              issueKey: issue?.key ?? null,
+              actorId: actor.userId,
+              event,
+              payload,
+            });
+            actionsExecuted.push(action);
+          }
+        }),
+      );
     } catch (error) {
       success = false;
       executionError = error instanceof Error ? error.message : String(error);
@@ -230,10 +254,9 @@ export class AutomationEngineService implements OnModuleInit, OnModuleDestroy {
     const query = em
       .getRepository(IssueEntity)
       .createQueryBuilder('issue')
+      .innerJoin(ProjectEntity, 'scheduled_project', 'scheduled_project.id = issue.projectId')
       .where("issue.access_state = 'unrestricted'")
-      .andWhere(
-        'EXISTS (SELECT 1 FROM projects scheduled_project WHERE scheduled_project.id = issue.project_id AND scheduled_project.import_quarantined = false)',
-      );
+      .andWhere('scheduled_project.importQuarantined = false');
     if (rule.projectId)
       query.andWhere('issue.projectId = :projectId', { projectId: rule.projectId });
 
@@ -320,7 +343,12 @@ export class AutomationEngineService implements OnModuleInit, OnModuleDestroy {
     const em = await this.tenantConnections.getEntityManager();
     return em
       .getRepository(IssueEntity)
-      .findOneBy({ key: payload.issueKey, accessState: 'unrestricted' });
+      .createQueryBuilder('issue')
+      .innerJoin(ProjectEntity, 'project', 'project.id = issue.projectId')
+      .where('issue.key = :key', { key: payload.issueKey })
+      .andWhere("issue.accessState = 'unrestricted'")
+      .andWhere('project.importQuarantined = false')
+      .getOne();
   }
 
   private resolveActorId(payload: Record<string, unknown>, fallback: string): string {

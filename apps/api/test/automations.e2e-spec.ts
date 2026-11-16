@@ -4,6 +4,7 @@ import { DataSource } from 'typeorm';
 import request from 'supertest';
 import * as bcrypt from 'bcrypt';
 import { AppModule } from '../src/app.module';
+import { AutomationEngineService } from '../src/modules/automations/automation-engine.service';
 import { TenantConnectionProvider } from '../src/core/tenant';
 
 jest.setTimeout(30_000);
@@ -436,5 +437,125 @@ describe('Automation engine (e2e)', () => {
 
     await asOwner().delete(`/api/v1/automations/${created.body.id}`).expect(204);
     await asOwner().get(`/api/v1/automations/${created.body.id}`).expect(404);
+  });
+  it('rechecks restricted issues and quarantined projects when queued events execute', async () => {
+    // Earlier happy-path rules remain installed; isolate this queued-job security fixture.
+    await dataSource.query(
+      `UPDATE "tenant_automation_test_org".automation_rules SET enabled = false`,
+    );
+    const issue = await createIssue('Queued security regression');
+    const rule = await createRule({
+      trigger: { type: 'issue.updated' },
+      actions: [{ type: 'add_label', label: 'must-not-run' }],
+    });
+    const job = {
+      data: {
+        kind: 'event',
+        tenantId,
+        schemaName: 'tenant_automation_test_org',
+        event: 'issue.updated',
+        payload: { issueKey: issue.body.key, projectId, userId: ownerId },
+        depth: 0,
+        chainId: 'security-regression',
+      },
+    };
+    const run = () => (app.get(AutomationEngineService) as any).runJob(job);
+    try {
+      await dataSource.query(
+        `UPDATE "tenant_automation_test_org".issues SET access_state = 'quarantined' WHERE id = $1`,
+        [issue.body.id],
+      );
+      await run();
+      expect(await readExecutions(rule.body.id)).toHaveLength(0);
+      await dataSource.query(
+        `UPDATE "tenant_automation_test_org".issues SET access_state = 'unrestricted' WHERE id = $1`,
+        [issue.body.id],
+      );
+      await dataSource.query(
+        `UPDATE "tenant_automation_test_org".projects SET import_quarantined = true WHERE id = $1`,
+        [projectId],
+      );
+      await run();
+      expect(await readExecutions(rule.body.id)).toHaveLength(0);
+      expect((await readIssue(issue.body.key)).labels).not.toContain('must-not-run');
+    } finally {
+      await dataSource.query(
+        `UPDATE "tenant_automation_test_org".projects SET import_quarantined = false WHERE id = $1`,
+        [projectId],
+      );
+      await asOwner().delete(`/api/v1/automations/${rule.body.id}`).expect(204);
+    }
+  });
+
+  it('does not execute queued actions for a removed tenant member', async () => {
+    // Earlier happy-path rules remain installed; isolate this queued-job security fixture.
+    await dataSource.query(
+      `UPDATE "tenant_automation_test_org".automation_rules SET enabled = false`,
+    );
+    const issue = await createIssue('Removed automation actor');
+    const rule = await createRule({
+      trigger: { type: 'issue.updated' },
+      actions: [{ type: 'add_label', label: 'removed-actor' }],
+    });
+    try {
+      await dataSource.query(
+        'DELETE FROM public.tenant_memberships WHERE tenant_id = $1 AND user_id = $2',
+        [tenantId, ownerId],
+      );
+      await (app.get(AutomationEngineService) as any).runJob({
+        data: {
+          kind: 'event',
+          tenantId,
+          schemaName: 'tenant_automation_test_org',
+          event: 'issue.updated',
+          payload: { issueKey: issue.body.key, projectId, userId: ownerId },
+          depth: 0,
+          chainId: 'removed-member-regression',
+        },
+      });
+    } finally {
+      await dataSource.query(
+        "INSERT INTO public.tenant_memberships (tenant_id, user_id, role) VALUES ($1, $2, 'owner')",
+        [tenantId, ownerId],
+      );
+    }
+    expect((await readIssue(issue.body.key)).labels).not.toContain('removed-actor');
+    expect(await readExecutions(rule.body.id)).toEqual([
+      expect.objectContaining({ success: false, actionsExecuted: [] }),
+    ]);
+    await asOwner().delete(`/api/v1/automations/${rule.body.id}`).expect(204);
+  });
+  it('checks project access before a queued notification action', async () => {
+    // Earlier happy-path rules remain installed; isolate this queued-job security fixture.
+    await dataSource.query(
+      `UPDATE "tenant_automation_test_org".automation_rules SET enabled = false`,
+    );
+    const issue = await createIssue('Private notification source');
+    const rule = await createRule({
+      trigger: { type: 'issue.updated' },
+      actions: [{ type: 'send_notification', userId: ownerId }],
+    });
+    const [member] = await dataSource.query(
+      "SELECT id FROM public.users WHERE email = 'automation-member@test.com'",
+    );
+    await dataSource.query(
+      `UPDATE "tenant_automation_test_org".projects SET visibility = 'private' WHERE id = $1`,
+      [projectId],
+    );
+    await (app.get(AutomationEngineService) as any).runJob({
+      data: {
+        kind: 'event',
+        tenantId,
+        schemaName: 'tenant_automation_test_org',
+        event: 'issue.updated',
+        payload: { issueKey: issue.body.key, projectId, userId: member.id },
+        depth: 0,
+        chainId: 'project-access-regression',
+      },
+    });
+    expect(await readExecutions(rule.body.id)).toEqual([
+      expect.objectContaining({ success: false, actionsExecuted: [] }),
+    ]);
+    await asOwner().delete(`/api/v1/automations/${rule.body.id}`).expect(204);
   });
 });

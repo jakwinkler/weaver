@@ -44,9 +44,12 @@ describe('Real-Time WebSocket (e2e)', () => {
     accessToken = res.body.accessToken;
     tenantId = res.body.tenantId;
     userId = res.body.user.id;
-    await request(httpServer).post('/api/v1/projects')
-      .set('Authorization', `Bearer ${accessToken}`).set('X-Tenant-ID', tenantId)
-      .send({ key: 'WS', name: 'WS Test Project' }).expect(201);
+    await request(httpServer)
+      .post('/api/v1/projects')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .set('X-Tenant-ID', tenantId)
+      .send({ key: 'WS', name: 'WS Test Project' })
+      .expect(201);
   });
 
   afterAll(async () => {
@@ -133,7 +136,9 @@ describe('Real-Time WebSocket (e2e)', () => {
       const stable = await waitForStableConnection(socket, 2000);
       expect(stable).toBe(true);
 
-      const subscription = await socket.timeout(3000).emitWithAck('join:project', { projectKey: 'WS' });
+      const subscription = await socket
+        .timeout(3000)
+        .emitWithAck('join:project', { projectKey: 'WS' });
       expect(subscription.joined).toBe(true);
 
       const room = gateway.server.adapter.rooms.get(`tenant:${tenantId}:project:WS`);
@@ -180,7 +185,6 @@ describe('Real-Time WebSocket (e2e)', () => {
     async function waitForEvent(
       eventName: string,
       action: () => Promise<void>,
-      matchFn?: (payload: any) => boolean,
       timeoutMs = 8000,
     ): Promise<any> {
       const socket = connectSocket(accessToken);
@@ -192,57 +196,46 @@ describe('Real-Time WebSocket (e2e)', () => {
         throw new Error('Socket did not connect');
       }
 
-      const subscription = await socket
-        .timeout(3000)
-        .emitWithAck('join:project', { projectKey });
+      const subscription = await socket.timeout(3000).emitWithAck('join:project', { projectKey });
       if (!subscription?.joined) {
         socket.close();
         throw new Error(`Socket was not authorized for project ${projectKey}`);
       }
 
-      return new Promise((resolve, reject) => {
-        const timer = setTimeout(() => {
-          socket.close();
-          reject(new Error(`Timed out waiting for event "${eventName}"`));
-        }, timeoutMs);
-
-        socket.on(eventName, (payload: any) => {
-          if (!matchFn || matchFn(payload)) {
-            clearTimeout(timer);
-            socket.close();
-            resolve(payload);
-          }
-        });
-
-        // Small delay to ensure listener is registered before action
-        setTimeout(() => {
-          action().catch((err) => {
-            clearTimeout(timer);
-            socket.close();
-            reject(err);
-          });
-        }, 100);
+      const domainEvents: unknown[] = [];
+      socket.onAny((name, payload) => {
+        if (name !== 'project:invalidate') domainEvents.push({ name, payload });
       });
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const invalidation = new Promise((resolve, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`No invalidation after ${eventName}`)),
+          timeoutMs,
+        );
+        socket.on('project:invalidate', resolve);
+      });
+      try {
+        const [payload] = await Promise.all([invalidation, action()]);
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        expect(payload).toEqual({ projectKey });
+        expect(domainEvents).toEqual([]);
+      } finally {
+        clearTimeout(timer);
+        socket.close();
+      }
     }
 
-    it('should receive issue.created event after creating an issue', async () => {
-      const payload = await waitForEvent('issue.created', async () => {
+    it('should invalidate the project after issue.created: creating an issue', async () => {
+      await waitForEvent('issue.created', async () => {
         await request(httpServer)
           .post(`/api/v1/projects/${projectKey}/issues`)
           .set('Authorization', `Bearer ${accessToken}`)
           .set('X-Tenant-ID', tenantId)
           .send({ summary: 'Real-time test issue' });
       });
-
-      expect(payload).toBeDefined();
-      expect(payload.event).toBe('issue.created');
-      expect(payload.data).toBeDefined();
-      expect(payload.data.issueKey).toContain('WS-');
-      expect(payload.data.summary).toBe('Real-time test issue');
-      expect(payload.timestamp).toBeDefined();
     }, 15000);
 
-    it('should receive issue.updated event after updating an issue', async () => {
+    it('should invalidate the project after issue.updated: updating an issue', async () => {
       // Create an issue first
       const issueRes = await request(httpServer)
         .post(`/api/v1/projects/${projectKey}/issues`)
@@ -252,23 +245,16 @@ describe('Real-Time WebSocket (e2e)', () => {
 
       const issueKey = issueRes.body.key;
 
-      const payload = await waitForEvent(
-        'issue.updated',
-        async () => {
-          await request(httpServer)
-            .patch(`/api/v1/issues/${issueKey}`)
-            .set('Authorization', `Bearer ${accessToken}`)
-            .set('X-Tenant-ID', tenantId)
-            .send({ summary: 'Updated summary' });
-        },
-        (p) => p.data?.issueKey === issueKey,
-      );
-
-      expect(payload.data.fields).toBeDefined();
-      expect(payload.data.fields.summary).toBe('Updated summary');
+      await waitForEvent('issue.updated', async () => {
+        await request(httpServer)
+          .patch(`/api/v1/issues/${issueKey}`)
+          .set('Authorization', `Bearer ${accessToken}`)
+          .set('X-Tenant-ID', tenantId)
+          .send({ summary: 'Updated summary' });
+      });
     }, 15000);
 
-    it('should receive comment.created event after adding a comment', async () => {
+    it('should invalidate the project after comment.created: adding a comment', async () => {
       // Create an issue first
       const issueRes = await request(httpServer)
         .post(`/api/v1/projects/${projectKey}/issues`)
@@ -278,25 +264,18 @@ describe('Real-Time WebSocket (e2e)', () => {
 
       const issueKey = issueRes.body.key;
 
-      const payload = await waitForEvent(
-        'comment.created',
-        async () => {
-          await request(httpServer)
-            .post(`/api/v1/issues/${issueKey}/comments`)
-            .set('Authorization', `Bearer ${accessToken}`)
-            .set('X-Tenant-ID', tenantId)
-            .send({
-              body: {
-                type: 'doc',
-                content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Test comment' }] }],
-              },
-            });
-        },
-        (p) => p.data?.issueKey === issueKey,
-      );
-
-      expect(payload.data.commentId).toBeDefined();
-      expect(payload.data.issueKey).toBe(issueKey);
+      await waitForEvent('comment.created', async () => {
+        await request(httpServer)
+          .post(`/api/v1/issues/${issueKey}/comments`)
+          .set('Authorization', `Bearer ${accessToken}`)
+          .set('X-Tenant-ID', tenantId)
+          .send({
+            body: {
+              type: 'doc',
+              content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Test comment' }] }],
+            },
+          });
+      });
     }, 15000);
 
     it('should queue new comments for a webhook saved with the retired comment.added name', async () => {
@@ -325,14 +304,19 @@ describe('Real-Time WebSocket (e2e)', () => {
           .send({
             body: {
               type: 'doc',
-              content: [{ type: 'paragraph', content: [{ type: 'text', text: 'For the old webhook' }] }],
+              content: [
+                { type: 'paragraph', content: [{ type: 'text', text: 'For the old webhook' }] },
+              ],
             },
           })
           .expect(201);
 
         // The comment service emits without awaiting the dispatch.
         const deadline = Date.now() + 5000;
-        while (!enqueue.mock.calls.some(([id]) => id === webhook.body.id) && Date.now() < deadline) {
+        while (
+          !enqueue.mock.calls.some(([id]) => id === webhook.body.id) &&
+          Date.now() < deadline
+        ) {
           await new Promise((resolve) => setTimeout(resolve, 50));
         }
         expect(enqueue.mock.calls.filter(([id]) => id === webhook.body.id)).toEqual([
@@ -352,7 +336,7 @@ describe('Real-Time WebSocket (e2e)', () => {
       }
     }, 15000);
 
-    it('should receive comment.updated event after editing a comment', async () => {
+    it('should invalidate the project after comment.updated: editing a comment', async () => {
       const issueRes = await request(httpServer)
         .post(`/api/v1/projects/${projectKey}/issues`)
         .set('Authorization', `Bearer ${accessToken}`)
@@ -366,33 +350,26 @@ describe('Real-Time WebSocket (e2e)', () => {
         .set('X-Tenant-ID', tenantId)
         .send({ body: { type: 'doc', content: [] } });
 
-      const payload = await waitForEvent(
-        'comment.updated',
-        async () => {
-          await request(httpServer)
-            .patch(`/api/v1/issues/${issueKey}/comments/${commentRes.body.id}`)
-            .set('Authorization', `Bearer ${accessToken}`)
-            .set('X-Tenant-ID', tenantId)
-            .send({
-              body: {
-                type: 'doc',
-                content: [
-                  {
-                    type: 'paragraph',
-                    content: [{ type: 'text', text: 'Edited comment' }],
-                  },
-                ],
-              },
-            });
-        },
-        (p) => p.data?.commentId === commentRes.body.id,
-      );
-
-      expect(payload.data.issueKey).toBe(issueKey);
-      expect(payload.data.userId).toBe(userId);
+      await waitForEvent('comment.updated', async () => {
+        await request(httpServer)
+          .patch(`/api/v1/issues/${issueKey}/comments/${commentRes.body.id}`)
+          .set('Authorization', `Bearer ${accessToken}`)
+          .set('X-Tenant-ID', tenantId)
+          .send({
+            body: {
+              type: 'doc',
+              content: [
+                {
+                  type: 'paragraph',
+                  content: [{ type: 'text', text: 'Edited comment' }],
+                },
+              ],
+            },
+          });
+      });
     }, 15000);
 
-    it('should include the actor in issue.deleted events', async () => {
+    it('should invalidate without disclosing the actor when an issue is deleted', async () => {
       const issueRes = await request(httpServer)
         .post(`/api/v1/projects/${projectKey}/issues`)
         .set('Authorization', `Bearer ${accessToken}`)
@@ -400,21 +377,15 @@ describe('Real-Time WebSocket (e2e)', () => {
         .send({ summary: 'Delete event test issue' });
 
       const issueKey = issueRes.body.key;
-      const payload = await waitForEvent(
-        'issue.deleted',
-        async () => {
-          await request(httpServer)
-            .delete(`/api/v1/issues/${issueKey}`)
-            .set('Authorization', `Bearer ${accessToken}`)
-            .set('X-Tenant-ID', tenantId);
-        },
-        (p) => p.data?.issueKey === issueKey,
-      );
-
-      expect(payload.data.userId).toBe(userId);
+      await waitForEvent('issue.deleted', async () => {
+        await request(httpServer)
+          .delete(`/api/v1/issues/${issueKey}`)
+          .set('Authorization', `Bearer ${accessToken}`)
+          .set('X-Tenant-ID', tenantId);
+      });
     }, 15000);
 
-    it('should receive issue.reordered after changing issue order', async () => {
+    it('should invalidate the project after issue.reordered after changing issue order', async () => {
       const firstIssue = await request(httpServer)
         .post(`/api/v1/projects/${projectKey}/issues`)
         .set('Authorization', `Bearer ${accessToken}`)
@@ -426,51 +397,33 @@ describe('Real-Time WebSocket (e2e)', () => {
         .set('X-Tenant-ID', tenantId)
         .send({ summary: 'Second reorder issue' });
 
-      const payload = await waitForEvent(
-        'issue.reordered',
-        async () => {
-          await request(httpServer)
-            .patch('/api/v1/issues/reorder')
-            .set('Authorization', `Bearer ${accessToken}`)
-            .set('X-Tenant-ID', tenantId)
-            .send({
-              issues: [
-                { id: firstIssue.body.id, sortOrder: 1 },
-                { id: secondIssue.body.id, sortOrder: 0 },
-              ],
-            });
-        },
-        (p) => p.data?.projectKey === projectKey,
-      );
-
-      expect(payload.data.issueKeys).toEqual(
-        expect.arrayContaining([firstIssue.body.key, secondIssue.body.key]),
-      );
-      expect(payload.data.userId).toBe(userId);
+      await waitForEvent('issue.reordered', async () => {
+        await request(httpServer)
+          .patch('/api/v1/issues/reorder')
+          .set('Authorization', `Bearer ${accessToken}`)
+          .set('X-Tenant-ID', tenantId)
+          .send({
+            issues: [
+              { id: firstIssue.body.id, sortOrder: 1 },
+              { id: secondIssue.body.id, sortOrder: 0 },
+            ],
+          });
+      });
     }, 15000);
 
     it('should announce a new sprint to the project room', async () => {
       const name = `Live sprint ${Date.now()}`;
-      const payload = await waitForEvent(
-        'sprint.created',
-        async () => {
-          await request(httpServer)
-            .post(`/api/v1/sprints?projectId=${projectId}`)
-            .set('Authorization', `Bearer ${accessToken}`)
-            .set('X-Tenant-ID', tenantId)
-            .send({ name })
-            .expect(201);
-        },
-        (p) => p.data?.name === name,
-      );
-
-      expect(payload.data).toEqual(
-        expect.objectContaining({ projectId, projectKey, name, userId }),
-      );
-      expect(payload.data.sprintId).toEqual(expect.any(String));
+      await waitForEvent('sprint.created', async () => {
+        await request(httpServer)
+          .post(`/api/v1/sprints?projectId=${projectId}`)
+          .set('Authorization', `Bearer ${accessToken}`)
+          .set('X-Tenant-ID', tenantId)
+          .send({ name })
+          .expect(201);
+      });
     }, 15000);
 
-    it('should name the sprint and actor when a sprint starts and completes', async () => {
+    it('should invalidate without sprint details when a sprint starts and completes', async () => {
       const name = `Started sprint ${Date.now()}`;
       const sprint = await request(httpServer)
         .post(`/api/v1/sprints?projectId=${projectId}`)
@@ -479,31 +432,21 @@ describe('Real-Time WebSocket (e2e)', () => {
         .send({ name })
         .expect(201);
 
-      const started = await waitForEvent(
-        'sprint.started',
-        async () => {
-          await request(httpServer)
-            .post(`/api/v1/sprints/${sprint.body.id}/start`)
-            .set('Authorization', `Bearer ${accessToken}`)
-            .set('X-Tenant-ID', tenantId)
-            .expect(201);
-        },
-        (p) => p.data?.sprintId === sprint.body.id,
-      );
-      expect(started.data).toEqual(expect.objectContaining({ projectKey, name, userId }));
+      await waitForEvent('sprint.started', async () => {
+        await request(httpServer)
+          .post(`/api/v1/sprints/${sprint.body.id}/start`)
+          .set('Authorization', `Bearer ${accessToken}`)
+          .set('X-Tenant-ID', tenantId)
+          .expect(201);
+      });
 
-      const completed = await waitForEvent(
-        'sprint.completed',
-        async () => {
-          await request(httpServer)
-            .post(`/api/v1/sprints/${sprint.body.id}/complete`)
-            .set('Authorization', `Bearer ${accessToken}`)
-            .set('X-Tenant-ID', tenantId)
-            .expect(201);
-        },
-        (p) => p.data?.sprintId === sprint.body.id,
-      );
-      expect(completed.data).toEqual(expect.objectContaining({ projectKey, name, userId }));
+      await waitForEvent('sprint.completed', async () => {
+        await request(httpServer)
+          .post(`/api/v1/sprints/${sprint.body.id}/complete`)
+          .set('Authorization', `Bearer ${accessToken}`)
+          .set('X-Tenant-ID', tenantId)
+          .expect(201);
+      });
     }, 30000);
 
     it('should announce issues added to a sprint as one bulk update', async () => {
@@ -524,34 +467,14 @@ describe('Real-Time WebSocket (e2e)', () => {
         ),
       );
 
-      const payload = await waitForEvent(
-        'issue.bulk_updated',
-        async () => {
-          await request(httpServer)
-            .post(`/api/v1/sprints/${sprint.body.id}/issues`)
-            .set('Authorization', `Bearer ${accessToken}`)
-            .set('X-Tenant-ID', tenantId)
-            .send({ issueIds: issues.map((issue) => issue.body.id) })
-            .expect(201);
-        },
-        (p) => p.data?.updates?.sprintId === sprint.body.id,
-      );
-
-      expect(payload.data).toEqual(
-        expect.objectContaining({
-          updates: { sprintId: sprint.body.id },
-          projectKey,
-          projectKeys: [projectKey],
-          userId,
-          count: 2,
-        }),
-      );
-      expect(payload.data.issueKeys).toEqual(
-        expect.arrayContaining(issues.map((issue) => issue.body.key)),
-      );
-      expect(payload.data.issueIds).toEqual(
-        expect.arrayContaining(issues.map((issue) => issue.body.id)),
-      );
+      await waitForEvent('issue.bulk_updated', async () => {
+        await request(httpServer)
+          .post(`/api/v1/sprints/${sprint.body.id}/issues`)
+          .set('Authorization', `Bearer ${accessToken}`)
+          .set('X-Tenant-ID', tenantId)
+          .send({ issueIds: issues.map((issue) => issue.body.id) })
+          .expect(201);
+      });
     }, 15000);
 
     it('should route logged, edited, and deleted time to the issue project room', async () => {
@@ -563,52 +486,56 @@ describe('Real-Time WebSocket (e2e)', () => {
       const issueKey = issueRes.body.key;
       let entryId = '';
 
-      const logged = await waitForEvent(
-        'time.logged',
-        async () => {
-          const entry = await request(httpServer)
-            .post(`/api/v1/issues/${issueKey}/time-entries`)
-            .set('Authorization', `Bearer ${accessToken}`)
-            .set('X-Tenant-ID', tenantId)
-            .send({ minutes: 30 })
-            .expect(201);
-          entryId = entry.body.id;
-        },
-        (p) => p.data?.issueKey === issueKey,
-      );
-      expect(logged.data).toEqual(
-        expect.objectContaining({ issueKey, projectKey, minutes: 30, userId }),
-      );
+      await waitForEvent('time.logged', async () => {
+        const entry = await request(httpServer)
+          .post(`/api/v1/issues/${issueKey}/time-entries`)
+          .set('Authorization', `Bearer ${accessToken}`)
+          .set('X-Tenant-ID', tenantId)
+          .send({ minutes: 30 })
+          .expect(201);
+        entryId = entry.body.id;
+      });
 
-      const updated = await waitForEvent(
-        'time.updated',
-        async () => {
-          await request(httpServer)
-            .patch(`/api/v1/issues/${issueKey}/time-entries/${entryId}`)
-            .set('Authorization', `Bearer ${accessToken}`)
-            .set('X-Tenant-ID', tenantId)
-            .send({ minutes: 45 })
-            .expect(200);
-        },
-        (p) => p.data?.issueKey === issueKey,
-      );
-      expect(updated.data).toEqual(expect.objectContaining({ entryId, projectKey, userId }));
+      await waitForEvent('time.updated', async () => {
+        await request(httpServer)
+          .patch(`/api/v1/issues/${issueKey}/time-entries/${entryId}`)
+          .set('Authorization', `Bearer ${accessToken}`)
+          .set('X-Tenant-ID', tenantId)
+          .send({ minutes: 45 })
+          .expect(200);
+      });
 
-      const deleted = await waitForEvent(
-        'time.deleted',
-        async () => {
-          await request(httpServer)
-            .delete(`/api/v1/issues/${issueKey}/time-entries/${entryId}`)
-            .set('Authorization', `Bearer ${accessToken}`)
-            .set('X-Tenant-ID', tenantId)
-            .expect(204);
-        },
-        (p) => p.data?.issueKey === issueKey,
-      );
-      expect(deleted.data).toEqual(expect.objectContaining({ entryId, projectKey, userId }));
+      await waitForEvent('time.deleted', async () => {
+        await request(httpServer)
+          .delete(`/api/v1/issues/${issueKey}/time-entries/${entryId}`)
+          .set('Authorization', `Bearer ${accessToken}`)
+          .set('X-Tenant-ID', tenantId)
+          .expect(204);
+      });
     }, 30000);
 
-    it('should emit one issue event to a client in tenant and project rooms', async () => {
+    it('keeps restricted issue summaries and identifiers out of project sockets', async () => {
+      const issue = await request(httpServer)
+        .post(`/api/v1/projects/${projectKey}/issues`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .set('X-Tenant-ID', tenantId)
+        .send({ summary: 'Restricted socket source' })
+        .expect(201);
+      await dataSource.query(
+        `UPDATE "tenant_ws_test_org".issues SET access_state = 'quarantined' WHERE id = $1`,
+        [issue.body.id],
+      );
+      await waitForEvent('issue.updated', async () => {
+        await request(httpServer)
+          .patch(`/api/v1/issues/${issue.body.key}`)
+          .set('Authorization', `Bearer ${accessToken}`)
+          .set('X-Tenant-ID', tenantId)
+          .send({ summary: 'Restricted socket secret' })
+          .expect(200);
+      });
+    }, 15000);
+
+    it('should emit one invalidation to a client in tenant and project rooms', async () => {
       const socket = connectSocket(accessToken);
       const stable = await waitForStableConnection(socket, 2000);
       expect(stable).toBe(true);
@@ -618,8 +545,8 @@ describe('Real-Time WebSocket (e2e)', () => {
 
       const summary = `Single delivery ${Date.now()}`;
       let deliveryCount = 0;
-      socket.on('issue.created', (payload: any) => {
-        if (payload.data?.summary === summary) {
+      socket.on('project:invalidate', (payload: any) => {
+        if (payload.projectKey === projectKey) {
           deliveryCount += 1;
         }
       });
@@ -696,8 +623,8 @@ describe('Real-Time WebSocket (e2e)', () => {
 
       let receivedCrossTenantEvent = false;
 
-      socketA.on('issue.created', (payload: any) => {
-        if (payload.data?.issueKey?.startsWith('WSB-')) {
+      socketA.on('project:invalidate', (payload: any) => {
+        if (payload.projectKey === 'WSB') {
           receivedCrossTenantEvent = true;
         }
       });
@@ -726,8 +653,8 @@ describe('Real-Time WebSocket (e2e)', () => {
 
       const summary = `Tenant B same-key issue ${Date.now()}`;
       let receivedCrossTenantEvent = false;
-      socketA.on('issue.created', (payload: any) => {
-        if (payload.data?.summary === summary) {
+      socketA.on('project:invalidate', (payload: any) => {
+        if (payload.projectKey === 'WSB') {
           receivedCrossTenantEvent = true;
         }
       });

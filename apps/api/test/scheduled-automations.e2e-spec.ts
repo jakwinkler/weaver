@@ -32,7 +32,10 @@ describe('Scheduled automations (e2e)', () => {
     dataSource = app.get(DataSource);
     connections = app.get(TenantConnectionProvider);
     schedulerQueue = new Queue(process.env.SCHEDULED_AUTOMATIONS_QUEUE_NAME, {
-      connection: { host: process.env.REDIS_HOST ?? 'localhost', port: Number(process.env.REDIS_PORT ?? 6380) },
+      connection: {
+        host: process.env.REDIS_HOST ?? 'localhost',
+        port: Number(process.env.REDIS_PORT ?? 6380),
+      },
     });
 
     const owner = await request(app.getHttpServer())
@@ -212,8 +215,29 @@ describe('Scheduled automations (e2e)', () => {
       .post('/api/v1/projects/SCHED/issues')
       .send({ summary: 'Future issue', dueDate: '2099-01-01' })
       .expect(201);
+    const restricted = await asOwner()
+      .post('/api/v1/projects/SCHED/issues')
+      .send({ summary: 'Restricted overdue issue', dueDate: '2020-01-01' })
+      .expect(201);
+    await dataSource.query(
+      `UPDATE "tenant_scheduled_automation_test_org".issues SET access_state = 'quarantined' WHERE id = $1`,
+      [restricted.body.id],
+    );
+    const quarantinedProject = await asOwner()
+      .post('/api/v1/projects')
+      .send({ name: 'Quarantined schedule project', key: 'QSCHED' })
+      .expect(201);
+    const quarantined = await asOwner()
+      .post('/api/v1/projects/QSCHED/issues')
+      .send({ summary: 'Quarantined project overdue issue', dueDate: '2020-01-01' })
+      .expect(201);
+    await dataSource.query(
+      `UPDATE "tenant_scheduled_automation_test_org".projects SET import_quarantined = true WHERE id = $1`,
+      [quarantinedProject.body.id],
+    );
     const rule = await createRule({
       name: 'Mark overdue issues',
+      projectId: null,
       trigger: { type: 'schedule', schedule: 'daily_9am' },
       conditions: [{ type: 'query', field: 'dueDate', operator: 'before', value: 'now' }],
       actions: [{ type: 'add_label', label: 'overdue' }],
@@ -226,6 +250,8 @@ describe('Scheduled automations (e2e)', () => {
       (issue) => issue.labels.includes('overdue'),
     );
     expect((await readIssue(future.body.key)).labels).not.toContain('overdue');
+    expect((await readIssue(restricted.body.key)).labels).not.toContain('overdue');
+    expect((await readIssue(quarantined.body.key)).labels).not.toContain('overdue');
 
     const executions = await readExecutions(rule.body.id);
     expect(executions).toHaveLength(1);

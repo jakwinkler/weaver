@@ -211,4 +211,70 @@ describe('Recurring tasks (e2e)', () => {
     const stopped = await authedRequest().get(`/api/v1/issues/${created.body.key}`).expect(200);
     expect(stopped.body.recurrenceRule).toBeNull();
   });
+  it('does not copy restricted issues or issues in quarantined projects', async () => {
+    const issue = await authedRequest()
+      .post('/api/v1/projects/REC/issues')
+      .send({
+        summary: 'Restricted recurring source',
+        startDate: '2026-08-29',
+        recurrenceRule: { frequency: 'daily', interval: 1, maxOccurrences: 1 },
+      })
+      .expect(201);
+    try {
+      await dataSource.query(
+        `UPDATE "${schemaName}".issues SET access_state = 'quarantined' WHERE id = $1`,
+        [issue.body.id],
+      );
+      await expect(runScheduler('2026-08-30')).resolves.toHaveLength(0);
+      await dataSource.query(
+        `UPDATE "${schemaName}".issues SET access_state = 'unrestricted' WHERE id = $1`,
+        [issue.body.id],
+      );
+      await dataSource.query(
+        `UPDATE "${schemaName}".projects SET import_quarantined = true WHERE key = 'REC'`,
+      );
+      await expect(runScheduler('2026-08-30')).resolves.toHaveLength(0);
+      const copies = await dataSource.query(
+        `SELECT id FROM "${schemaName}".issues WHERE recurrence_parent_id = $1`,
+        [issue.body.id],
+      );
+      expect(copies).toHaveLength(0);
+    } finally {
+      await dataSource.query(
+        `UPDATE "${schemaName}".projects SET import_quarantined = false WHERE key = 'REC'`,
+      );
+      await authedRequest()
+        .patch(`/api/v1/issues/${issue.body.key}`)
+        .send({ recurrenceRule: null })
+        .expect(200);
+    }
+  });
+
+  it('skips recurrence when the reporter no longer belongs to the tenant', async () => {
+    const issue = await authedRequest()
+      .post('/api/v1/projects/REC/issues')
+      .send({
+        summary: 'Removed reporter',
+        startDate: '2026-08-29',
+        recurrenceRule: { frequency: 'daily', interval: 1, maxOccurrences: 1 },
+      })
+      .expect(201);
+    try {
+      await dataSource.query(
+        'DELETE FROM public.tenant_memberships WHERE tenant_id = $1 AND user_id = $2',
+        [tenantId, userId],
+      );
+      await expect(runScheduler('2026-08-30')).resolves.toHaveLength(0);
+      const copies = await dataSource.query(
+        `SELECT id FROM "${schemaName}".issues WHERE recurrence_parent_id = $1`,
+        [issue.body.id],
+      );
+      expect(copies).toHaveLength(0);
+    } finally {
+      await dataSource.query(
+        "INSERT INTO public.tenant_memberships (tenant_id, user_id, role) VALUES ($1, $2, 'owner')",
+        [tenantId, userId],
+      );
+    }
+  });
 });

@@ -3,7 +3,14 @@ import { ConfigService } from '@nestjs/config';
 import { IssueEntity, ProjectEntity } from '@weaver/db';
 import { recurrenceRuleSchema, type CreateIssueDto, type RecurrenceRule } from '@weaver/shared';
 import { Job, Queue, Worker } from 'bullmq';
-import { TenantConnectionProvider, TenantService, tenantStorage } from '../../core/tenant';
+import {
+  TenantConnectionProvider,
+  TenantService,
+  tenantStorage,
+  requireTenantContext,
+} from '../../core/tenant';
+import { backgroundActor } from '../../core/tenant/background-actor';
+import { issueVisibilityWhere } from '../../core/tenant/issue-visibility';
 import { IssuesService } from './issues.service';
 
 interface RecurrenceJobData {
@@ -93,7 +100,18 @@ export class RecurrenceService implements OnModuleInit, OnModuleDestroy {
     const created: IssueEntity[] = [];
 
     for (const root of roots) {
-      created.push(...(await this.createDueInstances(root, through)));
+      const actor = await backgroundActor(em, root.reporterId);
+      if (!actor) continue;
+      const readable = await em.getRepository(IssueEntity).existsBy({
+        id: root.id,
+        ...issueVisibilityWhere(em, actor),
+      });
+      if (!readable) continue;
+      created.push(
+        ...(await tenantStorage.run({ ...requireTenantContext(), actor }, () =>
+          this.createDueInstances(root, through),
+        )),
+      );
     }
 
     return created;
@@ -115,7 +133,7 @@ export class RecurrenceService implements OnModuleInit, OnModuleDestroy {
     const em = await this.tenantConnections.getEntityManager();
     const issueRepo = em.getRepository(IssueEntity);
     const project = await em.getRepository(ProjectEntity).findOneBy({ id: root.projectId });
-    if (!project) {
+    if (!project || project.importQuarantined) {
       this.logger.warn(`Skipping recurring issue ${root.key}: project not found`);
       return [];
     }
