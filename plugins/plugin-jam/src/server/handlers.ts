@@ -526,6 +526,8 @@ async function findJam(context: PluginContext, jamId: string): Promise<JamRow | 
 
 async function issueIdFor(context: PluginContext, issueKey: string): Promise<string | null> {
   const issue = await context.api.issues.get(issueKey);
+  if (issue && (issue as any).access_state !== 'unrestricted')
+    throw new Error('Jam integration is unavailable for restricted issues');
   return isRecord(issue) && typeof issue.id === 'string' ? issue.id : null;
 }
 
@@ -842,6 +844,12 @@ async function linkJam(
   userId: string | null,
   via: { requestId?: string; ruleId?: string } = {},
 ): Promise<string | null> {
+  const readable = await context.db.query(
+    "SELECT 1 FROM issues WHERE id = $1 AND access_state = 'unrestricted'",
+    [issueId],
+  );
+  if (!(readable as unknown[]).length)
+    throw new Error('Jam integration is unavailable for restricted issues');
   const rows = (await context.db.query(
     `INSERT INTO jam_issue_links (jam_id, issue_id, link_source, linked_by, backlink_state, request_id, rule_id)
      VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -876,6 +884,11 @@ async function attemptBacklink(
   link: { id: string; jamId: string; issueKey: string; attempts: number },
   timeout = 8_000,
 ): Promise<BacklinkOutcome> {
+  const readable = await context.db.query(
+    "SELECT 1 FROM issues WHERE key = $1 AND access_state = 'unrestricted'",
+    [link.issueKey],
+  );
+  if (!(readable as unknown[]).length) return 'blocked';
   try {
     await callJamTool(
       context,

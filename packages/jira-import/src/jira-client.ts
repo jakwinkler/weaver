@@ -1,8 +1,6 @@
-import {
-  fetchWithSafeRedirects,
-  readLimitedResponseBuffer,
-  readLimitedResponseText,
-} from '@weaver/server-common';
+import { transferAttachment } from './attachment-transfer';
+import type { StorageAdapter } from '@weaver/server-common';
+import { fetchWithSafeRedirects, readLimitedResponseText } from '@weaver/server-common';
 import type {
   JiraAttachment,
   JiraBoard,
@@ -305,10 +303,20 @@ export class JiraClient {
     }
   }
 
-  async downloadAttachment(
+  async getIssue(config: JiraConnectionConfig, id: string): Promise<JiraIssue> {
+    return this.request(
+      config,
+      `/rest/api/${this.apiVersion(config)}/issue/${encodeURIComponent(id)}?fields=*all`,
+    );
+  }
+
+  async transferAttachment(
     config: JiraConnectionConfig,
     attachment: JiraAttachment,
-  ): Promise<Buffer> {
+    storage: StorageAdapter,
+    key: string,
+    checkCancelled?: () => Promise<void>,
+  ): Promise<{ size: number; sha256: string }> {
     const baseUrl = this.normalizedBaseUrl(config.baseUrl);
     const target =
       config.source === 'jira_cloud'
@@ -316,17 +324,20 @@ export class JiraClient {
             `${baseUrl}/rest/api/3/attachment/content/${encodeURIComponent(attachment.id)}?redirect=false`,
           )
         : new URL(attachment.content, `${baseUrl}/`);
-    if (target.origin !== new URL(baseUrl).origin) {
+    if (target.origin !== new URL(baseUrl).origin)
       throw new Error('Jira attachment URL points to a different origin');
-    }
-    const response = await this.fetchWithTimeout(target, {
-      headers: this.headers(config, false),
-      redirect: 'manual',
-    });
-    if (!response.ok) {
-      throw new Error(`Jira attachment download failed (${response.status})`);
-    }
-    return readLimitedResponseBuffer(response, 100 * 1024 * 1024);
+    return transferAttachment(
+      (signal) =>
+        this.fetchImpl(target, {
+          headers: this.headers(config, false),
+          redirect: 'manual',
+          signal,
+        }),
+      storage,
+      key,
+      attachment.size,
+      checkCancelled,
+    );
   }
 
   buildProjectJql(projectKeys?: string[], updatedSince?: string): string {

@@ -36,6 +36,13 @@ export type ImportJobStatus =
   'queued' | 'running' | 'completed' | 'needs_review' | 'failed' | 'cancelled';
 
 export interface ImportJobError {
+  issueKey?: string;
+  filename?: string;
+  expectedBytes?: number;
+  code?: string;
+  retryable?: boolean;
+  receivedBytes?: number;
+  limitBytes?: number;
   itemType: string;
   itemId?: string;
   message: string;
@@ -53,6 +60,7 @@ export interface ImportJob {
   skippedItems: number;
   errors: ImportJobError[];
   report?: {
+    recoveryOf?: string | null;
     counts: Record<string, number>;
     conflicts: string[];
     warnings: string[];
@@ -68,6 +76,7 @@ export interface ImportJob {
 }
 
 export interface JiraImportJobData {
+  attachmentRecovery?: { jobId: string; attachmentIds: string[] };
   importJobId: string;
   tenantId: string;
   schemaName: string;

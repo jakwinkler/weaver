@@ -5,13 +5,28 @@ import { ProjectEntity, WebhookEntity } from '@weaver/db';
 describe('EventDispatcherService project isolation', () => {
   it('resolves project-ID events to their authorized project channel', async () => {
     const gateway = { emitToTenant: jest.fn(), emitToProject: jest.fn() };
-    const manager = { getRepository: (entity: unknown) => entity === ProjectEntity
-      ? { findOneBy: jest.fn().mockResolvedValue({ key: 'PRIVATE' }) }
-      : { find: jest.fn().mockResolvedValue([]) } };
-    const service = new EventDispatcherService({ getEntityManager: async () => manager } as never, {} as never, gateway as never);
-    await tenantStorage.run({ tenantId: 'tenant-a', schemaName: 'tenant_a' }, () => service.emit('sprint.started', { projectId: 'project-a', sprintId: 'sprint-a' }));
+    const manager = {
+      query: jest.fn().mockResolvedValue([]),
+      getRepository: (entity: unknown) =>
+        entity === ProjectEntity
+          ? { findOneBy: jest.fn().mockResolvedValue({ key: 'PRIVATE' }) }
+          : { find: jest.fn().mockResolvedValue([]) },
+    };
+    const service = new EventDispatcherService(
+      { getEntityManager: async () => manager } as never,
+      {} as never,
+      gateway as never,
+    );
+    await tenantStorage.run({ tenantId: 'tenant-a', schemaName: 'tenant_a' }, () =>
+      service.emit('sprint.started', { projectId: 'project-a', sprintId: 'sprint-a' }),
+    );
     expect(gateway.emitToTenant).not.toHaveBeenCalled();
-    expect(gateway.emitToProject).toHaveBeenCalledWith('tenant-a', 'PRIVATE', 'sprint.started', expect.any(Object));
+    expect(gateway.emitToProject).toHaveBeenCalledWith(
+      'tenant-a',
+      'PRIVATE',
+      'sprint.started',
+      expect.any(Object),
+    );
   });
   it('emits project events only to the authorized project channel', async () => {
     const gateway = {
@@ -19,6 +34,13 @@ describe('EventDispatcherService project isolation', () => {
       emitToProject: jest.fn(),
     };
     const entityManager = {
+      query: jest.fn(async (_sql, parameters) =>
+        (parameters?.[0] ?? []).map((key: string) => ({
+          id: key,
+          key,
+          access_state: 'unrestricted',
+        })),
+      ),
       getRepository: jest.fn().mockReturnValue({
         find: jest.fn().mockResolvedValue([]),
       }),
@@ -29,14 +51,12 @@ describe('EventDispatcherService project isolation', () => {
       gateway as never,
     );
 
-    await tenantStorage.run(
-      { tenantId: 'tenant-a', schemaName: 'tenant_a' },
-      () =>
-        service.emit('issue.updated', {
-          issueKey: 'PRIVATE-1',
-          projectKey: 'PRIVATE',
-          summary: 'restricted',
-        }),
+    await tenantStorage.run({ tenantId: 'tenant-a', schemaName: 'tenant_a' }, () =>
+      service.emit('issue.updated', {
+        issueKey: 'PRIVATE-1',
+        projectKey: 'PRIVATE',
+        summary: 'restricted',
+      }),
     );
 
     expect(gateway.emitToTenant).not.toHaveBeenCalled();
@@ -59,6 +79,13 @@ describe('EventDispatcherService project isolation', () => {
       { id: 'project-b', projectId: 'project-b-id', active: true, events: ['issue.updated'] },
     ];
     const entityManager = {
+      query: jest.fn(async (_sql, parameters) =>
+        (parameters?.[0] ?? []).map((key: string) => ({
+          id: key,
+          key,
+          access_state: 'unrestricted',
+        })),
+      ),
       getRepository: jest.fn((entity) => {
         if (entity === WebhookEntity) {
           return { find: jest.fn().mockResolvedValue(webhooks) };
@@ -75,9 +102,8 @@ describe('EventDispatcherService project isolation', () => {
       { emitToProject: jest.fn() } as never,
     );
 
-    await tenantStorage.run(
-      { tenantId: 'tenant-a', schemaName: 'tenant_a' },
-      () => service.emit('issue.updated', { projectKey: 'A', issueKey: 'A-1' }),
+    await tenantStorage.run({ tenantId: 'tenant-a', schemaName: 'tenant_a' }, () =>
+      service.emit('issue.updated', { projectKey: 'A', issueKey: 'A-1' }),
     );
 
     expect(enqueue).toHaveBeenCalledTimes(2);
@@ -93,6 +119,13 @@ describe('EventDispatcherService project isolation', () => {
       { id: 'current', projectId: null, active: true, events: ['comment.created'] },
     ];
     const entityManager = {
+      query: jest.fn(async (_sql, parameters) =>
+        (parameters?.[0] ?? []).map((key: string) => ({
+          id: key,
+          key,
+          access_state: 'unrestricted',
+        })),
+      ),
       getRepository: jest.fn(() => ({ find: jest.fn().mockResolvedValue(webhooks) })),
     };
     const service = new EventDispatcherService(

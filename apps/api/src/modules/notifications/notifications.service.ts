@@ -1,3 +1,4 @@
+import { recipientCanReadIssue, recipientIssueCondition } from '@weaver/server-common';
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { NotificationEntity } from '@weaver/db';
 import type { PaginatedResponse } from '@weaver/shared';
@@ -25,6 +26,13 @@ export class NotificationsService {
     );
     if (!members.length)
       throw new ForbiddenException('Notification recipient is not an active member');
+    if (
+      typeof data.issueKey === 'string' &&
+      !(await recipientCanReadIssue(em, requireTenantContext().schemaName, tenantId, userId, {
+        key: data.issueKey,
+      }))
+    )
+      throw new ForbiddenException('Notification recipient cannot read this issue');
     const repo = em.getRepository(NotificationEntity);
 
     const notification = repo.create({
@@ -37,7 +45,7 @@ export class NotificationsService {
 
     const saved = await repo.save(notification);
 
-    this.gateway.emitToUser(requireTenantContext().tenantId, userId, 'notification:new', saved);
+    this.gateway.emitToUser(requireTenantContext().tenantId, userId, 'notification:new', {});
 
     return saved;
   }
@@ -50,12 +58,13 @@ export class NotificationsService {
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(NotificationEntity);
 
-    const [items, total] = await repo.findAndCount({
-      where: { userId },
-      order: { createdAt: 'DESC' },
-      skip: (page - 1) * perPage,
-      take: perPage,
-    });
+    const [items, total] = await this.visibleQuery(userId).then((query) =>
+      query
+        .orderBy('notification.createdAt', 'DESC')
+        .skip((page - 1) * perPage)
+        .take(perPage)
+        .getManyAndCount(),
+    );
 
     return {
       data: items,
@@ -72,13 +81,30 @@ export class NotificationsService {
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(NotificationEntity);
 
-    const notification = await repo.findOneBy({ id, userId });
+    const notification = await (
+      await this.visibleQuery(userId)
+    )
+      .andWhere('notification.id = :id', { id })
+      .getOne();
     if (!notification) {
       throw new NotFoundException('Notification not found');
     }
 
     notification.isRead = true;
     return repo.save(notification);
+  }
+
+  private async visibleQuery(userId: string) {
+    const em = await this.tenantConnections.getEntityManager();
+    const { tenantId, schemaName } = requireTenantContext();
+    return em
+      .getRepository(NotificationEntity)
+      .createQueryBuilder('notification')
+      .where('notification.userId = :recipientId', { recipientId: userId })
+      .andWhere(
+        `(notification.data->>'issueKey' IS NULL OR ${recipientIssueCondition(schemaName, "notification.data->>'issueKey'", ':recipientId', ':recipientTenant')})`,
+        { recipientTenant: tenantId },
+      );
   }
 
   async markAllRead(userId: string): Promise<void> {
@@ -92,6 +118,6 @@ export class NotificationsService {
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(NotificationEntity);
 
-    return repo.count({ where: { userId, isRead: false } });
+    return (await this.visibleQuery(userId)).andWhere('notification.isRead = false').getCount();
   }
 }

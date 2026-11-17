@@ -55,6 +55,10 @@ export interface PluginEventEmitter {
 
 export interface PluginCoreApi {
   issues: {
+    /** Sanitize structured references before serializing reports/exports. */
+    redactReferences<T>(value: T): Promise<T>;
+    /** Issue IDs readable by the current actor, including project access. null is administrator. */
+    accessibleIds(): Promise<string[] | null>;
     assertAccess(key: string, mode: 'read' | 'write'): Promise<void>;
     get(key: string): Promise<unknown>;
     findCandidates(filters?: PluginIssueCandidateFilters): Promise<PluginIssueCandidate[]>;

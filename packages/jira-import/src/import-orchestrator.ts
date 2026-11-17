@@ -1,5 +1,7 @@
+import { importedIssueAccess, issueSecurityEnabled } from './issue-security-import';
+import { AttachmentTransferError, attachmentLimit } from './attachment-transfer';
 import { createHash, randomUUID } from 'crypto';
-import { createStorageFromEnvironment } from '@weaver/server-common';
+import { createStorageFromEnvironment, hashStream } from '@weaver/server-common';
 import path from 'path';
 import type { EntityManager, Repository } from 'typeorm';
 import {
@@ -117,6 +119,10 @@ export type ProgressCallback = (progress: ImportProgress) => Promise<void> | voi
 export class ImportOrchestrator {
   private readonly sourceInstance: string;
   private errors: ImportJobError[] = [];
+  private attachmentDetails = new Map<
+    string,
+    { issueKey: string; filename: string; expectedBytes?: number }
+  >();
   private totalItems = 0;
   private importedItems = 0;
   private skippedItems = 0;
@@ -128,6 +134,7 @@ export class ImportOrchestrator {
     restrictedComments: 0,
     restrictedWorklogs: 0,
     scope: { updatedSince: null as string | null },
+    recoveryOf: null as string | null,
   };
 
   constructor(
@@ -136,9 +143,11 @@ export class ImportOrchestrator {
     private readonly mapper: FieldMapper,
     private readonly data: JiraImportJobData,
     private readonly onProgress?: ProgressCallback,
+    private readonly shutdown?: AbortSignal,
   ) {
     this.sourceInstance = normalizeSourceInstance(data.config.baseUrl);
     this.store = new SourceStore(manager, this.sourceInstance, data.importJobId);
+    this.report.recoveryOf = data.attachmentRecovery?.jobId ?? null;
     this.report.scope.updatedSince = data.updatedSince ?? null;
     if (data.updatedSince)
       this.warn(
@@ -155,6 +164,18 @@ export class ImportOrchestrator {
         [this.data.tenantId],
       );
       await this.client.testConnection(this.data.config);
+      if (this.data.attachmentRecovery) {
+        await this.recoverAttachments();
+        await this.updateJob(
+          this.errors.length ? 'Attachment recovery needs review' : 'Attachment recovery complete',
+          {
+            status: this.errors.length ? 'needs_review' : 'completed',
+            progress: 100,
+            completedAt: new Date(),
+          },
+        );
+        return;
+      }
       const projects = filterSelectedProjects(
         await this.client.getProjects(this.data.config),
         this.data.projectKeys,
@@ -193,6 +214,103 @@ export class ImportOrchestrator {
       this.recordError('import', this.data.importJobId, error);
       await this.updateJob('Import failed', { status: 'failed', completedAt: new Date() });
       throw error;
+    }
+  }
+
+  private async recoverAttachments(): Promise<void> {
+    const recovery = this.data.attachmentRecovery!;
+    const original = await this.manager
+      .getRepository(ImportJobEntity)
+      .findOneByOrFail({ id: recovery.jobId });
+    if (
+      normalizeSourceInstance(original.sourceUrl) !== this.sourceInstance ||
+      original.source !== this.data.config.source
+    )
+      throw new Error('Recovery must use the original Jira source');
+    for (const attachmentId of recovery.attachmentIds) {
+      this.totalItems++;
+      await this.checkCancelled();
+      await this.attempt('attachment', attachmentId, async () => {
+        if (
+          !original.errors.some(
+            (error) => error.itemType === 'attachment' && error.itemId === attachmentId,
+          )
+        )
+          throw new Error('Attachment was not a failed item in the selected import');
+        const resources = this.manager.getRepository(ImportedResourceEntity);
+        let descriptor = await resources.findOneBy({
+          sourceInstance: this.sourceInstance,
+          kind: 'attachment_source',
+          externalId: attachmentId,
+        });
+        if (!descriptor) {
+          const originals = await resources.findBy({
+            sourceInstance: this.sourceInstance,
+            kind: 'issue',
+          });
+          const matches = originals.filter((resource) =>
+            resource.payload.fields?.attachment?.some(
+              (file: JiraAttachment) => file.id === attachmentId,
+            ),
+          );
+          if (matches.length !== 1)
+            throw new Error('Cannot establish the source issue; use a reviewed full reimport');
+          const resource = matches[0];
+          descriptor = { ...resource, payload: { sourceIssueId: resource.externalId } };
+        }
+        if (!descriptor.issueId)
+          throw new Error('Source issue has no native mapping; use a full reimport');
+        const issue = await this.manager
+          .getRepository(IssueEntity)
+          .findOneByOrFail({ id: descriptor.issueId });
+        let sourceIssue: JiraIssue;
+        try {
+          sourceIssue = await this.client.getIssue(
+            this.data.config,
+            descriptor.payload.sourceIssueId,
+          );
+        } catch (error) {
+          await this.manager
+            .getRepository(ProjectEntity)
+            .update(issue.projectId, { importQuarantined: true });
+          throw error;
+        }
+        const sourceProjectId = sourceIssue.fields.project?.id;
+        const projectRecord = sourceProjectId
+          ? await this.findRecord('project', String(sourceProjectId))
+          : null;
+        if (
+          sourceIssue.id !== descriptor.payload.sourceIssueId ||
+          descriptor.projectId !== issue.projectId ||
+          projectRecord?.localId !== issue.projectId
+        ) {
+          await this.manager
+            .getRepository(IssueEntity)
+            .update(issue.id, { accessState: 'quarantined' });
+          throw new Error('Source issue identity or project changed; review a full reimport');
+        }
+        const currentLevel = sourceIssue.fields.security?.id ?? null;
+        if (
+          !Object.hasOwn(sourceIssue.fields, 'security') ||
+          !issue.sourceSecurity?.verified ||
+          currentLevel !== issue.sourceSecurity.levelId
+        ) {
+          await this.manager
+            .getRepository(IssueEntity)
+            .update(issue.id, { accessState: 'quarantined' });
+          throw new Error('Source issue security changed or is unverified; review a full reimport');
+        }
+        const attachment = sourceIssue.fields.attachment?.find((file) => file.id === attachmentId);
+        if (!attachment) throw new Error('Attachment is no longer readable on its source issue');
+        const before = this.errors.length;
+        await this.importAttachments(
+          { ...sourceIssue, fields: { ...sourceIssue.fields, attachment: [attachment] } },
+          issue.id,
+          issue.projectId,
+        );
+        if (before === this.errors.length) this.importedItems++;
+      });
+      await this.emitProgress(`Processed attachment recovery ${attachmentId}`);
     }
   }
 
@@ -304,7 +422,7 @@ export class ImportOrchestrator {
         this.totalItems++;
         await this.attempt('issue', jira.key, async () => {
           // Never expose an issue security level through a destination without an equivalent rule.
-          if (jira.fields.security) {
+          if (jira.fields.security && !issueSecurityEnabled()) {
             securedIssues = true;
             await this.manager
               .getRepository(ProjectEntity)
@@ -327,6 +445,35 @@ export class ImportOrchestrator {
           const mapped = this.mapper.mapIssue(jira, fields, this.sourceInstance);
           const record = await this.findRecord('issue', jira.id);
           const existing = record ? await issueRepo.findOneBy({ id: record.localId }) : null;
+          const access = issueSecurityEnabled()
+            ? await importedIssueAccess(
+                this.manager,
+                this.sourceInstance,
+                summary.id,
+                project,
+                jira,
+                existing,
+              )
+            : existing?.sourceSecurity ||
+                existing?.accessState === 'restricted' ||
+                existing?.accessState === 'quarantined'
+              ? {
+                  accessState: existing.accessState,
+                  accessPolicyId: existing.accessPolicyId,
+                  sourceSecurity: existing.sourceSecurity,
+                }
+              : await importedIssueAccess(
+                  this.manager,
+                  this.sourceInstance,
+                  summary.id,
+                  project,
+                  jira,
+                  existing,
+                );
+          if (access.accessState !== 'unrestricted')
+            this.warn(
+              'Secured or unverified issues require administrator access review under Issue security levels.',
+            );
           const baseline = existing
             ? await this.manager.getRepository(ImportedResourceEntity).findOneBy({
                 sourceInstance: this.sourceInstance,
@@ -396,12 +543,13 @@ export class ImportOrchestrator {
               }
               await repo.update(existing.id, {
                 ...updates,
+                ...access,
                 updatedAt:
                   this.report.conflicts.length > beforeConflicts
                     ? existing.updatedAt
                     : (mapped.updatedAt ?? existing.updatedAt),
               });
-              saved = { ...existing, ...updates };
+              saved = { ...existing, ...updates, ...access };
             } else {
               const selection = selectIssueKey(jira.key, project.key, project.issueCounter, keys);
               project.issueCounter = selection.nextCounter;
@@ -409,6 +557,7 @@ export class ImportOrchestrator {
               saved = await repo.save(
                 repo.create({
                   ...values,
+                  ...access,
                   key: selection.key,
                   projectId: project.id,
                   parentId: null,
@@ -422,6 +571,12 @@ export class ImportOrchestrator {
             const store = new SourceStore(em, this.sourceInstance, this.data.importJobId);
             await store.resource('issue', jira.id, project.id, jira, saved!.id, null, values);
             await this.createRecord('issue', jira.id, saved!.id, em);
+            await em
+              .getRepository(ImportedResourceEntity)
+              .update(
+                { sourceInstance: this.sourceInstance, kind: 'secured_issue', externalId: jira.id },
+                { issueId: saved!.id },
+              );
           });
           const id = saved!.id;
           const epicField = Object.entries(fields).find(
@@ -549,7 +704,23 @@ export class ImportOrchestrator {
       this.warn(
         'Previously imported or secured issues are absent from the readable source set. This project remains administrator-only until source access is restored and reimported.',
       );
-    if (!securedIssues && !unavailable.length && this.errors.length === errorsBeforeIssues)
+    const visibilityErrors = this.errors
+      .slice(errorsBeforeIssues)
+      .filter((error) => error.itemType !== 'attachment');
+    const unknownSecurity = await issueRepo
+      .createQueryBuilder('issue')
+      .where('issue.project_id = :projectId', { projectId: project.id })
+      .andWhere(
+        "(issue.source_security IS NULL OR issue.source_security->>'verified' IS DISTINCT FROM 'true')",
+      )
+      .getCount();
+    if (
+      !this.data.updatedSince &&
+      !securedIssues &&
+      !unavailable.length &&
+      !visibilityErrors.length &&
+      !unknownSecurity
+    )
       await this.manager
         .getRepository(ProjectEntity)
         .update(project.id, { importQuarantined: false });
@@ -715,8 +886,28 @@ export class ImportOrchestrator {
       for (const link of resolvedSource(remoteLinksResult))
         await this.capture('remote_link', String(link.id), projectId, link, issueId);
     });
+    await this.importAttachments(jira, issueId, projectId);
+  }
+
+  private async importAttachments(
+    jira: JiraIssue,
+    issueId: string,
+    projectId: string,
+  ): Promise<void> {
     for (const attachment of jira.fields.attachment ?? []) {
+      this.attachmentDetails.set(attachment.id, {
+        issueKey: jira.key,
+        filename: path.basename(attachment.filename),
+        expectedBytes: attachment.size,
+      });
       await this.checkCancelled();
+      await this.capture(
+        'attachment_source',
+        attachment.id,
+        projectId,
+        { ...attachment, issueKey: jira.key, sourceIssueId: jira.id },
+        issueId,
+      );
       await this.attempt('attachment', attachment.id, async () => {
         // Jira attachment metadata does not identify private-comment files.
         const visibility = sourceVisibility(this.sourceInstance, {
@@ -735,15 +926,16 @@ export class ImportOrchestrator {
         const record = await this.findRecord('attachment', attachment.id);
         const existing = record ? await repo.findOneBy({ id: record.localId }) : null;
         if (existing) {
-          await repo.update(existing.id, { uploaderId, sourceId: attachment.id, visibility });
+          if (!this.data.attachmentRecovery)
+            await repo.update(existing.id, { uploaderId, sourceId: attachment.id, visibility });
           const archived = await this.manager.getRepository(ImportedResourceEntity).findOneBy({
             sourceInstance: this.sourceInstance,
             kind: 'attachment',
             externalId: attachment.id,
           });
-          const storedHash = createHash('sha256')
-            .update(await createStorageFromEnvironment().get(existing.storageKey))
-            .digest('hex');
+          const storage = createStorageFromEnvironment();
+          const storedHash = (await hashStream(await storage.getStream(existing.storageKey)))
+            .sha256;
           let verifiedHash = archived?.payload.sha256;
           if (verifiedHash && verifiedHash !== storedHash)
             throw new Error(
@@ -752,10 +944,22 @@ export class ImportOrchestrator {
           if (!verifiedHash) {
             // Legacy import records do not establish that the destination bytes
             // match Jira. Verify both copies before recording a source checksum.
-            const sourceBytes = await this.client.downloadAttachment(this.data.config, attachment);
-            if (attachment.size !== undefined && sourceBytes.byteLength !== attachment.size)
-              throw new Error('Jira attachment size does not match source metadata');
-            verifiedHash = createHash('sha256').update(sourceBytes).digest('hex');
+            const temporaryKey = randomUUID();
+            await this.trackStorageWrite(temporaryKey);
+            try {
+              verifiedHash = (
+                await this.client.transferAttachment(
+                  this.data.config,
+                  attachment,
+                  storage,
+                  temporaryKey,
+                  () => this.checkCancelled(),
+                )
+              ).sha256;
+            } finally {
+              await storage.delete(temporaryKey);
+              await this.finishStorageWrite(temporaryKey);
+            }
             if (verifiedHash !== storedHash)
               throw new Error(
                 'Legacy destination attachment bytes differ from Jira; retained for review',
@@ -772,17 +976,21 @@ export class ImportOrchestrator {
               mediaId: archived?.payload.mediaId ?? (await this.attachmentMediaId(attachment)),
             },
             issueId,
-            visibility,
+            this.data.attachmentRecovery ? existing.visibility : visibility,
           );
           return;
         }
         const storage = createStorageFromEnvironment();
-        const bytes = await this.client.downloadAttachment(this.data.config, attachment);
-        const mediaId = await this.attachmentMediaId(attachment);
-        if (attachment.size !== undefined && bytes.byteLength !== attachment.size)
-          throw new Error('Jira attachment size does not match source metadata');
         const storageKey = randomUUID();
-        await storage.put(storageKey, bytes);
+        await this.trackStorageWrite(storageKey);
+        const verified = await this.client.transferAttachment(
+          this.data.config,
+          attachment,
+          storage,
+          storageKey,
+          () => this.checkCancelled(),
+        );
+        const mediaId = await this.attachmentMediaId(attachment);
         try {
           await this.manager.transaction(async (em) => {
             const r = em.getRepository(AttachmentEntity);
@@ -794,7 +1002,7 @@ export class ImportOrchestrator {
                 visibility,
                 filename: path.basename(attachment.filename).slice(0, 255),
                 mimeType: attachment.mimeType ?? 'application/octet-stream',
-                size: String(bytes.byteLength),
+                size: String(verified.size),
                 storageKey,
                 ...(attachment.created ? { createdAt: new Date(attachment.created) } : {}),
               }),
@@ -804,7 +1012,7 @@ export class ImportOrchestrator {
               'attachment',
               attachment.id,
               projectId,
-              { ...attachment, sha256: createHash('sha256').update(bytes).digest('hex'), mediaId },
+              { ...attachment, sha256: verified.sha256, mediaId },
               issueId,
               visibility,
             );
@@ -813,8 +1021,41 @@ export class ImportOrchestrator {
           await storage.delete(storageKey);
           throw error;
         }
+        await this.finishStorageWrite(storageKey);
         this.count('attachment');
       });
+    }
+  }
+
+  private async trackStorageWrite(key: string) {
+    await this.manager.query(
+      `INSERT INTO "${this.data.schemaName}".import_storage_writes(storage_key, import_job_id) VALUES ($1, $2)`,
+      [key, this.data.importJobId],
+    );
+  }
+
+  private async finishStorageWrite(key: string) {
+    await this.manager.query(
+      `DELETE FROM "${this.data.schemaName}".import_storage_writes WHERE storage_key = $1 AND import_job_id = $2`,
+      [key, this.data.importJobId],
+    );
+  }
+
+  /** Call only while holding the organization's import lock, before a run or after it stops. */
+  async cleanupStorageWrites() {
+    const storage = createStorageFromEnvironment();
+    const writes = await this.manager.query(
+      `SELECT storage_key FROM "${this.data.schemaName}".import_storage_writes`,
+    );
+    for (const { storage_key: key } of writes) {
+      if (!(await this.manager.getRepository(AttachmentEntity).existsBy({ storageKey: key }))) {
+        await storage.abortWrite?.(key);
+        await storage.delete(key);
+      }
+      await this.manager.query(
+        `DELETE FROM "${this.data.schemaName}".import_storage_writes WHERE storage_key = $1`,
+        [key],
+      );
     }
   }
 
@@ -1076,6 +1317,7 @@ export class ImportOrchestrator {
   }
 
   private async checkCancelled(): Promise<void> {
+    this.shutdown?.throwIfAborted();
     const job = await this.manager
       .getRepository(ImportJobEntity)
       .findOneBy({ id: this.data.importJobId });
@@ -1083,9 +1325,18 @@ export class ImportOrchestrator {
   }
   private recordError(itemType: string, itemId: string, error: unknown): void {
     this.errors.push({
+      ...(itemType === 'attachment' ? this.attachmentDetails.get(itemId) : {}),
       itemType,
       itemId,
       message: error instanceof Error ? error.message : String(error),
+      ...(error instanceof AttachmentTransferError
+        ? {
+            code: error.code,
+            retryable: error.retryable,
+            receivedBytes: error.receivedBytes,
+            limitBytes: attachmentLimit(),
+          }
+        : {}),
     });
   }
   private async emitProgress(step: string): Promise<void> {

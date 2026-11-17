@@ -1,4 +1,9 @@
 import {
+  issueVisibilityWhere,
+  visibleIssues,
+  readableIssueIds,
+} from '../../core/tenant/issue-visibility';
+import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
@@ -33,7 +38,9 @@ export class TimeTrackingService {
 
   private async resolveIssueId(issueKey: string, manager?: EntityManager): Promise<string> {
     const em = manager ?? (await this.tenantConnections.getEntityManager());
-    const issue = await em.getRepository(IssueEntity).findOneBy({ key: issueKey });
+    const issue = await em
+      .getRepository(IssueEntity)
+      .findOneBy({ key: issueKey, ...issueVisibilityWhere(em) });
     if (!issue) {
       throw new NotFoundException(`Issue "${issueKey}" not found`);
     }
@@ -94,19 +101,18 @@ export class TimeTrackingService {
     if (!entry) {
       throw new NotFoundException(`Time entry "${id}" not found`);
     }
+    await this.assertEntryVisible(entry, em);
     return entry;
   }
 
-  private async findByIssueAndId(
-    issueKey: string,
-    id: string,
-  ): Promise<TimeEntryEntity> {
+  private async findByIssueAndId(issueKey: string, id: string): Promise<TimeEntryEntity> {
     const issueId = await this.resolveIssueId(issueKey);
     const em = await this.tenantConnections.getEntityManager();
     const entry = await em.getRepository(TimeEntryEntity).findOneBy({ id, issueId });
     if (!entry) {
       throw new NotFoundException(`Time entry "${id}" not found for issue "${issueKey}"`);
     }
+    await this.assertEntryVisible(entry, em);
     return entry;
   }
 
@@ -191,6 +197,7 @@ export class TimeTrackingService {
           if (existing.userId !== userId) {
             throw new ForbiddenException('Plugin source reference belongs to another user');
           }
+          await this.assertEntryVisible(existing, manager);
           entries.push(existing);
           continue;
         }
@@ -317,13 +324,19 @@ export class TimeTrackingService {
       if (entries.length !== ids.length) {
         throw new NotFoundException('One or more plugin time entries were not found');
       }
-      for (const entry of entries) this.assertUnlocked(entry);
+      for (const entry of entries) {
+        await this.assertEntryVisible(entry, manager);
+        this.assertUnlocked(entry);
+      }
       const deleted = entries.map((entry) => ({ id: entry.id, issueId: entry.issueId }));
       await repo.remove(entries);
       return deleted;
     });
 
-    const issueKeys = await this.issueKeysById(deletedEntries.map((entry) => entry.issueId), em);
+    const issueKeys = await this.issueKeysById(
+      deletedEntries.map((entry) => entry.issueId),
+      em,
+    );
     for (const entry of deletedEntries) {
       this.eventDispatcher
         .emit('time.deleted', {
@@ -350,6 +363,7 @@ export class TimeTrackingService {
       .where('entry.source_plugin_id = :pluginId', { pluginId })
       .andWhere('entry.user_id = :userId', { userId });
 
+    visibleIssues(em, qb);
     if (filters.issueKeys?.length) {
       qb.andWhere('issue.key IN (:...issueKeys)', { issueKeys: filters.issueKeys });
     }
@@ -377,11 +391,11 @@ export class TimeTrackingService {
     const rows = (await em.query(
       `SELECT source, COUNT(*)::integer AS entry_count
          FROM time_entries
-        WHERE user_id = $1::uuid
+        WHERE user_id = $1::uuid AND issue_id = ANY($4::uuid[])
           AND ($2::timestamptz IS NULL OR logged_at >= $2::timestamptz)
           AND ($3::timestamptz IS NULL OR logged_at <= $3::timestamptz)
         GROUP BY source`,
-      [userId, filters.loggedFrom ?? null, filters.loggedTo ?? null],
+      [userId, filters.loggedFrom ?? null, filters.loggedTo ?? null, await readableIssueIds(em)],
     )) as Array<{ source: 'manual' | 'timer' | 'plugin'; entry_count: number | string }>;
     const result: PluginTimeEntrySourceCounts = { manual: 0, timer: 0, plugin: 0 };
     for (const row of rows) result[row.source] = Number(row.entry_count);
@@ -398,6 +412,7 @@ export class TimeTrackingService {
     const entries = await em.getRepository(TimeEntryEntity).find({
       where: { id: In(ids), sourcePluginId: pluginId, userId },
     });
+    for (const entry of entries) await this.assertEntryVisible(entry, em);
     const byId = new Map(entries.map((entry) => [entry.id, entry]));
 
     return ids.map((id) => {
@@ -443,7 +458,17 @@ export class TimeTrackingService {
     if (!entry) {
       throw new NotFoundException(`Time entry "${id}" not found`);
     }
+    await this.assertEntryVisible(entry, em);
     return entry;
+  }
+
+  private async assertEntryVisible(entry: TimeEntryEntity, em: EntityManager) {
+    if (
+      !(await em
+        .getRepository(IssueEntity)
+        .existsBy({ id: entry.issueId, ...issueVisibilityWhere(em) }))
+    )
+      throw new NotFoundException('Time entry not found');
   }
 
   private assertUnlocked(entry: TimeEntryEntity): void {

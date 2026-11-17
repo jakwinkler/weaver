@@ -21,12 +21,24 @@ describe('WeaverGateway project room isolation', () => {
       leave: jest.fn(),
     };
     const emit = jest.fn();
-    const to = jest.fn().mockReturnValue({ emit });
-    gateway.server = { to } as never;
+    const socket = {
+      data: { userId: 'user-b', userEmail: '' },
+      emit,
+      leave: jest.fn(),
+      disconnect: jest.fn(),
+    };
+    membershipRepo.findOne.mockResolvedValue({
+      role: 'member',
+      tenant: { schemaName: 'tenant_b' },
+    });
+    const inRoom = jest
+      .fn()
+      .mockReturnValue({ fetchSockets: jest.fn().mockResolvedValue([socket]) });
+    gateway.server = { in: inRoom } as never;
 
     const result = await gateway.handleJoinProject(client as never, { projectKey: 'SHARED' });
     gateway.handleLeaveProject(client as never, { projectKey: 'SHARED' });
-    gateway.emitToProject('tenant-b', 'SHARED', 'issue.created', { id: 'issue-b' });
+    await gateway.emitToProject('tenant-b', 'SHARED', 'issue.created', { id: 'issue-b' });
 
     expect(projectAccess.assertProjectKey).toHaveBeenCalledWith(
       'SHARED',
@@ -36,8 +48,13 @@ describe('WeaverGateway project room isolation', () => {
     expect(client.join).toHaveBeenCalledWith('tenant:tenant-a:project:SHARED');
     expect(result).toEqual({ joined: true, projectKey: 'SHARED' });
     expect(client.leave).toHaveBeenCalledWith('tenant:tenant-a:project:SHARED');
-    expect(to).toHaveBeenCalledWith('tenant:tenant-b:project:SHARED');
-    expect(emit).toHaveBeenCalledWith('issue.created', { id: 'issue-b' });
+    expect(inRoom).toHaveBeenCalledWith('tenant:tenant-b:project:SHARED');
+    expect(emit).toHaveBeenCalledWith('project:invalidate', { projectKey: 'SHARED' });
+    expect(JSON.stringify(emit.mock.calls)).not.toContain('issue-b');
+    membershipRepo.findOne.mockResolvedValue(null);
+    await gateway.emitToProject('tenant-b', 'SHARED', 'issue.created', { id: 'secret' });
+    expect(socket.disconnect).toHaveBeenCalled();
+    expect(emit).toHaveBeenCalledTimes(1);
   });
 
   it('does not join a project room when membership authorization fails', async () => {
@@ -90,24 +107,42 @@ describe('project join abuse limits', () => {
     const access = { assertProjectKey: jest.fn().mockResolvedValue(undefined) };
     const limiter = { allowProjectJoin: jest.fn().mockResolvedValue(allow) };
     const gateway: WeaverGateway = Reflect.construct(WeaverGateway, [{}, {}, access, limiter]);
-    const client = { id: 'socket', tenantId: 'tenant', tenantSchemaName: 'tenant_test', userId: 'user', role: 'member', join: jest.fn() };
+    const client = {
+      id: 'socket',
+      tenantId: 'tenant',
+      tenantSchemaName: 'tenant_test',
+      userId: 'user',
+      role: 'member',
+      join: jest.fn(),
+    };
     return { gateway, access, limiter, client };
   };
   it('bounds a socket burst before database authorization', async () => {
     const { gateway, access, client } = setup();
-    await Promise.all(Array.from({ length: 50 }, () => gateway.handleJoinProject(client as never, { projectKey: 'DEMO' })));
+    await Promise.all(
+      Array.from({ length: 50 }, () =>
+        gateway.handleJoinProject(client as never, { projectKey: 'DEMO' }),
+      ),
+    );
     expect(access.assertProjectKey.mock.calls.length).toBeLessThanOrEqual(20);
   });
   it('rejects a user-wide budget denial before authorization', async () => {
     const { gateway, access, client } = setup(false);
-    expect(await gateway.handleJoinProject(client as never, { projectKey: 'DEMO' })).toEqual({ joined: false });
+    expect(await gateway.handleJoinProject(client as never, { projectKey: 'DEMO' })).toEqual({
+      joined: false,
+    });
     expect(access.assertProjectKey).not.toHaveBeenCalled();
   });
-  it.each([42, 'x'.repeat(10000), {}, null])('rejects invalid project keys without database work', async projectKey => {
-    const { gateway, access, client } = setup();
-    expect(await gateway.handleJoinProject(client as never, { projectKey } as never)).toEqual({ joined: false });
-    expect(access.assertProjectKey).not.toHaveBeenCalled();
-  });
+  it.each([42, 'x'.repeat(10000), {}, null])(
+    'rejects invalid project keys without database work',
+    async (projectKey) => {
+      const { gateway, access, client } = setup();
+      expect(await gateway.handleJoinProject(client as never, { projectKey } as never)).toEqual({
+        joined: false,
+      });
+      expect(access.assertProjectKey).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe('socket sessions and password resets', () => {

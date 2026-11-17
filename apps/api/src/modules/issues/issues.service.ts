@@ -1,3 +1,5 @@
+import { issueVisibilityWhere } from '../../core/tenant/issue-visibility';
+import { applyIssueListOrder } from './issue-list-order';
 import { attributionNames } from '@weaver/jira-import';
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -15,7 +17,16 @@ import {
   TimeEntryEntity,
 } from '@weaver/db';
 import { UserEntity } from '@weaver/db';
-import { BulkIssueUpdatesDto, CreateIssueDto, MoveIssueSprintDto, UpdateIssueDto, ReorderIssuesDto, PaginatedResponse, RoadmapEpic, RoadmapStatus } from '@weaver/shared';
+import {
+  BulkIssueUpdatesDto,
+  CreateIssueDto,
+  MoveIssueSprintDto,
+  UpdateIssueDto,
+  ReorderIssuesDto,
+  PaginatedResponse,
+  RoadmapEpic,
+  RoadmapStatus,
+} from '@weaver/shared';
 import { EntityManager, Repository, In } from 'typeorm';
 import { requireTenantContext, TenantConnectionProvider } from '../../core/tenant';
 import { ProjectsService } from '../projects';
@@ -78,13 +89,17 @@ export class IssuesService {
 
   private async resolveUserName(userId: string | null): Promise<string | null> {
     if (!userId) return null;
-    const user = await this.userRepo.findOne({ where: { id: userId, memberships: { tenantId: requireTenantContext().tenantId } } });
+    const user = await this.userRepo.findOne({
+      where: { id: userId, memberships: { tenantId: requireTenantContext().tenantId } },
+    });
     return user?.displayName || user?.email || userId;
   }
 
   private async assertValidAssignee(userId: string | null | undefined): Promise<void> {
     if (userId == null) return;
-    const exists = await this.userRepo.exists({ where: { id: userId, memberships: { tenantId: requireTenantContext().tenantId } } });
+    const exists = await this.userRepo.exists({
+      where: { id: userId, memberships: { tenantId: requireTenantContext().tenantId } },
+    });
     if (!exists) throw new BadRequestException('Assignee must be a member of this organization');
   }
 
@@ -129,20 +144,8 @@ export class IssuesService {
       throw new NotFoundException('No initial status found in the project workflow');
     }
 
-    await this.assertValidHierarchyTarget(
-      em,
-      null,
-      project.id,
-      dto.parentId ?? null,
-      'parent',
-    );
-    await this.assertValidHierarchyTarget(
-      em,
-      null,
-      project.id,
-      dto.epicId ?? null,
-      'epic',
-    );
+    await this.assertValidHierarchyTarget(em, null, project.id, dto.parentId ?? null, 'parent');
+    await this.assertValidHierarchyTarget(em, null, project.id, dto.epicId ?? null, 'epic');
 
     // Atomically increment issue counter
     const counter = await this.projectsService.incrementIssueCounter(project.id);
@@ -198,7 +201,7 @@ export class IssuesService {
   async findByKey(issueKey: string): Promise<IssueEntity> {
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(IssueEntity);
-    const issue = await repo.findOneBy({ key: issueKey });
+    const issue = await repo.findOneBy({ key: issueKey, ...issueVisibilityWhere(em) });
     if (!issue) {
       throw new NotFoundException(`Issue "${issueKey}" not found`);
     }
@@ -221,7 +224,10 @@ export class IssuesService {
     const rootId = issue.recurrenceParentId ?? issue.id;
 
     return em.getRepository(IssueEntity).find({
-      where: [{ id: rootId }, { recurrenceParentId: rootId }],
+      where: [
+        { id: rootId, ...issueVisibilityWhere(em) },
+        { recurrenceParentId: rootId, ...issueVisibilityWhere(em) },
+      ],
       order: { recurrenceOccurrence: 'ASC', createdAt: 'ASC' },
     });
   }
@@ -238,7 +244,8 @@ export class IssuesService {
     const qb = repo
       .createQueryBuilder('issue')
       .leftJoinAndSelect('issue.issueType', 'issueType')
-      .where('issue.projectId = :projectId', { projectId: project.id });
+      .where('issue.projectId = :projectId', { projectId: project.id })
+      .andWhere(issueVisibilityWhere(em));
 
     if (filters) {
       if (filters.statusId)
@@ -261,9 +268,7 @@ export class IssuesService {
         qb.andWhere('issue.dueDate <= :dueDateTo', { dueDateTo: filters.dueDateTo });
     }
 
-    if (!params.sort) {
-      qb.orderBy('issue.sortOrder', 'ASC').addOrderBy('issue.createdAt', 'ASC');
-    }
+    params = applyIssueListOrder(qb, params, project.customFields);
 
     const result = await paginate(qb, params, [
       'summary',
@@ -277,7 +282,10 @@ export class IssuesService {
       'percentDone',
       'storyPoints',
     ]);
-    const names = await attributionNames(em, result.data.flatMap((issue) => [issue.assigneeId, issue.reporterId]));
+    const names = await attributionNames(
+      em,
+      result.data.flatMap((issue) => [issue.assigneeId, issue.reporterId]),
+    );
     for (const issue of result.data) {
       issue.assigneeDisplayName = issue.assigneeId ? names.get(issue.assigneeId) : undefined;
       issue.reporterDisplayName = names.get(issue.reporterId);
@@ -295,6 +303,7 @@ export class IssuesService {
       .innerJoinAndSelect('issue.issueType', 'issueType')
       .leftJoinAndSelect('issue.status', 'status')
       .where('issue.projectId = :projectId', { projectId: project.id })
+      .andWhere(issueVisibilityWhere(em))
       .andWhere('issueType.slug = :epicSlug', { epicSlug: 'epic' })
       .orderBy('issue.startDate', 'ASC', 'NULLS LAST')
       .addOrderBy('issue.key', 'ASC')
@@ -308,6 +317,7 @@ export class IssuesService {
         .createQueryBuilder('issue')
         .leftJoinAndSelect('issue.status', 'status')
         .where('issue.projectId = :projectId', { projectId: project.id })
+        .andWhere(issueVisibilityWhere(em))
         .andWhere('issue.epicId IN (:...epicIds)', { epicIds })
         .orderBy('issue.sortOrder', 'ASC')
         .addOrderBy('issue.key', 'ASC')
@@ -406,6 +416,7 @@ export class IssuesService {
       .createQueryBuilder('issue')
       .leftJoinAndSelect('issue.issueType', 'issueType')
       .where('issue.projectId = :projectId', { projectId: project.id })
+      .andWhere(issueVisibilityWhere(em))
       .andWhere('issue.sprintId IS NULL')
       .orderBy('issue.sortOrder', 'ASC')
       .addOrderBy('issue.createdAt', 'ASC');
@@ -448,7 +459,7 @@ export class IssuesService {
         await this.lockProjectHierarchy(em, issueKey);
       }
       const issue = await repo.findOne({
-        where: { key: issueKey },
+        where: { key: issueKey, ...issueVisibilityWhere(em) },
         lock: { mode: 'pessimistic_write' },
       });
       if (!issue) {
@@ -496,13 +507,9 @@ export class IssuesService {
         if (!userId) {
           throw new BadRequestException('A user is required to transition an issue');
         }
-        await this.performTransitionInManager(
-          em,
-          issue,
-          userId,
-          tenantId,
-          { statusId: dto.statusId },
-        );
+        await this.performTransitionInManager(em, issue, userId, tenantId, {
+          statusId: dto.statusId,
+        });
       }
 
       if (dto.assigneeId !== undefined) issue.assigneeId = dto.assigneeId ?? null;
@@ -512,11 +519,13 @@ export class IssuesService {
         await this.assertValidSprint(em, issue.projectId, dto.sprintId ?? null);
         issue.sprintId = dto.sprintId ?? null;
         if (appendToSprint && dto.sortOrder === undefined && issue.sprintId !== previous.sprintId) {
-          const order = repo.createQueryBuilder('candidate')
+          const order = repo
+            .createQueryBuilder('candidate')
             .select('COALESCE(MAX(candidate.sortOrder), 0)', 'max')
             .where('candidate.projectId = :projectId', { projectId: issue.projectId })
             .andWhere('candidate.id != :issueId', { issueId: issue.id });
-          if (issue.sprintId) order.andWhere('candidate.sprintId = :sprintId', { sprintId: issue.sprintId });
+          if (issue.sprintId)
+            order.andWhere('candidate.sprintId = :sprintId', { sprintId: issue.sprintId });
           else order.andWhere('candidate.sprintId IS NULL');
           issue.sortOrder = Number((await order.getRawOne())?.max ?? 0) + 1000;
         }
@@ -548,10 +557,7 @@ export class IssuesService {
       userId: userId ?? null,
     });
 
-    if (
-      dto.assigneeId !== undefined &&
-      dto.assigneeId !== result.previous.assigneeId
-    ) {
+    if (dto.assigneeId !== undefined && dto.assigneeId !== result.previous.assigneeId) {
       await this.eventDispatcher.emit('issue.assigned', {
         issueKey,
         projectKey,
@@ -562,14 +568,26 @@ export class IssuesService {
 
       if (result.issue.assigneeId) {
         const project = await this.projectsService.findByKey(issueKey.split('-')[0]);
-        await this.sendAssignmentEmail(result.issue, result.issue.assigneeId, userId ?? null, project.name);
+        await this.sendAssignmentEmail(
+          result.issue,
+          result.issue.assigneeId,
+          userId ?? null,
+          project.name,
+        );
       }
     }
 
     const statusChanged = result.issue.statusId !== result.previous.statusId;
     const sprintChanged = result.issue.sprintId !== result.previous.sprintId;
     if (sprintChanged) {
-      await this.eventDispatcher.emit('issue.sprint_changed', { issueKey, projectKey, fromSprint: result.previous.sprintId, toSprint: result.issue.sprintId, sortOrder: result.issue.sortOrder, userId });
+      await this.eventDispatcher.emit('issue.sprint_changed', {
+        issueKey,
+        projectKey,
+        fromSprint: result.previous.sprintId,
+        toSprint: result.issue.sprintId,
+        sortOrder: result.issue.sortOrder,
+        userId,
+      });
     }
     if (statusChanged) {
       await this.eventDispatcher.emit('issue.status_changed', {
@@ -599,7 +617,13 @@ export class IssuesService {
         this.resolveStatusName(em, result.issue.statusId),
         this.projectsService.findByKey(projectKey),
       ]);
-      await this.sendStatusChangeEmails(result.issue, oldStatus ?? result.previous.statusId, newStatus ?? result.issue.statusId, userId ?? null, project.name);
+      await this.sendStatusChangeEmails(
+        result.issue,
+        oldStatus ?? result.previous.statusId,
+        newStatus ?? result.issue.statusId,
+        userId ?? null,
+        project.name,
+      );
     }
     return result.issue;
   }
@@ -617,15 +641,20 @@ export class IssuesService {
 
     const updatedIssues = await this.tenantConnections.runInTenantTransaction(async (manager) => {
       const issueRepo = manager.getRepository(IssueEntity);
-      const issues = await issueRepo.find({ where: { id: In(uniqueIssueIds) }, lock: { mode: 'pessimistic_write' } });
+      const issues = await issueRepo.find({
+        where: { id: In(uniqueIssueIds), ...issueVisibilityWhere(manager) },
+        lock: { mode: 'pessimistic_write' },
+      });
       if (issues.length !== uniqueIssueIds.length) {
         throw new NotFoundException('One or more issues were not found');
       }
       await authorizeChanges?.({
-        status: updates.statusId !== undefined
-          && issues.some((issue) => issue.statusId !== updates.statusId),
-        assignee: updates.assigneeId !== undefined
-          && issues.some((issue) => issue.assigneeId !== (updates.assigneeId ?? null)),
+        status:
+          updates.statusId !== undefined &&
+          issues.some((issue) => issue.statusId !== updates.statusId),
+        assignee:
+          updates.assigneeId !== undefined &&
+          issues.some((issue) => issue.assigneeId !== (updates.assigneeId ?? null)),
       });
 
       const previousValues = new Map(
@@ -643,7 +672,9 @@ export class IssuesService {
 
       for (const issue of issues) {
         if (updates.statusId !== undefined && updates.statusId !== issue.statusId) {
-          await this.performTransitionInManager(manager, issue, userId, tenantId, { statusId: updates.statusId });
+          await this.performTransitionInManager(manager, issue, userId, tenantId, {
+            statusId: updates.statusId,
+          });
         }
         if (updates.assigneeId !== undefined) issue.assigneeId = updates.assigneeId;
         if (updates.priority !== undefined) issue.priority = updates.priority;
@@ -681,7 +712,9 @@ export class IssuesService {
 
     const deleted = await em.transaction(async (manager) => {
       const issueRepo = manager.getRepository(IssueEntity);
-      const issues = await issueRepo.find({ where: { id: In(uniqueIssueIds) } });
+      const issues = await issueRepo.find({
+        where: { id: In(uniqueIssueIds), ...issueVisibilityWhere(manager) },
+      });
       if (issues.length !== uniqueIssueIds.length) {
         throw new NotFoundException('One or more issues were not found');
       }
@@ -719,7 +752,11 @@ export class IssuesService {
     return { count: deleted.issues.length };
   }
 
-  private async emitBulkEvent(event: string, issues: IssueEntity[], payload: Record<string, unknown>): Promise<void> {
+  private async emitBulkEvent(
+    event: string,
+    issues: IssueEntity[],
+    payload: Record<string, unknown>,
+  ): Promise<void> {
     const groups = new Map<string, IssueEntity[]>();
     for (const issue of issues) {
       const key = issue.key.split('-')[0];
@@ -727,8 +764,12 @@ export class IssuesService {
     }
     for (const [projectKey, scoped] of groups) {
       await this.eventDispatcher.emit(event, {
-        ...payload, projectKey, projectKeys: [projectKey],
-        issueIds: scoped.map((issue) => issue.id), issueKeys: scoped.map((issue) => issue.key), count: scoped.length,
+        ...payload,
+        projectKey,
+        projectKeys: [projectKey],
+        issueIds: scoped.map((issue) => issue.id),
+        issueKeys: scoped.map((issue) => issue.key),
+        count: scoped.length,
       });
     }
   }
@@ -781,7 +822,14 @@ export class IssuesService {
       sprintIds.size > 0
         ? manager.getRepository(SprintEntity).find({ where: { id: In([...sprintIds]) } })
         : [],
-      assigneeIds.size > 0 ? this.userRepo.find({ where: { id: In([...assigneeIds]), memberships: { tenantId: requireTenantContext().tenantId } } }) : [],
+      assigneeIds.size > 0
+        ? this.userRepo.find({
+            where: {
+              id: In([...assigneeIds]),
+              memberships: { tenantId: requireTenantContext().tenantId },
+            },
+          })
+        : [],
     ]);
     const statusNames = new Map<string, string>(statuses.map((status) => [status.id, status.name]));
     const sprintNames = new Map<string, string>(sprints.map((sprint) => [sprint.id, sprint.name]));
@@ -866,15 +914,27 @@ export class IssuesService {
     );
   }
 
-  async moveToSprint(issueKey: string, dto: MoveIssueSprintDto, userId: string): Promise<IssueEntity> {
+  async moveToSprint(
+    issueKey: string,
+    dto: MoveIssueSprintDto,
+    userId: string,
+  ): Promise<IssueEntity> {
     return this.update(issueKey, dto, userId, { appendToSprint: true });
   }
 
-  private async assertValidSprint(em: EntityManager, projectId: string, sprintId: string | null): Promise<void> {
+  private async assertValidSprint(
+    em: EntityManager,
+    projectId: string,
+    sprintId: string | null,
+  ): Promise<void> {
     if (!sprintId) return;
-    const sprint = await em.getRepository(SprintEntity).findOne({ where: { id: sprintId }, lock: { mode: 'pessimistic_write' } });
-    if (!sprint || sprint.projectId !== projectId) throw new BadRequestException('Issue and sprint must belong to the same project');
-    if (sprint.status === 'completed') throw new BadRequestException('Issues cannot be added to a completed sprint');
+    const sprint = await em
+      .getRepository(SprintEntity)
+      .findOne({ where: { id: sprintId }, lock: { mode: 'pessimistic_write' } });
+    if (!sprint || sprint.projectId !== projectId)
+      throw new BadRequestException('Issue and sprint must belong to the same project');
+    if (sprint.status === 'completed')
+      throw new BadRequestException('Issues cannot be added to a completed sprint');
   }
 
   async addLabel(issueKey: string, label: string, userId?: string): Promise<IssueEntity> {
@@ -908,7 +968,7 @@ export class IssuesService {
 
     const ids = [...new Set(dto.issues.map((i) => i.id))];
     const issues = await repo.find({
-      where: { id: In(ids) },
+      where: { id: In(ids), ...issueVisibilityWhere(em) },
       relations: ['project'],
     });
 
@@ -945,25 +1005,17 @@ export class IssuesService {
     selector: { transitionId: string } | { statusId: string },
   ): Promise<IssueEntity> {
     const { tenantId } = requireTenantContext();
-    const result = await this.tenantConnections.runInTenantTransaction(
-      async (em) => {
-        const issueRepo = em.getRepository(IssueEntity);
-        const issue = await issueRepo.findOne({
-          where: { key: issueKey },
-          lock: { mode: 'pessimistic_write' },
-        });
-        if (!issue) {
-          throw new NotFoundException(`Issue "${issueKey}" not found`);
-        }
-        return this.performTransitionInManager(
-          em,
-          issue,
-          userId,
-          tenantId,
-          selector,
-        );
-      },
-    );
+    const result = await this.tenantConnections.runInTenantTransaction(async (em) => {
+      const issueRepo = em.getRepository(IssueEntity);
+      const issue = await issueRepo.findOne({
+        where: { key: issueKey },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!issue) {
+        throw new NotFoundException(`Issue "${issueKey}" not found`);
+      }
+      return this.performTransitionInManager(em, issue, userId, tenantId, selector);
+    });
 
     const event = {
       issueKey,
@@ -974,14 +1026,23 @@ export class IssuesService {
     };
     await this.eventDispatcher.emit('issue.status_changed', event);
     await this.eventDispatcher.emit('issue.moved', event);
-    await this.eventDispatcher.emit('issue.updated', { ...event, fields: { statusId: result.issue.statusId } });
+    await this.eventDispatcher.emit('issue.updated', {
+      ...event,
+      fields: { statusId: result.issue.statusId },
+    });
     const em = await this.tenantConnections.getEntityManager();
     const [oldStatus, newStatus, project] = await Promise.all([
       this.resolveStatusName(em, result.oldStatusId),
       this.resolveStatusName(em, result.issue.statusId),
       this.projectsService.findByKey(event.projectKey),
     ]);
-    await this.sendStatusChangeEmails(result.issue, oldStatus ?? result.oldStatusId, newStatus ?? result.issue.statusId, userId, project.name);
+    await this.sendStatusChangeEmails(
+      result.issue,
+      oldStatus ?? result.oldStatusId,
+      newStatus ?? result.issue.statusId,
+      userId,
+      project.name,
+    );
     return result.issue;
   }
 
@@ -992,9 +1053,7 @@ export class IssuesService {
     tenantId: string,
     selector: { transitionId: string } | { statusId: string },
   ): Promise<{ issue: IssueEntity; oldStatusId: string }> {
-    const project = await em
-      .getRepository(ProjectEntity)
-      .findOneBy({ id: issue.projectId });
+    const project = await em.getRepository(ProjectEntity).findOneBy({ id: issue.projectId });
     if (!project) {
       throw new NotFoundException('Issue project not found');
     }
@@ -1047,18 +1106,9 @@ export class IssuesService {
     const oldStatusId = issue.statusId;
     issue.statusId = transition.toStatusId;
     const saved = await em.getRepository(IssueEntity).save(issue);
-    await this.logTransitionActivity(
-      em,
-      saved,
-      userId,
-      oldStatusId,
-      transition.toStatusId,
-    );
+    await this.logTransitionActivity(em, saved, userId, oldStatusId, transition.toStatusId);
 
-    const postFunctions = this.parseTransitionRules(
-      transition.postFunctions,
-      'post-function',
-    );
+    const postFunctions = this.parseTransitionRules(transition.postFunctions, 'post-function');
     try {
       await this.postFunctions.executeAll(postFunctions, {
         userId,
@@ -1092,9 +1142,7 @@ export class IssuesService {
         rule === null ||
         typeof (rule as Record<string, unknown>).type !== 'string'
       ) {
-        throw new BadRequestException(
-          `Transition ${label} configuration is invalid`,
-        );
+        throw new BadRequestException(`Transition ${label} configuration is invalid`);
       }
       const { type, params, ...flatParams } = rule as Record<string, unknown>;
       return {
@@ -1136,9 +1184,7 @@ export class IssuesService {
       throw new BadRequestException(`An issue cannot be its own ${label}`);
     }
 
-    const pending: Array<{ id: string; path: Set<string> }> = [
-      { id: targetId, path: new Set() },
-    ];
+    const pending: Array<{ id: string; path: Set<string> }> = [{ id: targetId, path: new Set() }];
     while (pending.length > 0) {
       const { id: currentId, path } = pending.pop()!;
       if (currentId === issueId) {
@@ -1150,11 +1196,11 @@ export class IssuesService {
       const nextPath = new Set(path);
       nextPath.add(currentId);
 
-      const current = await em.getRepository(IssueEntity).findOneBy({ id: currentId });
+      const current = await em
+        .getRepository(IssueEntity)
+        .findOneBy({ id: currentId, ...issueVisibilityWhere(em) });
       if (!current || current.projectId !== projectId) {
-        throw new BadRequestException(
-          `The selected ${label} must be an issue in the same project`,
-        );
+        throw new BadRequestException(`The selected ${label} must be an issue in the same project`);
       }
       if (current.parentId) pending.push({ id: current.parentId, path: nextPath });
       if (current.epicId) pending.push({ id: current.epicId, path: nextPath });
@@ -1242,20 +1288,26 @@ export class IssuesService {
       });
     }
     if (dto.storyPoints !== undefined && issue.storyPoints !== previous.storyPoints) {
-      trackedChanges.push({ field: 'storyPoints', oldVal: previous.storyPoints === null ? null : String(previous.storyPoints), newVal: issue.storyPoints === null ? null : String(issue.storyPoints) });
+      trackedChanges.push({
+        field: 'storyPoints',
+        oldVal: previous.storyPoints === null ? null : String(previous.storyPoints),
+        newVal: issue.storyPoints === null ? null : String(issue.storyPoints),
+      });
     }
 
     if (trackedChanges.length === 0) return;
     const activityRepo = em.getRepository(ActivityLogEntity);
     await activityRepo.save(
-      trackedChanges.map((change) => activityRepo.create({
-        issueId: issue.id,
-        userId,
-        action: 'updated',
-        fieldName: change.field,
-        oldValue: change.oldVal,
-        newValue: change.newVal,
-      })),
+      trackedChanges.map((change) =>
+        activityRepo.create({
+          issueId: issue.id,
+          userId,
+          action: 'updated',
+          fieldName: change.field,
+          oldValue: change.oldVal,
+          newValue: change.newVal,
+        }),
+      ),
     );
   }
 
@@ -1285,36 +1337,28 @@ export class IssuesService {
 
   async delete(issueKey: string, userId: string): Promise<void> {
     const issue = await this.findByKey(issueKey);
-    const attachments = await this.tenantConnections.runInTenantTransaction(
-      async (manager) => {
-        const attachmentRepo = manager.getRepository(AttachmentEntity);
-        const issueAttachments = await attachmentRepo.findBy({ issueId: issue.id });
+    const attachments = await this.tenantConnections.runInTenantTransaction(async (manager) => {
+      const attachmentRepo = manager.getRepository(AttachmentEntity);
+      const issueAttachments = await attachmentRepo.findBy({ issueId: issue.id });
 
-        await manager.getRepository(IssueEntity).update(
-          { parentId: issue.id },
-          { parentId: null },
-        );
-        await manager.getRepository(IssueEntity).update(
-          { epicId: issue.id },
-          { epicId: null },
-        );
-        await manager
-          .getRepository(IssueLinkEntity)
-          .createQueryBuilder()
-          .delete()
-          .where('source_issue_id = :issueId OR target_issue_id = :issueId', {
-            issueId: issue.id,
-          })
-          .execute();
-        await manager.getRepository(CommentEntity).delete({ issueId: issue.id });
-        await manager.getRepository(ActivityLogEntity).delete({ issueId: issue.id });
-        await manager.getRepository(TimeEntryEntity).delete({ issueId: issue.id });
-        await attachmentRepo.delete({ issueId: issue.id });
-        await manager.getRepository(IssueEntity).delete({ id: issue.id });
+      await manager.getRepository(IssueEntity).update({ parentId: issue.id }, { parentId: null });
+      await manager.getRepository(IssueEntity).update({ epicId: issue.id }, { epicId: null });
+      await manager
+        .getRepository(IssueLinkEntity)
+        .createQueryBuilder()
+        .delete()
+        .where('source_issue_id = :issueId OR target_issue_id = :issueId', {
+          issueId: issue.id,
+        })
+        .execute();
+      await manager.getRepository(CommentEntity).delete({ issueId: issue.id });
+      await manager.getRepository(ActivityLogEntity).delete({ issueId: issue.id });
+      await manager.getRepository(TimeEntryEntity).delete({ issueId: issue.id });
+      await attachmentRepo.delete({ issueId: issue.id });
+      await manager.getRepository(IssueEntity).delete({ id: issue.id });
 
-        return issueAttachments;
-      },
-    );
+      return issueAttachments;
+    });
 
     for (const attachment of attachments) {
       try {

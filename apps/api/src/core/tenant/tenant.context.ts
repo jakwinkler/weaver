@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from 'async_hooks';
 
 export interface TenantInfo {
+  actor?: import('../auth/current-user.decorator').RequestUser;
   tenantId: string;
   schemaName: string;
   /** Set where the tenant record is already loaded; consumers fall back to a lookup when absent. */

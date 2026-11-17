@@ -1,16 +1,9 @@
-import {
-  All,
-  Controller,
-  HttpStatus,
-  Logger,
-  Req,
-  Res,
-  UseGuards,
-} from '@nestjs/common';
+import { All, Controller, HttpStatus, Logger, Req, Res, UseGuards } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import type { PluginResponse, PluginRouteDefinition } from '@weaver/sdk';
 import { IssueEntity, ProjectEntity, ProjectPluginEntity, RoleEntity } from '@weaver/db';
-import { tenantStorage } from '../core/tenant/tenant.context';
+import { redactIssueReferences } from '../core/tenant/issue-reference-redaction';
+import { tenantStorage, requireTenantContext } from '../core/tenant/tenant.context';
 import { TenantConnectionProvider } from '../core/tenant/tenant-connection.provider';
 import { TenantService } from '../core/tenant/tenant.service';
 import { ProjectAccessService } from '../core/tenant/project-access.service';
@@ -19,13 +12,9 @@ import { PluginRegistryService } from './plugin-registry.service';
 import { PluginLoaderService } from './plugin-loader.service';
 import { PluginContextFactory } from './plugin-context.factory';
 import { PluginRouteAuthGuard } from './plugin-route-auth.guard';
-import {
-  matchPluginRoute,
-  type MatchedPluginRoute,
-} from './plugin-route.matcher';
+import { matchPluginRoute, type MatchedPluginRoute } from './plugin-route.matcher';
 
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 @Controller('plugin-routes')
 @UseGuards(PluginRouteAuthGuard)
@@ -45,9 +34,7 @@ export class PluginRouteController {
   async handlePluginRoute(@Req() req: Request, @Res() res: Response) {
     const match = matchPluginRoute(this.loader, req);
     if (!match) {
-      return res
-        .status(HttpStatus.NOT_FOUND)
-        .json({ message: 'Plugin route not found' });
+      return res.status(HttpStatus.NOT_FOUND).json({ message: 'Plugin route not found' });
     }
 
     this.logger.debug(
@@ -76,11 +63,7 @@ export class PluginRouteController {
     );
   }
 
-  private async dispatch(
-    req: Request,
-    res: Response,
-    match: MatchedPluginRoute,
-  ) {
+  private async dispatch(req: Request, res: Response, match: MatchedPluginRoute) {
     try {
       const installed = await this.registry.findInstalled(match.pluginId);
       if (!installed.enabled) {
@@ -88,7 +71,10 @@ export class PluginRouteController {
       }
 
       const authenticatedUser = (req as Request & { user?: RequestUser }).user;
-      if ((!match.route.public || match.route.requiredPermissions?.length) && !authenticatedUser?.role) {
+      if (
+        (!match.route.public || match.route.requiredPermissions?.length) &&
+        !authenticatedUser?.role
+      ) {
         return res.status(HttpStatus.UNAUTHORIZED).json({ message: 'Authentication required' });
       }
       const permissionFailure = await this.checkPermissions(req, match.route);
@@ -99,9 +85,7 @@ export class PluginRouteController {
       if (!match.route.public) {
         const reqUser = (req as Request & { user?: RequestUser }).user;
         if (!reqUser) {
-          return res
-            .status(HttpStatus.UNAUTHORIZED)
-            .json({ message: 'Authentication required' });
+          return res.status(HttpStatus.UNAUTHORIZED).json({ message: 'Authentication required' });
         }
         const mode = req.method === 'GET' ? 'read' : 'write';
         if (match.params.issueKey) {
@@ -115,10 +99,7 @@ export class PluginRouteController {
         }
       }
 
-      const handler = await this.loader.getHandler(
-        match.pluginId,
-        match.route.handler,
-      );
+      const handler = await this.loader.getHandler(match.pluginId, match.route.handler);
       if (!handler) {
         return res.status(HttpStatus.NOT_IMPLEMENTED).json({
           message: `Handler not found: ${match.route.handler}`,
@@ -137,27 +118,42 @@ export class PluginRouteController {
             }
           : undefined,
       );
-      const rawBody = (
-        req as Request & { rawBody?: Buffer }
-      ).rawBody?.toString('utf8');
+      const rawBody = (req as Request & { rawBody?: Buffer }).rawBody?.toString('utf8');
       const pluginRequest = {
         params: match.params,
         query: (req.query || {}) as Record<string, string>,
         body: req.body,
         ...(rawBody === undefined ? {} : { rawBody }),
-        headers: Object.fromEntries(Object.entries(req.headers).flatMap(([key, value]) => typeof value === 'string' ? [[key, value]] : [])),
+        headers: Object.fromEntries(
+          Object.entries(req.headers).flatMap(([key, value]) =>
+            typeof value === 'string' ? [[key, value]] : [],
+          ),
+        ),
         auth: { type: 'interactive' as const },
       };
 
-      const result: PluginResponse = await handler(pluginRequest, context);
+      const invoke = () => handler(pluginRequest, context) as Promise<PluginResponse>;
+      const result = await tenantStorage.run(
+        { ...requireTenantContext(), actor: authenticatedUser },
+        () =>
+          !match.route.public && !['GET', 'HEAD', 'OPTIONS'].includes(req.method)
+            ? this.tenantConnections.runInTenantTransaction(invoke)
+            : invoke(),
+      );
+      // Plugin handlers serialize their own responses, before global interceptors can run.
+      const body = await redactIssueReferences(
+        await this.tenantConnections.getEntityManager(),
+        result.body,
+        authenticatedUser,
+      );
       if (result.headers) {
         for (const [key, value] of Object.entries(result.headers)) {
           res.setHeader(key, value);
         }
       }
-      return typeof result.body === 'string'
-        ? res.status(result.status).send(result.body)
-        : res.status(result.status).json(result.body);
+      return typeof body === 'string'
+        ? res.status(result.status).send(body)
+        : res.status(result.status).json(body);
     } catch (error: any) {
       this.logger.error(`Plugin route error: ${error.message}`, error.stack);
       if (error.status) {
@@ -205,7 +201,8 @@ export class PluginRouteController {
     if (!route.requiredPermissions?.length) return undefined;
 
     const reqUser = (req as Request & { user?: Record<string, string> }).user;
-    if (!reqUser?.role) return { message: 'Authentication required', missing: route.requiredPermissions };
+    if (!reqUser?.role)
+      return { message: 'Authentication required', missing: route.requiredPermissions };
     if (reqUser.role === 'owner') return undefined;
 
     const em = await this.tenantConnections.getEntityManager();
@@ -218,8 +215,6 @@ export class PluginRouteController {
     const missing = route.requiredPermissions.filter(
       (permission) => permissions[permission] !== true,
     );
-    return missing.length > 0
-      ? { message: 'Missing required permissions', missing }
-      : undefined;
+    return missing.length > 0 ? { message: 'Missing required permissions', missing } : undefined;
   }
 }

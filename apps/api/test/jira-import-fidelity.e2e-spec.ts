@@ -1,6 +1,11 @@
 import 'reflect-metadata';
+import { visibleIssues, issueVisibilityWhere } from '../src/core/tenant/issue-visibility';
+import { applyIssueListOrder } from '../src/modules/issues/issue-list-order';
+import { paginate } from '../src/common/pagination';
+import { recipientCanReadIssue, eventHasRestrictedContent } from '@weaver/server-common';
+import { IssueSecurityController } from '../src/modules/import/issue-security.controller';
 import { randomUUID } from 'crypto';
-import { mkdtemp, rm } from 'fs/promises';
+import { mkdtemp, rm, writeFile, readFile, readdir } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { DataSource } from 'typeorm';
@@ -12,6 +17,7 @@ import {
   BoardEntity,
   CommentEntity,
   ImportedAudienceEntity,
+  IssueAccessPolicyEntity,
   ImportedPersonEntity,
   ImportedResourceEntity,
   ImportJobEntity,
@@ -31,7 +37,13 @@ import {
   WorkflowStatusEntity,
   runJiraImportMigration,
 } from '@weaver/db';
-import { FieldMapper, ImportOrchestrator, JiraClient } from '@weaver/jira-import';
+import {
+  FieldMapper,
+  ImportOrchestrator,
+  JiraClient,
+  transferAttachment,
+  canReadIssue,
+} from '@weaver/jira-import';
 import { CommentsService } from '../src/modules/comments/comments.service';
 import { ImportPeopleService } from '../src/modules/import/import-people.service';
 import { ImportSourceController } from '../src/modules/import/import-source.controller';
@@ -141,6 +153,8 @@ imported('Jira import fidelity with PostgreSQL', () => {
     process.env.STORAGE_LOCAL_PATH = storage;
     connections = {
       getEntityManager: async () => tenantDb.manager,
+      runInTenantTransaction: (fn: any) => tenantDb.transaction(fn),
+      deferUntilCommit: jest.fn(),
       getConnection: async (requested: string) => {
         if (requested !== schema) throw new Error('Wrong tenant');
         return tenantDb;
@@ -170,6 +184,8 @@ imported('Jira import fidelity with PostgreSQL', () => {
       id: '12',
       key: 'GS-2',
       fields: {
+        security: null,
+        project: { id: 'p1', key: 'GS' },
         summary: 'Source issue',
         description: {
           type: 'doc',
@@ -313,6 +329,20 @@ imported('Jira import fidelity with PostgreSQL', () => {
             ],
       getRemoteLinks: async () => [],
       downloadAttachment: async () => Buffer.from('hello'),
+      transferAttachment: async (
+        _config: any,
+        attachment: any,
+        storage: any,
+        key: string,
+        cancelled: any,
+      ) =>
+        transferAttachment(
+          async () => new Response('hello'),
+          storage,
+          key,
+          attachment.size,
+          cancelled,
+        ),
     };
   });
   afterEach(async () => {
@@ -324,7 +354,7 @@ imported('Jira import fidelity with PostgreSQL', () => {
   });
   const context = <T>(fn: () => Promise<T>) =>
     tenantStorage.run({ tenantId: tenant.id, schemaName: schema }, fn);
-  async function run() {
+  async function run(attachmentRecovery?: { jobId: string; attachmentIds: string[] }) {
     const job = await tenantDb.getRepository(ImportJobEntity).save({
       source: 'jira_cloud',
       sourceUrl: source,
@@ -332,6 +362,7 @@ imported('Jira import fidelity with PostgreSQL', () => {
       selectedProjectKeys: ['GS'],
     });
     await new ImportOrchestrator(tenantDb.manager, client as JiraClient, new FieldMapper(), {
+      attachmentRecovery,
       importJobId: job.id,
       tenantId: tenant.id,
       schemaName: schema,
@@ -355,7 +386,10 @@ imported('Jira import fidelity with PostgreSQL', () => {
           { query: { groupBy: 'user' } } as never,
           {
             db: { query: (sql: string, params: unknown[]) => em.query(sql, params) },
-            api: { projects: { accessibleIds: async () => null } },
+            api: {
+              issues: { accessibleIds: async () => null },
+              projects: { accessibleIds: async () => null },
+            },
           } as never,
         );
       });
@@ -604,6 +638,233 @@ imported('Jira import fidelity with PostgreSQL', () => {
     ).toBe('Rocket Web Internal');
   });
 
+  it('imports secured native issues with full children while keeping unmapped readers out', async () => {
+    process.env.JIRA_IMPORT_ISSUE_SECURITY_ENABLED = 'true';
+    try {
+      task.fields.security = { id: 'internal', name: 'Rocket Web Internal' };
+      await run();
+      const issue = await tenantDb.getRepository(IssueEntity).findOneByOrFail({ key: 'GS-2' });
+      expect(issue.accessState).toBe('restricted');
+      expect(
+        await tenantDb.getRepository(CommentEntity).countBy({ issueId: issue.id }),
+      ).toBeGreaterThan(0);
+      expect(await tenantDb.getRepository(AttachmentEntity).countBy({ issueId: issue.id })).toBe(1);
+      expect(
+        await canReadIssue(tenantDb.manager, issue, { userId: viewer.id, role: 'viewer' }),
+      ).toBe(false);
+      const policy = await tenantDb
+        .getRepository(IssueAccessPolicyEntity)
+        .findOneByOrFail({ id: issue.accessPolicyId! });
+      await tenantDb
+        .getRepository(IssueAccessPolicyEntity)
+        .update(policy.id, { reviewed: true, userIds: [viewer.id] });
+      expect(
+        await canReadIssue(tenantDb.manager, issue, { userId: viewer.id, role: 'viewer' }),
+      ).toBe(true);
+      await run();
+      expect(await tenantDb.getRepository(IssueEntity).count()).toBe(3);
+      expect(
+        (await tenantDb.getRepository(IssueAccessPolicyEntity).findOneByOrFail({ id: policy.id }))
+          .userIds,
+      ).toEqual([viewer.id]);
+      task.fields.security = null;
+      await run();
+      const changed = await tenantDb.getRepository(IssueEntity).findOneByOrFail({ id: issue.id });
+      expect(changed.accessState).toBe('quarantined');
+      expect(
+        await canReadIssue(tenantDb.manager, changed, { userId: viewer.id, role: 'viewer' }),
+      ).toBe(false);
+    } finally {
+      delete process.env.JIRA_IMPORT_ISSUE_SECURITY_ENABLED;
+    }
+  });
+
+  it('enforces mapped audiences before pagination and delivery, with reviewed changes and revocation', async () => {
+    process.env.JIRA_IMPORT_ISSUE_SECURITY_ENABLED = 'true';
+    try {
+      task.fields.security = { id: 'internal', name: 'Internal' };
+      await run();
+      const issues = await tenantDb.getRepository(IssueEntity).find({ order: { key: 'ASC' } });
+      const project = await tenantDb
+        .getRepository(ProjectEntity)
+        .findOneByOrFail({ id: issues[0].projectId });
+      const principal = {
+        userId: viewer.id,
+        tenantId: tenant.id,
+        role: 'viewer',
+        email: viewer.email,
+      };
+      const administrator = { ...principal, userId: owner.id, role: 'owner' };
+      const context = (actor: typeof principal, fn: () => Promise<any>) =>
+        tenantStorage.run({ tenantId: tenant.id, schemaName: schema, actor }, fn);
+      const query = () =>
+        visibleIssues(
+          tenantDb.manager,
+          tenantDb.getRepository(IssueEntity).createQueryBuilder('issue'),
+          principal,
+        );
+      const controller = new IssueSecurityController(connections, {
+        emitToUser: jest.fn(),
+      } as never);
+      const policy = await tenantDb
+        .getRepository(IssueAccessPolicyEntity)
+        .findOneByOrFail({ id: issues[0].accessPolicyId! });
+      expect(await query().getCount()).toBe(0);
+      await context(administrator, async () => {
+        await expect(
+          controller.map(
+            policy.id,
+            { revision: 1, affectedCount: 2, userIds: [viewer.id] },
+            administrator,
+          ),
+        ).rejects.toThrow('affected issues changed');
+        await expect(
+          controller.map(
+            policy.id,
+            { revision: 1, affectedCount: 3, userIds: [randomUUID()] },
+            administrator,
+          ),
+        ).rejects.toThrow('active organization members');
+        await controller.map(
+          policy.id,
+          { revision: 1, affectedCount: 3, userIds: [viewer.id] },
+          administrator,
+        );
+        await expect(
+          controller.map(policy.id, { revision: 1, affectedCount: 3, userIds: [] }, administrator),
+        ).rejects.toThrow('policy changed');
+      });
+      // An audience mapping alone grants no project access.
+      expect(await query().getCount()).toBe(0);
+      expect(
+        await recipientCanReadIssue(tenantDb.manager, schema, tenant.id, viewer.id, {
+          key: 'GS-2',
+        }),
+      ).toBe(false);
+      await tenantDb
+        .getRepository(ProjectMemberEntity)
+        .save({ projectId: project.id, userId: viewer.id, role: 'viewer' });
+      expect(await query().getCount()).toBe(3);
+      expect(
+        await tenantDb
+          .getRepository(IssueEntity)
+          .countBy(issueVisibilityWhere(tenantDb.manager, principal)),
+      ).toBe(3);
+      expect(
+        await recipientCanReadIssue(tenantDb.manager, schema, tenant.id, viewer.id, {
+          key: 'GS-2',
+        }),
+      ).toBe(true);
+      expect(
+        await recipientCanReadIssue(tenantDb.manager, schema, randomUUID(), viewer.id, {
+          key: 'GS-2',
+        }),
+      ).toBe(false);
+      expect(await eventHasRestrictedContent(tenantDb.manager, schema, { issueKey: 'GS-2' })).toBe(
+        true,
+      );
+      const notifications = new NotificationsService(connections, {
+        emitToUser: jest.fn(),
+      } as never);
+      await context(principal, async () => {
+        await notifications.create(viewer.id, 'assigned', 'Secret title', { issueKey: 'GS-2' });
+        expect(await notifications.getUnreadCount(viewer.id)).toBe(1);
+      });
+      await context(administrator, () =>
+        controller.map(policy.id, { revision: 2, affectedCount: 3, userIds: [] }, administrator),
+      );
+      await context(principal, async () => {
+        expect((await notifications.findForUser(viewer.id)).meta.total).toBe(0);
+        expect(await notifications.getUnreadCount(viewer.id)).toBe(0);
+      });
+      expect(await query().getCount()).toBe(0);
+      expect(
+        await recipientCanReadIssue(tenantDb.manager, schema, tenant.id, owner.id, { key: 'GS-2' }),
+      ).toBe(true);
+      // The numeric order is applied by PostgreSQL before paging, even across 9/10/100.
+      for (const [index, key] of ['GS-9', 'GS-10', 'GS-100'].entries())
+        await tenantDb.getRepository(IssueEntity).update(issues[index].id, { key });
+      const ordered = tenantDb
+        .getRepository(IssueEntity)
+        .createQueryBuilder('issue')
+        .leftJoinAndSelect('issue.status', 'status');
+      const params = applyIssueListOrder(
+        ordered,
+        { page: 2, perPage: 1 },
+        { 'jira.source-id': 'p1' },
+      );
+      const page = await paginate(ordered, params, ['key']);
+      expect(page.data.map((issue) => issue.key)).toEqual(['GS-10']);
+      expect(page.meta.total).toBe(3);
+      await publicDb
+        .getRepository(TenantMembershipEntity)
+        .delete({ tenantId: tenant.id, userId: viewer.id });
+      expect(
+        await recipientCanReadIssue(tenantDb.manager, schema, tenant.id, viewer.id, {
+          key: 'GS-10',
+        }),
+      ).toBe(false);
+    } finally {
+      delete process.env.JIRA_IMPORT_ISSUE_SECURITY_ENABLED;
+    }
+  });
+
+  it('recovers only selected failed files, preserves the original report and reviews, and rejects changed source security', async () => {
+    const transfer = client.transferAttachment;
+    task.fields.attachment.push({
+      ...task.fields.attachment[0],
+      id: 'a2',
+      filename: 'retained.txt',
+    });
+    client.transferAttachment = async (...args: any[]) => {
+      if (args[1].id === 'a1') throw new Error('Fixture transfer interruption');
+      return transfer(...args);
+    };
+    const original = await run();
+    const snapshot = structuredClone(original.errors);
+    expect(snapshot).toEqual([
+      expect.objectContaining({
+        itemType: 'attachment',
+        itemId: 'a1',
+        issueKey: 'GS-2',
+        filename: 'fixture.txt',
+        expectedBytes: 5,
+      }),
+    ]);
+    const retained = await tenantDb
+      .getRepository(AttachmentEntity)
+      .findOneByOrFail({ sourceId: 'a2' });
+    await tenantDb.getRepository(AttachmentEntity).update(retained.id, { visibility: null });
+    const project = await tenantDb.getRepository(ProjectEntity).findOneByOrFail({ key: 'GS' });
+    expect(project.importQuarantined).toBe(false); // An attachment fidelity failure is independent of visibility.
+    await tenantDb.getRepository(ProjectEntity).update(project.id, { importQuarantined: true });
+    client.transferAttachment = transfer;
+    client.getIssue = jest.fn(async () => structuredClone(task));
+    const recovered = await run({ jobId: original.id, attachmentIds: ['a1'] });
+    expect(recovered.errors).toEqual([]);
+    expect(recovered.report.recoveryOf).toBe(original.id);
+    expect(await tenantDb.getRepository(AttachmentEntity).count()).toBe(2);
+    expect(
+      (await tenantDb.getRepository(AttachmentEntity).findOneByOrFail({ id: retained.id }))
+        .visibility,
+    ).toBeNull();
+    expect(
+      (await tenantDb.getRepository(ProjectEntity).findOneByOrFail({ id: project.id }))
+        .importQuarantined,
+    ).toBe(true);
+    expect(
+      (await tenantDb.getRepository(ImportJobEntity).findOneByOrFail({ id: original.id })).errors,
+    ).toEqual(snapshot);
+    expect((await run({ jobId: original.id, attachmentIds: ['a1'] })).errors).toEqual([]);
+    expect(await tenantDb.getRepository(AttachmentEntity).count()).toBe(2);
+    task.fields.security = { id: 'changed' };
+    const blocked = await run({ jobId: original.id, attachmentIds: ['a1'] });
+    expect(blocked.errors[0].message).toContain('security changed');
+    expect(
+      (await tenantDb.getRepository(IssueEntity).findOneByOrFail({ key: 'GS-2' })).accessState,
+    ).toBe('quarantined');
+  });
+
   it('quarantines secured issues instead of claiming a complete migration', async () => {
     task.fields.security = { id: 'private-level' };
     const job = await run();
@@ -812,5 +1073,38 @@ imported('Jira import fidelity with PostgreSQL', () => {
     expect((job.report.conflicts as string[]).some((value) => value.includes('assigneeId'))).toBe(
       true,
     );
+  });
+  it('recovers orphaned storage writes without deleting referenced attachments', async () => {
+    const job = await run();
+    const attachment = await tenantDb.getRepository(AttachmentEntity).findOneByOrFail({});
+    const original = await readFile(join(storage, attachment.storageKey));
+    const orphan = randomUUID();
+    await writeFile(join(storage, orphan), 'orphaned complete bytes');
+    await writeFile(join(storage, `.partial-${orphan}-${randomUUID()}`), 'interrupted');
+    await tenantDb.query(
+      `INSERT INTO "${schema}".import_storage_writes(storage_key, import_job_id) VALUES ($1, $3), ($2, $3)`,
+      [orphan, attachment.storageKey, job.id],
+    );
+    const orchestrator = new ImportOrchestrator(
+      tenantDb.manager,
+      client as JiraClient,
+      new FieldMapper(),
+      {
+        importJobId: job.id,
+        tenantId: tenant.id,
+        schemaName: schema,
+        requestedByUserId: owner.id,
+        config: {
+          source: 'jira_cloud',
+          baseUrl: source,
+          auth: { type: 'api_token', token: 'fixture', email: 'fixture@example.test' },
+        },
+        projectKeys: ['GS'],
+      },
+    );
+    await orchestrator.cleanupStorageWrites();
+    expect(await readFile(join(storage, attachment.storageKey))).toEqual(original);
+    expect((await readdir(storage)).some((file) => file.includes(orphan))).toBe(false);
+    expect(await tenantDb.query(`SELECT * FROM "${schema}".import_storage_writes`)).toEqual([]);
   });
 });

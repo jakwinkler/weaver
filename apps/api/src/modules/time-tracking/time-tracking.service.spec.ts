@@ -3,7 +3,15 @@ import { IssueEntity, TimeEntryEntity } from '@weaver/db';
 import { TimeTrackingService } from './time-tracking.service';
 
 describe('TimeTrackingService manual worklog contract', () => {
+  const issueQuery = {
+    select: jest.fn().mockReturnThis(),
+    andWhere: jest.fn().mockReturnThis(),
+    getMany: jest.fn().mockResolvedValue([{ id: 'issue-1' }]),
+  };
   const issueRepository = {
+    metadata: { tablePath: 'tenant_test.issues' },
+    createQueryBuilder: jest.fn().mockReturnValue(issueQuery),
+    existsBy: jest.fn().mockResolvedValue(true),
     findOneBy: jest.fn(),
     find: jest.fn(),
   };
@@ -19,7 +27,7 @@ describe('TimeTrackingService manual worklog contract', () => {
     getRepository: jest.fn((entity: unknown) => {
       if (entity === IssueEntity) return issueRepository;
       if (entity === TimeEntryEntity) return timeEntryRepository;
-      throw new Error('Unexpected repository');
+      return { metadata: { tablePath: 'tenant_test.policies' } };
     }),
     transaction: jest.fn(),
     query: jest.fn(),
@@ -59,7 +67,9 @@ describe('TimeTrackingService manual worklog contract', () => {
       'user-1',
     );
 
-    expect(issueRepository.findOneBy).toHaveBeenCalledWith({ key: 'WEB-1' });
+    expect(issueRepository.findOneBy).toHaveBeenCalledWith(
+      expect.objectContaining({ key: 'WEB-1', accessState: expect.anything() }),
+    );
     expect(timeEntryRepository.create).toHaveBeenCalledWith({
       issueId: 'issue-1',
       userId: 'user-1',
@@ -132,7 +142,7 @@ describe('TimeTrackingService manual worklog contract', () => {
     ).resolves.toEqual({ manual: 2, timer: 1, plugin: 4 });
     expect(entityManager.query).toHaveBeenCalledWith(
       expect.stringContaining('WHERE user_id = $1::uuid'),
-      ['user-1', '2026-08-01T00:00:00Z', '2026-09-01T00:00:00Z'],
+      ['user-1', '2026-08-01T00:00:00Z', '2026-09-01T00:00:00Z', ['issue-1']],
     );
   });
 

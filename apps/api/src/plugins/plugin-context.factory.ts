@@ -1,3 +1,6 @@
+import { redactIssueReferences } from '../core/tenant/issue-reference-redaction';
+import { visibleIssues } from '../core/tenant/issue-visibility';
+import { In } from 'typeorm';
 import { InboundWebhookService } from './inbound-webhook.service';
 import { BadRequestException, ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -12,11 +15,18 @@ import type {
   PluginRichTextDocument,
   RequestOptions,
 } from '@weaver/sdk';
-import { InstalledPluginEntity, type CommentEntity, type IssueEntity } from '@weaver/db';
-import { createCommentSchema, createIssueSchema } from '@weaver/shared';
+import { InstalledPluginEntity, type CommentEntity, IssueEntity } from '@weaver/db';
+import { createCommentSchema, createIssueSchema, updateIssueSchema } from '@weaver/shared';
 import type { EntityManager, Repository } from 'typeorm';
 import { z, type ZodTypeAny } from 'zod';
-import { MemberVisibilityService, ProjectAccessService, TenantConnectionProvider, TenantService, requireTenantContext } from '../core/tenant';
+import {
+  MemberVisibilityService,
+  ProjectAccessService,
+  TenantConnectionProvider,
+  TenantService,
+  requireTenantContext,
+  tenantStorage,
+} from '../core/tenant';
 import type { RequestUser } from '../core/auth/current-user.decorator';
 import { PermissionService } from '../core/auth/permission.service';
 import type { RequiredPermission } from '../core/auth/require-permission.decorator';
@@ -27,7 +37,21 @@ import { TimeTrackingService } from '../modules/time-tracking/time-tracking.serv
 import { PluginLoaderService } from './plugin-loader.service';
 import { fetchWithSafeRedirects, readLimitedResponseText } from '../core/security/outbound-http';
 
-const ISSUE_UPDATE_FIELDS = new Set(['summary', 'description', 'priority', 'assignee_id', 'custom_fields', 'sprint_id', 'parent_id', 'epic_id', 'labels', 'sort_order', 'start_date', 'due_date', 'percent_done']);
+const ISSUE_UPDATE_FIELDS = new Set([
+  'summary',
+  'description',
+  'priority',
+  'assignee_id',
+  'custom_fields',
+  'sprint_id',
+  'parent_id',
+  'epic_id',
+  'labels',
+  'sort_order',
+  'start_date',
+  'due_date',
+  'percent_done',
+]);
 const MAX_RESPONSE_BYTES = 1024 * 1024;
 // The same fields POST /projects/:projectKey/issues accepts, minus recurrence. Strict, so a
 // misplaced option such as reporterId fails loudly instead of being dropped.
@@ -78,17 +102,22 @@ export class PluginContextFactory {
     };
 
     const member = async (userId: string): Promise<RequestUser> => {
-      const rows = await runInSchema((manager) => manager.query(
-        `SELECT membership.role, account.email
+      const rows = await runInSchema((manager) =>
+        manager.query(
+          `SELECT membership.role, account.email
            FROM public.tenant_memberships membership
            JOIN public.users account ON account.id = membership.user_id
           WHERE membership.tenant_id = $1 AND membership.user_id = $2`,
-        [tenant.tenantId, userId],
-      ));
+          [tenant.tenantId, userId],
+        ),
+      );
       if (!rows[0]) throw new ForbiddenException('Tenant membership is required');
       return { userId, tenantId: tenant.tenantId, email: rows[0].email, role: rows[0].role };
     };
     const actor = async () => member(this.requireUserId(pluginId, user));
+    // Core services consume the ambient actor, including SDK calls outside HTTP routes.
+    const asActor = <T>(principal: RequestUser, invoke: () => Promise<T>): Promise<T> =>
+      tenantStorage.run({ ...tenant, actor: principal }, invoke);
     // Background calls (public webhook routes, event handlers) have no request user, so the
     // plugin names who acts. Either way that person needs the role permissions the matching
     // HTTP route requires; callers add the project access check.
@@ -113,11 +142,26 @@ export class PluginContextFactory {
     };
     const assertIssueAccess = async (key: string, mode: 'read' | 'write') =>
       this.projectAccess.assertIssueKey(key, await actor(), mode);
+    const accessibleIssueIds = async () => {
+      const principal = await actor();
+      if (['admin', 'owner'].includes(principal.role)) return null;
+      const projectIds = await this.projectAccess.accessibleProjectIds(principal);
+      return runInSchema(async (manager) => {
+        const qb = manager
+          .getRepository(IssueEntity)
+          .createQueryBuilder('issue')
+          .select('issue.id');
+        if (projectIds !== null) qb.where({ projectId: In(projectIds) });
+        const issues = await visibleIssues(manager, qb, principal).getMany();
+        return issues.map((issue) => issue.id);
+      });
+    };
     const accessibleIds = async () => this.projectAccess.accessibleProjectIds(await actor());
 
     return {
       webhooks: {
-        processOnce: (digest, process) => this.inboundWebhooks.processOnce(pluginId, digest, process),
+        processOnce: (digest, process) =>
+          this.inboundWebhooks.processOnce(pluginId, digest, process),
       },
       db: {
         query: async (sql: string, params?: unknown[]) => {
@@ -149,14 +193,27 @@ export class PluginContextFactory {
       api: {
         issues: {
           assertAccess: assertIssueAccess,
-          get: async (key: string) =>
-            runInSchema((manager) =>
+          accessibleIds: accessibleIssueIds,
+          redactReferences: async (value) => {
+            const principal = await actor();
+            return runInSchema((manager) => redactIssueReferences(manager, value, principal));
+          },
+          get: async (key: string) => {
+            await assertIssueAccess(key, 'read');
+            return runInSchema((manager) =>
               manager.query(`SELECT * FROM issues WHERE key = $1`, [key]),
-            ).then((r) => r[0]),
+            ).then((r) => r[0]);
+          },
           findCandidates: async (filters: PluginIssueCandidateFilters = {}) => {
             await this.assertCapability(pluginId, 'issue-candidates', options?.capabilityState);
             const userId = this.requireUserId(pluginId, user);
-            return this.findIssueCandidates(runInSchema, userId, filters, await accessibleIds());
+            return this.findIssueCandidates(
+              runInSchema,
+              userId,
+              filters,
+              await accessibleIds(),
+              await accessibleIssueIds(),
+            );
           },
           create: async (projectKey: string, input: PluginIssueCreateInput, createOptions = {}) => {
             await this.assertCapability(pluginId, 'issue-create', options?.capabilityState);
@@ -170,7 +227,9 @@ export class PluginContextFactory {
               ]);
               await this.projectAccess.assertProjectKey(projectKey, reporter, 'write');
               await this.memberVisibility.assertVisibleMember(reporter, dto.assigneeId);
-              const issue = await this.issuesService.create(projectKey, dto, reporter.userId);
+              const issue = await asActor(reporter, () =>
+                this.issuesService.create(projectKey, dto, reporter.userId),
+              );
               return toCreatedIssue(issue);
             });
           },
@@ -181,23 +240,41 @@ export class PluginContextFactory {
             }
             for (const [field] of fields) {
               if (!ISSUE_UPDATE_FIELDS.has(field)) {
-                throw new BadRequestException(
-                  `Unsupported issue update field: ${field}`,
-                );
+                throw new BadRequestException(`Unsupported issue update field: ${field}`);
               }
             }
 
-            const sets = fields
-              .map(([k], i) => `"${k}" = $${i + 2}`)
-              .join(', ');
-            return runInSchema((manager) =>
-              manager.query(`UPDATE issues SET ${sets} WHERE key = $1 RETURNING *`, [
-                key,
-                ...Object.values(data),
+            await assertIssueAccess(key, 'write');
+            const principal = await actor();
+            await this.permissions.assertPermissions(principal, [
+              { category: 'issues', action: 'update' },
+              ...(Object.hasOwn(data, 'assignee_id')
+                ? [{ category: 'issues', action: 'assign' }]
+                : []),
+            ]);
+            const converted = Object.fromEntries(
+              fields.map(([field, value]) => [
+                field.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase()),
+                value,
               ]),
-            ).then((r) => r[0]);
+            );
+            const dto = parseOrBadRequest(updateIssueSchema.strict(), converted, 'issue update');
+            await this.memberVisibility.assertVisibleMember(principal, dto.assigneeId);
+            return asActor(principal, () =>
+              this.issuesService.update(key, dto, principal.userId, {
+                authorizeChanges: ({ status, assignee }) =>
+                  this.permissions.assertPermissions(principal, [
+                    ...(status ? [{ category: 'issues', action: 'transition' }] : []),
+                    ...(assignee ? [{ category: 'issues', action: 'assign' }] : []),
+                  ]),
+              }),
+            );
           },
-          addComment: async (key: string, body: string | PluginRichTextDocument, commentOptions = {}) => {
+          addComment: async (
+            key: string,
+            body: string | PluginRichTextDocument,
+            commentOptions = {},
+          ) => {
             const document = parseOrBadRequest(
               createCommentSchema,
               { body: toCommentDocument(body) },
@@ -210,11 +287,13 @@ export class PluginContextFactory {
                 { category: 'comments', action: 'create' },
               ]);
               await this.projectAccess.assertIssueKey(key, author, 'write');
-              const comment = await this.commentsService.create(
-                key,
-                { body: document },
-                author.userId,
-                tenant.tenantId,
+              const comment = await asActor(author, () =>
+                this.commentsService.create(
+                  key,
+                  { body: document },
+                  author.userId,
+                  tenant.tenantId,
+                ),
               );
               return toPluginComment(comment);
             });
@@ -238,14 +317,16 @@ export class PluginContextFactory {
           list: async () => [],
           findMemberByEmail: async (email: string) => {
             const address = parseOrBadRequest(z.string().trim().email().max(255), email, 'email');
-            const rows = await runInSchema((manager) => manager.query(
-              `SELECT account.id, account.email, account.display_name AS "displayName"
+            const rows = await runInSchema((manager) =>
+              manager.query(
+                `SELECT account.id, account.email, account.display_name AS "displayName"
                  FROM public.tenant_memberships membership
                  JOIN public.users account ON account.id = membership.user_id
                 WHERE membership.tenant_id = $1 AND lower(account.email) = lower($2)
                 LIMIT 1`,
-              [tenant.tenantId, address],
-            ));
+                [tenant.tenantId, address],
+              ),
+            );
             return rows[0] ?? null;
           },
         },
@@ -259,6 +340,7 @@ export class PluginContextFactory {
               newValue?: string | null;
             },
           ) => {
+            await assertIssueAccess(issueKey, 'write');
             const issue = await runInSchema((manager) =>
               manager.query(`SELECT id FROM issues WHERE key = $1`, [issueKey]),
             );
@@ -327,43 +409,64 @@ export class PluginContextFactory {
         timeEntries: {
           createBatch: async (request) => {
             await this.assertCapability(pluginId, 'time-entries', options?.capabilityState);
-            const userId = this.requireUserId(pluginId, user);
+            const principal = await actor();
+            const userId = principal.userId;
             for (const key of new Set(request.entries.map((entry) => entry.issueKey))) {
               await assertIssueAccess(key, 'write');
             }
-            return this.timeTracking.createBatch(pluginId, request, userId);
+            return asActor(principal, () =>
+              this.timeTracking.createBatch(pluginId, request, userId),
+            );
           },
           update: async (id, changes) => {
             await this.assertCapability(pluginId, 'time-entries', options?.capabilityState);
-            const userId = this.requireUserId(pluginId, user);
-            return this.timeTracking.updatePluginEntry(pluginId, id, changes, userId);
+            const principal = await actor();
+            const userId = principal.userId;
+            return asActor(principal, () =>
+              this.timeTracking.updatePluginEntry(pluginId, id, changes, userId),
+            );
           },
           delete: async (id) => {
             await this.assertCapability(pluginId, 'time-entries', options?.capabilityState);
-            const userId = this.requireUserId(pluginId, user);
-            return this.timeTracking.deletePluginEntry(pluginId, id, userId);
+            const principal = await actor();
+            const userId = principal.userId;
+            return asActor(principal, () =>
+              this.timeTracking.deletePluginEntry(pluginId, id, userId),
+            );
           },
           deleteBatch: async (ids) => {
             await this.assertCapability(pluginId, 'time-entries', options?.capabilityState);
-            const userId = this.requireUserId(pluginId, user);
-            return this.timeTracking.deletePluginEntriesBatch(pluginId, ids, userId);
+            const principal = await actor();
+            const userId = principal.userId;
+            return asActor(principal, () =>
+              this.timeTracking.deletePluginEntriesBatch(pluginId, ids, userId),
+            );
           },
           list: async (filters = {}) => {
             await this.assertCapability(pluginId, 'time-entries', options?.capabilityState);
-            const userId = this.requireUserId(pluginId, user);
-            return this.timeTracking.listPluginEntries(pluginId, filters, userId);
+            const principal = await actor();
+            const userId = principal.userId;
+            return asActor(principal, () =>
+              this.timeTracking.listPluginEntries(pluginId, filters, userId),
+            );
           },
           countOwnBySource: async (filters = {}) => {
             await this.assertCapability(pluginId, 'time-entries', options?.capabilityState);
-            const userId = this.requireUserId(pluginId, user);
-            return runInSchema((manager) =>
-              this.timeTracking.countOwnEntriesBySource(filters, userId, manager),
+            const principal = await actor();
+            const userId = principal.userId;
+            return asActor(principal, () =>
+              runInSchema((manager) =>
+                this.timeTracking.countOwnEntriesBySource(filters, userId, manager),
+              ),
             );
           },
           getLockState: async (ids) => {
             await this.assertCapability(pluginId, 'time-entries', options?.capabilityState);
-            const userId = this.requireUserId(pluginId, user);
-            return this.timeTracking.getPluginLockState(pluginId, ids, userId);
+            const principal = await actor();
+            const userId = principal.userId;
+            return asActor(principal, () =>
+              this.timeTracking.getPluginLockState(pluginId, ids, userId),
+            );
           },
         },
       },
@@ -432,9 +535,14 @@ export class PluginContextFactory {
     userId: string,
     filters: PluginIssueCandidateFilters,
     projectIds: string[] | null,
+    issueIds: string[] | null,
   ): Promise<PluginIssueCandidate[]> {
     const parameters: unknown[] = [userId];
     const clauses = ['status.is_terminal = false'];
+    if (issueIds !== null) {
+      parameters.push(issueIds);
+      clauses.push(`issue.id = ANY($${parameters.length}::uuid[])`);
+    }
     if (projectIds !== null) {
       parameters.push(projectIds);
       clauses.push(`issue.project_id = ANY($${parameters.length}::uuid[])`);
@@ -488,12 +596,7 @@ export class PluginContextFactory {
     }));
   }
 
-  private async makeRequest(
-    method: string,
-    url: string,
-    body?: unknown,
-    options?: RequestOptions,
-  ) {
+  private async makeRequest(method: string, url: string, body?: unknown, options?: RequestOptions) {
     const responseType = options?.responseType ?? 'json';
     if (responseType !== 'json' && responseType !== 'text') {
       throw new BadRequestException(`Unsupported responseType: ${String(responseType)}`);
@@ -532,7 +635,11 @@ export class PluginContextFactory {
   }
 }
 
-function parseOrBadRequest<T extends ZodTypeAny>(schema: T, value: unknown, label: string): z.infer<T> {
+function parseOrBadRequest<T extends ZodTypeAny>(
+  schema: T,
+  value: unknown,
+  label: string,
+): z.infer<T> {
   const result = schema.safeParse(value);
   if (!result.success) {
     throw new BadRequestException({

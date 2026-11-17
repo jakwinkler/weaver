@@ -36,6 +36,7 @@ export function useImportStatus(id: string | null) {
       if (['completed', 'needs_review', 'failed', 'cancelled'].includes(response.data.status)) {
         void queryClient.invalidateQueries({ queryKey: ['import-people'] });
         void queryClient.invalidateQueries({ queryKey: ['import-audiences'] });
+        void queryClient.invalidateQueries({ queryKey: ['import-issue-security'] });
       }
       return response.data;
     },

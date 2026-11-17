@@ -41,7 +41,7 @@ describe('issue subtasks', () => {
       query: jest.fn(async () => []),
     };
     const connections = { getEntityManager: async () => manager, runInTenantTransaction: async (fn: (em: typeof manager) => unknown) => fn(manager) };
-    const projects = { findByKey: jest.fn(async () => ({ id: 'p1', key: 'PRJ' })) };
+    const projects = { findByKey: jest.fn(async () => ({ id: 'p1', key: 'PRJ', customFields: {} })) };
     const events = { emit: jest.fn() };
     const service = new IssuesService({} as never, connections as never, projects as never, {} as never, events as never, {} as never, {} as never, {} as never, {} as never, {} as never);
     return { service, qb, repo, activityRepo };

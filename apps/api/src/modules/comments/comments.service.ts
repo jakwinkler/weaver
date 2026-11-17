@@ -341,6 +341,8 @@ export class CommentsService {
       issueSummary: issue.summary,
       projectName: project?.name ?? issue.key.split('-')[0],
       commentExcerpt: this.commentExcerpt(body),
+      // Retain link targets for recipient checks after flattening labels for email.
+      referencedContent: body,
       issueUrl: this.mailService.issueUrl(issue.key),
     };
   }

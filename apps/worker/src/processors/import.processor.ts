@@ -1,3 +1,4 @@
+import { setTimeout as delay } from 'node:timers/promises';
 import { Job } from 'bullmq';
 import { In } from 'typeorm';
 import {
@@ -11,6 +12,13 @@ import type { JiraImportJobData, SealedJiraImportJobData } from '@weaver/shared'
 import { config } from '../config';
 
 import { assertTenantSchemaName, openImportJob } from '@weaver/server-common';
+
+const shutdown = new AbortController();
+export function stopImportTransfers() {
+  shutdown.abort(
+    new Error('Import interrupted by worker shutdown; restart with fresh credentials'),
+  );
+}
 
 export async function processImport(job: Job<SealedJiraImportJobData>): Promise<void> {
   if (job.data.version !== 1)
@@ -55,6 +63,20 @@ export async function processImport(job: Job<SealedJiraImportJobData>): Promise<
         lockKey,
       ]);
       if (!lock.locked) throw new Error('Another import is running for this organization');
+      // One bounded stream across all worker processes; waiting jobs retain no attachment bytes.
+      while (true) {
+        shutdown.signal.throwIfAborted();
+        const [slot] = await runner.query('SELECT pg_try_advisory_lock(hashtext($1)) AS locked', [
+          'weaver:jira-transfer-slot',
+        ]);
+        if (slot.locked) break;
+        const queued = await runner.manager
+          .getRepository(ImportJobEntity)
+          .findOneByOrFail({ id: data.importJobId });
+        if (queued.status === 'cancelled') return;
+        await delay(1000);
+      }
+
       const orchestrator = new ImportOrchestrator(
         runner.manager,
         new JiraClient(),
@@ -68,11 +90,18 @@ export async function processImport(job: Job<SealedJiraImportJobData>): Promise<
               : 0;
           await job.updateProgress(percent);
         },
+        shutdown.signal,
       );
-      await orchestrator.run();
+      await orchestrator.cleanupStorageWrites();
+      try {
+        await orchestrator.run();
+      } finally {
+        await orchestrator.cleanupStorageWrites();
+      }
       await job.updateProgress(100);
     } finally {
       await runner.query('SELECT pg_advisory_unlock(hashtext($1))', [lockKey]);
+      await runner.query('SELECT pg_advisory_unlock(hashtext($1))', ['weaver:jira-transfer-slot']);
       await runner.release();
     }
   } catch (error) {

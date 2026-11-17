@@ -1,3 +1,4 @@
+import type { ByteRange } from '@weaver/server-common';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import {
   AttachmentCleanupEntity,
@@ -101,6 +102,14 @@ export class AttachmentsService {
       throw new NotFoundException(`Attachment "${id}" not found`);
     }
     return attachment;
+  }
+
+  async getStream(storageKey: string, range?: ByteRange) {
+    try {
+      return await this.storage.getStream(storageKey, range);
+    } catch {
+      throw new NotFoundException('Stored file not found');
+    }
   }
 
   async getData(storageKey: string): Promise<Buffer> {

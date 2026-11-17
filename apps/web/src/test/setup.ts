@@ -1,3 +1,26 @@
+import { transferableAbortController } from 'node:util';
+
+// jsdom supplies its own AbortSignal, while Node supplies Request. Bridge those
+// realms so router navigation tests retain real cancellation on Node 24/26.
+const NativeRequest = globalThis.Request;
+if (NativeRequest) {
+  globalThis.Request = class extends NativeRequest {
+    constructor(input: RequestInfo | URL, init?: RequestInit) {
+      if (!init?.signal) {
+        super(input, init);
+        return;
+      }
+      const controller = transferableAbortController();
+      if (init.signal.aborted) controller.abort(init.signal.reason);
+      else
+        init.signal.addEventListener('abort', () => controller.abort(init.signal?.reason), {
+          once: true,
+        });
+      super(input, { ...init, signal: controller.signal });
+    }
+  };
+}
+
 if (!globalThis.PointerEvent) {
   class PointerEventPolyfill extends MouseEvent {
     readonly pointerId: number;

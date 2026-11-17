@@ -18,12 +18,22 @@ import type { RecurrenceRule } from '@weaver/shared';
 
 @Index(['projectId'])
 @Index(['statusId'])
+@Index('IDX_issues_access_policy', ['accessPolicyId'])
 @Index(['recurrenceParentId', 'recurrenceOccurrence'], { unique: true })
 // GIN index on custom_fields, created by TenantProvisioningService. TypeORM cannot declare GIN,
 // so it only keeps the index.
 @Index('IDX_issue_custom_fields', { synchronize: false })
 @Entity({ name: 'issues' })
 export class IssueEntity {
+  @Column({ name: 'access_state', type: 'varchar', length: 20, default: 'unrestricted' })
+  accessState!: 'unrestricted' | 'restricted' | 'quarantined';
+
+  @Column({ name: 'access_policy_id', type: 'uuid', nullable: true })
+  accessPolicyId!: string | null;
+
+  @Column({ name: 'source_security', type: 'jsonb', nullable: true })
+  sourceSecurity!: { levelId: string | null; verified: boolean } | null;
+
   assigneeDisplayName?: string;
   reporterDisplayName?: string;
   @PrimaryGeneratedColumn('uuid')

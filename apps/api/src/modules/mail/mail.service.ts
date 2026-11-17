@@ -1,3 +1,4 @@
+import { collectIssueReferences, recipientCanReadIssue } from '@weaver/server-common';
 import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -155,6 +156,28 @@ export class MailService {
       return false;
     }
 
+    const issueKey =
+      typeof options.context.issueKey === 'string' ? options.context.issueKey : undefined;
+    const references = collectIssueReferences(options.context);
+    if (references.keys.length || references.ids.length) {
+      const tenant = await this.tenantService.findById(options.tenantId);
+      if (!tenant) return false;
+      for (const reference of [
+        ...references.keys.map((key) => ({ key })),
+        ...references.ids.map((id) => ({ id })),
+      ]) {
+        if (
+          !(await recipientCanReadIssue(
+            this.membershipRepo.manager,
+            tenant.schemaName,
+            tenant.id,
+            user.id,
+            reference,
+          ))
+        )
+          return false;
+      }
+    }
     const preferences = this.withPreferenceDefaults(user.notificationPreferences);
     if (!preferences[options.preference]) {
       return false;
@@ -190,6 +213,9 @@ export class MailService {
           'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
         },
         data: {
+          issueKey,
+          referenceVersion: 1,
+          issueReferences: references,
           template: options.template,
           preference: options.preference,
         },

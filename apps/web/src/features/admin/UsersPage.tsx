@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { useState, type FormEvent } from 'react';
 import { useUsers, useUpdateUserRole, useCreateInvitation, usePendingInvitations, useRevokeInvitation } from '@/api';
 import { useAuthStore } from '@/stores';
@@ -6,7 +7,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 import { Users } from 'lucide-react';
 
@@ -54,7 +62,9 @@ export function UsersPage() {
   };
 
   if (isLoading) {
-    return <div className="flex items-center justify-center py-12 text-muted-foreground">Loading...</div>;
+    return (
+      <div className="flex items-center justify-center py-12 text-muted-foreground">Loading...</div>
+    );
   }
 
   return (
@@ -62,21 +72,45 @@ export function UsersPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-foreground">Users</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Manage team members and their roles.
+          Manage team members and their roles. Imported historical authors are listed separately.
         </p>
       </div>
 
-      <form onSubmit={invite} className="mb-6 space-y-3 rounded-lg border border-border bg-card p-4">
+      <p className="mb-6 text-sm">
+        <Link className="text-primary underline" to="/settings/import-export#imported-people">
+          View imported people, link existing members, or invite them
+        </Link>
+      </p>
+      <form
+        onSubmit={invite}
+        className="mb-6 space-y-3 rounded-lg border border-border bg-card p-4"
+      >
         <h2 className="text-lg font-semibold text-foreground">Invite a teammate</h2>
         <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-end">
           <div className="space-y-2">
             <Label htmlFor="inviteEmail">Email address</Label>
-            <Input id="inviteEmail" type="email" required value={inviteEmail} onChange={(event) => { setInviteEmail(event.target.value); setInvitationLink(''); }} />
+            <Input
+              id="inviteEmail"
+              type="email"
+              required
+              value={inviteEmail}
+              onChange={(event) => {
+                setInviteEmail(event.target.value);
+                setInvitationLink('');
+              }}
+            />
           </div>
           <div className="space-y-2">
             <Label htmlFor="inviteRole">Role</Label>
-            <select id="inviteRole" value={inviteRole} onChange={(event) => { setInviteRole(event.target.value as 'member' | 'viewer'); setInvitationLink(''); }}
-              className="flex h-10 rounded-md border border-input bg-background px-3 text-sm">
+            <select
+              id="inviteRole"
+              value={inviteRole}
+              onChange={(event) => {
+                setInviteRole(event.target.value as 'member' | 'viewer');
+                setInvitationLink('');
+              }}
+              className="flex h-10 rounded-md border border-input bg-background px-3 text-sm"
+            >
               <option value="member">Member</option>
               <option value="viewer">Viewer</option>
             </select>
@@ -87,14 +121,27 @@ export function UsersPage() {
         {invitationLink && (
           <div className="space-y-2">
             <Label htmlFor="invitationLink">Invitation link</Label>
-            <Input id="invitationLink" readOnly value={invitationLink} onFocus={(event) => event.target.select()} />
-            <p className="text-xs text-muted-foreground">Anyone who has this link can join as that person until it is used, revoked, or expires in 7 days, so send it privately.</p>
+            <Input
+              id="invitationLink"
+              readOnly
+              value={invitationLink}
+              onFocus={(event) => event.target.select()}
+            />
+            <p className="text-xs text-muted-foreground">
+              Anyone who has this link can join as that person until it is used, revoked, or expires
+              in 7 days, so send it privately.
+            </p>
           </div>
         )}
       </form>
 
-      <section aria-labelledby="pendingInvitationsHeading" className="mb-6 space-y-3 rounded-lg border border-border bg-card p-4">
-        <h2 id="pendingInvitationsHeading" className="text-lg font-semibold text-foreground">Pending invitations</h2>
+      <section
+        aria-labelledby="pendingInvitationsHeading"
+        className="mb-6 space-y-3 rounded-lg border border-border bg-card p-4"
+      >
+        <h2 id="pendingInvitationsHeading" className="text-lg font-semibold text-foreground">
+          Pending invitations
+        </h2>
         {invitationsLoading ? (
           <p className="text-sm text-muted-foreground">Loading invitations...</p>
         ) : !pendingInvitations || pendingInvitations.length === 0 ? (
@@ -103,7 +150,9 @@ export function UsersPage() {
           <Table aria-labelledby="pendingInvitationsHeading">
             <TableHeader className="bg-muted/50">
               <TableRow className="hover:bg-muted/50">
-                <TableHead className="text-xs font-medium uppercase tracking-wider">Email</TableHead>
+                <TableHead className="text-xs font-medium uppercase tracking-wider">
+                  Email
+                </TableHead>
                 <TableHead className="text-xs font-medium uppercase tracking-wider">Role</TableHead>
                 <TableHead className="text-xs font-medium uppercase tracking-wider">Expires</TableHead>
                 <TableHead className="text-right text-xs font-medium uppercase tracking-wider">
@@ -136,7 +185,11 @@ export function UsersPage() {
             </TableBody>
           </Table>
         )}
-        {revokeInvitation.isError && <p role="alert" className="text-sm text-destructive">Could not revoke invitation.</p>}
+        {revokeInvitation.isError && (
+          <p role="alert" className="text-sm text-destructive">
+            Could not revoke invitation.
+          </p>
+        )}
       </section>
 
       {!users || users.length === 0 ? (
@@ -150,9 +203,13 @@ export function UsersPage() {
             <TableHeader className="bg-muted/50">
               <TableRow className="hover:bg-muted/50">
                 <TableHead className="text-xs font-medium uppercase tracking-wider">User</TableHead>
-                <TableHead className="text-xs font-medium uppercase tracking-wider">Email</TableHead>
+                <TableHead className="text-xs font-medium uppercase tracking-wider">
+                  Email
+                </TableHead>
                 <TableHead className="text-xs font-medium uppercase tracking-wider">Role</TableHead>
-                <TableHead className="text-xs font-medium uppercase tracking-wider">Joined</TableHead>
+                <TableHead className="text-xs font-medium uppercase tracking-wider">
+                  Joined
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -173,9 +230,7 @@ export function UsersPage() {
                   <TableCell className="text-sm text-muted-foreground">{user.email}</TableCell>
                   <TableCell>
                     {user.id === currentUserId ? (
-                      <Badge variant="secondary">
-                        {user.role} (you)
-                      </Badge>
+                      <Badge variant="secondary">{user.role} (you)</Badge>
                     ) : (
                       <select
                         value={user.role}
@@ -184,11 +239,13 @@ export function UsersPage() {
                         className={cn(
                           'rounded-md border border-input bg-background px-2 py-1 text-xs',
                           'focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring',
-                          'disabled:cursor-not-allowed disabled:opacity-50'
+                          'disabled:cursor-not-allowed disabled:opacity-50',
                         )}
                       >
                         {ROLES.map((r) => (
-                          <option key={r} value={r}>{r}</option>
+                          <option key={r} value={r}>
+                            {r}
+                          </option>
                         ))}
                       </select>
                     )}

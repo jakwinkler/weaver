@@ -1,6 +1,12 @@
 import { assertTenantSchemaName } from '@weaver/server-common';
 import { TenantService } from '../../core/tenant/tenant.service';
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AutomationRuleEntity, IssueEntity, ProjectEntity } from '@weaver/db';
 import { Job, Queue, Worker } from 'bullmq';
@@ -27,6 +33,9 @@ import {
   AutomationsService,
 } from './automations.service';
 import { AutomationConditionEvaluatorService } from './condition-evaluator.service';
+import { backgroundActor } from '../../core/tenant/background-actor';
+import { requireTenantContext } from '../../core/tenant';
+import { issueVisibilityWhere } from '../../core/tenant/issue-visibility';
 
 const MAX_CHAIN_DEPTH = 5;
 const CONDITION_TYPES = [
@@ -136,7 +145,8 @@ export class AutomationEngineService implements OnModuleInit, OnModuleDestroy {
     const data = job.data;
     assertTenantSchemaName(data.schemaName);
     const tenant = await this.tenantService.findById(data.tenantId);
-    if (!tenant || tenant.schemaName !== data.schemaName) throw new Error('Tenant does not match job schema');
+    if (!tenant || tenant.schemaName !== data.schemaName)
+      throw new Error('Tenant does not match job schema');
     await tenantStorage.run({ tenantId: data.tenantId, schemaName: data.schemaName }, () =>
       data.kind === 'schedule' ? this.evaluateScheduledRule(data) : this.evaluateEvent(data),
     );
@@ -145,6 +155,8 @@ export class AutomationEngineService implements OnModuleInit, OnModuleDestroy {
   private async evaluateEvent(data: AutomationEventJobData): Promise<void> {
     const rules = await this.findMatchingRules(data.event, data.payload);
     const issue = await this.loadIssue(data.payload);
+    // Queued events can outlive an issue's access policy or project quarantine change.
+    if (typeof data.payload.issueKey === 'string' && !issue) return;
 
     for (const rule of rules) {
       await this.executeRule(rule, data.event, data.payload, issue, data.depth, data.chainId);
@@ -194,17 +206,30 @@ export class AutomationEngineService implements OnModuleInit, OnModuleDestroy {
     let success = true;
     let executionError: string | undefined;
     try {
-      await automationExecutionStorage.run({ depth: depth + 1, chainId }, async () => {
-        for (const action of asAutomationActions(rule)) {
-          await this.actionExecutor.execute(action, {
-            issueKey: issue?.key ?? null,
-            actorId: this.resolveActorId(payload, rule.createdBy),
-            event,
-            payload,
-          });
-          actionsExecuted.push(action);
-        }
-      });
+      const em = await this.tenantConnections.getEntityManager();
+      const actor = await backgroundActor(em, this.resolveActorId(payload, rule.createdBy));
+      if (!actor) throw new ForbiddenException('Automation actor is no longer a tenant member');
+      if (
+        issue &&
+        !(await em.getRepository(IssueEntity).existsBy({
+          id: issue.id,
+          ...issueVisibilityWhere(em, actor),
+        }))
+      )
+        throw new ForbiddenException('Automation actor cannot access the issue');
+      await tenantStorage.run({ ...requireTenantContext(), actor }, () =>
+        automationExecutionStorage.run({ depth: depth + 1, chainId }, async () => {
+          for (const action of asAutomationActions(rule)) {
+            await this.actionExecutor.execute(action, {
+              issueKey: issue?.key ?? null,
+              actorId: actor.userId,
+              event,
+              payload,
+            });
+            actionsExecuted.push(action);
+          }
+        }),
+      );
     } catch (error) {
       success = false;
       executionError = error instanceof Error ? error.message : String(error);
@@ -226,7 +251,12 @@ export class AutomationEngineService implements OnModuleInit, OnModuleDestroy {
     conditions: Array<Extract<AutomationCondition, { type: 'query' }>>,
   ): Promise<IssueEntity[]> {
     const em = await this.tenantConnections.getEntityManager();
-    const query = em.getRepository(IssueEntity).createQueryBuilder('issue');
+    const query = em
+      .getRepository(IssueEntity)
+      .createQueryBuilder('issue')
+      .innerJoin(ProjectEntity, 'scheduled_project', 'scheduled_project.id = issue.projectId')
+      .where("issue.access_state = 'unrestricted'")
+      .andWhere('scheduled_project.importQuarantined = false');
     if (rule.projectId)
       query.andWhere('issue.projectId = :projectId', { projectId: rule.projectId });
 
@@ -256,7 +286,9 @@ export class AutomationEngineService implements OnModuleInit, OnModuleDestroy {
 
     const issues = await query.orderBy('issue.key', 'ASC').take(101).getMany();
     if (issues.length > 100) {
-      throw new Error('Scheduled automation matches more than 100 issues; narrow the rule before retrying');
+      throw new Error(
+        'Scheduled automation matches more than 100 issues; narrow the rule before retrying',
+      );
     }
     return issues;
   }
@@ -309,7 +341,14 @@ export class AutomationEngineService implements OnModuleInit, OnModuleDestroy {
   private async loadIssue(payload: Record<string, unknown>): Promise<IssueEntity | null> {
     if (typeof payload.issueKey !== 'string') return null;
     const em = await this.tenantConnections.getEntityManager();
-    return em.getRepository(IssueEntity).findOneBy({ key: payload.issueKey });
+    return em
+      .getRepository(IssueEntity)
+      .createQueryBuilder('issue')
+      .innerJoin(ProjectEntity, 'project', 'project.id = issue.projectId')
+      .where('issue.key = :key', { key: payload.issueKey })
+      .andWhere("issue.accessState = 'unrestricted'")
+      .andWhere('project.importQuarantined = false')
+      .getOne();
   }
 
   private resolveActorId(payload: Record<string, unknown>, fallback: string): string {

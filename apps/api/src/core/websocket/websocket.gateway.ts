@@ -75,15 +75,13 @@ export class WeaverGateway implements OnGatewayConnection, OnGatewayDisconnect {
         payload.tenantId,
         payload.sub,
       );
-      if (
-        !membership?.tenant ||
-        membership.user?.sessionVersion !== tokenSessionVersion(payload)
-      ) {
+      if (!membership?.tenant || membership.user?.sessionVersion !== tokenSessionVersion(payload)) {
         client.disconnect();
         return;
       }
       // A password reset may have ended this socket while the session was being read.
       if (!client.connected) return;
+      client.data = { ...client.data, userId: payload.sub, userEmail: payload.email };
       (client as any).userId = payload.sub;
       (client as any).tenantId = payload.tenantId;
       (client as any).tenantSchemaName = membership.tenant.schemaName;
@@ -113,7 +111,14 @@ export class WeaverGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const schemaName = (client as any).tenantSchemaName as string | undefined;
     const userId = (client as any).userId as string | undefined;
     const role = (client as any).role as string | undefined;
-    if (!tenantId || !schemaName || !userId || !role || typeof data?.projectKey !== 'string' || !PROJECT_KEY_REGEX.test(data.projectKey)) {
+    if (
+      !tenantId ||
+      !schemaName ||
+      !userId ||
+      !role ||
+      typeof data?.projectKey !== 'string' ||
+      !PROJECT_KEY_REGEX.test(data.projectKey)
+    ) {
       return { joined: false };
     }
 
@@ -123,7 +128,8 @@ export class WeaverGateway implements OnGatewayConnection, OnGatewayDisconnect {
       window = { count: 0, until: now + 10_000 };
       this.joinWindows.set(client, window);
     }
-    if (++window.count > 20 || !await this.rateLimiting.allowProjectJoin(tenantId, userId)) return { joined: false };
+    if (++window.count > 20 || !(await this.rateLimiting.allowProjectJoin(tenantId, userId)))
+      return { joined: false };
 
     const user: RequestUser = {
       userId,
@@ -132,9 +138,8 @@ export class WeaverGateway implements OnGatewayConnection, OnGatewayDisconnect {
       email: ((client as any).userEmail as string | undefined) ?? '',
     };
     try {
-      await tenantStorage.run(
-        { tenantId, schemaName },
-        () => this.projectAccess.assertProjectKey(data.projectKey, user, 'read'),
+      await tenantStorage.run({ tenantId, schemaName }, () =>
+        this.projectAccess.assertProjectKey(data.projectKey, user, 'read'),
       );
     } catch {
       this.logger.warn(`Client ${client.id} denied project room ${data.projectKey}`);
@@ -164,8 +169,35 @@ export class WeaverGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.server.to(`tenant:${tenantId}`).emit(event, data);
   }
 
-  emitToProject(tenantId: string, projectKey: string, event: string, data: unknown) {
-    this.server.to(this.projectRoom(tenantId, projectKey)).emit(event, data);
+  async emitToProject(tenantId: string, projectKey: string, _event: string, _data: unknown) {
+    // Content-free invalidation avoids disclosing issue or child-resource payloads to project rooms.
+    const sockets = await this.server.in(this.projectRoom(tenantId, projectKey)).fetchSockets();
+    await Promise.all(
+      sockets.map(async (socket) => {
+        const client = socket.data as { userId: string; userEmail: string };
+        const membership = await this.membershipRepo.findOne({
+          where: { tenantId, userId: client.userId },
+          relations: ['tenant'],
+        });
+        if (!membership?.tenant) {
+          socket.disconnect();
+          return;
+        }
+        try {
+          await tenantStorage.run({ tenantId, schemaName: membership.tenant.schemaName }, () =>
+            this.projectAccess.assertProjectKey(
+              projectKey,
+              { userId: client.userId, tenantId, role: membership.role, email: client.userEmail },
+              'read',
+            ),
+          );
+          socket.emit('project:invalidate', { projectKey });
+        } catch {
+          socket.emit('access:changed', {});
+          socket.leave(this.projectRoom(tenantId, projectKey));
+        }
+      }),
+    );
   }
 
   emitToUser(tenantId: string, userId: string, event: string, data: unknown) {
@@ -173,9 +205,7 @@ export class WeaverGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   disconnectUserFromTenant(userId: string, tenantId: string): void {
-    this.server
-      .in(this.userRoom(tenantId, userId))
-      .disconnectSockets(true);
+    this.server.in(this.userRoom(tenantId, userId)).disconnectSockets(true);
   }
 
   /** Ends every socket the account has open, in every organization. */

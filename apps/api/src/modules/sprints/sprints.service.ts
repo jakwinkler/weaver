@@ -1,3 +1,6 @@
+import { canReadIssue } from '@weaver/jira-import';
+import { getTenantContext } from '../../core/tenant/tenant.context';
+import { issueVisibilityWhere } from '../../core/tenant/issue-visibility';
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import {
   ActivityLogEntity,
@@ -62,10 +65,11 @@ export class SprintsService {
   async findAll(projectId: string): Promise<SprintEntity[]> {
     const em = await this.tenantConnections.getEntityManager();
     const repo = em.getRepository(SprintEntity);
-    return repo.find({
+    const sprints = await repo.find({
       where: { projectId },
       order: { createdAt: 'DESC' },
     });
+    return Promise.all(sprints.map((sprint) => this.filterInitialScope(sprint)));
   }
 
   async getStats(id: string): Promise<SprintStats> {
@@ -83,6 +87,7 @@ export class SprintsService {
         'completedPoints',
       )
       .where('issue.sprintId = :id', { id })
+      .andWhere(issueVisibilityWhere(em))
       .getRawOne<{
         issueCount: string;
         committedPoints: string;
@@ -107,7 +112,32 @@ export class SprintsService {
     if (!sprint) {
       throw new NotFoundException(`Sprint "${id}" not found`);
     }
-    return sprint;
+    return this.filterInitialScope(sprint);
+  }
+
+  private async filterInitialScope(sprint: SprintEntity): Promise<SprintEntity> {
+    if (!sprint.initialScope || ['owner', 'admin'].includes(getTenantContext()?.actor?.role ?? ''))
+      return sprint;
+    const em = await this.tenantConnections.getEntityManager();
+    const readable = await em.getRepository(IssueEntity).find({
+      where: { projectId: sprint.projectId, ...issueVisibilityWhere(em) },
+      select: ['id'],
+    });
+    const ids = new Set(readable.map((issue) => issue.id));
+    return Object.assign(Object.create(Object.getPrototypeOf(sprint)), sprint, {
+      initialScope: {
+        ...sprint.initialScope,
+        issues: sprint.initialScope.issues.filter((issue) => ids.has(issue.issueId)),
+      },
+    });
+  }
+
+  private async assertCompleteSprintAccess(id: string) {
+    const em = await this.tenantConnections.getEntityManager();
+    const issues = await em.getRepository(IssueEntity).findBy({ sprintId: id });
+    for (const issue of issues)
+      if (!(await canReadIssue(em, issue, getTenantContext()?.actor)))
+        throw new BadRequestException('Sprint contains issues requiring additional access');
   }
 
   async update(
@@ -137,6 +167,7 @@ export class SprintsService {
     const sprint = await this.findById(id);
     this.assertPlanned(sprint, 'deleted');
     const em = await this.tenantConnections.getEntityManager();
+    await this.assertCompleteSprintAccess(id);
     await em.transaction(async (manager) => {
       await manager.getRepository(IssueEntity).update({ sprintId: id }, { sprintId: null });
       await manager.getRepository(SprintEntity).remove(sprint);
@@ -145,6 +176,7 @@ export class SprintsService {
   }
 
   async start(id: string, userId?: string): Promise<SprintEntity> {
+    await this.assertCompleteSprintAccess(id);
     const saved = await this.tenantConnections.runInTenantTransaction(async (manager) => {
       const repo = manager.getRepository(SprintEntity);
       const sprint = await repo.findOne({
@@ -155,7 +187,9 @@ export class SprintsService {
         throw new NotFoundException(`Sprint "${id}" not found`);
       }
       if (sprint.status !== 'planned') {
-        throw new BadRequestException(`Sprint can only be started from "planned" status, current status is "${sprint.status}"`);
+        throw new BadRequestException(
+          `Sprint can only be started from "planned" status, current status is "${sprint.status}"`,
+        );
       }
 
       await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
@@ -176,7 +210,11 @@ export class SprintsService {
       const issues = await manager.getRepository(IssueEntity).find({ where: { sprintId: id } });
       sprint.initialScope = {
         capturedAt: new Date().toISOString(),
-        issues: issues.map((issue) => ({ issueId: issue.id, storyPoints: issue.storyPoints ?? 0, statusId: issue.statusId })),
+        issues: issues.map((issue) => ({
+          issueId: issue.id,
+          storyPoints: issue.storyPoints ?? 0,
+          statusId: issue.statusId,
+        })),
       };
       if (sprint.startDate && sprint.endDate) this.getDateRange(sprint.startDate, sprint.endDate);
       return repo.save(sprint);
@@ -186,6 +224,7 @@ export class SprintsService {
   }
 
   async complete(id: string, userId?: string): Promise<SprintEntity> {
+    await this.assertCompleteSprintAccess(id);
     const saved = await this.tenantConnections.runInTenantTransaction(async (manager) => {
       const repo = manager.getRepository(SprintEntity);
       const sprint = await repo.findOne({
@@ -196,7 +235,9 @@ export class SprintsService {
         throw new NotFoundException(`Sprint "${id}" not found`);
       }
       if (sprint.status !== 'active') {
-        throw new BadRequestException(`Sprint can only be completed from "active" status, current status is "${sprint.status}"`);
+        throw new BadRequestException(
+          `Sprint can only be completed from "active" status, current status is "${sprint.status}"`,
+        );
       }
 
       await manager.query(
@@ -234,12 +275,13 @@ export class SprintsService {
       }
 
       const issueRepo = manager.getRepository(IssueEntity);
-      const issues = uniqueIssueIds.length === 0
-        ? []
-        : await issueRepo.find({
-            where: { id: In(uniqueIssueIds) },
-            lock: { mode: 'pessimistic_write' },
-          });
+      const issues =
+        uniqueIssueIds.length === 0
+          ? []
+          : await issueRepo.find({
+              where: { id: In(uniqueIssueIds), ...issueVisibilityWhere(manager) },
+              lock: { mode: 'pessimistic_write' },
+            });
       if (
         issues.length !== uniqueIssueIds.length ||
         issues.some((issue) => issue.projectId !== sprint.projectId)
@@ -252,9 +294,16 @@ export class SprintsService {
 
       const changedIssues = issues.filter((issue) => issue.sprintId !== id);
       const activityRepo = manager.getRepository(ActivityLogEntity);
-      const activities = changedIssues.map((issue) => activityRepo.create({
-        issueId: issue.id, userId, action: 'updated', fieldName: 'sprint', oldValue: null, newValue: sprint.name,
-      }));
+      const activities = changedIssues.map((issue) =>
+        activityRepo.create({
+          issueId: issue.id,
+          userId,
+          action: 'updated',
+          fieldName: 'sprint',
+          oldValue: null,
+          newValue: sprint.name,
+        }),
+      );
       for (const issue of changedIssues) {
         issue.sprintId = id;
       }
@@ -441,12 +490,14 @@ export class SprintsService {
   private async loadReportContext(sprint: SprintEntity): Promise<ReportContext> {
     const em = await this.tenantConnections.getEntityManager();
     const [issues, terminalStatuses] = await Promise.all([
-      em.getRepository(IssueEntity).find({ where: { projectId: sprint.projectId } }),
+      em
+        .getRepository(IssueEntity)
+        .find({ where: { projectId: sprint.projectId, ...issueVisibilityWhere(em) } }),
       em.getRepository(WorkflowStatusEntity).find({ where: { isTerminal: true } }),
     ]);
     const terminalStatusIds = new Set(terminalStatuses.map((status) => status.id));
     const terminalStatusNames = new Set(terminalStatuses.map((status) => status.name));
-    const initialScope = sprint.initialScope ?? {
+    const initialScope = structuredClone(sprint.initialScope) ?? {
       capturedAt: this.startOfDay(
         sprint.startDate ?? sprint.createdAt.toISOString().split('T')[0],
       ).toISOString(),
@@ -458,6 +509,8 @@ export class SprintsService {
           statusId: issue.statusId,
         })),
     };
+    const readableIds = new Set(issues.map((issue) => issue.id));
+    initialScope.issues = initialScope.issues.filter((issue) => readableIds.has(issue.issueId));
     const capturedAt = new Date(initialScope.capturedAt);
     const issueIds = [
       ...new Set([
@@ -538,9 +591,13 @@ export class SprintsService {
   private getDateRange(startDate: string, endDate: string): string[] {
     const start = this.startOfDay(startDate);
     const end = this.startOfDay(endDate);
-    if (![startDate, endDate].every((value) => /^\d{4}-\d{2}-\d{2}$/.test(value)) ||
-        !Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) ||
-        start.toISOString().slice(0, 10) !== startDate || end.toISOString().slice(0, 10) !== endDate) {
+    if (
+      ![startDate, endDate].every((value) => /^\d{4}-\d{2}-\d{2}$/.test(value)) ||
+      !Number.isFinite(start.getTime()) ||
+      !Number.isFinite(end.getTime()) ||
+      start.toISOString().slice(0, 10) !== startDate ||
+      end.toISOString().slice(0, 10) !== endDate
+    ) {
       throw new BadRequestException('Sprint dates must be valid calendar dates');
     }
     if ((end.getTime() - start.getTime()) / 86400000 > 366) {

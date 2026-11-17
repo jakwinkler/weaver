@@ -1,3 +1,4 @@
+import { apiClient } from '@/api/client';
 import { useEffect, useRef, useCallback } from 'react';
 import { io } from 'socket.io-client';
 import { useQueryClient } from '@tanstack/react-query';
@@ -89,6 +90,33 @@ export function useWebSocket(projectKey: string | null = null) {
       queryClient.invalidateQueries({ queryKey });
     });
 
+    let accessRevision: string | undefined;
+    let checkingAccess = false;
+    const checkAccess = async () => {
+      if (checkingAccess) return;
+      checkingAccess = true;
+      try {
+        const { data } = await apiClient.get<{ revision: string }>('/access-revision');
+        if (accessRevision && accessRevision !== data.revision) await queryClient.resetQueries();
+        accessRevision = data.revision;
+      } catch {
+        /* Authentication failures are handled by the API client. */
+      } finally {
+        checkingAccess = false;
+      }
+    };
+    void checkAccess();
+    const accessTimer = window.setInterval(() => {
+      void checkAccess();
+    }, 30000);
+
+    socket.on('project:invalidate', () => {
+      void queryClient.invalidateQueries();
+    });
+    socket.on('access:changed', () => {
+      void queryClient.resetQueries();
+    });
+
     // Listen for all domain events the server emits
     for (const event of DOMAIN_EVENTS) {
       socket.on(event, (payload: WsEventPayload) => {
@@ -107,6 +135,7 @@ export function useWebSocket(projectKey: string | null = null) {
     });
 
     return () => {
+      window.clearInterval(accessTimer);
       projectRoom.dispose();
       projectRoomRef.current = null;
       socket.removeAllListeners();

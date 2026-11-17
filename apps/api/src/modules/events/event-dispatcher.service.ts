@@ -1,3 +1,4 @@
+import { eventHasRestrictedContent } from '@weaver/server-common';
 import { Injectable, Logger } from '@nestjs/common';
 import { ProjectEntity, WebhookEntity } from '@weaver/db';
 import { TenantConnectionProvider, getTenantContext } from '../../core/tenant';
@@ -33,24 +34,31 @@ export class EventDispatcherService {
     if (this.tenantConnections.deferUntilCommit?.(() => this.emit(event, payload))) return;
     if (typeof payload.projectKey !== 'string' && typeof payload.projectId === 'string') {
       const manager = await this.tenantConnections.getEntityManager();
-      const project = await manager.getRepository(ProjectEntity).findOneBy({ id: payload.projectId });
+      const project = await manager
+        .getRepository(ProjectEntity)
+        .findOneBy({ id: payload.projectId });
       if (project) payload = { ...payload, projectKey: project.key };
     }
     // Push to WebSocket for real-time updates
     const tenantCtx = getTenantContext();
     if (tenantCtx && typeof payload.projectKey === 'string') {
       const wsPayload = { event, data: payload, timestamp: new Date().toISOString() };
-      this.gateway.emitToProject(
-        tenantCtx.tenantId,
-        payload.projectKey,
-        event,
-        wsPayload,
-      );
+      await this.gateway.emitToProject(tenantCtx.tenantId, payload.projectKey, event, wsPayload);
 
       this.logger.debug(
         `WS event "${event}" sent to project ${payload.projectKey} in tenant ${tenantCtx.tenantId}`,
       );
     }
+
+    if (
+      tenantCtx &&
+      (await eventHasRestrictedContent(
+        await this.tenantConnections.getEntityManager(),
+        tenantCtx.schemaName,
+        payload,
+      ))
+    )
+      return;
 
     for (const dispatcher of this.domainDispatchers) {
       try {
@@ -66,23 +74,20 @@ export class EventDispatcherService {
 
       const webhooks = await repo.find({ where: { active: true } });
 
-      let projectId = typeof payload.projectId === 'string'
-        ? payload.projectId
-        : null;
+      let projectId = typeof payload.projectId === 'string' ? payload.projectId : null;
       if (
         !projectId &&
         typeof payload.projectKey === 'string' &&
         webhooks.some((webhook) => webhook.projectId !== null)
       ) {
-        projectId = (
-          await em.getRepository(ProjectEntity).findOneBy({ key: payload.projectKey })
-        )?.id ?? null;
+        projectId =
+          (await em.getRepository(ProjectEntity).findOneBy({ key: payload.projectKey }))?.id ??
+          null;
       }
 
       const matching = webhooks.filter(
         (wh) =>
-          subscribesTo(wh.events, event) &&
-          (wh.projectId === null || wh.projectId === projectId),
+          subscribesTo(wh.events, event) && (wh.projectId === null || wh.projectId === projectId),
       );
 
       if (matching.length > 0) {

@@ -1,3 +1,4 @@
+import { visibleIssues } from '../../core/tenant/issue-visibility';
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { In } from 'typeorm';
 import { IssueEntity, WorkflowStatusEntity } from '@weaver/db';
@@ -56,6 +57,7 @@ export class SearchService {
       }
     }
 
+    visibleIssues(em, qb, user);
     if (query.sort) {
       const [field, direction] = query.sort.split(':');
       const column = this.mapSortField(field);

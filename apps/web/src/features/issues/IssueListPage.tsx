@@ -172,10 +172,8 @@ function SortableIssueRow({
           {...attributes}
           {...listeners}
           disabled={!canReorder}
-          aria-label={
-            canReorder ? `Reorder ${issue.key}` : 'Clear column sorting to reorder issues'
-          }
-          title={canReorder ? `Reorder ${issue.key}` : 'Clear column sorting to reorder issues'}
+          aria-label={canReorder ? `Reorder ${issue.key}` : 'Choose manual order to reorder issues'}
+          title={canReorder ? `Reorder ${issue.key}` : 'Choose manual order to reorder issues'}
           className="flex h-8 w-8 cursor-grab items-center justify-center text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-25"
         >
           <GripVertical className="h-4 w-4" aria-hidden="true" />
@@ -274,7 +272,9 @@ function SortableIssueRow({
           ariaLabel={`Edit ${issue.key} assignee`}
           renderValue={(val) => (
             <span className="text-sm text-foreground">
-              {val === issue.assigneeId && issue.assigneeDisplayName ? issue.assigneeDisplayName : getAssigneeName(val === UNASSIGNED_VALUE ? null : val)}
+              {val === issue.assigneeId && issue.assigneeDisplayName
+                ? issue.assigneeDisplayName
+                : getAssigneeName(val === UNASSIGNED_VALUE ? null : val)}
             </span>
           )}
         />
@@ -314,7 +314,6 @@ export function IssueListPage() {
   const page = Number(searchParams.get('page')) || 1;
   const perPage = Number(searchParams.get('perPage')) || getStoredPerPage();
   const sortParam = searchParams.get('sort');
-  const { field: sortField, direction: sortDirection } = parseSortParam(sortParam);
 
   const updateParams = useCallback(
     (updates: Record<string, string | undefined>) => {
@@ -334,11 +333,16 @@ export function IssueListPage() {
   );
 
   const { data: project } = useProject(projectKey!);
+  const defaultSort = project?.customFields?.['jira.source-id'] ? '-key' : 'sortOrder';
+  const effectiveSort = sortParam ?? defaultSort;
+  const { field: sortField, direction: sortDirection } = parseSortParam(
+    effectiveSort === 'sortOrder' ? null : effectiveSort,
+  );
   const { data, isLoading } = useProjectIssues({
     projectKey: projectKey!,
     page,
     perPage,
-    sort: buildSortParam(sortField, sortDirection) ?? 'sortOrder',
+    sort: effectiveSort,
   });
   const createIssue = useCreateIssue(projectKey!);
   const updateIssue = useUpdateIssueDynamic();
@@ -353,7 +357,7 @@ export function IssueListPage() {
   const canTransition = useHasPermission('issues.transition');
   const canDelete = useHasPermission('issues.delete');
   const canBulkSelect = canEdit || canDelete;
-  const canReorder = canEdit && !sortParam;
+  const canReorder = canEdit && effectiveSort === 'sortOrder';
 
   const [localIssues, setLocalIssues] = useState<Issue[] | null>(null);
   const [activeIssue, setActiveIssue] = useState<Issue | null>(null);
@@ -704,6 +708,22 @@ export function IssueListPage() {
       </div>
 
       <div className="mb-4">
+        <label className="mb-3 flex items-center gap-2 text-sm">
+          List order
+          <select
+            aria-label="List order"
+            value={effectiveSort}
+            onChange={(event) => updateParams({ sort: event.target.value, page: '1' })}
+            className="rounded border p-2"
+          >
+            <option value="-key">Highest ticket number first</option>
+            <option value="key">Lowest ticket number first</option>
+            <option value="sortOrder">Manual order</option>
+            {!['-key', 'key', 'sortOrder'].includes(effectiveSort) && (
+              <option value={effectiveSort}>Selected column sort</option>
+            )}
+          </select>
+        </label>
         <IssueHelp />
       </div>
 

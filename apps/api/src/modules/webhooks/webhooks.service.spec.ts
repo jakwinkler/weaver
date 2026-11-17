@@ -1,3 +1,4 @@
+import { tenantStorage } from '../../core/tenant/tenant.context';
 import * as crypto from 'crypto';
 import { WebhookEntity } from '@weaver/db';
 import { WebhooksService } from './webhooks.service';
@@ -20,21 +21,24 @@ describe('WebhooksService delivery signing', () => {
     const repo = { findOneBy: jest.fn().mockResolvedValue(webhook) };
     const tenantConnections = {
       getEntityManager: jest.fn().mockResolvedValue({
+        query: jest
+          .fn()
+          .mockResolvedValue([{ id: 'issue', key: 'A-1', access_state: 'unrestricted' }]),
         getRepository: (entity: unknown) => {
           expect(entity).toBe(WebhookEntity);
           return repo;
         },
       }),
-      runInTenantTransaction: jest.fn().mockImplementation(async (callback) =>
-        callback({ query: jest.fn() }),
-      ),
+      runInTenantTransaction: jest
+        .fn()
+        .mockImplementation(async (callback) => callback({ query: jest.fn() })),
     };
-    jest.mocked(fetchWithSafeRedirects).mockResolvedValue(
-      new Response('ok', { status: 200 }),
-    );
+    jest.mocked(fetchWithSafeRedirects).mockResolvedValue(new Response('ok', { status: 200 }));
     const service = new WebhooksService(tenantConnections as never, {} as never);
 
-    await service.deliver('webhook-a', 'issue.updated', { issueKey: 'A-1' });
+    await tenantStorage.run({ tenantId: 'tenant-a', schemaName: 'tenant_a' }, () =>
+      service.deliver('webhook-a', 'issue.updated', { issueKey: 'A-1' }),
+    );
 
     const [, options] = jest.mocked(fetchWithSafeRedirects).mock.calls[0];
     const headers = options?.headers as Record<string, string>;
@@ -43,10 +47,7 @@ describe('WebhooksService delivery signing', () => {
     expect(timestamp).toMatch(/^\d{10}$/);
     expect(headers['X-Webhook-Delivery']).toMatch(/^[0-9a-f-]{36}$/);
     expect(headers['X-Webhook-Signature']).toBe(
-      crypto
-        .createHmac('sha256', webhook.secret)
-        .update(`${timestamp}.${body}`)
-        .digest('hex'),
+      crypto.createHmac('sha256', webhook.secret).update(`${timestamp}.${body}`).digest('hex'),
     );
   });
 });

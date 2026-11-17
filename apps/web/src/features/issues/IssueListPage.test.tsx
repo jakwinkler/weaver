@@ -7,6 +7,8 @@ import { HotkeysContext } from '@/hooks/useHotkeys';
 import { IssueListPage } from './IssueListPage';
 
 const apiMocks = vi.hoisted(() => ({
+  projectFields: {} as Record<string, unknown>,
+  requestedIssues: vi.fn(),
   canEdit: true,
   canCreate: true,
   create: vi.fn(),
@@ -67,14 +69,23 @@ vi.mock('@/api', async () => {
       (['issues.update', 'issues.transition'].includes(permission) && apiMocks.canEdit),
     useIssueTypes: () => ({ data: [] }),
     useProject: () => ({
-      data: { id: 'project-1', key: 'TEST', name: 'Test Project', workflowId: 'workflow-1' },
+      data: {
+        id: 'project-1',
+        key: 'TEST',
+        name: 'Test Project',
+        workflowId: 'workflow-1',
+        customFields: apiMocks.projectFields,
+      },
     }),
-    useProjectIssues: ({ projectKey }: { projectKey: string }) =>
-      useQuery({
+    useProjectIssues: (params: { projectKey: string; sort?: string }) => {
+      apiMocks.requestedIssues(params);
+      const { projectKey } = params;
+      return useQuery({
         queryKey: ['issues', projectKey, { page: 1 }],
         queryFn: async () => apiMocks.issuePage,
         initialData: apiMocks.issuePage,
-      }),
+      });
+    },
     useReorderIssues: () => ({ mutateAsync: vi.fn() }),
     useSprints: () => ({ data: [] }),
     useBulkUpdateIssues: () => ({ mutateAsync: vi.fn(), isPending: false }),
@@ -173,6 +184,8 @@ function renderPage(initialEntry = '/projects/TEST/issues') {
 
 describe('IssueListPage inline editing', () => {
   beforeEach(() => {
+    apiMocks.projectFields = {};
+    apiMocks.requestedIssues.mockClear();
     apiMocks.canEdit = true;
     apiMocks.canCreate = true;
     apiMocks.create.mockReset().mockResolvedValue({ key: 'TEST-3' });
@@ -184,6 +197,25 @@ describe('IssueListPage inline editing', () => {
 
   afterEach(() => {
     cleanup();
+  });
+
+  it('defaults imported lists to descending keys and disables rank dragging', () => {
+    apiMocks.projectFields = { 'jira.source-id': '42' };
+    renderPage();
+    expect(apiMocks.requestedIssues).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sort: '-key' }),
+    );
+    expect(
+      screen.getAllByRole('button', { name: /manual order|Clear column sorting/i })[0],
+    ).toBeDisabled();
+  });
+
+  it('preserves an explicit sort on imported projects', () => {
+    apiMocks.projectFields = { 'jira.source-id': '42' };
+    renderPage('/projects/TEST/issues?sort=summary');
+    expect(apiMocks.requestedIssues).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sort: 'summary' }),
+    );
   });
 
   it('includes editable summary, priority, status, assignee, and due date cells', () => {
@@ -295,13 +327,15 @@ describe('IssueListPage inline editing', () => {
     await waitFor(() => expect(apiMocks.mutateAsync).toHaveBeenCalledTimes(2));
 
     // A refetch brings another field of the failing issue up to date while its save is pending.
-    queryClient.setQueriesData<IssuePage>({ queryKey: ['issues', 'TEST'] }, (old) =>
-      old && {
-        ...old,
-        data: old.data.map((issue) =>
-          issue.key === 'TEST-1' ? { ...issue, priority: 'highest' } : issue,
-        ),
-      },
+    queryClient.setQueriesData<IssuePage>(
+      { queryKey: ['issues', 'TEST'] },
+      (old) =>
+        old && {
+          ...old,
+          data: old.data.map((issue) =>
+            issue.key === 'TEST-1' ? { ...issue, priority: 'highest' } : issue,
+          ),
+        },
     );
     rejectFirstSave(new Error('Network unavailable'));
 
@@ -332,13 +366,15 @@ describe('IssueListPage inline editing', () => {
     fireEvent.keyDown(input, { key: 'Enter' });
     await waitFor(() => expect(apiMocks.mutateAsync).toHaveBeenCalledTimes(1));
 
-    queryClient.setQueriesData<IssuePage>({ queryKey: ['issues', 'TEST'] }, (old) =>
-      old && {
-        ...old,
-        data: old.data.map((issue) =>
-          issue.key === 'TEST-1' ? { ...issue, summary: 'Renamed by a teammate' } : issue,
-        ),
-      },
+    queryClient.setQueriesData<IssuePage>(
+      { queryKey: ['issues', 'TEST'] },
+      (old) =>
+        old && {
+          ...old,
+          data: old.data.map((issue) =>
+            issue.key === 'TEST-1' ? { ...issue, summary: 'Renamed by a teammate' } : issue,
+          ),
+        },
     );
     rejectSave(new Error('Network unavailable'));
 

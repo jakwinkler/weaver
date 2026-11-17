@@ -1,3 +1,4 @@
+import { attachmentLimit } from '@weaver/jira-import';
 import {
   BadRequestException,
   Injectable,
@@ -74,6 +75,7 @@ export class ImportService {
     return {
       projects,
       notes: [
+        `Maximum imported attachment size: ${attachmentLimit()} bytes. Interactive upload limits are unchanged.`,
         ...(dto.updatedSince
           ? [
               `Partial import: issues updated since ${dto.updatedSince}, including their complete comments, history and files. Older issues are excluded.`,
@@ -81,13 +83,17 @@ export class ImportService {
           : []),
         'Counts cover data visible to the Jira account. Comment and worklog totals come from Jira issue metadata.',
         'Additional historical people and restricted audiences are discovered during the import. Imported people receive no access or notifications.',
-        'Restricted comments are held for administrators until you map their audience. Secured issues are retained in the administrator source archive.',
+        'Restricted content is held for administrators until its audience is reviewed. Secured native issues require the issue-security feature; otherwise they remain in the administrator archive.',
         'Workflow rules and board filters require review. Source records retain unsupported metadata.',
       ],
     };
   }
 
-  async start(dto: StartJiraImportDto, requestedByUserId: string): Promise<ImportJobEntity> {
+  async start(
+    dto: StartJiraImportDto,
+    requestedByUserId: string,
+    attachmentRecovery?: { jobId: string; attachmentIds: string[] },
+  ): Promise<ImportJobEntity> {
     const projects = await this.discoverProjects(dto.config);
     try {
       filterSelectedProjects(projects, dto.projectKeys);
@@ -115,7 +121,10 @@ export class ImportService {
         skippedItems: 0,
         errors: [],
         selectedProjectKeys: dto.projectKeys ?? null,
-        report: { scope: { updatedSince: dto.updatedSince ?? null } },
+        report: {
+          scope: { updatedSince: dto.updatedSince ?? null },
+          recoveryOf: attachmentRecovery?.jobId ?? null,
+        },
         startedAt: null,
         completedAt: null,
       }),
@@ -130,6 +139,7 @@ export class ImportService {
         config: dto.config,
         projectKeys: dto.projectKeys,
         updatedSince: dto.updatedSince,
+        attachmentRecovery,
       });
     } catch (error) {
       job.status = 'failed';
@@ -146,6 +156,37 @@ export class ImportService {
     }
 
     return job;
+  }
+
+  async retryAttachments(
+    jobId: string,
+    config: StartJiraImportDto['config'],
+    attachmentIds: string[],
+    userId: string,
+  ) {
+    const original = await this.getStatus(jobId);
+    if (['running', 'queued'].includes(original.status))
+      throw new BadRequestException('Finish or cancel the original import first');
+    if (
+      original.source !== config.source ||
+      normalizeSourceUrl(original.sourceUrl) !== normalizeSourceUrl(config.baseUrl)
+    )
+      throw new BadRequestException('Use the original Jira source');
+    const unique = [...new Set(attachmentIds)];
+    if (
+      !unique.every((id) =>
+        original.errors.some((error) => error.itemType === 'attachment' && error.itemId === id),
+      )
+    )
+      throw new BadRequestException('Select failed attachments from this import');
+    return this.start(
+      {
+        config,
+        ...(original.selectedProjectKeys ? { projectKeys: original.selectedProjectKeys } : {}),
+      },
+      userId,
+      { jobId, attachmentIds: unique },
+    );
   }
 
   async getStatus(id: string): Promise<ImportJobEntity> {

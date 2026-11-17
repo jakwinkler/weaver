@@ -24,6 +24,7 @@ export { AutomationRuleEntity } from './automation-rule.entity';
 export { AutomationLogEntity } from './automation-log.entity';
 export { ImportJobEntity } from './import-job.entity';
 export { ImportRecordEntity } from './import-record.entity';
+export { ImportStorageWriteEntity } from './import-storage-write.entity';
 export { PageEntity } from './page.entity';
 export { PageVersionEntity } from './page-version.entity';
 export { FormEntity } from './form.entity';
@@ -34,3 +35,5 @@ export { InboundWebhookReceiptEntity } from './inbound-webhook-receipt.entity';
 export * from './imported-person.entity';
 export * from './imported-audience.entity';
 export * from './imported-resource.entity';
+
+export * from './issue-access-policy.entity';

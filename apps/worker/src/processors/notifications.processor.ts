@@ -1,3 +1,4 @@
+import { recipientCanReadIssue } from '@weaver/server-common';
 import {
   ApiKeyEntity,
   createPostgresDataSource,
@@ -27,6 +28,8 @@ type TransportFactory = (
 ) => Pick<ReturnType<typeof createTransport>, 'sendMail'>;
 
 interface NotificationProcessorDependencies {
+  canDeliverIssue?: (tenantId: string, userId: string, key: string) => Promise<boolean>;
+  canDeliverIssueId?: (tenantId: string, userId: string, id: string) => Promise<boolean>;
   getTenantSmtpSettings: (tenantId: string) => Promise<SmtpSettings | null>;
   getSystemSmtpSettings: () => SmtpSettings | null;
   /** SMTP_ALLOW_PRIVATE_HOST: the operator's own SMTP_HOST may be a private relay. */
@@ -39,7 +42,10 @@ interface NotificationProcessorDependencies {
   };
 }
 
-type AccountMailProcessorDependencies = Omit<NotificationProcessorDependencies, 'getTenantSmtpSettings'>;
+type AccountMailProcessorDependencies = Omit<
+  NotificationProcessorDependencies,
+  'getTenantSmtpSettings'
+>;
 
 const SYSTEM_RATE_LIMIT_KEY = 'system';
 
@@ -86,12 +92,26 @@ class TenantSmtpSettingsProvider {
   private dataSource: DataSource | null = null;
 
   async get(tenantId: string): Promise<SmtpSettings | null> {
-    const tenant = await (await this.connection())
+    const tenant = await (
+      await this.connection()
+    )
       .getRepository(TenantEntity)
       .findOneBy({ id: tenantId });
     const smtp = (tenant?.settings as Partial<TenantSettings> | undefined)?.smtp;
     const parsed = smtpSettingsSchema.safeParse(smtp);
     return parsed.success ? parsed.data : null;
+  }
+
+  async canDeliverIssue(tenantId: string, userId: string, key: string): Promise<boolean> {
+    const ds = await this.connection();
+    const tenant = await ds.getRepository(TenantEntity).findOneBy({ id: tenantId });
+    return !!tenant && recipientCanReadIssue(ds, tenant.schemaName, tenantId, userId, { key });
+  }
+
+  async canDeliverIssueId(tenantId: string, userId: string, id: string): Promise<boolean> {
+    const ds = await this.connection();
+    const tenant = await ds.getRepository(TenantEntity).findOneBy({ id: tenantId });
+    return !!tenant && recipientCanReadIssue(ds, tenant.schemaName, tenantId, userId, { id });
   }
 
   async close(): Promise<void> {
@@ -152,6 +172,24 @@ export function createNotificationProcessor(
     const transport = dependencies.transportFactory(
       await transportOptions(smtp, !tenantSmtp && !!dependencies.allowPrivateSystemHost),
     );
+    // Old rendered jobs cannot prove which link labels they contain. Do not replay them.
+    const metadata = job.data.data;
+    const references = metadata?.issueReferences as { keys?: unknown; ids?: unknown } | undefined;
+    if (
+      metadata?.referenceVersion !== 1 ||
+      typeof metadata.issueKey !== 'string' ||
+      !Array.isArray(references?.keys) ||
+      !Array.isArray(references?.ids) ||
+      !references.keys.every((key) => typeof key === 'string') ||
+      !references.ids.every((id) => typeof id === 'string')
+    )
+      return;
+    for (const key of new Set([metadata.issueKey, ...references.keys] as string[])) {
+      if (!(await dependencies.canDeliverIssue?.(job.data.tenantId, job.data.userId, key))) return;
+    }
+    for (const id of new Set(references.ids as string[])) {
+      if (!(await dependencies.canDeliverIssueId?.(job.data.tenantId, job.data.userId, id))) return;
+    }
     await transport.sendMail({
       from: `"${smtp.fromName}" <${smtp.fromEmail}>`,
       to: job.data.to,
@@ -204,9 +242,7 @@ async function transportOptions(
   smtp: SmtpSettings,
   allowPrivateHost: boolean,
 ): Promise<SMTPTransport.Options> {
-  const host = allowPrivateHost
-    ? smtp.host
-    : (await resolveSafeOutboundHost(smtp.host))[0].address;
+  const host = allowPrivateHost ? smtp.host : (await resolveSafeOutboundHost(smtp.host))[0].address;
   return {
     host,
     port: smtp.port,
@@ -240,6 +276,10 @@ const logger = {
 };
 
 export const processNotification = createNotificationProcessor({
+  canDeliverIssueId: (tenantId, userId, id) =>
+    smtpSettingsProvider.canDeliverIssueId(tenantId, userId, id),
+  canDeliverIssue: (tenantId, userId, key) =>
+    smtpSettingsProvider.canDeliverIssue(tenantId, userId, key),
   getTenantSmtpSettings: (tenantId) => smtpSettingsProvider.get(tenantId),
   getSystemSmtpSettings,
   allowPrivateSystemHost,

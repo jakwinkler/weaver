@@ -17,6 +17,7 @@ import { AdminGuard, CurrentUser, JwtAuthGuard, RequestUser } from '../../core/a
 import { ZodValidationPipe } from '../../common';
 import { ImportService } from './import.service';
 import {
+  jiraConnectionSchema,
   discoverJiraProjectsSchema,
   DiscoverJiraProjectsDto,
   startJiraImportSchema,
@@ -114,6 +115,29 @@ export class ImportController {
     @CurrentUser() user: RequestUser,
   ) {
     return this.imports.start(dto, user.userId);
+  }
+
+  @Post('jira/retry-attachments/:id')
+  @Audit({ action: 'import.attachments_retried', resource: 'import' })
+  retryAttachments(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: unknown,
+    @CurrentUser() user: RequestUser,
+  ) {
+    const input = z
+      .object({
+        config: jiraConnectionSchema,
+        attachmentIds: z.array(z.string().regex(/^\d+$/)).min(1).max(100),
+      })
+      .safeParse(body);
+    if (!input.success)
+      throw new BadRequestException('Select failed attachments and supply Jira credentials');
+    return this.imports.retryAttachments(
+      id,
+      input.data.config,
+      input.data.attachmentIds,
+      user.userId,
+    );
   }
 
   @Get('status/:id')
