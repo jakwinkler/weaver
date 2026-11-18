@@ -43,7 +43,7 @@ USER node
 RUN node -e "const r = require('node:module').createRequire('/app/apps/worker/package.json'); r('reflect-metadata'); r('@weaver/db'); r('@weaver/jira-import')"
 CMD ["node", "apps/worker/dist/main.js"]
 
-FROM nginxinc/nginx-unprivileged:alpine AS web
+FROM nginx/nginx-unprivileged:alpine AS web
 
 ENV WEAVER_API_UPSTREAM=api:3000
 COPY docker/nginx.conf /etc/nginx/templates/default.conf.template
