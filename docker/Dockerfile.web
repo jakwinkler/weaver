@@ -22,7 +22,7 @@ ENV VITE_API_URL=${VITE_API_URL}
 RUN pnpm exec turbo run build --filter=@weaver/web...
 
 # Production - serve with nginx
-FROM nginxinc/nginx-unprivileged:alpine AS production
+FROM nginx/nginx-unprivileged:alpine AS production
 ENV WEAVER_API_UPSTREAM=api:3000
 COPY docker/nginx.conf /etc/nginx/templates/default.conf.template
 COPY --from=build /app/apps/web/dist /usr/share/nginx/html
